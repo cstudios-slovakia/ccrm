@@ -17,6 +17,8 @@
  * dedicated renderer draws it, and the settings its drawer offers.
  */
 
+import { AI_MODEL_TERRA } from "./aiModels.ts";
+
 import {
   BarChart3,
   Calculator,
@@ -766,6 +768,6 @@ export const buildDefaultHomeDashboard = (): CustomDashboard => ({
   color: "#4f46e5",
   prompts: [],
   layout: { widgets: buildDefaultHomeWidgets() },
-  activeModel: "gpt-5.6-terra",
+  activeModel: AI_MODEL_TERRA,
   archived: false
 });

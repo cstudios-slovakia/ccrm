@@ -372,7 +372,7 @@ try {
       source: "Facebook Ads", owner: "Probe", value: 1234.5, rating: 4, createdAt: "2026-02-01",
       phone: "+421 900 123 456", email: "probe@example.test",
       address: { street: "Hlavná 1", city: "Žilina", postalCode: "010 01", country: "Slovakia" },
-      companyId: "12345678", taxId: "2020202020", vatId: "SK2020202020", contactPerson: "Mgr. Anna Nováková",
+      companyId: "12345678", taxId: "2020202020", vatId: "SK2020202020", contactPerson: "Mgr. Anna Nováková", contactFirstName: "Mgr. Anna", contactLastName: "Nováková",
       website: "https://example.test", establishmentDate: "2001-05-06", legalForm: "s.r.o.", skNace: "62010",
       organizationSize: "10-19", ownershipType: "private", dataSource: "registeruz", dissolutionDate: "",
       region: "Žilinský", district: "Žilina",
@@ -391,7 +391,7 @@ try {
     check("POST field-complete lead 200", r.status === 200 && r.body?.success === true, `status=${r.status} body=${JSON.stringify(r.body)?.slice(0, 300)}`);
     const back = ((await json("/sync.php")).body?.leads || []).find((l) => l.id === fullLeadId);
     const scalar = ["name", "city", "clientType", "status", "source", "owner", "value", "rating", "createdAt", "phone", "email",
-      "companyId", "taxId", "vatId", "contactPerson", "website", "establishmentDate", "legalForm", "skNace", "organizationSize",
+      "companyId", "taxId", "vatId", "contactPerson", "contactFirstName", "contactLastName", "website", "establishmentDate", "legalForm", "skNace", "organizationSize",
       "ownershipType", "dataSource", "dissolutionDate", "region", "district", "interestNote", "referralLeadId", "clientId", "aiSummary",
       "aiSummaryFingerprint", "clientCategoryId", "archived", "address", "vatValidationResult", "followUps"];
     const d = diffKeys(back, lead, scalar);
@@ -409,6 +409,20 @@ try {
     const teDiffs = lead.timeline.flatMap((e) => diffKeys(byId[e.id], e, teKeys.filter((k) => k in e)).map((k) => `${e.type}.${k}=${JSON.stringify(byId[e.id]?.[k])}`));
     check("lead: every timeline entry shape reads back unchanged", teDiffs.length === 0, teDiffs.join(" "));
     check("lead: a note that logged a sale keeps its amount", byId[`ev-${t0}-5`]?.amount === 250.25, `amount=${JSON.stringify(byId[`ev-${t0}-5`]?.amount)}`);
+
+    // A person record stores its OWN first and last name in the contact parts; the
+    // display name keeps the user's order and contactPerson stays empty (B1.7).
+    const personLeadId = `${PREFIX}person-${t0}`;
+    const personLead = {
+      id: personLeadId, name: `${PREFIX}Kovács Péter`, city: "Komárno", clientType: "person", status: "new",
+      source: "Web", owner: "Probe", value: 0, rating: 0, createdAt: "2026-02-01",
+      contactFirstName: "Péter", contactLastName: "Kovács", timeline: [],
+    };
+    const rPerson = await post({ baseSyncedAt: await clock(), leads: [personLead] });
+    const personBack = ((await json("/sync.php")).body?.leads || []).find((l) => l.id === personLeadId);
+    check("person lead: POST 200", rPerson.status === 200 && rPerson.body?.success === true, `status=${rPerson.status} body=${JSON.stringify(rPerson.body)?.slice(0, 300)}`);
+    check("person lead: own first and last name read back", personBack?.contactFirstName === "Péter" && personBack?.contactLastName === "Kovács", `first=${JSON.stringify(personBack?.contactFirstName)} last=${JSON.stringify(personBack?.contactLastName)}`);
+    check("person lead: contactPerson stays empty, name unchanged", !personBack?.contactPerson && personBack?.name === personLead.name, `contactPerson=${JSON.stringify(personBack?.contactPerson)} name=${JSON.stringify(personBack?.name)}`);
 
     // Hiding an imported mail entry as the ONLY change to the lead. The row is
     // inserted the way api/mail_broker.php does (with seconds); the lead is
@@ -523,7 +537,7 @@ echo 'ok';`);
     const r = await post({ baseSyncedAt: await clock(), financialRecords: [
       { id: frId, type: "expense", subtype: "regular", title: "Nájom", amountPlanned: 500, amountReal: 0, currency: "EUR", status: "planned",
         issueDate: "2026-01-01", isRecurring: true, recurringFrequency: "monthly", recurringStartDate: "2026-01-01", recurringEndDate: "2026-09-19",
-        recurringPlannedEndDate: "2027-12-31", recurringSkippedDates: ["2026-09-01", "2026-03-01"], recurringAmountHistory: [], attachments: [] },
+        recurringPlannedEndDate: "2027-12-31", recurringSkippedDates: ["2026-09-01", "2026-03-01"], recurringMaterializedThrough: "2026-09-19", recurringAmountHistory: [], attachments: [] },
       { id: `${frId}-one`, type: "expense", subtype: "regular", title: "Nájom – september", amountPlanned: 520, amountReal: 520, currency: "EUR",
         status: "paid", issueDate: "2026-09-01", paidDate: "2026-09-01", recurringSourceId: frId, recurringOccurrenceDate: "2026-09-01", attachments: [] },
     ] });
@@ -533,6 +547,7 @@ echo 'ok';`);
     const one = frs.find((x) => x.id === `${frId}-one`);
     check("financial record: recurringPlannedEndDate reads back", rule?.recurringPlannedEndDate === "2027-12-31", `value=${JSON.stringify(rule?.recurringPlannedEndDate)}`);
     check("financial record: recurringSkippedDates read back (sorted)", deepEq(rule?.recurringSkippedDates, ["2026-03-01", "2026-09-01"]), `value=${JSON.stringify(rule?.recurringSkippedDates)}`);
+    check("financial record: recurringMaterializedThrough reads back", rule?.recurringMaterializedThrough === "2026-09-19", `value=${JSON.stringify(rule?.recurringMaterializedThrough)}`);
     check("financial record: recurringSourceId / recurringOccurrenceDate read back", one?.recurringSourceId === frId && one?.recurringOccurrenceDate === "2026-09-01", `value=${JSON.stringify(pick(one, ["recurringSourceId", "recurringOccurrenceDate"]))}`);
   }
 
@@ -609,10 +624,17 @@ echo 'ok';`);
     check("settings: name-keyed maps are objects, never arrays", bad.length === 0, `arrays=${bad.join(",")}`);
   }
 
+  // Child rows move their parent's updated_at, and only on a real change.
+  await changeVisibilityChecks({ post, clock, check, phpFile, json, types: (await json("/sync.php")).body?.projectTypes || [] });
+
   phpFile("ccrm-cleanup-rows.php", `<?php
 require '/var/www/html/config.php';
 $pdo = get_db_connection();
 $pdo->exec("DELETE FROM tasks WHERE id LIKE '${PREFIX}%'");
+$pdo->exec("DELETE FROM warehouse_movements WHERE id LIKE '${PREFIX}%'");
+$pdo->exec("DELETE FROM deleted_records WHERE entity_id LIKE '${PREFIX}%' OR entity_id LIKE 'client-${PREFIX}%'");
+$pdo->exec("DELETE FROM leads WHERE id LIKE 'client-${PREFIX}%'");
+$pdo->exec("DELETE FROM meeting_notes WHERE id LIKE '${PREFIX}%'");
 $pdo->exec("DELETE FROM timeline_events WHERE lead_id LIKE '${PREFIX}%'");
 $pdo->exec("DELETE FROM leads WHERE id LIKE '${PREFIX}%'");
 $pdo->exec("DELETE FROM warehouse_items WHERE id LIKE '${PREFIX}%'");
@@ -643,4 +665,121 @@ console.log(`passed: ${ok.length}  failed: ${findings.length}`);
 if (findings.length) {
   for (const f of findings) console.log(`  - ${f.name}: ${f.detail}`);
   process.exit(1);
+}
+
+/**
+ * Change visibility through sync.php (docs/audits/mcp-change-visibility-audit.md).
+ * RC3a, child bumps: a changed project manager, Gantt row,
+ * invoice line item, meeting action item or movement line moves the parent's updated_at; an unchanged
+ * re-save does not. Needs the Docker backend this script already uses (DB access through phpFile()).
+ * The parent is aged with UPDATE ... updated_at = FROM_UNIXTIME(1590998400) before each push, so a bump
+ * is any later value and "unchanged" is exactly the aged one.
+ * RC7b, tombstones: a named delete leaves one deleted_records row (name, who, client flag), a child rewrite none.
+ */
+async function changeVisibilityChecks({ post, clock, check, phpFile, json, types }) {
+  const AGED = 1590998400;
+  const t = Date.now();
+  const stamp = (table, id) => Number(phpFile("ccrm-child-ts.php", `<?php
+require '/var/www/html/config.php';
+$pdo = get_db_connection();
+$st = $pdo->prepare('SELECT UNIX_TIMESTAMP(updated_at) FROM ${table} WHERE id = ?');
+$st->execute([${JSON.stringify(id)}]);
+echo (string)$st->fetchColumn();
+`));
+  const age = (table, id) => phpFile("ccrm-child-age.php", `<?php
+require '/var/www/html/config.php';
+$pdo = get_db_connection();
+$pdo->prepare('UPDATE ${table} SET updated_at = FROM_UNIXTIME(${AGED}) WHERE id = ?')->execute([${JSON.stringify(id)}]);
+echo 'aged';
+`);
+  // Push `body` for a record aged first; "moved" is true when its updated_at left the aged value.
+  const bumped = async (table, id, body) => {
+    age(table, id);
+    const r = await post({ baseSyncedAt: await clock(), ...body });
+    const ts = stamp(table, id);
+    return { ok: r.status === 200 && r.body?.success === true, moved: ts > AGED + 3600, detail: `status=${r.status} ts=${ts}` };
+  };
+  const expectMoved = (name, res, moved) => check(name, res.ok && res.moved === moved, `${res.detail} moved=${res.moved}`);
+
+  const admin = ((await json("/sync.php")).body?.users || [])[0]?.id;
+  const typeId = types[0]?.id;
+  const pid = `ccrm-del-probe-bump-proj-${t}`;
+  if (typeId && admin) {
+    const proj = (managers, gantt) => ({ projects: [{ id: pid, name: "ccrm-del-probe bump project", projectTypeId: typeId, status: "active", managers, data: {}, timeline: [], gantt }] });
+    const g1 = [{ id: `${pid}-g1`, title: "Milestone 1", startDate: "2026-01-01", endDate: "2026-01-05", progress: 0 }];
+    const made = await post({ baseSyncedAt: await clock(), ...proj([admin], g1) });
+    check("bump: project with a manager and a Gantt row created", made.status === 200 && made.body?.success === true, `status=${made.status}`);
+    expectMoved("bump: re-saving the same managers and Gantt rows leaves updated_at alone", await bumped("projects", pid, proj([admin], g1)), false);
+    expectMoved("bump: a fresh Gantt row id with the same content is not a change", await bumped("projects", pid, proj([admin], [{ ...g1[0], id: `${pid}-g1b` }])), false);
+    expectMoved("bump: removing the project manager moves updated_at", await bumped("projects", pid, proj([], g1)), true);
+    expectMoved("bump: changing a Gantt row moves updated_at", await bumped("projects", pid, proj([], [{ ...g1[0], title: "Milestone 1 (moved)", endDate: "2026-01-09" }])), true);
+  } else {
+    console.log("SKIP  project child bumps — no project type or user on this install");
+  }
+
+  const ioId = `ccrm-del-probe-bump-io-${t}`;
+  const io = (items) => ({ invoicesOffers: [{ id: ioId, type: "price_offer", documentNumber: `PROBE-BUMP-${t}`, clientName: "ccrm-del-probe bump", title: "ccrm-del-probe bump", status: "draft", items }] });
+  const line = { id: `${ioId}-i1`, name: "Probe line", quantity: 2, unitPrice: 10, vatRate: 20, totalPrice: 20 };
+  await post({ baseSyncedAt: await clock(), ...io([line]) });
+  expectMoved("bump: re-saving the same invoice line items leaves updated_at alone", await bumped("invoices_offers", ioId, io([line])), false);
+  expectMoved("bump: line items re-sent under fresh ids with the same content are not a change", await bumped("invoices_offers", ioId, io([{ ...line, id: `${ioId}-i9` }])), false);
+  expectMoved("bump: changing a line item quantity moves updated_at", await bumped("invoices_offers", ioId, io([{ ...line, quantity: 3, totalPrice: 30 }])), true);
+
+  const mid = `ccrm-del-probe-bump-meet-${t}`;
+  const meet = (status) => ({ meetingNotes: [{ id: mid, title: "ccrm-del-probe bump meeting", date: "2026-01-02", automatedTasks: [{ id: `${mid}-t1`, title: "Action", priority: "medium", status }] }] });
+  await post({ baseSyncedAt: await clock(), ...meet("todo") });
+  expectMoved("bump: re-saving the same action items leaves the meeting's updated_at alone", await bumped("meeting_notes", mid, meet("todo")), false);
+  expectMoved("bump: changing an action item moves the meeting's updated_at", await bumped("meeting_notes", mid, meet("done")), true);
+
+  const whId = `ccrm-del-probe-bump-wh-${t}`;
+  const itemId = `ccrm-del-probe-bump-item-${t}`;
+  const movId = `ccrm-del-probe-bump-mov-${t}`;
+  const mov = (quantity) => ({ warehouseMovements: [{ id: movId, documentNumber: `PROBE-MOV-${t}`, type: "inward", status: "confirmed", warehouseId: whId, issuedAt: "2026-01-02 10:00:00", items: [{ id: `${movId}-l1`, itemId, quantity, unitPurchasePrice: 1, unitSellPrice: 2, totalPrice: quantity }] }] });
+  const stock = await post({ baseSyncedAt: await clock(),
+    warehouses: [{ id: whId, name: "ccrm-del-probe bump warehouse", code: `PB${String(t).slice(-6)}` }],
+    warehouseItems: [{ id: itemId, sku: `PRB-BUMP-${t}`, name: "Probe bump item", unit: "ks", minStock: 0, optimalStock: 0, hasExpiration: false, defaultSellPrice: 0, avgPurchasePrice: 0, lastPurchasePrice: 0 }],
+    ...mov(1),
+  });
+  check("bump: stock fixture created", stock.status === 200 && stock.body?.success === true, `status=${stock.status}`);
+  expectMoved("bump: re-saving the same movement lines leaves updated_at alone", await bumped("warehouse_movements", movId, mov(1)), false);
+  expectMoved("bump: changing a movement line quantity moves updated_at", await bumped("warehouse_movements", movId, mov(5)), true);
+
+  // ---- Deletions leave tombstones (deleted_records, RC7b). Child rewrites above (managers, Gantt rows, line
+  // items, action items, movement lines) are not deletions of a record: nothing may be logged for them.
+  const tomb = (entityId) => JSON.parse(phpFile("ccrm-tomb-q.php", `<?php
+require '/var/www/html/config.php';
+$pdo = get_db_connection();
+$st = $pdo->prepare('SELECT entity, entity_id, label, deleted_by, extra FROM deleted_records WHERE entity_id LIKE ? ORDER BY id');
+$st->execute([${JSON.stringify(entityId)}]);
+echo json_encode($st->fetchAll(PDO::FETCH_ASSOC));
+`));
+  check("tombstone: rewriting child rows logged nothing", tomb(`ccrm-del-probe-bump-%`).length === 0, JSON.stringify(tomb(`ccrm-del-probe-bump-%`)));
+
+  const personId = `ccrm-del-probe-tomb-lead-${t}`;
+  const clientId = `client-ccrm-del-probe-tomb-${t}`;
+  const leadRec = (id, clientType) => ({ id, name: `ccrm-del-probe tomb ${clientType}`, clientType, status: "new", source: "website", owner: "Probe", value: 0, rating: 3, city: "Probe", createdAt: "2026-01-01", timeline: [], categories: [] });
+  await post({ baseSyncedAt: await clock(), leads: [leadRec(personId, "person"), leadRec(clientId, "business")] });
+  const del = await post({ baseSyncedAt: await clock(), leads: [], deleted: { leads: [personId, clientId] } });
+  check("tombstone: named lead and client delete accepted", del.status === 200 && del.body?.success === true, `status=${del.status} blocked=${JSON.stringify(del.body?.deleteBlocked)}`);
+  const lt = tomb(personId)[0];
+  check("tombstone: a deleted lead is logged with its name, who deleted it and client:false", lt?.entity === "leads" && lt.label === "ccrm-del-probe tomb person" && lt.deleted_by === "Probe" && lt.extra === '{"client":false}', JSON.stringify(lt));
+  const ct = tomb(clientId)[0];
+  check("tombstone: a deleted client record is logged with client:true", ct?.entity === "leads" && ct.extra === '{"client":true}', JSON.stringify(ct));
+
+  const gone = await post({ baseSyncedAt: await clock(), meetingNotes: [], invoicesOffers: [], warehouseMovements: [], projects: [], deleted: { meetingNotes: [mid], invoicesOffers: [ioId], warehouseMovements: [movId], ...(typeId && admin ? { projects: [pid] } : {}) } });
+  check("tombstone: named delete of a meeting, invoice, movement and project accepted", gone.status === 200 && gone.body?.success === true, `status=${gone.status} blocked=${JSON.stringify(gone.body?.deleteBlocked)}`);
+  const mt = tomb(mid)[0];
+  check("tombstone: a deleted meeting is logged with its title", mt?.entity === "meeting_notes" && mt.label === "ccrm-del-probe bump meeting", JSON.stringify(mt));
+  const it = tomb(ioId)[0];
+  check("tombstone: a deleted invoice is logged by its document number", it?.entity === "invoices_offers" && it.label === `PROBE-BUMP-${t}`, JSON.stringify(it));
+  const vt = tomb(movId)[0];
+  check("tombstone: a deleted stock movement is logged", vt?.entity === "warehouse_movements" && vt.label === `PROBE-MOV-${t}`, JSON.stringify(vt));
+  if (typeId && admin) {
+    const pt = tomb(pid)[0];
+    check("tombstone: a deleted project is logged with its name", pt?.entity === "projects" && pt.label === "ccrm-del-probe bump project", JSON.stringify(pt));
+  }
+  check("tombstone: deleting a record logs the record only, not its child rows", tomb(`ccrm-del-probe-bump-%`).every((r) => ["meeting_notes", "invoices_offers", "warehouse_movements", "projects"].includes(r.entity)), JSON.stringify(tomb(`ccrm-del-probe-bump-%`)));
+  const again = tomb(personId).length;
+  await post({ baseSyncedAt: await clock(), leads: [], deleted: { leads: [personId] } });
+  check("tombstone: deleting a record that is already gone logs nothing more", tomb(personId).length === again, `before=${again} after=${tomb(personId).length}`);
 }

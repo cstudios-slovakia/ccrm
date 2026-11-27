@@ -1,0 +1,529 @@
+import { useEffect, useMemo, useState } from "react";
+import { Copy, Info, Lock, Plus } from "lucide-react";
+import { Surface } from "../layout";
+import { CustomSelect } from "../ui/CustomSelect";
+import { useTimeEntries } from "../../hooks/useTimeEntries";
+import { useTimeTracking } from "../../hooks/useTimeTracking";
+import { addDays, holidayName } from "../../utils/holidays.ts";
+import { isAdminRoleName } from "../../utils/permissions";
+import { paidMonthsForOwner } from "../../utils/timeLock";
+import {
+  buildTimesheet,
+  copyRowKeys,
+  durationPatch,
+  editCell,
+  rowExists,
+  timesheetCellLock,
+  type TimesheetRow,
+  type TimesheetRowKey,
+} from "../../utils/timeTimesheet.ts";
+import { isoWeekNumber } from "../../utils/isoWeek.ts";
+import { timesheetCost, timesheetCostTotal } from "../../utils/timesheetCost.ts";
+import { countryForScope } from "../../utils/timeCalendar.ts";
+import { formatDuration, parseDurationInput, todayIso, weekDays, weekStart, type TimeEntry } from "../../utils/timeTracking.ts";
+import { TimeApiError, createEntry, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
+import { recoverTaskRequired } from "./timeCreateBridge";
+import { AssignProjectChip } from "./AssignProjectChip";
+import { MoneyText } from "./MoneyText";
+import { useMoneyPresent } from "./MoneyShield";
+import { ProjectLabel } from "./ProjectLabel";
+import { ProjectPicker } from "./ProjectPicker";
+import { RangeNav } from "./RangeNav";
+import { SubmitWeekButton } from "./SubmitWeekButton";
+import { scopeParam } from "./TimeListView";
+import { TimeToolbarSlot } from "./TimeToolbarSlot";
+import { describeTimeLock, useTimeLookups, type TimeDeps } from "./shared";
+
+interface Props {
+  deps: TimeDeps;
+  scope: string;
+  recentProjectIds: string[];
+  secondsByProject?: Record<string, number>;
+  onOpen: (entry: TimeEntry) => void;
+}
+
+/** Weekly grid: a row is a project and a task, a column is a day, and the last row totals the hours. */
+export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProject, onOpen }: Props) {
+  const tt = useTimeTracking();
+  const { t, settings, nowMs } = tt;
+  const lookups = useTimeLookups(deps);
+  const [anchor, setAnchor] = useState(() => todayIso());
+  const [extra, setExtra] = useState<TimesheetRowKey[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [draftProject, setDraftProject] = useState<string | null>(null);
+  const [draftTask, setDraftTask] = useState("");
+
+  const days = useMemo(() => weekDays(anchor), [anchor]);
+  const from = days[0];
+  const to = days[6];
+  const byPerson = scope === "all";
+  const scopeUserId = scope !== "me" && scope !== "all" ? scope : undefined;
+  const { entries, loading } = useTimeEntries({ from, to, userId: scopeParam(scope) });
+  const prevFrom = addDays(from, -7);
+  const prevTo = addDays(from, -1);
+  const { entries: previous } = useTimeEntries({ from: prevFrom, to: prevTo, userId: scopeParam(scope) });
+
+  useEffect(() => {
+    setExtra([]);
+    setAdding(false);
+  }, [from, scope]);
+
+  const people = useMemo(
+    () => deps.employees.filter((e) => e.userId).map((e) => ({ userId: e.userId as string, workCountry: e.workCountry ?? null })),
+    [deps.employees],
+  );
+  const country = countryForScope(scope, tt.userId, tt.workCountry, tt.defaultCountry, people);
+  const calendar = tt.calendarFor(country);
+  useEffect(() => {
+    tt.ensureHolidayYears(country, [...new Set(days.map((d) => Number(d.slice(0, 4))))]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, country, tt.enabled]);
+
+  const model = useMemo(
+    () => buildTimesheet(entries, anchor, nowMs, { extraRows: extra, byPerson }),
+    [entries, anchor, nowMs, extra, byPerson],
+  );
+  const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
+  const viewerId = tt.userId || "";
+  const rowCosts = useMemo(
+    () =>
+      model.rows.map((row) => {
+        const ids = row.cells.flatMap((c) => c.entryIds);
+        return timesheetCost(ids.map((id) => byId.get(id)).filter((e): e is TimeEntry => !!e), viewerId, tt.viewer.canCosts, deps.currency);
+      }),
+    [model.rows, byId, viewerId, tt.viewer.canCosts, deps.currency],
+  );
+  const totalCost = useMemo(() => timesheetCostTotal(rowCosts), [rowCosts]);
+  const showCost = tt.viewer.canCosts || rowCosts.some((c) => c.bag) || !!totalCost.bag;
+  useMoneyPresent(rowCosts.some((c) => c.bag) || !!totalCost.bag);
+  const cols = 9 + (showCost ? 1 : 0);
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
+  const today = todayIso(new Date(nowMs));
+  const isAdmin = isAdminRoleName(deps.currentUser.role);
+  const stampedByUser = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const entry of entries) {
+      if (!entry.paidPayrollMonth || !entry.userId) continue;
+      const month = entry.entryDate.slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(month)) continue;
+      const list = map.get(entry.userId);
+      if (list) {
+        if (!list.includes(month)) list.push(month);
+      } else {
+        map.set(entry.userId, [month]);
+      }
+    }
+    return map;
+  }, [entries]);
+  const lockFor = (userId: string | null | undefined, employeeId?: string | null) => ({
+    lockAfterDays: settings.lockAfterDays,
+    isAdmin,
+    paidPayrollMonths: paidMonthsForOwner(
+      deps.salaries,
+      deps.employees,
+      { userId: userId ?? null, employeeId: employeeId ?? null },
+      userId ? stampedByUser.get(userId) : undefined,
+    ),
+  });
+  const mayEdit = scope !== "all" && (scopeUserId ? tt.viewer.canTeam : tt.viewer.canEdit);
+
+  const taskOptions = deps.tasks
+    .filter((task) => !task.archived && !deps.isTaskDone(task) && (!draftProject || task.relatedProjectId === draftProject))
+    .map((task) => ({
+      value: task.id,
+      label: !draftProject && task.relatedProjectId ? `${task.title} · ${lookups.projectName(task.relatedProjectId)}` : task.title,
+    }));
+
+  const fail = (e: unknown) => tt.notify(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
+
+  const cellEntriesFor = (row: TimesheetRow, day: string) => {
+    const cell = row.cells.find((c) => c.day === day);
+    const cellEntries = (cell?.entryIds ?? []).map((id) => byId.get(id)).filter((e): e is TimeEntry => !!e);
+    return { cell, cellEntries };
+  };
+  const gateFor = (row: TimesheetRow, day: string, cellEntries: TimeEntry[]) => {
+    const owner = cellEntries[0]?.userId ?? row.userId ?? scopeUserId ?? tt.userId;
+    const employeeId = cellEntries.find((e) => e.employeeId)?.employeeId ?? null;
+    return timesheetCellLock(cellEntries, day, lockFor(owner, employeeId), today);
+  };
+
+  const commit = async (row: TimesheetRow, day: string, typed: number | null) => {
+    if (!mayEdit) return;
+    const { cell, cellEntries } = cellEntriesFor(row, day);
+    if (!cell) return;
+    const gate = gateFor(row, day, cellEntries);
+    if (gate.locked) {
+      tt.notify(
+        gate.reason
+          ? describeTimeLock(gate.reason, t)
+          : t("This entry is locked.", "Tento záznam je uzamknutý.", "Ez a bejegyzés zárolt."),
+        "warning",
+      );
+      return;
+    }
+    const edit = editCell(cellEntries, typed, row, day);
+    if (edit.action === "noop") {
+      if (edit.reason === "overflow") {
+        tt.notify(
+          t(
+            "Earlier entries in this cell already add up to more than that.",
+            "Skoršie záznamy v tejto bunke už dávajú viac.",
+            "A cella korábbi bejegyzései már ennél többet adnak ki.",
+          ),
+          "warning",
+        );
+      } else if (edit.reason === "running") {
+        tt.notify(t("Stop the running timer before editing this cell.", "Pred úpravou bunky zastavte bežiaci časovač.", "Állítsa le a futó időzítőt a cella szerkesztése előtt."), "warning");
+      }
+      return;
+    }
+    if (edit.action === "update") {
+      const target = byId.get(edit.id);
+      if (!target) return;
+      try {
+        await updateEntry(target.id, durationPatch(target, edit.durationSec));
+        tt.bump();
+      } catch (e) {
+        fail(e);
+      }
+      return;
+    }
+    try {
+      await createEntry({
+        userId: row.userId ?? scopeUserId,
+        projectId: edit.projectId,
+        taskId: edit.taskId,
+        entryDate: edit.entryDate,
+        durationSec: edit.durationSec,
+        billable: settings.billableByDefault,
+        source: "timesheet",
+      });
+      tt.bump();
+    } catch (e) {
+      // "Require a task": a project-only row opens the new-entry drawer with the cell's project, day and hours.
+      if (!recoverTaskRequired(e, { userId: row.userId ?? scopeUserId, taskId: edit.taskId, projectId: edit.projectId, entryDate: edit.entryDate, durationSec: edit.durationSec, billable: settings.billableByDefault }, tt.notify, t)) fail(e);
+    }
+  };
+
+  const copyLastWeek = () => {
+    const copied = copyRowKeys(
+      previous.map((e) => ({ projectId: e.projectId, taskId: e.taskId, userId: e.userId })),
+      [...model.rows, ...extra],
+      byPerson,
+    );
+    if (copied.length === 0) {
+      tt.notify(t("Last week has no extra rows to copy.", "Minulý týždeň nemá ďalšie riadky na skopírovanie.", "A múlt hétnek nincs másolható sora."), "warning");
+      return;
+    }
+    setExtra((rows) => [...rows, ...copied]);
+  };
+
+  const addRow = () => {
+    if (!draftProject && !draftTask) {
+      tt.notify(t("Pick a task or project for the new row.", "Vyberte úlohu alebo projekt pre nový riadok.", "Válasszon feladatot vagy projektet az új sorhoz."), "warning");
+      return;
+    }
+    const row: TimesheetRowKey = { projectId: draftProject, taskId: draftTask || null, userId: byPerson ? null : scopeUserId ?? tt.userId };
+    if (rowExists([...model.rows, ...extra], row, byPerson)) {
+      tt.notify(t("That row is already on this week.", "Tento riadok už v tomto týždni je.", "Ez a sor már szerepel ezen a héten."), "warning");
+      return;
+    }
+    setExtra((rows) => [...rows, row]);
+    setDraftTask("");
+    setAdding(false);
+  };
+
+  const fmtDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" });
+  const sameMonth = from.slice(0, 7) === to.slice(0, 7);
+  const toDay = new Date(`${to}T12:00:00`).getDate();
+  const rangeText = !sameMonth
+    ? `${fmtDay(from)} – ${fmtDay(to)}`
+    : deps.language === "hu"
+      ? `${fmtDay(from)} – ${toDay}.`
+      : `${new Date(`${from}T12:00:00`).getDate()} – ${fmtDay(to)}`;
+  const weekNo = isoWeekNumber(from);
+  const rangeLabel = `${t(`Week ${weekNo}`, `Týždeň ${weekNo}`, `${weekNo}. hét`)} · ${rangeText}`;
+  const rowLabel = (row: TimesheetRow): { project: string; task: string; person: string } => ({
+    project: row.projectId
+      ? lookups.projectName(row.projectId)
+      : row.taskId
+        ? t("Unsorted", "Nezaradené", "Rendezetlen")
+        : t("Assign project", "Priradiť projekt", "Projekt hozzárendelése"),
+    task: row.taskId ? lookups.taskById.get(row.taskId)?.title || t("Task", "Úloha", "Feladat") : "",
+    person: row.userId ? lookups.userById.get(row.userId)?.name || "" : "",
+  });
+
+  return (
+    <div className="grid gap-3" data-testid="time-timesheet">
+      <TimeToolbarSlot>
+        <RangeNav
+          label={<span>{rangeLabel}</span>}
+          prevLabel={t("Previous week", "Predošlý týždeň", "Előző hét")}
+          nextLabel={t("Next week", "Ďalší týždeň", "Következő hét")}
+          onPrev={() => setAnchor(addDays(weekStart(anchor), -7))}
+          onNext={() => setAnchor(addDays(weekStart(anchor), 7))}
+          resetLabel={t("This week", "Tento týždeň", "Ez a hét")}
+          onReset={from === weekStart(today) ? undefined : () => setAnchor(todayIso())}
+        />
+        <button type="button" onClick={copyLastWeek} disabled={!mayEdit} data-testid="timesheet-copy" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 cursor-pointer">
+          <Copy className="size-4" />
+          {t("Copy rows from last week", "Kopírovať riadky z minulého týždňa", "Sorok másolása a múlt hétről")}
+        </button>
+        <SubmitWeekButton
+          weekStart={from}
+          userId={scopeUserId ?? (scope === "me" ? tt.userId ?? undefined : undefined)}
+          entries={entries.map((e) => ({ entryDate: e.entryDate, userId: e.userId, approvalStatus: e.approvalStatus, running: e.running }))}
+        />
+      </TimeToolbarSlot>
+
+      {byPerson && (
+        <p className="type-meta text-gray-500">{t("Pick one person to edit the timesheet.", "Vyberte jednu osobu, ak chcete upravovať výkaz.", "Válasszon egy személyt a munkaidő-nyilvántartás szerkesztéséhez.")}</p>
+      )}
+
+      {adding && mayEdit && (
+        <Surface tone="inset" className="flex flex-wrap items-center gap-2">
+          <div className="min-w-40 flex-1">
+            <CustomSelect
+              searchable
+              value={draftTask}
+              onChange={(id) => {
+                setDraftTask(id);
+                if (id) {
+                  const picked = lookups.taskById.get(id);
+                  setDraftProject(picked?.relatedProjectId || null);
+                }
+              }}
+              options={[{ value: "", label: t("No task", "Bez úlohy", "Feladat nélkül") }, ...taskOptions]}
+              placeholder={t("Pick task…", "Vybrať úlohu…", "Feladat kiválasztása…")}
+              size="sm"
+            />
+          </div>
+          <ProjectPicker
+            projects={deps.projects}
+            leads={deps.leads}
+            projectTypes={deps.projectTypes}
+            value={draftProject}
+            onChange={(id) => {
+              setDraftProject(id);
+              setDraftTask("");
+            }}
+            t={t}
+            recentIds={recentProjectIds}
+            secondsByProject={secondsByProject}
+            onCreateProject={deps.onCreateProject}
+            disabled={!deps.canPickProject || !!draftTask}
+          />
+          <button type="button" onClick={addRow} className="inline-flex h-9 items-center rounded-md bg-entity-solid px-3 text-ui font-semibold text-white cursor-pointer">
+            {t("Add", "Pridať", "Hozzáadás")}
+          </button>
+          <button type="button" onClick={() => setAdding(false)} className="inline-flex h-9 items-center rounded-md px-3 text-ui font-semibold text-gray-600 hover:bg-gray-100 cursor-pointer">
+            {t("Cancel", "Zrušiť", "Mégse")}
+          </button>
+        </Surface>
+      )}
+
+      <Surface padding="none" className="overflow-x-auto">
+        <table className="w-full border-collapse" data-testid="timesheet-grid">
+          <thead>
+            <tr>
+              <th className="sticky left-0 bg-white px-3 py-2 text-left type-overline text-gray-500">{t("Project · task", "Projekt · úloha", "Projekt · feladat")}</th>
+              {model.days.map((day) => {
+                const holiday = calendar.holiday(day);
+                const offName = holiday ? holidayName(holiday, country, deps.language) : calendar.override(day)?.kind === "extraDayOff" ? calendar.override(day)?.name : null;
+                const dt = new Date(`${day}T12:00:00`);
+                return (
+                  <th
+                    key={day}
+                    data-testid="timesheet-day"
+                    data-date={day}
+                    data-holiday={offName ? "1" : "0"}
+                    className={`min-w-20 px-1 py-2 text-center ${offName ? "bg-gray-100" : ""} ${calendar.isOffDay(day) && !offName ? "text-gray-400" : "text-gray-600"}`}
+                  >
+                    <div className="type-overline">{dt.toLocaleDateString(locale, { weekday: "short" })}</div>
+                    <div className={`text-ui font-semibold tabular-nums ${day === today ? "text-entity-text" : ""}`}>{dt.toLocaleDateString(locale, { day: "numeric", month: "short" })}</div>
+                    {offName && <div className="truncate text-micro font-semibold text-gray-500" data-testid="timesheet-holiday">{offName}</div>}
+                  </th>
+                );
+              })}
+              <th className="px-2 py-2 text-right type-overline text-gray-500">{t("Total", "Spolu", "Összesen")}</th>
+              {showCost && <th className="px-2 py-2 text-right type-overline text-gray-500">{t("Cost", "Náklady", "Költség")}</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {model.rows.map((row, rowIndex) => {
+              const label = rowLabel(row);
+              return (
+                <tr key={`${row.userId ?? ""}-${row.projectId ?? ""}-${row.taskId ?? ""}`} className="border-t border-gray-100">
+                  <th className="sticky left-0 bg-white px-3 py-1.5 text-left font-normal">
+                    <div className="min-w-0">
+                      {byPerson && label.person && <span className="block type-meta text-gray-500">{label.person}</span>}
+                      <div className="flex min-w-0 items-center gap-1.5 text-ui">
+                        {row.projectId ? (
+                          <ProjectLabel projectId={row.projectId} name={label.project} />
+                        ) : row.taskId ? (
+                          (() => {
+                            const lastId = row.cells.find((c) => c.lastId)?.lastId;
+                            const entry = lastId ? byId.get(lastId) : undefined;
+                            return entry?.clientName ? (
+                              <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-micro font-medium text-gray-700">{entry.clientName}</span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-micro font-medium text-gray-500">{t("Unsorted", "Nezaradené", "Rendezetlen")}</span>
+                            );
+                          })()
+                        ) : (
+                          (() => {
+                            const lastId = row.cells.find((c) => c.lastId)?.lastId;
+                            const entry = lastId ? byId.get(lastId) : undefined;
+                            return <AssignProjectChip onClick={entry ? () => onOpen(entry) : undefined} />;
+                          })()
+                        )}
+                        {label.task && <span className="truncate text-gray-500">· {label.task}</span>}
+                      </div>
+                    </div>
+                  </th>
+                  {row.cells.map((cell) => {
+                    const last = cell.lastId ? byId.get(cell.lastId) : undefined;
+                    const { cellEntries } = cellEntriesFor(row, cell.day);
+                    const gate = gateFor(row, cell.day, cellEntries);
+                    const disabled = !mayEdit || gate.locked;
+                    const lockTitle = gate.locked && gate.reason ? describeTimeLock(gate.reason, t) : undefined;
+                    return (
+                      <td
+                        key={cell.day}
+                        onPointerDown={() => {
+                          if (mayEdit && gate.locked && lockTitle) tt.notify(lockTitle, "warning");
+                        }}
+                        className={`px-1 py-1 ${calendar.holiday(cell.day) || calendar.override(cell.day)?.kind === "extraDayOff" ? "bg-gray-100" : ""}`}
+                      >
+                        <Cell
+                          seconds={cell.seconds}
+                          disabled={disabled}
+                          title={lockTitle}
+                          onCommit={(sec) => void commit(row, cell.day, sec)}
+                          onInvalid={() => tt.notify(t("Enter the hours, for example 1.5, 1:30 or 90m.", "Zadajte hodiny, napríklad 1.5, 1:30 alebo 90m.", "Adja meg az órákat, például 1.5, 1:30 vagy 90m."), "warning")}
+                          onOpen={last ? () => onOpen(last) : undefined}
+                        />
+                      </td>
+                    );
+                  })}
+                  <td className="px-2 py-1 text-right text-ui font-semibold tabular-nums text-gray-800">{row.totalSec > 0 ? formatDuration(row.totalSec) : "–"}</td>
+                  {showCost && (
+                    <td className="px-2 py-1 text-right text-ui" data-testid="timesheet-cost">
+                      <MoneyText bag={rowCosts[rowIndex]?.bag ?? {}} language={deps.language} />
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+            {!loading && model.rows.length === 0 && (
+              <tr>
+                <td colSpan={cols} className="px-3 py-6 text-ui text-gray-500">{t("No rows this week. Add one, or copy last week's rows.", "Tento týždeň nemá riadky. Pridajte riadok alebo skopírujte minulý týždeň.", "Ezen a héten nincs sor. Adjon hozzá egyet, vagy másolja a múlt hetet.")}</td>
+              </tr>
+            )}
+            <tr className="border-t border-gray-100">
+              <td colSpan={cols} className="p-0">
+                <div className="p-2">
+                  <button type="button" onClick={() => setAdding(true)} disabled={!mayEdit} data-testid="timesheet-add-row" className="inline-flex h-10 w-full items-center gap-1.5 rounded-md border border-dashed border-gray-300 px-3 text-ui font-semibold text-gray-500 hover:bg-gray-50 hover:text-gray-800 disabled:opacity-40 cursor-pointer">
+                    <Plus className="size-4" />
+                    {t("Add row — pick task or project", "Pridať riadok — vyberte úlohu alebo projekt", "Sor hozzáadása — válasszon feladatot vagy projektet")}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-gray-200 bg-gray-50" data-testid="timesheet-total">
+              <th className="sticky left-0 bg-gray-50 px-3 py-2 text-left text-ui font-semibold text-gray-800">{t("Totals", "Súčty", "Összesen")}</th>
+              {model.columnTotals.map((sec, i) => (
+                <td key={model.days[i]} className="px-1 py-2 text-center text-ui font-semibold tabular-nums text-gray-800">{sec > 0 ? formatDuration(sec) : "–"}</td>
+              ))}
+              <td className="px-2 py-2 text-right text-ui font-bold tabular-nums text-entity-text">{model.grandTotal > 0 ? formatDuration(model.grandTotal) : "–"}</td>
+              {showCost && (
+                <td className="px-2 py-2 text-right text-ui font-semibold" data-testid="timesheet-cost-total">
+                  <MoneyText bag={totalCost.bag ?? {}} language={deps.language} />
+                </td>
+              )}
+            </tr>
+            {model.showsWorked && (
+              <tr className="bg-gray-50" data-testid="timesheet-worked">
+                <th className="sticky left-0 bg-gray-50 px-3 py-1 text-left text-ui font-semibold text-gray-600">{t("Worked", "Odpracované", "Ledolgozott")}</th>
+                {model.workedColumnTotals.map((sec, i) => (
+                  <td key={model.days[i]} className="px-1 py-1 text-center text-ui tabular-nums text-gray-600">{sec > 0 ? formatDuration(sec) : "–"}</td>
+                ))}
+                <td className="px-2 py-1 text-right text-ui font-semibold tabular-nums text-entity-text">{model.workedGrandTotal > 0 ? formatDuration(model.workedGrandTotal) : "–"}</td>
+                {showCost && <td className="px-2 py-1" />}
+              </tr>
+            )}
+          </tfoot>
+        </table>
+      </Surface>
+
+      <div className="grid gap-3 ws-sm:grid-cols-2" data-testid="timesheet-notes">
+        <div className="flex gap-2 rounded-md border border-gray-200 bg-white p-3 text-ui text-gray-600">
+          <Info className="mt-0.5 size-4 shrink-0 text-gray-400" />
+          <p>
+            {t(
+              "Typing hours into an empty cell creates one hours-only entry for that day, with no start time. Editing a cell that holds several entries changes the last one so the cell adds up to what you typed. Clearing a cell changes nothing. A cell with a running timer cannot be edited.",
+              "Zadanie hodín do prázdnej bunky vytvorí jeden záznam len s hodinami pre daný deň, bez času začiatku. Úprava bunky s viacerými záznamami zmení posledný z nich, aby bunka dávala zadaný súčet. Vymazanie bunky nič nezmení. Bunku s bežiacim časovačom nemožno upraviť.",
+              "Ha órákat ír egy üres cellába, egy csak órákat tartalmazó bejegyzés jön létre arra a napra, kezdési idő nélkül. Ha több bejegyzést tartalmazó cellát szerkeszt, az utolsó bejegyzés változik, hogy a cella a beírt összeget adja. A cella törlése nem változtat semmit. A futó időzítőt tartalmazó cella nem szerkeszthető.",
+            )}
+          </p>
+        </div>
+        <div className="flex gap-2 rounded-md border border-gray-200 bg-white p-3 text-ui text-gray-600">
+          <Lock className="mt-0.5 size-4 shrink-0 text-gray-400" />
+          <p>
+            {settings.weeklyApproval && (
+              <>
+                {t(
+                  "Submitting the week marks its entries as approved, which locks them.",
+                  "Odoslanie týždňa označí jeho záznamy ako schválené, čím sa uzamknú.",
+                  "A hét beküldése jóváhagyottnak jelöli a bejegyzéseit, így azok zárolttá válnak.",
+                )}{" "}
+              </>
+            )}
+            {settings.lockAfterDays != null
+              ? t(
+                  `Approved entries, entries in a paid payroll month and entries older than ${settings.lockAfterDays} days (Settings → Time tracking) are read-only; admins can still edit them.`,
+                  `Schválené záznamy, záznamy v zaplatenom mzdovom mesiaci a záznamy staršie ako ${settings.lockAfterDays} dní (Nastavenia → Evidencia času) sú len na čítanie; administrátori ich môžu stále upraviť.`,
+                  `A jóváhagyott, a kifizetett bérszámfejtési hónapba eső és a ${settings.lockAfterDays} napnál régebbi bejegyzések (Beállítások → Időkövetés) csak olvashatók; az adminisztrátorok továbbra is szerkeszthetik őket.`,
+                )
+              : t(
+                  "Approved entries and entries in a paid payroll month are read-only; admins can still edit them.",
+                  "Schválené záznamy a záznamy v zaplatenom mzdovom mesiaci sú len na čítanie; administrátori ich môžu stále upraviť.",
+                  "A jóváhagyott és a kifizetett bérszámfejtési hónapba eső bejegyzések csak olvashatók; az adminisztrátorok továbbra is szerkeszthetik őket.",
+                )}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Cell({ seconds, disabled, title, onCommit, onInvalid, onOpen }: { seconds: number; disabled: boolean; title?: string; onCommit: (sec: number) => void; onInvalid: () => void; onOpen?: () => void }) {
+  const [text, setText] = useState<string | null>(null);
+  const shown = text ?? (seconds > 0 ? formatDuration(seconds) : "");
+  return (
+    <input
+      value={shown}
+      placeholder="0:00"
+      disabled={disabled}
+      title={title}
+      onFocus={() => setText(seconds > 0 ? formatDuration(seconds) : "")}
+      onChange={(e) => setText(e.target.value)}
+      onDoubleClick={() => onOpen?.()}
+      onBlur={() => {
+        const raw = (text ?? "").trim();
+        const current = seconds > 0 ? formatDuration(seconds) : "";
+        setText(null);
+        if (!raw || raw === current) return;
+        const sec = parseDurationInput(raw);
+        if (sec == null) onInvalid();
+        else onCommit(sec);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      className="h-9 w-full rounded-lg border border-gray-200 bg-white px-1 text-center text-ui tabular-nums text-gray-800 outline-none placeholder:text-gray-300 focus:ring-2 focus:ring-entity-ring disabled:bg-gray-50 disabled:text-gray-400"
+    />
+  );
+}

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { SectionIcon } from "../icons/SectionIcon";
 import {
   Users,
   Coins,
-  Sparkles,
   Plus,
   Settings as SettingsIcon,
   ChevronRight,
@@ -18,14 +18,9 @@ import type {
   UserProfile as AuthUser,
   RolePermission
 } from "../../types";
-import type { ModuleAccess } from "../../utils/permissions";
+import { isAdminRoleName, type ModuleAccess } from "../../utils/permissions";
 import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
-import {
-  DEFAULT_MOCK_EMPLOYEES,
-  generateDefaultMockSalaries,
-  generateDefaultMockVacations,
-  DEFAULT_MOCK_SETTINGS
-} from "../../utils/mockEmployees";
+import { DEFAULT_EMPLOYEE_SETTINGS } from "../../utils/employeeSettingsDefaults";
 import { EmployeeListView } from "./EmployeeListView";
 import { EmployeeDetailView } from "./EmployeeDetailView";
 import { SalariesMatrixView } from "./SalariesMatrixView";
@@ -33,7 +28,6 @@ import { EmployeeFormScreen } from "./EmployeeFormScreen";
 import { EmployeeSettingsScreen } from "./EmployeeSettingsScreen";
 import { MyEmploymentView } from "./MyEmploymentView";
 import { PageHeader, Tabs, type TabItem } from "../layout";
-import { EmployeeTieIcon } from "../icons/EmployeeTieIcon";
 import { deleteRecordsWithUndo } from "../../utils/recordActions";
 import { asLang } from "../../utils/undoMessages";
 
@@ -61,6 +55,7 @@ interface EmployeesViewProps {
   roles?: RolePermission[];
   /** The person may open the "My employment" tab (any self.* permission). */
   selfService?: boolean;
+  integrationsConfig?: any;
 }
 
 type EmployeesViewName = "list" | "detail" | "matrix" | "form" | "settings" | "me";
@@ -203,8 +198,11 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   rights = FULL_EMPLOYEE_RIGHTS,
   users = [],
   roles = [],
-  selfService = false
+  selfService = false,
+  integrationsConfig
 }) => {
+  // Reopening a closed payroll month unlocks its time entries; the server honours it for admins only
+  const canReopenPayroll = isAdminRoleName(_currentUser?.role);
   // Navigation state derived from URL hash
   const initialUrlState = useMemo(() => parseEmployeesUrlState(employees), []);
   const [requestedView, setCurrentView] = useState<EmployeesViewName>(initialUrlState.view);
@@ -279,7 +277,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
   // Safe resolved settings
   const resolvedSettings: EmployeeSettings = useMemo(() => {
-    return employeeSettings || DEFAULT_MOCK_SETTINGS;
+    return employeeSettings || DEFAULT_EMPLOYEE_SETTINGS;
   }, [employeeSettings]);
 
   // Selected Employee object (matches ID or slug)
@@ -287,28 +285,6 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     if (!selectedEmployeeId) return null;
     return findEmployeeByIdOrSlug(employees, selectedEmployeeId);
   }, [employees, selectedEmployeeId]);
-
-  // Handle Seed Mock Data
-  const handleSeedMockData = React.useCallback(() => {
-    setEmployees(DEFAULT_MOCK_EMPLOYEES);
-    // Anchored to today so the calendar and salary matrix open on populated months
-    const now = new Date();
-    setSalaries(generateDefaultMockSalaries(now));
-    setVacations(generateDefaultMockVacations(now));
-    if (!employeeSettings || !employeeSettings.salaryTypes?.length) {
-      setEmployeeSettings(DEFAULT_MOCK_SETTINGS);
-    }
-  }, [setEmployees, setSalaries, setVacations, setEmployeeSettings, employeeSettings]);
-
-  // Demo installs only: auto-seed on mount if the employees array is empty so the
-  // module immediately displays rich data. A real install starts empty.
-  const initialCheckRef = React.useRef(false);
-  React.useEffect(() => {
-    if (isDemoMode && rights.edit && !initialCheckRef.current && employees.length === 0) {
-      initialCheckRef.current = true;
-      handleSeedMockData();
-    }
-  }, [isDemoMode, employees.length, handleSeedMockData]);
 
   // Handle Save Employee (create or update)
   const handleSaveEmployee = (emp: Employee) => {
@@ -355,6 +331,22 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     });
   };
 
+  // Handle Delete Salary
+  const handleDeleteSalary = (salaryId: string) => {
+    const target = salaries.find((s) => s.id === salaryId);
+    if (!target) return;
+    const empName = employees.find((e) => e.id === target.employeeId)?.name;
+    deleteRecordsWithUndo({
+      collection: "employeeSalaries",
+      allRecords: salaries,
+      targets: [target],
+      setRecords: setSalaries,
+      lang: asLang(systemLanguage),
+      entity: "record",
+      titleOf: () => (empName ? `${empName} (${target.periodKey})` : target.periodKey),
+    });
+  };
+
   // Handle Save Vacation
   const handleSaveVacation = (vac: EmployeeVacation) => {
     setVacations((prev) => {
@@ -398,11 +390,11 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   ];
 
   return (
-    <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
+    <div className="space-y-6 select-none animate-fade-in text-gray-800 pb-16 relative">
       {/* Module header: title first, then the sub-navigation (docs/VIEW-SIZE.md §6.1) */}
       {currentView !== "form" && (
         <PageHeader
-          icon={<EmployeeTieIcon className="size-6" color="#9e7638" />}
+          icon={<SectionIcon id="employees" />}
           title={t("People", "Ľudia", "Munkatársak")}
           subtitle={t(
             "Your employment, staff directory, payroll, time tracking & leave",
@@ -412,21 +404,11 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
           actions={
             currentView === "list" ? (
               <>
-                {isDemoMode && rights.edit && employees.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={handleSeedMockData}
-                    className="flex items-center gap-1.5 h-9 px-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 text-ui font-semibold hover:bg-amber-500/20 transition-all"
-                  >
-                    <Sparkles className="size-4 text-amber-600" />
-                    <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
-                  </button>
-                )}
                 {rights.edit && (
                 <button
                   type="button"
                   onClick={() => navigateToAddEmployee()}
-                  className="flex items-center gap-2 h-9 px-3 rounded-xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-ui font-semibold shadow-md shadow-[#c29b62]/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                  className="flex items-center gap-2 h-9 px-3 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold shadow-md shadow-2xs transition-all cursor-pointer"
                 >
                   <Plus className="size-4" />
                   <span>{t("Add Employee", "Nový zamestnanec", "Új alkalmazott")}</span>
@@ -440,9 +422,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
       {/* Sub-navigation (hidden when in full-screen employee form) */}
       {currentView !== "form" && (
-        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
+        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-gray-200/60 pb-3">
           {/* Sub-view switcher tabs */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
             {tabItems.filter((i) => !i.hidden).length > 1 && (
               <Tabs
                 value={currentView === "list" || currentView === "matrix" || currentView === "me" || currentView === "settings" ? currentView : "list"}
@@ -452,26 +434,12 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             )}
 
             {currentView === "detail" && selectedEmployee && (
-              <div className="flex items-center gap-2 pl-2">
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-ui font-heading font-bold text-[#b58b4c]">
+              <div className="flex items-center gap-2 pl-2 min-w-0 max-w-full">
+                <ChevronRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                <span className="text-ui font-heading font-bold text-[#b58b4c] truncate">
                   {selectedEmployee.name}
                 </span>
               </div>
-            )}
-          </div>
-
-          {/* Quick Toolbar (Demo Seed if empty) */}
-          <div className="flex items-center gap-2">
-            {isDemoMode && rights.edit && employees.length === 0 && (
-              <button
-                type="button"
-                onClick={handleSeedMockData}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 text-ui font-bold hover:bg-amber-500/20 transition cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
-              </button>
             )}
           </div>
         </div>
@@ -491,10 +459,11 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onDeleteEmployee={handleDeleteEmployee}
             onOpenSettings={() => navigateToTab("settings")}
             onOpenMatrix={() => navigateToTab("matrix")}
-            onSeedMockData={isDemoMode ? handleSeedMockData : undefined}
+            reseedHref={isDemoMode ? "#settings/system/reset" : undefined}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
             rights={rights}
+            integrationsConfig={integrationsConfig}
           />
         )}
 
@@ -511,6 +480,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onEditEmployee={(emp) => navigateToEditEmployee(emp.id)}
             initialEditMode={isEditMode}
             onSaveSalary={handleSaveSalary}
+            onDeleteSalary={handleDeleteSalary}
             onSaveVacation={handleSaveVacation}
             onDeleteVacation={handleDeleteVacation}
             systemLanguage={systemLanguage}
@@ -518,28 +488,30 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             rights={rights}
             users={users}
             roles={roles}
+            canReopenPayroll={canReopenPayroll}
+            integrationsConfig={integrationsConfig}
           />
         )}
 
         {currentView === "detail" && !selectedEmployee && (
-          <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-12 text-center space-y-4 animate-fade-in">
+          <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-12 text-center space-y-4 animate-fade-in">
             {employees.length === 0 ? (
               <div className="flex flex-col items-center gap-3">
                 <Loader2 className="w-8 h-8 animate-spin text-[#c29b62]" />
-                <p className="text-body font-medium text-slate-500">
+                <p className="text-body font-medium text-gray-500">
                   {t("Loading employee profile...", "Načítavam profil zamestnanca...", "Alkalmazotti profil betöltése...")}
                 </p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
-                <div className="w-14 h-14 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center font-bold text-title">
+                <div className="w-14 h-14 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center font-bold text-title">
                   !
                 </div>
                 <div>
-                  <h3 className="text-title-sm font-heading font-bold text-slate-900">
+                  <h3 className="text-title-sm font-heading font-bold text-gray-900">
                     {t("Employee Not Found", "Zamestnanec sa nenašiel", "Az alkalmazott nem található")}
                   </h3>
-                  <p className="text-ui text-slate-500 mt-1">
+                  <p className="text-ui text-gray-500 mt-1">
                     {t(
                       "The requested employee does not exist or may have been removed.",
                       "Požadovaný zamestnanec neexistuje alebo bol odstránený.",
@@ -550,7 +522,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                 <button
                   type="button"
                   onClick={() => navigateToTab("list")}
-                  className="px-4 py-2 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-ui font-heading font-bold shadow-sm hover:shadow transition cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-heading font-bold shadow-sm hover:shadow transition cursor-pointer"
                 >
                   {t("Back to Directory", "Späť do zoznamu", "Vissza a listához")}
                 </button>
@@ -568,6 +540,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
             onSelectEmployee={(empId) => navigateToEmployeeDetail(empId)}
+            canReopenPayroll={canReopenPayroll}
           />
         )}
 

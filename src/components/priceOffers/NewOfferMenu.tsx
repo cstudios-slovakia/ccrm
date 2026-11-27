@@ -5,6 +5,7 @@ import type { AiCustomTemplate, InvoiceOfferMode } from "../../types";
 import type { Language } from "../../utils/translations";
 import { formatDateLocalized } from "../../utils/localTime";
 import { cn } from "../../utils/cn";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 export interface NewOfferChoice {
   mode: InvoiceOfferMode;
@@ -26,7 +27,7 @@ interface NewOfferMenuProps {
 const MENU_Z = 100001;
 
 const ITEM_BASE =
-  "w-full flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60";
+  "w-full flex items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring";
 
 /**
  * "New price offer" — a button that opens a menu with one entry per template.
@@ -47,7 +48,7 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
   const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
   const [open, setOpen] = useState(false);
   const [aiExpanded, setAiExpanded] = useState(false);
-  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
+  const [anchor, setAnchor] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -61,7 +62,17 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
   const place = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setAnchor({ top: rect.bottom + 8, right: Math.max(8, window.innerWidth - rect.right) });
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pad = 8;
+    const menuWidth = Math.min(384, vw - pad * 2);
+    const left = Math.max(pad, Math.min(rect.right - menuWidth, vw - menuWidth - pad));
+    const top = rect.bottom + 8;
+    setAnchor({
+      top,
+      left,
+      maxHeight: Math.max(200, vh - top - 16),
+    });
   };
 
   useLayoutEffect(() => {
@@ -132,7 +143,7 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
       type="button"
       role="menuitem"
       onClick={openSettings}
-      className="ml-10 mb-1 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-caption font-semibold text-indigo-600 hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 cursor-pointer"
+      className="ml-10 mb-1 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-caption font-semibold text-entity-text hover:bg-entity-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring cursor-pointer"
     >
       <Settings className="size-3.5" />
       {t("Open offer settings", "Otvoriť nastavenia ponúk", "Ajánlat-beállítások megnyitása")}
@@ -181,8 +192,8 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
             role="menu"
             aria-label={t("New price offer", "Nová cenová ponuka", "Új árajánlat")}
             onKeyDown={onMenuKeyDown}
-            style={{ top: anchor.top, right: anchor.right, zIndex: MENU_Z }}
-            className="fixed w-(--drawer-sm) max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl animate-fade-in"
+            style={{ ...entityAccentStyle("invoices"), top: anchor.top, left: anchor.left, maxHeight: anchor.maxHeight, zIndex: MENU_Z }}
+            className="fixed w-(--drawer-sm) max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-lg border border-gray-200 bg-white p-1.5 shadow-2xl animate-fade-in"
           >
             <button
               type="button"
@@ -225,7 +236,7 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
                 >
                   <Sparkles className="size-4 mt-0.5 shrink-0 text-purple-500" />
                   {entryText(aiLabel, aiDesc)}
-                  <ChevronDown className={cn("size-4 mt-0.5 shrink-0 text-slate-400 transition-transform", aiExpanded && "rotate-180")} />
+                  <ChevronDown className={cn("size-4 ml-auto self-center shrink-0 text-slate-400 transition-transform", aiExpanded && "rotate-180")} />
                 </button>
                 {aiExpanded &&
                   aiTemplates.map(tpl => (
@@ -283,7 +294,7 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
             setOpen(true);
           }
         }}
-        className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-semibold rounded-2xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+        className="flex items-center gap-2 px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold rounded-md shadow-xs transition-all cursor-pointer"
       >
         <Plus className="h-4 w-4" />
         <span>{t("New price offer", "Nová cenová ponuka", "Új árajánlat")}</span>

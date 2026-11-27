@@ -13,6 +13,7 @@ import {
 import { TicketHtmlContent } from "./ui/TicketRichHtmlEditor";
 import { ticketTypeColor, ticketTypeLabel } from "../utils/tickets";
 import type { Language } from "../utils/translations";
+import { EntityScope } from "./tremor/EntityScope";
 
 interface PublicTicketMessage {
   id: string;
@@ -167,9 +168,9 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="flex items-center gap-3 text-slate-600 font-heading font-bold">
-          <RefreshCw className="w-5 h-5 animate-spin text-indigo-600" />
+      <EntityScope entity="tickets" className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="flex items-center gap-3 text-gray-600 font-heading font-semibold">
+          <RefreshCw className="w-5 h-5 animate-spin text-entity-text" />
           <span>
             {t(
               "Loading project ticket statuses...",
@@ -178,51 +179,51 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
             )}
           </span>
         </div>
-      </div>
+      </EntityScope>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 p-8 text-center space-y-3 shadow-sm">
-          <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
+      <EntityScope entity="tickets" className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white rounded-lg border border-gray-200 p-8 text-center space-y-3 shadow-xs">
+          <div className="w-12 h-12 rounded-md bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
             <ShieldAlert className="w-6 h-6" />
           </div>
-          <h1 className="font-heading font-extrabold text-title-sm text-slate-900">
+          <h1 className="font-heading font-bold text-title-sm text-gray-900">
             {t("Status board unavailable", "Prehľad stavov nie je dostupný", "A státusztábla nem érhető el")}
           </h1>
-          <p className="text-caption text-slate-500">{error}</p>
+          <p className="text-caption text-gray-500">{error}</p>
         </div>
-      </div>
+      </EntityScope>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 py-10 px-4 sm:px-8">
+    <EntityScope entity="tickets" className="min-h-screen bg-gray-50 text-gray-800 py-10 px-4 sm:px-8">
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
+            <div className="w-12 h-12 rounded-md bg-entity-solid text-white flex items-center justify-center shadow-2xs">
               <TicketIcon className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-micro font-bold uppercase tracking-wider text-indigo-600">
+              <div className="text-micro font-bold uppercase tracking-wider text-entity-text">
                 {t("Live support status board", "Živý prehľad stavov podpory", "Élő támogatási státusztábla")}
               </div>
-              <h1 className="font-heading font-extrabold text-title-md text-slate-900">
+              <h1 className="font-heading font-bold text-title-md text-gray-900">
                 {projectName}
               </h1>
               {clientName && (
-                <div className="text-caption font-semibold text-slate-500">{clientName}</div>
+                <div className="text-caption font-medium text-gray-500">{clientName}</div>
               )}
             </div>
           </div>
           <button
             type="button"
             onClick={loadData}
-            className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-caption font-bold text-slate-700 cursor-pointer"
+            className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-caption font-semibold text-gray-700 shadow-2xs cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>{t("Refresh", "Obnoviť", "Frissítés")}</span>
@@ -231,38 +232,38 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
 
         {/* Summary Counters */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-white rounded-2xl border border-slate-200 p-4">
-            <div className="text-title-md font-heading font-extrabold text-slate-900">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-2xs">
+            <div className="text-title-md font-heading font-bold text-gray-900 tabular-nums">
               {counts.total}
             </div>
-            <div className="text-micro font-bold uppercase tracking-wider text-slate-400">
+            <div className="text-micro font-semibold uppercase tracking-wider text-gray-400">
               {t("Total tickets", "Tikety spolu", "Összes jegy")}
             </div>
           </div>
-          <div className="bg-white rounded-2xl border border-indigo-200 p-4">
-            <div className="text-title-md font-heading font-extrabold text-indigo-600 flex items-center gap-1.5">
+          <div className="bg-white rounded-lg border border-entity-border p-4 shadow-2xs">
+            <div className="text-title-md font-heading font-bold text-entity-text flex items-center gap-1.5 tabular-nums">
               <Clock className="w-4 h-4" />
               <span>{counts.open}</span>
             </div>
-            <div className="text-micro font-bold uppercase tracking-wider text-slate-400">
+            <div className="text-micro font-semibold uppercase tracking-wider text-gray-400">
               {t("Open / in progress", "Otvorené / v riešení", "Nyitott / folyamatban")}
             </div>
           </div>
-          <div className="bg-white rounded-2xl border border-emerald-200 p-4">
-            <div className="text-title-md font-heading font-extrabold text-emerald-600 flex items-center gap-1.5">
+          <div className="bg-white rounded-lg border border-emerald-200 p-4 shadow-2xs">
+            <div className="text-title-md font-heading font-bold text-emerald-600 flex items-center gap-1.5 tabular-nums">
               <CheckCircle2 className="w-4 h-4" />
               <span>{counts.resolved}</span>
             </div>
-            <div className="text-micro font-bold uppercase tracking-wider text-slate-400">
+            <div className="text-micro font-semibold uppercase tracking-wider text-gray-400">
               {t("Resolved", "Vyriešené", "Megoldva")}
             </div>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-3 flex flex-col sm:flex-row gap-2.5">
+        <div className="bg-white rounded-lg border border-gray-200 p-3 flex flex-col sm:flex-row gap-2.5 shadow-2xs">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
               value={search}
@@ -272,13 +273,13 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
                 "Hľadať podľa čísla alebo predmetu tiketu...",
                 "Keresés jegyszám vagy tárgy szerint...",
               )}
-              className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 text-caption font-semibold"
+              className="w-full h-9 pl-9 pr-3 rounded-md border border-gray-200 text-caption font-medium focus:outline-none focus:border-entity-solid"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-bold text-slate-700"
+            className="h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-semibold text-gray-700 focus:outline-none focus:border-entity-solid"
           >
             <option value="all">{t("All statuses", "Všetky stavy", "Minden állapot")}</option>
             {statuses.map((s) => (
@@ -290,7 +291,7 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
         </div>
 
         {/* Tickets List */}
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-2xs">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-xs">
           {filtered.length === 0 ? (
             <div className="p-12 text-center text-slate-400 text-caption font-semibold">
               {t(
@@ -399,30 +400,30 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
                               return (
                                 <div
                                   key={m.id}
-                                  className={`p-3 rounded-2xl border text-caption ${
+                                  className={`p-3 rounded-lg border text-caption ${
                                     isStatusUpdate
-                                      ? "bg-purple-50/60 border-purple-200"
+                                      ? "bg-entity-subtle/60 border-entity-border"
                                       : isAgent
-                                        ? "bg-indigo-50/50 border-indigo-200"
-                                        : "bg-slate-50 border-slate-200"
+                                        ? "bg-sky-50/50 border-sky-200"
+                                        : "bg-gray-50 border-gray-200"
                                   }`}
                                 >
-                                  <div className="flex items-center justify-between text-micro text-slate-500 mb-1">
+                                  <div className="flex items-center justify-between text-micro text-gray-500 mb-1">
                                     <div className="flex items-center gap-2">
-                                      <strong className="text-slate-800">
+                                      <strong className="text-gray-900">
                                         {m.authorName ||
                                           (isAgent
                                             ? t("Support", "Podpora", "Támogatás")
                                             : t("Client", "Klient", "Ügyfél"))}
                                       </strong>
                                       {isStatusUpdate && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold uppercase bg-purple-100 text-purple-800 border border-purple-300">
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-semibold uppercase bg-entity-subtle text-entity-text border border-entity-border">
                                           <RefreshCw className="w-2.5 h-2.5" />
                                           {t("Status update", "Zmena stavu", "Állapotváltozás")}
                                         </span>
                                       )}
                                       {isAgent && (
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold uppercase bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-micro font-semibold uppercase bg-sky-100 text-sky-700 border border-sky-200">
                                           {t("Support reply", "Odpoveď podpory", "Támogatási válasz")}
                                         </span>
                                       )}
@@ -430,11 +431,11 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
                                     <span>{String(m.createdAt || "").slice(0, 16)}</span>
                                   </div>
                                   {isStatusUpdate ? (
-                                    <div className="font-bold text-purple-900">{m.body}</div>
+                                    <div className="font-semibold text-entity-text">{m.body}</div>
                                   ) : (
                                     <TicketHtmlContent
                                       content={m.body}
-                                      className="text-slate-700"
+                                      className="text-gray-700"
                                     />
                                   )}
                                 </div>
@@ -451,7 +452,7 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
           )}
         </div>
       </div>
-    </div>
+    </EntityScope>
   );
 };
 

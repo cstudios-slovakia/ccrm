@@ -26,9 +26,9 @@ test("isViewSizeMode accepts only the four modes", () => {
 });
 
 test("scales", () => {
-  assert.equal(viewSizeScale("compact"), 1);
-  assert.equal(viewSizeScale("normal"), 1.125);
-  assert.equal(viewSizeScale("big"), 1.25);
+  assert.equal(viewSizeScale("compact"), 0.8);
+  assert.equal(viewSizeScale("normal"), 1);
+  assert.equal(viewSizeScale("big"), 1.125);
 });
 
 test("index.html pre-paint default matches viewSize.ts", () => {

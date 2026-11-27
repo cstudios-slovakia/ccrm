@@ -17,6 +17,7 @@ import {
   Sliders,
   Sparkles,
   TableProperties,
+  UserCheck,
   Users,
   Workflow,
 } from "lucide-react";
@@ -27,6 +28,9 @@ import { SOCIAL_MEDIA_ENABLED } from "./featureFlags";
 import { isHomeDashboard } from "./dashboardWidgets";
 import { EmployeeTieIcon } from "../components/icons/EmployeeTieIcon";
 import { FlockIcon } from "../components/icons/FlockIcon";
+import { applySectionVisual } from "./sectionVisuals";
+import { PRODUCT_NAME } from "./brand.ts";
+import { DASHBOARD_SECTION_LABEL_KEY, LEGACY_WIDGET_DASHBOARD, isRetiredSectionId } from "./dashboardSection.ts";
 
 /**
  * The one list of modules an admin can show or hide.
@@ -175,14 +179,14 @@ const LONG_DESCRIPTIONS: Record<(typeof SCREENSHOT_MODULE_IDS)[number], Triple> 
     "Központi könyvtár a dokumentumokhoz és mellékletekhez, amelyeket a csapat az ügyfelekhez, projektekhez és munkatársakhoz tölt fel. Egyetlen képernyőn kereshet, megtekinthet és letölthet, ahelyett hogy minden rekordban keresgélne. Akkor hasznos, ha a fájlok szétszórtak.",
   ],
   email: [
-    "A built-in mail client for your company mailbox (IMAP and SMTP), so you can read and reply without leaving the CRM. Messages can be summarised by AI and tied to the right client. You need to connect a mailbox before it works.",
-    "Zabudovaný poštový klient pre firemnú schránku (IMAP a SMTP), takže môžete čítať a odpovedať bez opustenia CRM. Správy vie AI zhrnúť a priradiť k správnemu klientovi. Aby fungoval, treba najprv pripojiť schránku.",
-    "Beépített levelezőkliens a céges postafiókhoz (IMAP és SMTP), így a CRM elhagyása nélkül olvashat és válaszolhat. Az üzeneteket az AI összefoglalhatja, és a megfelelő ügyfélhez kapcsolhatja. A működéshez előbb csatlakoztatnia kell egy postafiókot.",
+    `A built-in mail client for your company mailbox (IMAP and SMTP), so you can read and reply without leaving ${PRODUCT_NAME}. Messages can be summarised by AI and tied to the right client. You need to connect a mailbox before it works.`,
+    `Zabudovaný poštový klient pre firemnú schránku (IMAP a SMTP), takže môžete čítať a odpovedať bez opustenia ${PRODUCT_NAME}. Správy vie AI zhrnúť a priradiť k správnemu klientovi. Aby fungoval, treba najprv pripojiť schránku.`,
+    `Beépített levelezőkliens a céges postafiókhoz (IMAP és SMTP), így a ${PRODUCT_NAME} elhagyása nélkül olvashat és válaszolhat. Az üzeneteket az AI összefoglalhatja, és a megfelelő ügyfélhez kapcsolhatja. A működéshez előbb csatlakoztatnia kell egy postafiókot.`,
   ],
   rag_ai: [
-    "An AI assistant that answers questions from your own company knowledge, such as documents, notes and CRM records. You can create several agents for different jobs. It needs an OpenAI key to be set up in the settings.",
-    "AI asistent, ktorý odpovedá na otázky z vašich firemných znalostí, napríklad dokumentov, poznámok a záznamov v CRM. Pre rôzne úlohy môžete vytvoriť viacero agentov. Vyžaduje nastavený kľúč OpenAI v nastaveniach.",
-    "AI-asszisztens, amely a saját céges tudásából – például dokumentumokból, jegyzetekből és CRM-rekordokból – válaszol a kérdésekre. Különböző feladatokra több ügynököt is létrehozhat. Működéséhez be kell állítani egy OpenAI-kulcsot a beállításokban.",
+    `An AI assistant that answers questions from your own company knowledge, such as documents, notes and ${PRODUCT_NAME} records. You can create several agents for different jobs. It needs an OpenAI key to be set up in the settings.`,
+    `AI asistent, ktorý odpovedá na otázky z vašich firemných znalostí, napríklad dokumentov, poznámok a záznamov v ${PRODUCT_NAME}. Pre rôzne úlohy môžete vytvoriť viacero agentov. Vyžaduje nastavený kľúč OpenAI v nastaveniach.`,
+    `AI-asszisztens, amely a saját céges tudásából – például dokumentumokból, jegyzetekből és ${PRODUCT_NAME}-rekordokból – válaszol a kérdésekre. Különböző feladatokra több ügynököt is létrehozhat. Működéséhez be kell állítani egy OpenAI-kulcsot a beállításokban.`,
   ],
   sai: [
     "Swarm AI rehearsals for your market and strategy: describe a scenario and a swarm of AI agents simulates how it could play out, before you commit real money or time. Use it to test pricing, messaging or plans. It is an advanced, optional tool.",
@@ -190,9 +194,9 @@ const LONG_DESCRIPTIONS: Record<(typeof SCREENSHOT_MODULE_IDS)[number], Triple> 
     "Swarm AI próbák a piacához és stratégiájához: leír egy forgatókönyvet, az AI-ügynökök rajai pedig lejátsszák, hogyan alakulhat, mielőtt valódi pénzt vagy időt fektetne bele. Használja árazás, kommunikáció vagy tervek tesztelésére. Haladó, opcionális eszköz.",
   ],
   automation: [
-    "Build rules that run on their own: when something happens in the CRM or a webhook arrives, send an email, create a task or update a record. A visual builder makes this possible without writing code. It takes repetitive work off your team.",
-    "Vytvárajte pravidlá, ktoré bežia samé: keď sa v CRM niečo stane alebo príde webhook, odošle sa e-mail, vytvorí úloha alebo upraví záznam. Vizuálny editor to umožní bez programovania. Odstráni opakujúcu sa prácu z pliec vášho tímu.",
-    "Hozzon létre magától futó szabályokat: ha a CRM-ben történik valami vagy webhook érkezik, a rendszer e-mailt küld, feladatot hoz létre vagy módosít egy rekordot. A vizuális szerkesztő kódolás nélkül lehetővé teszi ezt. Leveszi az ismétlődő munkát a csapat válláról.",
+    `Build rules that run on their own: when something happens in ${PRODUCT_NAME} or a webhook arrives, send an email, create a task or update a record. A visual builder makes this possible without writing code. It takes repetitive work off your team.`,
+    `Vytvárajte pravidlá, ktoré bežia samé: keď sa v ${PRODUCT_NAME} niečo stane alebo príde webhook, odošle sa e-mail, vytvorí úloha alebo upraví záznam. Vizuálny editor to umožní bez programovania. Odstráni opakujúcu sa prácu z pliec vášho tímu.`,
+    `Hozzon létre magától futó szabályokat: ha a ${PRODUCT_NAME}-ben történik valami vagy webhook érkezik, a rendszer e-mailt küld, feladatot hoz létre vagy módosít egy rekordot. A vizuális szerkesztő kódolás nélkül lehetővé teszi ezt. Leveszi az ismétlődő munkát a csapat válláról.`,
   ],
   social_media: [
     "Plan and publish posts to your social networks from one calendar. Schedule content ahead of time and keep an overview of what goes out where. Useful for teams who run their own channels.",
@@ -200,9 +204,9 @@ const LONG_DESCRIPTIONS: Record<(typeof SCREENSHOT_MODULE_IDS)[number], Triple> 
     "Tervezze meg és tegye közzé a közösségi média bejegyzéseit egyetlen naptárból. Előre időzítheti a tartalmakat, és áttekintheti, mi hová kerül. Hasznos a saját csatornáikat kezelő csapatoknak.",
   ],
   updates: [
-    "Release notes for every version of the CRM, with screenshots of what is new and what has changed. Open it after an update to see which features you can start using. It is read-only and needs no setup.",
-    "Poznámky k vydaniu pre každú verziu CRM so snímkami toho, čo je nové a čo sa zmenilo. Otvorte ich po aktualizácii a zistíte, ktoré funkcie môžete začať používať. Sú len na čítanie a nevyžadujú žiadne nastavenie.",
-    "Kiadási jegyzetek a CRM minden verziójáról, képernyőképekkel arról, mi az új és mi változott. Frissítés után nyissa meg, hogy lássa, mely funkciókat kezdheti használni. Csak olvasható, és nem igényel beállítást.",
+    `Release notes for every version of ${PRODUCT_NAME}, with screenshots of what is new and what has changed. Open it after an update to see which features you can start using. It is read-only and needs no setup.`,
+    `Poznámky k vydaniu pre každú verziu ${PRODUCT_NAME} so snímkami toho, čo je nové a čo sa zmenilo. Otvorte ich po aktualizácii a zistíte, ktoré funkcie môžete začať používať. Sú len na čítanie a nevyžadujú žiadne nastavenie.`,
+    `Kiadási jegyzetek a ${PRODUCT_NAME} minden verziójáról, képernyőképekkel arról, mi az új és mi változott. Frissítés után nyissa meg, hogy lássa, mely funkciókat kezdheti használni. Csak olvasható, és nem igényel beállítást.`,
   ],
 };
 
@@ -244,6 +248,20 @@ export function buildModuleCatalog(
       color: "#ff5d00",
       bgColor: "rgba(255, 93, 0, 0.12)",
       badge: t("Core", "Hlavné", "Alap"),
+    },
+    {
+      id: "time-tracking",
+      category: "operations",
+      title: t("Time tracking", "Evidencia času", "Időkövetés"),
+      description: t("Timer, daily log, and the real cost of every hour", "Časovač, denný záznam a skutočná cena každej hodiny", "Időzítő, napi napló és minden óra valós költsége"),
+      longDescription: t(
+        "Track time with a timer, hours-only daily rows or a calendar, against projects, tasks and tickets. Every hour is priced at the worker's real cost, from their salary and the working days of that month, so each project shows what its labour really cost. Employees only ever see their own time unless you give them the team view.",
+        "Zaznamenávajte čas časovačom, denným výkazom v hodinách alebo v kalendári, voči projektom, úlohám a tiketom. Každá hodina sa ocení skutočnými nákladmi pracovníka podľa jeho mzdy a pracovných dní daného mesiaca, takže každý projekt ukáže, koľko naozaj stála práca. Zamestnanci vidia iba vlastný čas, kým im nedáte pohľad na tím.",
+        "Rögzítse az időt időzítővel, csak órákat tartalmazó napi sorokkal vagy naptárban, projektekhez, feladatokhoz és jegyekhez. Minden órát a munkatárs valós költségén számol el a rendszer, a fizetéséből és az adott hónap munkanapjaiból, így minden projekt megmutatja, mennyibe került a munka. A munkatársak csak a saját idejüket látják, amíg nem ad nekik csapatnézetet.",
+      ),
+      icon: Icons.Timer || ListTodo,
+      color: "#0d9488",
+      bgColor: "rgba(13, 148, 136, 0.12)",
     },
     {
       id: "projects",
@@ -344,23 +362,45 @@ export function buildModuleCatalog(
       color: "#c29b62",
       bgColor: "rgba(194, 155, 98, 0.12)",
     },
+    {
+      id: "agency",
+      category: "operations",
+      title: t("Agency & Workforce Leasing", "Personálna agentúra", "Munkaerő-közvetítés"),
+      description: t(
+        "Candidates pipeline, rented employees, host placements, shifts & payouts",
+        "Kandidáti, prenajatí zamestnanci, umiestnenia vo firmách, zmeny a výplaty",
+        "Jelöltek, kölcsönzött munkavállalók, kihelyezések, műszakok és kifizetések"
+      ),
+      longDescription: t(
+        "Manage external staffing from candidate intake through active company placements without mixing rented workers into sales contacts. Customize worker profile fields, track compliance expiry and daily shift schedules with national holidays and sick leave, and calculate monthly worker payouts alongside client billing margins.",
+        "Spravujte agentúrne zamestnávanie od evidencie kandidáta až po aktívne umiestnenie vo firmách bez miešania prenajatých pracovníkov s obchodnými kontaktmi. Prispôsobte polia profilu, sledujte platnosť dokladov, denné rozvrhy zmien so sviatkami a PN a počítajte mesačné výplaty aj klientsku maržu.",
+        "Kezelje a munkaerő-kölcsönzést a jelöltfelvételtől az aktív céges kihelyezésekig anélkül, hogy a kölcsönzött munkavállalók keverednének az értékesítési partnerekkel. Testreszabható profilmezők, megfelelőségi határidők, munkaszüneti napokat és betegszabadságot is követő műszakbeosztás, valamint havi kifizetési és árrésszámítás."
+      ),
+      icon: UserCheck,
+      color: "#0f766e",
+      bgColor: "rgba(15, 118, 110, 0.12)",
+      badge: t("Add-on", "Doplnok", "Bővítmény"),
+    },
 
     // 2. ANALYTICS & REGISTRIES
     {
       id: "dashboard",
       category: "analytics",
-      title: getTranslation(language, "sidebar.dashboard"),
-      description: t("Widget board of live metrics, charts & tables", "Nástenka so živými metrikami, grafmi a tabuľkami", "Élő mutatók, diagramok és táblázatok"),
-      longDescription: long("dashboard"),
-      screenshot: shot("dashboard"),
+      title: getTranslation(language, DASHBOARD_SECTION_LABEL_KEY),
+      // While the Performance Dashboard holds this section it borrows the Analytics copy and screenshot.
+      description: LEGACY_WIDGET_DASHBOARD
+        ? t("Widget board of live metrics, charts & tables", "Nástenka so živými metrikami, grafmi a tabuľkami", "Élő mutatók, diagramok és táblázatok")
+        : t("Executive BI overview & marketing funnel metrics", "Manažérske BI reporty a marketingové metriky", "Vezetői BI és marketing mutatók"),
+      longDescription: long(LEGACY_WIDGET_DASHBOARD ? "dashboard" : "overview"),
+      screenshot: shot(LEGACY_WIDGET_DASHBOARD ? "dashboard" : "overview"),
       icon: LayoutDashboard,
       color: "#4f46e5",
       bgColor: "rgba(79, 70, 229, 0.12)",
       badge: t("Start Screen", "Úvodná obrazovka", "Kezdőképernyő"),
     },
-    {
+    ...(isRetiredSectionId("overview") ? [] : [{
       id: "overview",
-      category: "analytics",
+      category: "analytics" as const,
       title: getTranslation(language, "sidebar.analytics"),
       description: t("Executive BI overview & marketing funnel metrics", "Manažérske BI reporty a marketingové metriky", "Vezetői BI és marketing mutatók"),
       longDescription: long("overview"),
@@ -368,7 +408,7 @@ export function buildModuleCatalog(
       icon: BarChart3,
       color: "#0891b2",
       bgColor: "rgba(8, 145, 178, 0.12)",
-    },
+    }]),
 
     // Dynamic custom dashboards
     ...customDashboards
@@ -432,6 +472,20 @@ export function buildModuleCatalog(
       bgColor: "rgba(180, 83, 9, 0.12)",
     },
     {
+      id: "whatsapp",
+      category: "collaboration",
+      title: t("WhatsApp", "WhatsApp", "WhatsApp"),
+      description: t(`Your WhatsApp chats, digest and tasks, inside ${PRODUCT_NAME}`, `Vaše WhatsApp chaty, prehľad a úlohy priamo v ${PRODUCT_NAME}`, `WhatsApp-csevegései, összefoglalója és feladatai a ${PRODUCT_NAME}-ben`),
+      longDescription: t(
+        `The full WAAI app inside ${PRODUCT_NAME}, already signed in as you: chats with a composer and voice notes, the AI digest, tasks and the AI lookup. Chats are paired with your clients, leads and projects, so a client's page opens its chat in one click, and the tasks WAAI finds in a conversation land on the right client and project.`,
+        `Celá aplikácia WAAI priamo v ${PRODUCT_NAME}, už prihlásená ako vy: chaty s písaním správ a hlasovými správami, AI prehľad, úlohy a AI vyhľadávanie. Chaty sú spárované s vašimi klientmi, leadmi a projektmi, takže stránka klienta otvorí jeho chat jedným klikom a úlohy, ktoré WAAI nájde v konverzácii, pristanú pri správnom klientovi a projekte.`,
+        `A teljes WAAI alkalmazás a ${PRODUCT_NAME}-ben, már az Ön nevében belépve: csevegések íróval és hangüzenetekkel, az AI-összefoglaló, feladatok és az AI-keresés. A csevegések párosítva vannak az ügyfelekkel, érdeklődőkkel és projektekkel, így az ügyfél oldaláról egy kattintással megnyílik a csevegése, a WAAI által a beszélgetésben talált feladatok pedig a megfelelő ügyfélhez és projekthez kerülnek.`,
+      ),
+      icon: Icons.MessageCircle || PencilLine,
+      color: "#16a34a",
+      bgColor: "rgba(22, 163, 74, 0.12)",
+    },
+    {
       id: "email",
       category: "collaboration",
       title: t("Mail Client", "Pošta", "Levelezés"),
@@ -441,6 +495,20 @@ export function buildModuleCatalog(
       icon: Mail,
       color: "#db2777",
       bgColor: "rgba(219, 39, 119, 0.12)",
+    },
+    {
+      id: "newsletter",
+      category: "collaboration",
+      title: t("Newsletter", "Newsletter", "Hírlevél"),
+      description: t("E-mail campaigns to your clients, with your own design", "E-mailové kampane pre klientov vo vlastnom dizajne", "E-mail kampányok az ügyfeleknek, saját dizájnnal"),
+      longDescription: t(
+        "Write an e-mail once and send it to all your clients, to chosen client categories or to individual clients, optionally with leads, employees and pasted addresses. A shared header and footer keep every campaign on brand, every e-mail carries an unsubscribe link, and a suppression list makes sure nobody who opted out is written to again. Sending runs in the background in small batches within your hourly limit, and you see the result per recipient.",
+        "Napíšte e-mail raz a pošlite ho všetkým klientom, vybraným kategóriám klientov alebo jednotlivým klientom, voliteľne aj s leadmi, zamestnancami a vloženými adresami. Spoločná hlavička a pätička držia každú kampaň v jednotnom štýle, každý e-mail obsahuje odkaz na odhlásenie a zoznam odhlásených zaručí, že sa nikto, kto sa odhlásil, už neoslovuje. Odosielanie beží na pozadí v malých dávkach v rámci hodinového limitu a výsledok vidíte pre každého príjemcu.",
+        "Írjon meg egyszer egy e-mailt, és küldje el minden ügyfelének, a kiválasztott ügyfélkategóriáknak vagy egyes ügyfeleknek, igény szerint érdeklődőkkel, munkatársakkal és beillesztett címekkel. A közös fejléc és lábléc egységesen tartja a kampányokat, minden e-mail tartalmaz leiratkozási hivatkozást, a leiratkozottak listája pedig gondoskodik róla, hogy aki leiratkozott, azt többé ne keressék. A küldés a háttérben, kis kötegekben, az óránkénti korláton belül fut, az eredményt pedig címzettenként látja.",
+      ),
+      icon: Icons.Send || Mail,
+      color: "#0284c7",
+      bgColor: "rgba(2, 132, 199, 0.12)",
     },
     {
       id: "rag_ai",
@@ -506,7 +574,7 @@ export function buildModuleCatalog(
     bgColor: "rgba(217, 119, 6, 0.12)",
   });
 
-  return list;
+  return list.map(applySectionVisual);
 }
 
 /**

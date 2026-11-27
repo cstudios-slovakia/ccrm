@@ -20,6 +20,7 @@
  *   CCRM_PROBE_WEB_CONTAINER, CCRM_PROBE_DB_CONTAINER, CCRM_PROBE_DB_ROOT_PASSWORD,
  *   CCRM_PROBE_DEV_DB (database to clone, default ccrm), CCRM_PROBE_URL (default http://127.0.0.1:8085).
  */
+import { DISABLE_OUTBOUND_MAIL_SQL } from '../lib/probe-no-mail.mjs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -79,7 +80,7 @@ const isErr = (r, re) => !!(r && r.__error && (!re || re.test(r.__error)));
 const forbidden = (r) => !!(r && r.__rpc && r.__rpc.code === -32003);
 
 // ----------------------------------------------------------------------------- setup / teardown
-const MODULES = ['dashboard', 'tasks', 'leads', 'clients', 'projects', 'invoices', 'warehouse', 'financial', 'employees', 'meetings', 'files', 'email', 'unified_entries', 'automation', 'social_media'];
+const MODULES = ['dashboard', 'tasks', 'tasks.weekly_plan', 'leads', 'clients', 'projects', 'invoices', 'orders', 'warehouse', 'financial', 'employees', 'meetings', 'tickets', 'time_tracking', 'whatsapp', 'files', 'email', 'unified_entries', 'automation', 'social_media', 'agency', 'newsletter'];
 const SETTINGS_KEYS = ['general_config', 'pm_managers', 'pipeline_stages', 'traffic_sources', 'ai_config', 'system_reset', 'nav_edit'];
 const role = (name, level) => ({
   name,
@@ -87,11 +88,15 @@ const role = (name, level) => ({
     ...Object.fromEntries(MODULES.map((m) => [m, level])),
     ...Object.fromEntries(SETTINGS_KEYS.map((k) => [k, 'nothing'])),
     'tasks.view_all': 'nothing', 'employees.salaries': 'nothing', 'dashboard.custom': 'nothing', 'overview': 'nothing',
+    'time_tracking_team': 'nothing', 'time_tracking_costs': 'nothing', 'tickets.time': 'nothing',
+    'agency.personal': 'nothing', 'agency.payments': 'nothing', 'agency.delete': 'nothing',
+    'newsletter_send': 'nothing', 'newsletter_settings': 'nothing',
+    'self.profile': 'nothing', 'self.vacations': 'nothing', 'self.payroll': 'nothing',
     // HR field groups, written out so nothing falls back to the legacy "edit" default: personal data and
     // documents are off; leave is on for the editor only (the leave tools need it).
     'employees.personal': 'nothing', 'employees.files': 'nothing', 'employees.vacations': level === 'edit' ? 'edit' : 'nothing',
-    'leads.delete': 'nothing', 'clients.delete': 'nothing', 'projects.delete': 'nothing', 'invoices.delete': 'nothing',
-    'warehouse.delete': 'nothing', 'financial.delete': 'nothing', 'employees.delete': 'nothing', 'meetings.delete': 'nothing',
+    'leads.delete': 'nothing', 'clients.delete': 'nothing', 'projects.delete': 'nothing', 'invoices.delete': 'nothing', 'orders.delete': 'nothing',
+    'warehouse.delete': 'nothing', 'financial.delete': 'nothing', 'employees.delete': 'nothing', 'meetings.delete': 'nothing', 'tickets.delete': 'nothing',
     'files.delete': 'nothing', 'unified_entries.delete': 'nothing', 'tasks.delete': 'nothing',
   },
 });
@@ -108,6 +113,7 @@ function setup() {
   sql(`DROP DATABASE IF EXISTS ${SCRATCH_DB}; CREATE DATABASE ${SCRATCH_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON ${SCRATCH_DB}.* TO 'ccrm_user'@'%';`, 'mysql');
   const dump = run('docker', ['exec', DB, 'mysqldump', '-uroot', `-p${ROOT_PW}`, '--single-transaction', '--no-tablespaces', DEV_DB]);
   run('docker', ['exec', '-i', DB, 'mysql', '-uroot', `-p${ROOT_PW}`, SCRATCH_DB], dump);
+  sql(DISABLE_OUTBOUND_MAIL_SQL); // the clone's live SMTP profile must never mail the *@probe.test users
 
   docker('exec', WEB, 'sh', '-c', `rm -rf ${SCRATCH_DIR} && mkdir -p ${SCRATCH_DIR}/api`);
   docker('cp', apiDir + '.', `${WEB}:${SCRATCH_DIR}/api`);
@@ -174,7 +180,7 @@ async function authorizationChecks() {
   const noneSearch = await call(TOKENS.none, 'search_entities', { query: 'a' });
   check('search_entities returns no module sections to nothing-role', noneSearch && !noneSearch.__error && Object.keys(noneSearch).length === 0, JSON.stringify(noneSearch).slice(0, 200));
 
-  const WRITE = /^(create|update|set|record|adjust|convert|transition|complete|add|schedule|log)_/;
+  const WRITE = /^(create|update|set|record|adjust|convert|transition|complete|add|schedule|log|start|stop)_/;
   const viewerTools = await listTools(TOKENS.viewer);
   check('view-only role sees no write tool', !viewerTools.some((t) => WRITE.test(t)), viewerTools.filter((t) => WRITE.test(t)).join(','));
   check('view-only role sees read tools', ['list_leads', 'get_financial_overview', 'list_employees', 'get_project_billing_summary'].every((t) => viewerTools.includes(t)), '');
@@ -240,6 +246,62 @@ async function authorizationChecks() {
     });
   }
   check('no MCP file deletes, truncates or drops anything', offenders.length === 0, offenders.join(', '));
+}
+
+// An Employee fills in the name (description) and work description (note) of their own time entries
+// through their own key, e.g. an agent at the end of the day. The role is the app's native Employee
+// default, the map Settings stores for it, not a probe role, so a change to that default shows here.
+async function employeeTimeEntryChecks() {
+  section('employee role: own time entries');
+  const { employeeRolePermissions, EMPLOYEE_ROLE_NAME } = await import(utils('permissions.ts'));
+  const rbac = JSON.parse(cell("SELECT `value` FROM system_settings WHERE `key` = 'ROLES_RBAC'"));
+  const ttView = { name: 'ProbeTimeView', permissions: { ...employeeRolePermissions(), time_tracking: 'view' } };
+  const extra = [{ name: EMPLOYEE_ROLE_NAME, permissions: employeeRolePermissions() }, ttView];
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${sq(JSON.stringify([...rbac.filter((x) => !extra.some((e) => e.name === x.name)), ...extra]))});`);
+  const tok = {};
+  for (const [k, roleName] of [['emp', EMPLOYEE_ROLE_NAME], ['ttView', 'ProbeTimeView']]) {
+    const id = `probe-${k}`;
+    tok[k] = `ccrm_mcp_probe_${k}_${'0'.repeat(40)}`;
+    sql(`DELETE FROM mcp_keys WHERE id = ${sq('pk-' + k)}; DELETE FROM users WHERE id = ${sq(id)} OR email = ${sq(id + '@probe.test')};
+         INSERT INTO users (id,name,email,password_hash,role) VALUES (${sq(id)},${sq('Probe ' + k)},${sq(id + '@probe.test')},'x',${sq(roleName)});
+         INSERT INTO mcp_keys (id,user_id,key_hash,key_prefix,name,created_at) VALUES (${sq('pk-' + k)},${sq(id)},${sq(createHash('sha256').update(tok[k]).digest('hex'))},'ccrm_mcp_p...','probe',NOW() - INTERVAL 1 DAY);`);
+  }
+  const task = await call(TOKENS.admin, 'create_task', { title: 'Probe emp linked task', deadline: '2030-01-01', owner: 'Probe emp' });
+  sql(`DELETE FROM time_entries WHERE id LIKE 'te-emp-%';
+       INSERT INTO time_entries (id, user_id, recorded_by_user_id, task_id, entry_date, duration_sec, description, title_snapshot) VALUES
+         ('te-emp-own', 'probe-emp', 'probe-emp', NULL, CURDATE(), 1800, NULL, NULL),
+         ('te-emp-linked', 'probe-emp', 'probe-emp', ${sq(task.id)}, CURDATE(), 900, NULL, 'Probe emp linked task'),
+         ('te-emp-other', 'probe-admin', 'probe-admin', NULL, CURDATE(), 600, 'Admin work', 'Admin work');`);
+
+  const empTools = await listTools(tok.emp);
+  check('Employee key lists list_time_entries, update_time_entry and log_time_entry', ['list_time_entries', 'update_time_entry', 'log_time_entry'].every((t) => empTools.includes(t)), empTools.join(','));
+  const mine = await call(tok.emp, 'list_time_entries', { limit: 200 });
+  check('Employee list_time_entries returns only their own entries', Array.isArray(mine) && mine.some((e) => e.id === 'te-emp-own') && mine.every((e) => e.userId === 'probe-emp'), JSON.stringify(mine).slice(0, 300));
+  const other = await call(tok.emp, 'list_time_entries', { user_id: 'probe-admin' });
+  check('Employee listing another user is refused and told their own user id', isErr(other, /time_tracking_team.*probe-emp/), JSON.stringify(other));
+
+  let r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-own', description: 'Probe day work', note: 'Wrote the probe for employee time entries' });
+  check('Employee update_time_entry sets name and work description of their own entry', r.success === true && r.entry?.title === 'Probe day work' && r.entry?.note === 'Wrote the probe for employee time entries' && !r.notice, JSON.stringify(r).slice(0, 300));
+  const stored = rows("SELECT description, note, duration_sec FROM time_entries WHERE id = 'te-emp-own'")[0];
+  check('the name and note are stored, the duration is untouched', stored?.[0] === 'Probe day work' && stored?.[1] === 'Wrote the probe for employee time entries' && stored?.[2] === '1800', JSON.stringify(stored));
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'Debugged OAuth redirect', note: 'Found the wrong callback URL' });
+  check('a task-linked entry keeps the task title and puts a different name at the start of the note', r.success === true && r.entry?.title === 'Probe emp linked task' && r.entry?.note === 'Debugged OAuth redirect - Found the wrong callback URL' && /linked to a task/.test(r.notice || ''), JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'Debugged OAuth redirect' });
+  check('sending the same name again does not prefix the note twice', r.success === true && r.entry?.note === 'Debugged OAuth redirect - Found the wrong callback URL' && !r.notice, JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'probe emp linked task', note: 'Only the work' });
+  check('a name equal to the task title (any case) leaves the note as sent', r.success === true && r.entry?.note === 'Only the work' && !r.notice, JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'log_time_entry', { duration_minutes: 20, task_id: task.id, description: 'Code review' });
+  check('log_time_entry on a task with a name and no note stores the name as the note', r.success === true && r.entry?.title === 'Probe emp linked task' && r.entry?.note === 'Code review' && /start of note/.test(r.notice || ''), JSON.stringify(r).slice(0, 300));
+  if (r.entry?.id) sql(`DELETE FROM time_entries WHERE id = ${sq(r.entry.id)}`);
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-other', description: 'Hijack', note: 'x' });
+  check('Employee update of another user\'s entry is refused', isErr(r, /time_tracking_team/) && cell("SELECT description FROM time_entries WHERE id = 'te-emp-other'") === 'Admin work', JSON.stringify(r));
+
+  const viewOnly = await call(tok.ttView, 'update_time_entry', { id: 'te-emp-own', note: 'x' });
+  check('a role with time_tracking at view level is refused and told which permission is missing', forbidden(viewOnly) && /ProbeTimeView.*edit access to time_tracking/.test(viewOnly.__rpc.message), JSON.stringify(viewOnly));
+  check('an unknown tool is refused with a pointer to tools/list', /unknown tool/.test((await call(tok.emp, 'update_time_entries', {})).__rpc?.message || ''), '');
+
+  sql(`DELETE FROM time_entries WHERE id LIKE 'te-emp-%'; DELETE FROM mcp_keys WHERE id IN ('pk-emp', 'pk-ttView'); DELETE FROM users WHERE id IN ('probe-emp', 'probe-ttView');
+       REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${sq(JSON.stringify(rbac))});`);
 }
 
 // ----------------------------------------------------------------------------- 2. parity
@@ -556,6 +618,21 @@ async function writeChecks() {
   check('bucket=upcoming does not', !(await call(A, 'list_tasks', { bucket: 'upcoming', search: 'Bucket' })).some?.((t) => t.id === t1), '');
   await call(A, 'update_task', { id: t1, owner: 'Probe Editor' });
   check('a new owner is added to the assignees (stays visible)', rows(`SELECT user_name FROM task_assignees WHERE task_id=${sq(t1)} ORDER BY 1`).map((x) => x[0]).join() === 'Probe Editor,Probe Viewer', '');
+  // A client can be linked (and unlinked) after the task exists; update_task advertises client_id.
+  const utDef = ((await rpc('tools/list', {}, A)).body?.result?.tools || []).find((t) => t.name === 'update_task');
+  check('update_task advertises client_id, deadline_time and archived', ['client_id', 'deadline_time', 'archived'].every((k) => utDef?.inputSchema?.properties?.[k]), JSON.stringify(utDef?.inputSchema?.properties || {}));
+  await call(A, 'update_task', { id: t1, client_id: leadId });
+  check('update_task links a client to an existing task', cell(`SELECT related_lead_id FROM tasks WHERE id=${sq(t1)}`) === leadId, '');
+  check('update_task refuses an unknown client', isErr(await call(A, 'update_task', { id: t1, client_id: 'no-such-client' }), /not found/i), '');
+  await call(A, 'update_task', { id: t1, client_id: '' });
+  check('update_task with an empty client_id unlinks it', cell(`SELECT related_lead_id IS NULL FROM tasks WHERE id=${sq(t1)}`) === '1', '');
+  // Archive is the MCP way to remove a task (no tool deletes rows).
+  await call(A, 'update_task', { id: t1, archived: true });
+  check('update_task archived=true hides the task from list_tasks', !(await call(A, 'list_tasks', { search: 'Bucket' })).some?.((t) => t.id === t1), '');
+  check('include_archived still lists it, marked archived', (await call(A, 'list_tasks', { search: 'Bucket', include_archived: true })).some?.((t) => t.id === t1 && t.archived === true), '');
+  check('update_task refuses a non-boolean archived', isErr(await call(A, 'update_task', { id: t1, archived: 'maybe' }), /true or false/), '');
+  await call(A, 'update_task', { id: t1, archived: false });
+  check('update_task archived=false restores it', cell(`SELECT archived FROM tasks WHERE id=${sq(t1)}`) === '0', '');
   check('set_task_assignees refuses non-users', isErr(await call(A, 'set_task_assignees', { task_id: t1, assignees: ['Ghost'] }), /not a registered user/), '');
   r = await call(A, 'set_task_assignees', { task_id: t1, assignees: ['probe admin'] });
   check('set_task_assignees adds (case-insensitive) and removes nobody', r.success && ['Probe Admin', 'Probe Editor', 'Probe Viewer'].every((n) => r.assignees.includes(n)), JSON.stringify(r));
@@ -564,6 +641,62 @@ async function writeChecks() {
   check('complete_task uses the configured done state', r.success && r.status === 'Done', JSON.stringify(r));
   check('bucket=done finds it', (await call(A, 'list_tasks', { bucket: 'done', search: 'Bucket' })).some?.((t) => t.id === t1), '');
   check('complete_task on an unknown id fails', isErr(await call(A, 'complete_task', { id: 'missing' }), /not found/), '');
+
+  // "what changed since": updated_at in list_tasks, updated_from/updated_to, sort_by
+  // 1590998400 = 2020-06-01 10:00 in Europe/Bratislava (CEST), independent of the MySQL session zone.
+  const ageTask = (id) => sql(`UPDATE tasks SET updated_at = FROM_UNIXTIME(1590998400) WHERE id = ${sq(id)}`);
+  const changedSince = async (from, id) => (await call(A, 'list_tasks', { updated_from: from, bucket: 'done', search: 'Bucket' })).some?.((t) => t.id === id);
+  const listed = (await call(A, 'list_tasks', { search: 'Bucket', bucket: 'done' })).find?.((t) => t.id === t1);
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+  check('list_tasks returns created_at and updated_at as ISO moments with an offset', listed && isoRe.test(listed.created_at) && isoRe.test(listed.updated_at), JSON.stringify(listed));
+  const dbUnix = Number(cell(`SELECT FLOOR(UNIX_TIMESTAMP(updated_at)) FROM tasks WHERE id = ${sq(t1)}`));
+  check('updated_at is the same moment the database holds, whatever the MySQL time zone', listed && Date.parse(listed.updated_at) / 1000 === dbUnix, `${listed?.updated_at} vs ${dbUnix}`);
+  ageTask(t1);
+  check('updated_from leaves out a task last changed before it', !(await changedSince('2021-01-01', t1)), '');
+  check('updated_from takes a time of day', await changedSince('2020-06-01 09:59', t1) && !(await changedSince('2020-06-01 10:01', t1)), '');
+  check('updated_to is exclusive with a time, whole-day with a date',
+    !(await call(A, 'list_tasks', { updated_to: '2020-06-01 10:00', bucket: 'done', search: 'Bucket' })).some?.((t) => t.id === t1)
+      && (await call(A, 'list_tasks', { updated_to: '2020-06-01', bucket: 'done', search: 'Bucket' })).some?.((t) => t.id === t1), '');
+  check('a malformed updated_from is refused', isErr(await call(A, 'list_tasks', { updated_from: 'yesterday' }), /YYYY-MM-DD/), '');
+  check('a malformed sort_by is refused', isErr(await call(A, 'list_tasks', { sort_by: 'title' }), /sort_by/), '');
+  await call(A, 'set_task_tags', { task_id: t1, tags: ['urgent'] });
+  check('re-adding an existing tag does not mark the task changed', !(await changedSince('2021-01-01', t1)), '');
+  await call(A, 'set_task_tags', { task_id: t1, tags: ['fresh-tag'] });
+  check('adding a tag marks the task changed', await changedSince('2021-01-01', t1), '');
+  ageTask(t1);
+  await call(A, 'set_task_assignees', { task_id: t1, assignees: ['Probe Admin'] });
+  check('re-adding an existing assignee does not mark the task changed', !(await changedSince('2021-01-01', t1)), '');
+  r = await call(A, 'create_task', { title: 'Bucket newest', deadline: '2020-01-01' });
+  await call(A, 'complete_task', { id: r.id });
+  const byUpdate = await call(A, 'list_tasks', { search: 'Bucket', bucket: 'done', sort_by: 'updated_at' });
+  check('sort_by=updated_at puts the most recently changed first', byUpdate[0]?.id === r.id && byUpdate.at(-1)?.id === t1, JSON.stringify(byUpdate.map?.((t) => t.id)));
+
+  // last_activity_at / activity_from..to: a comment or a time entry is activity, but does not move updated_at
+  r = await call(A, 'create_task', { title: 'Activity task', deadline: '2030-01-01', client_id: 'lead-parity', owner: 'Probe Editor' });
+  const ta = r.id;
+  ageTask(ta);
+  const actRow = async (tok = A) => (await call(tok, 'list_tasks', { search: 'Activity task', limit: 10 })).find?.((t) => t.id === ta);
+  const actIn = async (from, tok = A) => (await call(tok, 'list_tasks', { search: 'Activity task', activity_from: from, limit: 10 })).some?.((t) => t.id === ta);
+  const base = await actRow();
+  check('last_activity_at equals updated_at for a task with no comment or time', base && base.last_activity_at === base.updated_at, JSON.stringify(base));
+  check('activity_from leaves out a task with no activity since', !(await actIn('2021-01-01')), '');
+  r = await call(A, 'add_task_comment', { task_id: ta, comment: 'Probe comment' });
+  check('add_task_comment on a linked task succeeds', r.success === true, JSON.stringify(r));
+  check('the comment note carries the task id', rows(`SELECT COUNT(*) FROM timeline_events WHERE task_id=${sq(ta)}`)[0][0] === '1', '');
+  const afterComment = await actRow();
+  check('a comment does not move updated_at', afterComment.updated_at === base.updated_at, JSON.stringify(afterComment));
+  check('a comment moves last_activity_at to now', Date.parse(afterComment.last_activity_at) > Date.parse('2026-01-01'), JSON.stringify(afterComment));
+  check('activity_from finds the commented task, updated_from does not', await actIn('2021-01-01') && !(await call(A, 'list_tasks', { search: 'Activity task', updated_from: '2021-01-01' })).some?.((t) => t.id === ta), '');
+  check('get_task returns the same last_activity_at', (await call(A, 'get_task', { id: ta })).last_activity_at === afterComment.last_activity_at, '');
+  sql(`UPDATE tasks SET title = 'Activity task renamed', updated_at = FROM_UNIXTIME(1590998400) WHERE id = ${sq(ta)}`);
+  check('a renamed task keeps its comment as activity (linked by id, not by title)', (await call(A, 'list_tasks', { search: 'Activity task renamed', activity_from: '2021-01-01', limit: 10 })).some?.((t) => t.id === ta), '');
+  sql(`INSERT INTO time_entries (id, user_id, recorded_by_user_id, task_id, entry_date, duration_sec, updated_at) VALUES ('te-probe-act', 'probe-admin', 'probe-admin', ${sq(ta)}, '2030-01-01', 60, FROM_UNIXTIME(1893456000))`);
+  const withTime = (await call(A, 'list_tasks', { search: 'Activity task renamed', limit: 10 })).find?.((t) => t.id === ta);
+  check('a time entry moves last_activity_at for a key that may see it', Date.parse(withTime.last_activity_at) >= Date.parse('2029-12-31T00:00:00Z'), JSON.stringify(withTime));
+  check('another user\'s time entry is not activity for a key without time_tracking_team', Date.parse((await actRow(TOKENS.editor))?.last_activity_at ?? '2000-01-01') < Date.parse('2029-01-01'), '');
+  sql(`UPDATE time_entries SET deleted_at = NOW() WHERE id = 'te-probe-act'`);
+  check('a deleted time entry is no activity', Date.parse((await call(A, 'list_tasks', { search: 'Activity task renamed', limit: 10 })).find?.((t) => t.id === ta)?.last_activity_at ?? '2000-01-01') < Date.parse('2029-01-01'), '');
+  check('a malformed activity_from is refused', isErr(await call(A, 'list_tasks', { activity_from: 'lately' }), /YYYY-MM-DD/), '');
 
   // small guards
   r = await call(A, 'create_task', { title: 'Unlinked', deadline: '2030-01-01' });
@@ -598,7 +731,10 @@ async function writeChecks() {
   const sm = await call(A, 'get_invoicable_summary', { include_rows: true });
   check('get_invoicable_summary: leads and projects groups, total adds up', sm.groups?.length === 2 && Math.abs(sm.total - sm.groups.reduce((s, g) => s + g.invoicable, 0)) < 0.01, JSON.stringify(sm).slice(0, 200));
   const im = await call(A, 'get_invoicing_metrics', {});
-  check('get_invoicing_metrics counts invoices only', im.invoiced_value > 0 && im.offers_value === 0, JSON.stringify(im).slice(0, 200));
+  // Compare with the table, not with zero: the scratch DB is a clone of dev data and holds price offers.
+  const wantInv = Number(cell("SELECT COALESCE(SUM(total_price),0) FROM invoices_offers WHERE type='invoice'"));
+  const wantOff = Number(cell("SELECT COALESCE(SUM(total_price),0) FROM invoices_offers WHERE type='price_offer'"));
+  check('get_invoicing_metrics counts invoices only', im.invoiced_value > 0 && Math.abs(im.invoiced_value - wantInv) < 0.01 && Math.abs(im.offers_value - wantOff) < 0.01, JSON.stringify(im).slice(0, 200));
   const wm = await call(A, 'get_warehouse_metrics', { warehouse_id: 'pw-1' });
   check('get_warehouse_metrics values stock at the average price', Math.abs(wm.stock_valuation - 34 * 116) < 0.01, JSON.stringify(wm));
   for (const [tool, args] of [['list_financial_movements', {}], ['list_financial_categories', {}], ['list_recurring_movements', { include_paused: true }], ['list_client_categories', {}], ['list_warehouses', {}], ['list_suppliers', {}], ['list_stock_movements', {}], ['list_batches', {}], ['list_workflows', {}], ['list_unified_entries', {}], ['list_meeting_tasks', {}], ['list_documents', {}], ['list_invoices', {}]]) {
@@ -617,6 +753,76 @@ async function writeChecks() {
   const overviewSimple = await call(A, 'get_financial_overview', {});
   check('get_financial_overview points simplified workspaces to the simplified table', overviewSimple.mode === 'simplified', JSON.stringify(overviewSimple));
   await call(A, 'set_financial_mode', { mode: 'connected' });
+
+  // Time tracking lifecycle
+  const runBefore = await call(A, 'get_running_timer');
+  check('get_running_timer starts empty', runBefore.running === null, JSON.stringify(runBefore));
+  const started = await call(A, 'start_timer', { description: 'Probe timer work', project_id: 'p1', billable: true });
+  check('start_timer creates running entry', Boolean(started.entry?.id), JSON.stringify(started));
+  const runDuring = await call(A, 'get_running_timer');
+  check('get_running_timer sees started timer', Boolean(started.entry?.id) && runDuring.running?.id === started.entry?.id, JSON.stringify(runDuring));
+  const stopped = await call(A, 'stop_timer', { note: 'Finished probe work', project_id: 'p1' });
+  check('stop_timer ends running timer', Boolean(started.entry?.id) && stopped.entry?.id === started.entry?.id && stopped.entry?.endAt !== null, JSON.stringify(stopped));
+  const loggedTe = await call(A, 'log_time_entry', { duration_minutes: 30, description: 'Manual probe time', project_id: 'p1', billable: false });
+  check('log_time_entry creates entry', Boolean(loggedTe.entry?.id), JSON.stringify(loggedTe));
+  const updTe = await call(A, 'update_time_entry', { id: loggedTe.entry.id, duration_minutes: 45, billable: true });
+  check('update_time_entry updates duration', updTe.entry?.durationSec === 2700 && updTe.entry?.billable === true, JSON.stringify(updTe));
+  const teListEd = await call(A, 'list_time_entries', { limit: 10 });
+  check('list_time_entries returns entries', Array.isArray(teListEd) && teListEd.some((x) => x.id === loggedTe.entry.id));
+  const teSum = await call(A, 'get_time_tracking_summary', { group_by: 'project' });
+  check('get_time_tracking_summary returns totals', typeof teSum.total_hours === 'number' && teSum.total_hours > 0, JSON.stringify(teSum));
+
+  // Support tickets & contracts
+  const tckCreated = await call(TOKENS.editor, 'create_ticket', { title: 'Probe support ticket', description: 'Initial issue details', priority: 'high' });
+  check('create_ticket returns ticket number', Boolean(tckCreated.id && tckCreated.ticket_number), JSON.stringify(tckCreated));
+  const tckMsg = await call(TOKENS.editor, 'add_ticket_message', { ticket_id: tckCreated.id, body: 'Public reply from agent', is_internal: false, status: 'open' });
+  check('add_ticket_message logs reply', tckMsg.success === true, JSON.stringify(tckMsg));
+  await call(TOKENS.editor, 'update_ticket', { id: tckCreated.id, priority: 'critical' });
+  const tckGot = await call(TOKENS.editor, 'get_ticket', { id: tckCreated.id });
+  check('get_ticket reflects updated priority and messages', tckGot.priority === 'critical' && Array.isArray(tckGot.messages) && tckGot.messages.length >= 2, JSON.stringify(tckGot));
+  const tckList = await call(TOKENS.editor, 'list_tickets', { search: tckCreated.ticket_number });
+  check('list_tickets finds created ticket', Array.isArray(tckList) && tckList.some((t) => t.id === tckCreated.id));
+  const scList = await call(TOKENS.editor, 'list_support_contracts', {});
+  check('list_support_contracts returns array', Array.isArray(scList));
+
+  // Orders
+  const ordCreated = await call(TOKENS.editor, 'create_order', {
+    type: 'sales',
+    guest_name: 'Probe Buyer',
+    items: [{ name: 'Probe Widget', quantity: 2, unit_price: 50, tax_rate: 20 }],
+  });
+  check('create_order computes totals', ordCreated.success === true && ordCreated.total_gross_amount === 120, JSON.stringify(ordCreated));
+  const ordUpd = await call(TOKENS.editor, 'update_order', { id: ordCreated.id, status: 'confirmed', payment_status: 'paid' });
+  check('update_order succeeds', ordUpd.success === true, JSON.stringify(ordUpd));
+  const ordGot = await call(TOKENS.editor, 'get_order', { id: ordCreated.id });
+  check('get_order returns line items and updated status', ordGot.status === 'confirmed' && ordGot.items?.length === 1, JSON.stringify(ordGot));
+  const ordList = await call(TOKENS.editor, 'list_orders', { search: ordCreated.order_number });
+  check('list_orders finds created order', Array.isArray(ordList) && ordList.some((o) => o.id === ordCreated.id));
+
+  // Weekly plan
+  const wpCard = await call(TOKENS.editor, 'create_weekly_plan_card', { date: '2026-11-16', content: 'Probe weekly goal', color: 'blue' });
+  check('create_weekly_plan_card creates card', wpCard.success === true && Boolean(wpCard.id), JSON.stringify(wpCard));
+  const wpUpd = await call(TOKENS.editor, 'update_weekly_plan_card', { id: wpCard.id, completed: true });
+  check('update_weekly_plan_card succeeds', wpUpd.success === true, JSON.stringify(wpUpd));
+  const wpNote = await call(TOKENS.editor, 'set_weekly_plan_day_note', { date: '2026-11-16', note: 'Probe day note' });
+  check('set_weekly_plan_day_note succeeds', wpNote.success === true, JSON.stringify(wpNote));
+  const wpBoard = await call(TOKENS.editor, 'get_weekly_plan', { date: '2026-11-18' });
+  check('get_weekly_plan returns card and day note', wpBoard.cards?.some((c) => c.id === wpCard.id && c.completed === true) && wpBoard.day_notes?.['2026-11-16'] === 'Probe day note', JSON.stringify(wpBoard));
+
+  // Price offer & recurring tasks
+  const clientsForOffer = await call(TOKENS.editor, 'list_leads', { limit: 1 });
+  const offerClient = clientsForOffer[0]?.id || (await call(TOKENS.editor, 'create_lead', { name: 'Offer Probe Client' })).id;
+  const offerRes = await call(TOKENS.editor, 'create_price_offer', {
+    client_id: offerClient,
+    title: 'Probe Website Package',
+    items: [{ title: 'Setup', quantity: 1, unit_price: 500 }],
+  });
+  check('create_price_offer generates CP offer', offerRes.success === true && String(offerRes.document_number).startsWith('CP-'), JSON.stringify(offerRes));
+
+  const recTask = await call(TOKENS.editor, 'create_recurring_task', { title: 'Weekly Probe Check', frequency: 'weekly', interval: 1 });
+  check('create_recurring_task creates template', recTask.success === true && Boolean(recTask.id), JSON.stringify(recTask));
+  const recList = await call(TOKENS.editor, 'list_recurring_tasks', { search: 'Weekly Probe Check' });
+  check('list_recurring_tasks finds template', Array.isArray(recList) && recList.some((t) => t.id === recTask.id), JSON.stringify(recList));
 }
 
 // ----------------------------------------------------------------------------- 4. client & project intelligence
@@ -734,14 +940,959 @@ async function intelChecks() {
   check('list_clients rows carry a url', (await call(A, 'list_clients', { search: 'Villatesta' })).some?.((c) => /#client-Villatesta$/.test(c.url)), '');
 }
 
+// ----------------------------------------------------------------------------- change visibility (audit 2026-11-10)
+// One function per work package so parallel branches never touch the same lines.
+// See docs/audits/mcp-change-visibility-audit.md §5 for what each should prove.
+
+async function changeCrmChecks() {
+  section('change visibility: leads, clients, communications, documents, meetings, tasks');
+  const A = TOKENS.admin;
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+  const T20 = 1590998400; // 2020-06-01 10:00 in Europe/Bratislava (CEST), whatever the MySQL zone
+  const ids = (r) => (Array.isArray(r) ? r.map((x) => x.id).join() : JSON.stringify(r).slice(0, 200));
+  const has = (r, id) => Array.isArray(r) && r.some((x) => x.id === id);
+  const age = (table, id, unix) => sql(`UPDATE ${table} SET updated_at = FROM_UNIXTIME(${unix}) WHERE id = ${sq(id)}`);
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Bratislava' });
+
+  // Two more keys: one that reads leads but not clients, one that reads clients but not leads. Every row below is
+  // prefixed cx- / client-cx- and removed again at the end (the roles setting is put back as it was).
+  const rolesBefore = cell("SELECT `value` FROM system_settings WHERE `key` = 'ROLES_RBAC'");
+  const cxRole = (name, modules) => { const r = role(name, 'nothing'); for (const m of modules) r.permissions[m] = 'view'; return r; };
+  const roleList = JSON.parse(rolesBefore).concat([cxRole('ProbeLeadsOnly', ['leads', 'files']), cxRole('ProbeClientsOnly', ['clients', 'files'])]);
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${sq(JSON.stringify(roleList))});`);
+  const cxUsers = { cxl: ['probe-cxl', 'Probe LeadsOnly', 'ProbeLeadsOnly'], cxc: ['probe-cxc', 'Probe ClientsOnly', 'ProbeClientsOnly'] };
+  for (const [k, [id, name, r]] of Object.entries(cxUsers)) {
+    const token = `ccrm_mcp_probe_${k}_${'0'.repeat(40)}`;
+    TOKENS[k] = token;
+    sql(`INSERT INTO users (id,name,email,password_hash,role) VALUES (${sq(id)},${sq(name)},${sq(id + '@probe.test')},'x',${sq(r)});
+         INSERT INTO mcp_keys (id,user_id,key_hash,key_prefix,name,created_at) VALUES (${sq('pk-' + k)},${sq(id)},${sq(createHash('sha256').update(token).digest('hex'))},'ccrm_mcp_p...','probe',NOW() - INTERVAL 1 DAY);`);
+  }
+  const L = TOKENS.cxl, C = TOKENS.cxc;
+
+  try {
+    // ---- seed: leads, one client with two records (name pair), two more clients, timeline entries, meetings
+    sql(`INSERT INTO leads (id,name,owner,status,created_at,archived,adjustment) VALUES
+      ('cx-lead-1','CX Lead One','Probe Admin','new','2026-11-01',0,0), ('cx-lead-2','CX Lead Two','Probe Admin','new','2026-11-05',0,0),
+      ('cx-lead-3','CX Lead Three','Probe Admin','new','2026-10-15',0,0), ('cx-lead-doc','CX Lead Doc','Probe Admin','new','2026-10-01',0,0),
+      ('cx-lead-arch','CX Lead Arch','Probe Admin','new','2026-09-01',1,0), ('cx-lead-adj','CX Lead Adj','Probe Admin','new','2026-08-01',0,50),
+      ('cx-lead-pair','CX Client One','Probe Admin','accepted','2026-07-01',0,0), ('client-cx-1','CX Client One','Probe Admin','accepted','2026-11-09',0,0),
+      ('client-cx-2','CX Client Two','Probe Admin','accepted','2026-06-01',0,0), ('client-cx-3','CX Client Three','Probe Admin','accepted','2026-06-02',0,0);`);
+    age('leads', 'cx-lead-1', T20); age('leads', 'cx-lead-3', T20); age('leads', 'client-cx-1', T20);
+    age('leads', 'cx-lead-pair', T20 + 86400); age('leads', 'client-cx-2', T20 + 172800); age('leads', 'client-cx-3', T20 + 172800);
+    sql(`INSERT INTO timeline_events (id,lead_id,type,timestamp,title,author,hidden) VALUES
+      ('cx-ev-1','cx-lead-1','note','2020-07-01 12:00:00','CX note','Probe Admin',0),
+      ('cx-ev-2','cx-lead-1','note','2020-08-01 12:00:00','CX hidden note','Probe Admin',1),
+      ('cx-ev-3','cx-lead-3','email','2020-09-01 12:00:00','CX mail','Probe Admin',0),
+      ('cx-ev-4','cx-lead-doc','note','2099-02-01 08:00:00','CX lead note','Probe Admin',0),
+      ('cx-ev-5','client-cx-1','note','2099-02-01 09:00:00','CX client note','Probe Admin',0),
+      ('cx-ev-6','cx-lead-doc','phone','2099-02-02 08:00:00','CX lead call','Probe Admin',0);
+      INSERT INTO timeline_events (id,lead_id,type,timestamp,title,file_name,file_type,author) VALUES
+      ('cx-doc-lead','cx-lead-doc','offer','2099-01-01 10:00:00','CX doc lead','a.pdf','offer','Probe Admin'),
+      ('cx-doc-client','client-cx-1','offer','2099-01-02 10:00:00','CX doc client','b.pdf','offer','Probe Admin');`);
+    sql(`INSERT INTO meeting_notes (id,title,date,lead_id,archived) VALUES
+      ('cx-mtg-past','CX Mtg past','2020-01-10','client-cx-1',0), ('cx-mtg-today','CX Mtg today',${sq(today)},'client-cx-1',0),
+      ('cx-mtg-f1','CX Mtg f1','2099-03-01','client-cx-1',0), ('cx-mtg-f2','CX Mtg f2','2099-03-02','client-cx-1',0),
+      ('cx-mtg-arch','CX Mtg arch','2099-04-01',NULL,1);
+      INSERT INTO meeting_tasks (id,meeting_id,title,due_date,status) VALUES
+      ('cx-mt-1','cx-mtg-f1','CX item overdue','2020-01-01','todo'), ('cx-mt-2','cx-mtg-f1','CX item today',${sq(today)},'todo'),
+      ('cx-mt-3','cx-mtg-f1','CX item later','2099-05-01','todo'), ('cx-mt-4','cx-mtg-f1','CX item done','2020-01-02','done'),
+      ('cx-mt-5','cx-mtg-f1','CX item undated',NULL,'todo');`);
+    age('meeting_notes', 'cx-mtg-past', T20);
+
+    // ---- RC11: documents and files respect the leads/clients split
+    let r, r2;
+    r = await call(L, 'list_documents', { type: 'offer', limit: 100 });
+    check('list_documents without lead_id: a leads-only key sees the document of a lead record', has(r, 'cx-doc-lead'), ids(r));
+    check('list_documents without lead_id: a leads-only key does not see a client record\'s document', Array.isArray(r) && !has(r, 'cx-doc-client'), ids(r));
+    r = await call(A, 'list_documents', { type: 'offer', limit: 100 });
+    check('list_documents: Admin sees both kinds', has(r, 'cx-doc-lead') && has(r, 'cx-doc-client'), ids(r));
+    r = await call(A, 'list_documents', { type: 'offer', limit: 1 });
+    r2 = await call(A, 'list_documents', { type: 'offer', limit: 1, offset: 1 });
+    check('list_documents: offset pages on (newest first, id tiebreak)', ids(r) === 'cx-doc-client' && ids(r2) === 'cx-doc-lead', `${ids(r)} / ${ids(r2)}`);
+    check('list_documents: timestamp_iso is the stored local time with the offset', r2[0]?.timestamp_iso === '2099-01-01T10:00:00+01:00', JSON.stringify(r2[0]));
+    check('list_documents: a client record named by id is refused for a leads-only key', isErr(await call(L, 'list_documents', { lead_id: 'client-cx-1' }), /not found/), '');
+    check('list_files source=lead: a leads-only key gets nothing for a client record', (r = await call(L, 'list_files', { source: 'lead', id: 'client-cx-1' })) && Array.isArray(r) && r.length === 0, JSON.stringify(r));
+    check('list_files source=lead: a leads-only key still gets a lead record\'s files', has(await call(L, 'list_files', { source: 'lead', id: 'cx-lead-doc' }), 'cx-doc-lead'), '');
+    check('list_files source=lead: a clients-only key gets nothing for a lead record', (r = await call(C, 'list_files', { source: 'lead', id: 'cx-lead-doc' })) && Array.isArray(r) && r.length === 0, JSON.stringify(r));
+    check('list_files source=lead: a clients-only key gets a client record\'s files', has(await call(C, 'list_files', { source: 'lead', id: 'client-cx-1' }), 'cx-doc-client'), '');
+    r = await call(A, 'list_files', { source: 'lead', id: 'client-cx-1', limit: 1, offset: 5 });
+    check('list_files source=lead: offset past the end is an empty page', Array.isArray(r) && r.length === 0, JSON.stringify(r));
+
+    // ---- mcp_task_scope matches name or e-mail, like the app
+    sql(`INSERT INTO tasks (id,title,deadline,status,owner,created_by) VALUES ('cx-task-mail','CX Mail owner','2031-01-01','New','probe-editor@probe.test','Probe Admin');`);
+    check('a task owned by the caller\'s e-mail is visible without tasks.view_all', has(await call(TOKENS.editor, 'list_tasks', { search: 'CX Mail' }), 'cx-task-mail'), '');
+
+    // ---- list_leads
+    r = await call(A, 'list_leads', { search: 'CX', limit: 100 });
+    check('list_leads: archived leads are hidden by default, every row says archived=false', has(r, 'cx-lead-1') && !has(r, 'cx-lead-arch') && r.every((l) => l.archived === false), ids(r));
+    r = await call(A, 'list_leads', { search: 'CX', include_archived: true, limit: 100 });
+    check('list_leads: include_archived lists the archived lead and flags it', r.find?.((l) => l.id === 'cx-lead-arch')?.archived === true, ids(r));
+    r = await call(L, 'list_leads', { search: 'CX', limit: 100 });
+    check('list_leads: a leads-only key sees no client record and no record with a client adjustment', has(r, 'cx-lead-1') && !has(r, 'client-cx-1') && !has(r, 'cx-lead-adj'), ids(r));
+    r = await call(L, 'list_leads', { search: 'CX', limit: 2 });
+    check('list_leads: the module split runs before LIMIT, so a page is full (2 of 2)', ids(r) === 'cx-lead-2,cx-lead-1', ids(r));
+    r = await call(A, 'list_leads', { search: 'CX Lead One' });
+    const l1 = r[0];
+    check('list_leads: updated_at is an ISO moment, the one the database holds', l1 && l1.updated_at === '2020-06-01T10:00:00+02:00', JSON.stringify(l1));
+    check('list_leads: created_at stays the plain creation date', l1 && l1.created_at === '2026-11-01', JSON.stringify(l1));
+    check('list_leads: last_activity_at is the newest visible timeline entry (a hidden one is ignored)', l1 && Date.parse(l1.last_activity_at) === Date.parse('2020-07-01T12:00:00+02:00'), JSON.stringify(l1));
+    r = await call(A, 'list_leads', { search: 'CX Lead Two' });
+    check('list_leads: with no timeline entry last_activity_at equals updated_at', r[0] && isoRe.test(r[0].updated_at) && r[0].last_activity_at === r[0].updated_at, JSON.stringify(r[0]));
+    const mailLead = async (tok) => (await call(tok, 'list_leads', { search: 'CX Lead Three' }))[0];
+    check('list_leads: an e-mail entry counts in last_activity_at only for a key with the mailbox module', Date.parse((await mailLead(A)).last_activity_at) === Date.parse('2020-09-01T12:00:00+02:00') && (await mailLead(L)).last_activity_at === '2020-06-01T10:00:00+02:00', JSON.stringify([await mailLead(A), await mailLead(L)]));
+    const since = async (args, tok = A) => ids(await call(tok, 'list_leads', { search: 'CX Lead', limit: 100, ...args }));
+    check('list_leads: updated_from leaves out a lead last changed before it', !(await since({ updated_from: '2021-01-01' })).includes('cx-lead-1') && (await since({ updated_from: '2021-01-01' })).includes('cx-lead-2'), '');
+    check('list_leads: updated_from takes a time of day', (await since({ updated_from: '2020-06-01 09:59' })).includes('cx-lead-1') && !(await since({ updated_from: '2020-06-01 10:01' })).includes('cx-lead-1'), '');
+    check('list_leads: updated_to is exclusive with a time, whole-day with a date', !(await since({ updated_to: '2020-06-01 10:00' })).includes('cx-lead-1') && (await since({ updated_to: '2020-06-01' })).includes('cx-lead-1'), '');
+    check('list_leads: a timeline entry does not move updated_at (the 2020-07-01 note is outside updated_from..to)', !(await since({ updated_from: '2020-06-30', updated_to: '2020-07-02' })).includes('cx-lead-1'), '');
+    check('list_leads: activity_from/activity_to find the lead through its timeline entry', (await since({ activity_from: '2020-06-30', activity_to: '2020-07-02' })) === 'cx-lead-1', await since({ activity_from: '2020-06-30', activity_to: '2020-07-02' }));
+    check('list_leads: activity_from also matches a record change', (await since({ activity_from: '2021-01-01' })).includes('cx-lead-2') && !(await since({ activity_from: '2021-01-01' })).includes('cx-lead-1'), '');
+    check('list_leads: the activity filter honours the e-mail gate', (await since({ activity_from: '2020-08-31', activity_to: '2020-09-02' })).includes('cx-lead-3') && !(await since({ activity_from: '2020-08-31', activity_to: '2020-09-02' }, L)).includes('cx-lead-3'), '');
+    r = (await since({ sort_by: 'updated_at' })).split(',');
+    check('list_leads: sort_by=updated_at puts the most recently changed first', r.indexOf('cx-lead-2') < r.indexOf('cx-lead-1'), r.join());
+    r = (await since({ sort_by: 'updated_at', sort_order: 'asc' })).split(',');
+    check('list_leads: sort_order=asc reverses it', r.indexOf('cx-lead-1') < r.indexOf('cx-lead-2'), r.join());
+    check('list_leads: created_from/created_to are an inclusive date range', (await since({ created_from: '2026-11-05', created_to: '2026-11-05' })) === 'cx-lead-2', await since({ created_from: '2026-11-05', created_to: '2026-11-05' }));
+    check('list_leads: created_from after created_to is refused', isErr(await call(A, 'list_leads', { created_from: '2026-11-06', created_to: '2026-11-05' }), /after/), '');
+    check('list_leads: a malformed sort_by is refused', isErr(await call(A, 'list_leads', { sort_by: 'name' }), /sort_by/), '');
+    check('list_leads: offset pages (limit 1, offset 1 on the default newest-created order)', ids(await call(A, 'list_leads', { search: 'CX Lead', limit: 1, offset: 1 })) === 'cx-lead-1', ids(await call(A, 'list_leads', { search: 'CX Lead', limit: 1, offset: 1 })));
+    r = await call(A, 'get_lead_pipeline_summary', {});
+    const rL = await call(L, 'get_lead_pipeline_summary', {});
+    check('get_lead_pipeline_summary: a leads-only key does not count a record with a client adjustment', r.active && rL.active && r.active.count > rL.active.count && r.as_of === today, JSON.stringify([r.active, rL.active, r.as_of]));
+
+    // ---- get_lead
+    r = await call(A, 'get_lead', { id: 'cx-lead-1' });
+    check('get_lead: updated_at is ISO with the offset', r.updated_at === '2020-06-01T10:00:00+02:00', r.updated_at);
+    check('get_lead: timeline entries keep the local time and carry an ISO form; hidden ones stay out', r.timeline_events?.length === 1 && r.timeline_events[0].timestamp === '2020-07-01 12:00:00' && r.timeline_events[0].timestamp_iso === '2020-07-01T12:00:00+02:00', JSON.stringify(r.timeline_events));
+    check('get_lead: last_activity_at is the newest timeline entry', Date.parse(r.last_activity_at) === Date.parse('2020-07-01T12:00:00+02:00'), r.last_activity_at);
+    check('get_lead: a leads-only key cannot read a client record', isErr(await call(L, 'get_lead', { id: 'client-cx-1' }), /not found/), '');
+
+    // ---- clients
+    r = await call(A, 'list_clients', { search: 'CX Client', limit: 100 });
+    const one = r.find?.((c) => c.id === 'client-cx-1');
+    check('list_clients: a profile\'s updated_at is the newest of its records, as ISO', one && one.leads_count === 2 && one.updated_at === '2020-06-02T10:00:00+02:00', JSON.stringify(one));
+    check('list_clients: last_activity_at adds the timeline of all its records', one && Date.parse(one.last_activity_at) === Date.parse('2099-02-01T09:00:00+01:00'), JSON.stringify(one));
+    check('list_clients: without a timeline last_activity_at equals updated_at', r.find?.((c) => c.id === 'client-cx-2')?.last_activity_at === '2020-06-03T10:00:00+02:00', JSON.stringify(r.map?.((c) => [c.id, c.last_activity_at])));
+    const cl = async (args) => ids(await call(A, 'list_clients', { search: 'CX Client', limit: 100, ...args }));
+    check('list_clients: sort_by=updated_at is newest first, ties by id', (await cl({ sort_by: 'updated_at' })) === 'client-cx-2,client-cx-3,client-cx-1', await cl({ sort_by: 'updated_at' }));
+    check('list_clients: sort_order=asc reverses the moment, not the id tiebreak', (await cl({ sort_by: 'updated_at', sort_order: 'asc' })) === 'client-cx-1,client-cx-2,client-cx-3', await cl({ sort_by: 'updated_at', sort_order: 'asc' }));
+    const pageIds = [];
+    for (const o of [0, 1, 2]) pageIds.push(ids(await call(A, 'list_clients', { search: 'CX Client', sort_by: 'updated_at', limit: 1, offset: o })));
+    check('list_clients: pages are stable, equal moments keep their id order (offset 0, 1, 2)', pageIds.join() === 'client-cx-2,client-cx-3,client-cx-1', pageIds.join());
+    check('list_clients: updated_from leaves out a profile whose newest record is older', (await cl({ updated_from: '2020-06-03' })).split(',').sort().join() === 'client-cx-2,client-cx-3', await cl({ updated_from: '2020-06-03' }));
+    check('list_clients: updated_to is whole-day with a date', (await cl({ updated_to: '2020-06-02' })) === 'client-cx-1', await cl({ updated_to: '2020-06-02' }));
+    check('list_clients: a malformed updated_from is refused', isErr(await call(A, 'list_clients', { updated_from: 'soon' }), /YYYY-MM-DD/), '');
+    r = await call(A, 'get_client_profile', { name: 'CX Client One' });
+    check('get_client_profile: updated_at, last_activity_at and each record\'s updated_at are ISO', r.updated_at === '2020-06-02T10:00:00+02:00' && isoRe.test(r.last_activity_at) && r.leads?.every((l) => isoRe.test(l.updated_at)), JSON.stringify([r.updated_at, r.last_activity_at, r.leads?.map((l) => l.updated_at)]));
+    r = await call(A, 'get_client', { id: 'client-cx-1' });
+    check('get_client: updated_at is ISO, the one the database holds', r.updated_at === '2020-06-01T10:00:00+02:00', r.updated_at);
+
+    // ---- get_client_dossier: upcoming vs recent meetings, ISO timeline
+    r = await call(A, 'get_client_dossier', { identifier: 'client-cx-1' });
+    check('get_client_dossier: upcoming_meetings are dated today or later, soonest first', ids(r.upcoming_meetings) === 'cx-mtg-today,cx-mtg-f1,cx-mtg-f2', ids(r.upcoming_meetings));
+    check('get_client_dossier: recent_meetings are the past ones only', ids(r.recent_meetings) === 'cx-mtg-past', ids(r.recent_meetings));
+    check('get_client_dossier: the timeline carries an ISO form and the profile an updated_at', r.latest_timeline?.length > 0 && r.latest_timeline.every((e) => isoRe.test(e.timestamp_iso)) && r.profile?.updated_at === '2020-06-02T10:00:00+02:00', JSON.stringify([r.latest_timeline?.[0], r.profile?.updated_at]));
+    check('get_client_dossier: open_tasks_truncated says the list is complete', r.open_tasks_truncated === false, JSON.stringify(r.open_tasks_truncated));
+
+    // ---- list_contacts
+    r = await call(A, 'list_contacts', { client_id: 'client-cx-1' });
+    check('list_contacts: carries the record\'s updated_at as ISO', r.length === 1 && r[0].updated_at === '2020-06-01T10:00:00+02:00', JSON.stringify(r));
+    check('list_contacts: offset pages past the one contact', (await call(A, 'list_contacts', { client_id: 'client-cx-1', offset: 1 })).length === 0, '');
+    check('list_contacts: a clients-only key gets nothing for a lead record, and its contact for a client', (await call(C, 'list_contacts', { client_id: 'cx-lead-1' })).length === 0 && (await call(C, 'list_contacts', { client_id: 'client-cx-1' })).length === 1, '');
+
+    // ---- list_communications: the cross-record feed
+    const feed = async (args, tok = A) => ids(await call(tok, 'list_communications', { from: '2099-01-01', sort_order: 'asc', limit: 100, ...args }));
+    check('list_communications: lead_id is optional; Admin gets the feed across records, oldest first', (await feed({})) === 'cx-doc-lead,cx-doc-client,cx-ev-4,cx-ev-5,cx-ev-6', await feed({}));
+    check('list_communications: a leads-only key gets the feed without client records, in full', (await feed({}, L)) === 'cx-doc-lead,cx-ev-4,cx-ev-6', await feed({}, L));
+    check('list_communications: to is exclusive with a time', (await feed({ from: '2099-02-01', to: '2099-02-01 08:30' })) === 'cx-ev-4', await feed({ from: '2099-02-01', to: '2099-02-01 08:30' }));
+    check('list_communications: to is whole-day with a date', (await feed({ from: '2099-02-01', to: '2099-02-01' })) === 'cx-ev-4,cx-ev-5', await feed({ from: '2099-02-01', to: '2099-02-01' }));
+    check('list_communications: type filter', (await feed({ type: 'phone' })) === 'cx-ev-6', await feed({ type: 'phone' }));
+    check('list_communications: offset pages the feed', (await feed({ limit: 2, offset: 2 })) === 'cx-ev-4,cx-ev-5', await feed({ limit: 2, offset: 2 }));
+    check('list_communications: newest first by default', (await feed({ sort_order: 'desc' })).split(',')[0] === 'cx-ev-6', '');
+    r = await call(A, 'list_communications', { from: '2099-02-01', to: '2099-02-01', sort_order: 'asc' });
+    check('list_communications: rows carry lead_name and timestamp_iso (local time with the offset)', r[0]?.lead_name === 'CX Lead Doc' && r[0]?.timestamp === '2099-02-01 08:00:00' && r[0]?.timestamp_iso === '2099-02-01T08:00:00+01:00', JSON.stringify(r[0]));
+    check('list_communications: a client record named by lead_id is refused for a leads-only key', isErr(await call(L, 'list_communications', { lead_id: 'client-cx-1' }), /not found/), '');
+    check('list_communications: a malformed from is refused', isErr(await call(A, 'list_communications', { from: 'noon' }), /YYYY-MM-DD/), '');
+    r = await call(A, 'log_communication', { lead_id: 'cx-lead-doc', type: 'note', title: 'CX logged' });
+    const stamp = cell(`SELECT timestamp FROM timeline_events WHERE id = ${sq(r.id)}`);
+    const localNow = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Bratislava' });
+    const asUtc = (s) => Date.parse(s.replace(' ', 'T') + 'Z');
+    check('log_communication stamps the app clock, not MySQL NOW()', Math.abs(asUtc(stamp) - asUtc(localNow)) < 180000, `${stamp} vs ${localNow}`);
+    r2 = await call(A, 'list_communications', { lead_id: 'cx-lead-doc', from: stamp, sort_order: 'asc' });
+    check('list_communications: polling with from = the last timestamp seen returns the new entry', has(r2, r.id) && Math.abs(Date.parse(r2.find((x) => x.id === r.id).timestamp_iso) - Date.now()) < 180000, JSON.stringify(r2).slice(0, 300));
+
+    // ---- meetings
+    const mt = async (args, tok = A) => ids(await call(tok, 'list_meetings', { search: 'CX Mtg', limit: 100, ...args }));
+    check('list_meetings: archived meetings are hidden by default', (await mt({})) === 'cx-mtg-f2,cx-mtg-f1,cx-mtg-today,cx-mtg-past', await mt({}));
+    r = await call(A, 'list_meetings', { search: 'CX Mtg', include_archived: true, limit: 100 });
+    check('list_meetings: include_archived lists the archived meeting and flags it', r.find?.((m) => m.id === 'cx-mtg-arch')?.archived === true && r.find((m) => m.id === 'cx-mtg-f1').archived === false, ids(r));
+    const past = (await call(A, 'list_meetings', { search: 'CX Mtg past' }))[0];
+    check('list_meetings: created_at and updated_at are ISO moments, updated_at the one the database holds', past && isoRe.test(past.created_at) && past.updated_at === '2020-06-01T10:00:00+02:00', JSON.stringify(past));
+    check('list_meetings: updated_from leaves out a meeting last changed before it', !(await mt({ updated_from: '2021-01-01' })).includes('cx-mtg-past') && (await mt({ updated_from: '2021-01-01' })).includes('cx-mtg-f1'), '');
+    check('list_meetings: sort_by=updated_at puts the most recently changed first', (await mt({ sort_by: 'updated_at' })).split(',').at(-1) === 'cx-mtg-past', await mt({ sort_by: 'updated_at' }));
+    check('list_meetings: upcoming_only runs on the app date (today counts)', (await mt({ upcoming_only: true })) === 'cx-mtg-f2,cx-mtg-f1,cx-mtg-today', await mt({ upcoming_only: true }));
+    check('list_meetings: date_from/date_to are an inclusive range on the meeting day', (await mt({ date_from: '2099-03-01', date_to: '2099-03-01' })) === 'cx-mtg-f1', await mt({ date_from: '2099-03-01', date_to: '2099-03-01' }));
+    check('list_meetings: start_date still works as a lower bound', (await mt({ start_date: '2099-03-02' })) === 'cx-mtg-f2', await mt({ start_date: '2099-03-02' }));
+    check('list_meetings: offset pages (limit 1, offset 1)', (await mt({ limit: 1, offset: 1 })) === 'cx-mtg-f1', await mt({ limit: 1, offset: 1 }));
+    r = await call(A, 'get_meeting', { id: 'cx-mtg-past' });
+    check('get_meeting: created_at and updated_at are ISO moments', isoRe.test(r.created_at) && r.updated_at === '2020-06-01T10:00:00+02:00', JSON.stringify([r.created_at, r.updated_at]));
+
+    // ---- list_meeting_tasks
+    const mit = async (args) => ids(await call(A, 'list_meeting_tasks', { meeting_id: 'cx-mtg-f1', ...args }));
+    check('list_meeting_tasks: default order is the due date, then id (undated first)', (await mit({})) === 'cx-mt-5,cx-mt-1,cx-mt-4,cx-mt-2,cx-mt-3', await mit({}));
+    check('list_meeting_tasks: bucket=overdue is open items past their due date only', (await mit({ bucket: 'overdue' })) === 'cx-mt-1', await mit({ bucket: 'overdue' }));
+    check('list_meeting_tasks: bucket=today', (await mit({ bucket: 'today' })) === 'cx-mt-2', await mit({ bucket: 'today' }));
+    check('list_meeting_tasks: bucket=upcoming', (await mit({ bucket: 'upcoming' })) === 'cx-mt-3', await mit({ bucket: 'upcoming' }));
+    check('list_meeting_tasks: bucket=done', (await mit({ bucket: 'done' })) === 'cx-mt-4', await mit({ bucket: 'done' }));
+    check('list_meeting_tasks: due_from/due_to are an inclusive range', (await mit({ due_from: '2020-01-01', due_to: '2020-01-02' })) === 'cx-mt-1,cx-mt-4', await mit({ due_from: '2020-01-01', due_to: '2020-01-02' }));
+    check('list_meeting_tasks: offset pages (limit 2, offset 2)', (await mit({ limit: 2, offset: 2 })) === 'cx-mt-4,cx-mt-2', await mit({ limit: 2, offset: 2 }));
+    check('list_meeting_tasks: an unknown bucket is refused', isErr(await call(A, 'list_meeting_tasks', { bucket: 'someday' }), /bucket/), '');
+
+    // ---- list_tasks: archives, deadline range, deadline history
+    const mk = async (title, deadline) => (await call(A, 'create_task', { title, deadline })).id;
+    const dlA = await mk('CX Dl A', '2031-03-01');
+    const dlB = await mk('CX Dl B', '2031-03-15');
+    const archId = await mk('CX Arch task', '2031-04-01');
+    const doneId = await mk('CX Done task', '2031-05-01');
+    const tk = async (args) => ids(await call(A, 'list_tasks', { limit: 100, ...args }));
+    check('list_tasks: deadline_from is an inclusive lower bound', (await tk({ search: 'CX Dl', deadline_from: '2031-03-10' })) === dlB, await tk({ search: 'CX Dl', deadline_from: '2031-03-10' }));
+    check('list_tasks: deadline_to is an inclusive upper bound', (await tk({ search: 'CX Dl', deadline_to: '2031-03-01' })) === dlA, await tk({ search: 'CX Dl', deadline_to: '2031-03-01' }));
+    check('list_tasks: a malformed deadline_from is refused', isErr(await call(A, 'list_tasks', { deadline_from: 'next week' }), /YYYY-MM-DD/), '');
+    sql(`UPDATE tasks SET original_deadline = '2031-02-01', deadline_moves = 2 WHERE id = ${sq(dlA)}`);
+    const rowA = (await call(A, 'list_tasks', { search: 'CX Dl A' }))[0];
+    check('list_tasks: rows carry original_deadline and deadline_moves', rowA && rowA.original_deadline === '2031-02-01' && rowA.deadline_moves === 2, JSON.stringify(rowA));
+    const gt = await call(A, 'get_task', { id: dlA });
+    check('get_task: original_deadline and deadline_moves, ISO created_at/updated_at', gt.original_deadline === '2031-02-01' && Number(gt.deadline_moves) === 2 && isoRe.test(gt.created_at) && isoRe.test(gt.updated_at), JSON.stringify(gt).slice(0, 300));
+    age('tasks', archId, T20);
+    sql(`UPDATE tasks SET archived = 1 WHERE id = ${sq(archId)}`);
+    check('list_tasks: an archived task is left out by default', !(await tk({ search: 'CX Arch' })).includes(archId), '');
+    const arch = (await call(A, 'list_tasks', { search: 'CX Arch', include_archived: true }))[0];
+    check('list_tasks: include_archived lists it, flagged archived', arch && arch.id === archId && arch.archived === true, JSON.stringify(arch));
+    check('list_tasks: archiving moves updated_at, so include_archived + updated_from shows it as a change', (await tk({ search: 'CX Arch', include_archived: true, updated_from: '2021-01-01' })) === archId, await tk({ search: 'CX Arch', include_archived: true, updated_from: '2021-01-01' }));
+    check('list_tasks: rows not archived say archived=false', (await call(A, 'list_tasks', { search: 'CX Dl A' }))[0]?.archived === false, '');
+    await call(A, 'complete_task', { id: doneId });
+    const done = (await call(A, 'list_tasks', { search: 'CX Done', bucket: 'done' }))[0];
+    check('list_tasks: completed_at_iso is the local completion time with the offset', done && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(done.completed_at) && Math.abs(Date.parse(done.completed_at_iso) - Date.now()) < 300000, JSON.stringify(done));
+  } finally {
+    sql(`DELETE FROM task_assignees WHERE task_id IN (SELECT id FROM tasks WHERE title LIKE 'CX %');
+         DELETE FROM tasks WHERE title LIKE 'CX %';
+         DELETE FROM meeting_notes WHERE id LIKE 'cx-mtg-%';
+         DELETE FROM timeline_events WHERE id LIKE 'cx-%' OR lead_id LIKE 'cx-%' OR lead_id LIKE 'client-cx-%';
+         DELETE FROM leads WHERE id LIKE 'cx-lead-%' OR id LIKE 'client-cx-%';
+         DELETE FROM mcp_keys WHERE id IN ('pk-cxl', 'pk-cxc');
+         DELETE FROM users WHERE id IN ('probe-cxl', 'probe-cxc');
+         REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${sq(rolesBefore)});`);
+  }
+}
+
+// ---- (separator: keep these stubs apart so git merges them cleanly) ----
+
+async function changeMoneyChecks() {
+  section('change visibility: projects, invoices, expenses, ledger, forecast');
+  const A = TOKENS.admin;
+  const today = (await call(A, 'get_financial_overview', { year: 2026 })).as_of;   // the app's date, not this machine's
+  const shift = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const [yesterday, in3, in5, in10, in14, in20] = [-1, 3, 5, 10, 14, 20].map((n) => shift(today, n));
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+  const list = (r) => (Array.isArray(r) ? r : []);
+  const ids = (rs) => list(rs).map((r) => r.id).join();
+  const sortedIds = (rs) => list(rs).map((r) => r.id).sort().join();
+  // 1590998400 = 2020-06-01 10:00 Europe/Bratislava, whatever the MySQL zone (as in the task checks).
+  const age = (table, where) => sql(`UPDATE ${table} SET updated_at = FROM_UNIXTIME(1590998400) WHERE ${where}`);
+  const unix = (iso) => Date.parse(iso) / 1000;
+
+  // ---- projects: deadline buckets and ranges, window, paging
+  sql(`SET FOREIGN_KEY_CHECKS=0;
+       DELETE FROM projects WHERE id LIKE 'cm-p%' OR id LIKE 'cm-bulk%';
+       INSERT INTO projects (id,project_type_id,name,status,value,completion_deadline,invoice_date) VALUES
+         ('cm-p1','pt-parity','cmprobe overdue','active',1000,'${yesterday}','${in3}'),
+         ('cm-p2','pt-parity','cmprobe done late','completed',1000,'${yesterday}',NULL),
+         ('cm-p3','pt-parity','cmprobe soon','active',1000,'${in10}',NULL),
+         ('cm-p4','pt-parity','cmprobe undated','active',1000,NULL,NULL);
+       INSERT INTO projects (id,project_type_id,name,status) VALUES ${Array.from({ length: 120 }, (_, i) => `('cm-bulk${i}','pt-parity','cmbulk probe','active')`).join(',')};
+       SET FOREIGN_KEY_CHECKS=1;`);
+  const lp = (a) => call(A, 'list_projects', { search: 'cmprobe', ...a });
+  let r = await lp({});
+  const p1 = list(r).find((p) => p.id === 'cm-p1');
+  check('list_projects returns created_at and updated_at as ISO moments with an offset', p1 && isoRe.test(p1.created_at) && isoRe.test(p1.updated_at), JSON.stringify(p1));
+  check('list_projects: updated_at is the moment the database holds', p1 && unix(p1.updated_at) === Number(cell(`SELECT FLOOR(UNIX_TIMESTAMP(updated_at)) FROM projects WHERE id = 'cm-p1'`)), p1?.updated_at);
+  check('list_projects rows carry the status group', p1?.status_group === 'in_progress' && list(r).find((p) => p.id === 'cm-p2')?.status_group === 'completed', JSON.stringify(list(r).map((p) => p.status_group)));
+  check('list_projects bucket=overdue: open and past the deadline (a completed late project is not)', sortedIds(await lp({ bucket: 'overdue' })) === 'cm-p1', JSON.stringify(await lp({ bucket: 'overdue' })).slice(0, 300));
+  check('list_projects bucket=done: the completed project', sortedIds(await lp({ bucket: 'done' })) === 'cm-p2', '');
+  check('list_projects bucket=upcoming: a deadline later than tomorrow', sortedIds(await lp({ bucket: 'upcoming' })) === 'cm-p3', '');
+  check('list_projects bucket=today: nothing due today', Array.isArray(await lp({ bucket: 'today' })) && sortedIds(await lp({ bucket: 'today' })) === '', '');
+  check('list_projects deadline_from/deadline_to is an inclusive range (today .. +14 days)', sortedIds(await lp({ deadline_from: today, deadline_to: in14 })) === 'cm-p3', '');
+  check('list_projects deadline_to alone: everything due up to yesterday', sortedIds(await lp({ deadline_to: yesterday })) === 'cm-p1,cm-p2', '');
+  check('list_projects invoice_date_from/invoice_date_to', sortedIds(await lp({ invoice_date_from: today, invoice_date_to: in3 })) === 'cm-p1', '');
+  check('list_projects sort_by=deadline: soonest first, undated last', ids(await lp({ sort_by: 'deadline' })) === 'cm-p1,cm-p2,cm-p3,cm-p4', ids(await lp({ sort_by: 'deadline' })));
+  check('list_projects sort_by=deadline sort_order=desc keeps undated last', ids(await lp({ sort_by: 'deadline', sort_order: 'desc' })) === 'cm-p3,cm-p1,cm-p2,cm-p4', ids(await lp({ sort_by: 'deadline', sort_order: 'desc' })));
+  check('list_projects refuses a malformed deadline_from and an unknown bucket', isErr(await lp({ deadline_from: 'soon' }), /YYYY-MM-DD/) && isErr(await lp({ bucket: 'late' }), /bucket/), '');
+  age('projects', `id = 'cm-p1'`);
+  check('list_projects updated_from leaves out a project last changed before it', !ids(await lp({ updated_from: '2021-01-01' })).includes('cm-p1') && ids(await lp({ updated_from: '2021-01-01' })).includes('cm-p3'), '');
+  check('list_projects updated_from takes a time of day', ids(await lp({ updated_from: '2020-06-01 09:59' })).includes('cm-p1') && !ids(await lp({ updated_from: '2020-06-01 10:01' })).includes('cm-p1'), '');
+  check('list_projects sort_by=updated_at lists the oldest change last', list(await lp({ sort_by: 'updated_at' })).at(-1)?.id === 'cm-p1', ids(await lp({ sort_by: 'updated_at' })));
+  const page1 = await lp({ limit: 2, sort_by: 'deadline' });
+  const page2 = await lp({ limit: 2, offset: 2, sort_by: 'deadline' });
+  check('list_projects offset pages without overlap or gaps', ids(page1) === 'cm-p1,cm-p2' && ids(page2) === 'cm-p3,cm-p4', `${ids(page1)} | ${ids(page2)}`);
+  const bulk = (a) => call(A, 'list_projects', { search: 'cmbulk', limit: 100, ...a });
+  const bulkA = await bulk({});
+  const bulkB = await bulk({ offset: 100 });
+  check('list_projects: 120 projects, offset 100 returns the last 20 (no silent cap at 100)', list(bulkA).length === 100 && list(bulkB).length === 20 && new Set([...list(bulkA), ...list(bulkB)].map((p) => p.id)).size === 120, `${list(bulkA).length} / ${list(bulkB).length}`);
+  const gp = await call(A, 'get_project', { id: 'cm-p1' });
+  check('get_project returns created_at and updated_at as ISO moments (the stored moment, any MySQL zone)', isoRe.test(gp.created_at) && isoRe.test(gp.updated_at) && unix(gp.updated_at) === 1590998400, `${gp.created_at} ${gp.updated_at}`);
+
+  // ---- milestones: across projects, deadline range, bucket, paging
+  sql(`CREATE TABLE IF NOT EXISTS proj_gantt_ptparity (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50) NOT NULL, title VARCHAR(255) NOT NULL, contact_id VARCHAR(50) NULL, start_date DATE NULL, end_date DATE NULL, progress INT NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+       DELETE FROM proj_gantt_ptparity WHERE id LIKE 'cmg%';
+       INSERT INTO proj_gantt_ptparity (id,project_id,title,start_date,end_date,progress) VALUES
+         ('cmg1','cm-p1','CM Gantt late','${shift(today, -30)}','${yesterday}',40),
+         ('cmg2','cm-p1','CM Gantt done','${shift(today, -30)}','${yesterday}',100),
+         ('cmg3','cm-p3','CM Gantt later','${today}','${in10}',0);`);
+  const ms = await call(A, 'create_milestone', { project_id: 'cm-p1', title: 'CM milestone task', deadline: yesterday });
+  const lmAll = async (a, token = A) => (await call(token, 'list_milestones', a)).milestones || [];
+  check('list_milestones with project_id and bucket=overdue: open milestones past their deadline', sortedIds(await lmAll({ project_id: 'cm-p1', bucket: 'overdue' })) === ['cmg1', ms.id].sort().join(), JSON.stringify(await lmAll({ project_id: 'cm-p1', bucket: 'overdue' })).slice(0, 300));
+  // The dev data may hold other milestones: narrow ranges keep ours on the first page.
+  let all = await lmAll({ deadline_from: yesterday, deadline_to: in10, limit: 100 });
+  check('list_milestones without project_id lists milestones of every project, each with its project', ['cmg1', 'cmg2', 'cmg3', ms.id].every((id) => all.some((m) => m.id === id)) && all.every((m) => m.project_id && 'project_name' in m), JSON.stringify(all.slice(0, 2)));
+  all = await lmAll({ bucket: 'overdue', deadline_from: yesterday, deadline_to: in10, limit: 100 });
+  check('list_milestones across projects: bucket=overdue has the open late ones, not the finished or future ones', all.some((m) => m.id === 'cmg1') && all.some((m) => m.id === ms.id) && !all.some((m) => m.id === 'cmg2' || m.id === 'cmg3'), ids(all));
+  all = await lmAll({ deadline_from: today, deadline_to: in20, limit: 100 });
+  check('list_milestones across projects: deadline_from/deadline_to', all.some((m) => m.id === 'cmg3') && !all.some((m) => m.id === 'cmg1'), ids(all));
+  check('list_milestones across projects: open_only leaves out the finished Gantt row', (await lmAll({ open_only: true, deadline_from: yesterday, deadline_to: yesterday, limit: 100 })).some((m) => m.id === 'cmg1') && !(await lmAll({ open_only: true, deadline_from: yesterday, deadline_to: yesterday, limit: 100 })).some((m) => m.id === 'cmg2'), '');
+  const mp1 = await call(A, 'list_milestones', { limit: 1 });
+  const mp2 = await call(A, 'list_milestones', { limit: 1, offset: 1 });
+  check('list_milestones pages with limit + offset and says whether a next page exists', mp1.milestones?.length === 1 && mp2.milestones?.length === 1 && mp1.milestones[0].id !== mp2.milestones[0].id && mp1.has_more === true, JSON.stringify([mp1.has_more, mp1.milestones?.map((m) => m.id), mp2.milestones?.map((m) => m.id)]));
+  const msRow = (await lmAll({ project_id: 'cm-p1' })).find((m) => m.id === ms.id);
+  check('list_milestones: a milestone task carries created_at and updated_at as ISO moments', msRow && isoRe.test(msRow.created_at) && isoRe.test(msRow.updated_at), JSON.stringify(msRow));
+  check('list_milestones across projects: milestone tasks follow task visibility', (await lmAll({ deadline_from: yesterday, deadline_to: yesterday, limit: 100 }, TOKENS.editor)).some((m) => m.id === 'cmg1') && !(await lmAll({ deadline_from: yesterday, deadline_to: yesterday, limit: 100 }, TOKENS.editor)).some((m) => m.source === 'task' && m.id === ms.id), '');
+  sql(`UPDATE projects SET archived = 1 WHERE id = 'cm-p3'`);
+  check('list_milestones across projects leaves out archived projects unless asked', !(await lmAll({ deadline_from: in10, deadline_to: in10, limit: 100 })).some((m) => m.id === 'cmg3') && (await lmAll({ deadline_from: in10, deadline_to: in10, limit: 100, include_archived: true })).some((m) => m.id === 'cmg3'), '');
+
+  // ---- invoices: payment state, derived overdue, due/issue ranges, last_activity_at
+  const inv = (n, o) => `('cm-inv${n}','CMP-${n}','${o.type || 'invoice'}','cm-lead','cm-client','CMProbe Client','Inv ${n}','Inv ${n}',${o.total / 1.2},${o.total - o.total / 1.2},${o.total},'${o.status || 'sent'}',${o.changed ? `'${o.changed}'` : 'NULL'},'${o.issued}',${o.due ? `'${o.due}'` : 'NULL'})`;
+  const fr = (n, status, planned, real, paidDate, due) => `('fr-inv-cm-inv${n}','income','invoice','Inv ${n}',${planned},${real},'EUR','${status}','${today}',${due ? `'${due}'` : 'NULL'},${paidDate ? `'${paidDate}'` : 'NULL'},'CMP-${n}')`;
+  sql(`SET FOREIGN_KEY_CHECKS=0;
+       DELETE FROM invoices_offers WHERE id LIKE 'cm-inv%'; DELETE FROM financial_records WHERE id LIKE 'fr-inv-cm-inv%';
+       INSERT INTO invoices_offers (id,document_number,type,lead_id,client_id,client_name,title,subject,subtotal,vat_amount,total_price,status,status_changed_at,issued_at,due_date) VALUES
+         ${inv(1, { total: 120, issued: shift(today, -5), due: yesterday, changed: '2026-11-01' })},
+         ${inv(2, { total: 240, issued: shift(today, -2), due: in10 })},
+         ${inv(3, { total: 360, issued: shift(today, -1), due: in10 })},
+         ${inv(4, { type: 'price_offer', total: 600, issued: shift(today, -20) })},
+         ${inv(5, { total: 600, issued: shift(today, -3), due: yesterday })};
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,due_date,paid_date,invoice_number) VALUES
+         ${fr(1, 'pending', 120, 0, null, yesterday)}, ${fr(2, 'paid', 240, 240, yesterday, in10)}, ${fr(3, 'pending', 360, 0, null, in10)};
+       SET FOREIGN_KEY_CHECKS=1;`);
+  const li = (a) => call(A, 'list_invoices', { search: 'CMProbe', ...a });
+  const pay = (rs) => list(rs).map((i) => `${i.id.replace('cm-inv', '')}:${i.payment_status}`).sort().join();
+  r = await li({});
+  check('list_invoices returns the payment state (paid, derived overdue, no ledger row, offers have none)', pay(r) === '1:overdue,2:paid,3:unpaid,4:null,5:overdue', pay(r));
+  const i2 = list(r).find((i) => i.id === 'cm-inv2');
+  const i1 = list(r).find((i) => i.id === 'cm-inv1');
+  check('list_invoices: paid, open and paid_date come from the ledger movement', i2?.paid === 240 && i2?.open === 0 && i2?.paid_date === yesterday && i1?.paid === 0 && i1?.open === 120, JSON.stringify([i1, i2]).slice(0, 400));
+  check('list_invoices keeps its columns and adds status_changed_at and ISO moments', i1?.status === 'sent' && i1?.issued_at === shift(today, -5) && i1?.total_price !== undefined && i1?.status_changed_at === '2026-11-01' && isoRe.test(i1?.created_at) && isoRe.test(i1?.updated_at) && isoRe.test(i1?.last_activity_at), JSON.stringify(i1));
+  r = await li({ payment_status: 'overdue' });
+  check('list_invoices payment_status=overdue: past due and unpaid, with or without a ledger row', sortedIds(r) === 'cm-inv1,cm-inv5' && list(r).every((i) => i.payment_status === 'overdue'), sortedIds(r));
+  check('list_invoices payment_status=overdue answers "how much is open" across clients (120 + 600)', list(r).reduce((s, i) => s + i.open, 0) === 720, JSON.stringify(list(r).map((i) => i.open)));
+  check('list_invoices payment_status=paid / unpaid', sortedIds(await li({ payment_status: 'paid' })) === 'cm-inv2' && sortedIds(await li({ payment_status: 'unpaid' })) === 'cm-inv3', '');
+  const overdueAll = await call(A, 'list_invoices', { payment_status: 'overdue', limit: 100 });
+  check('list_invoices payment_status=overdue across all clients includes both', ['cm-inv1', 'cm-inv5'].every((id) => list(overdueAll).some((i) => i.id === id)) && list(overdueAll).every((i) => i.payment_status === 'overdue'), ids(overdueAll).slice(0, 200));
+  check('list_invoices offset pages the derived payment_status filter', ids(await li({ payment_status: 'overdue', limit: 1 })) === 'cm-inv5' && ids(await li({ payment_status: 'overdue', limit: 1, offset: 1 })) === 'cm-inv1', '');
+  check('list_invoices due_from/due_to', sortedIds(await li({ due_to: yesterday })) === 'cm-inv1,cm-inv5' && sortedIds(await li({ due_from: today, due_to: in14 })) === 'cm-inv2,cm-inv3', '');
+  check('list_invoices issued_from/issued_to', sortedIds(await li({ issued_from: shift(today, -4), issued_to: shift(today, -3) })) === 'cm-inv5', '');
+  check('list_invoices refuses a malformed date, activity_from and an unknown payment_status', isErr(await li({ due_from: 'x' }), /YYYY-MM-DD/) && isErr(await li({ activity_from: 'x' }), /YYYY-MM-DD/) && isErr(await li({ payment_status: 'late' }), /payment_status/), '');
+  // A payment moves the movement's updated_at, not the invoice's: it shows in last_activity_at.
+  age('invoices_offers', `id IN ('cm-inv1','cm-inv3')`);
+  age('financial_records', `id IN ('fr-inv-cm-inv1','fr-inv-cm-inv3')`);
+  sql(`UPDATE financial_records SET status = 'paid', amount_real = 360, paid_date = '${yesterday}' WHERE id = 'fr-inv-cm-inv3'`);
+  r = await li({});
+  const i3 = list(r).find((i) => i.id === 'cm-inv3');
+  check('a payment moves last_activity_at but not the invoice updated_at, and the invoice is now paid', i3?.payment_status === 'paid' && unix(i3.updated_at) === 1590998400 && unix(i3.last_activity_at) > unix('2026-01-01T00:00:00Z'), JSON.stringify(i3));
+  check('an untouched invoice has last_activity_at = updated_at', unix(list(r).find((i) => i.id === 'cm-inv1').last_activity_at) === 1590998400, '');
+  check('list_invoices updated_from does not see the payment', !ids(await li({ updated_from: '2021-01-01' })).includes('cm-inv3') && !ids(await li({ updated_from: '2021-01-01' })).includes('cm-inv1'), ids(await li({ updated_from: '2021-01-01' })));
+  check('list_invoices activity_from sees the payment, not the untouched invoice', ids(await li({ activity_from: '2021-01-01' })).includes('cm-inv3') && !ids(await li({ activity_from: '2021-01-01' })).includes('cm-inv1'), ids(await li({ activity_from: '2021-01-01' })));
+  check('list_invoices activity_to is exclusive with a time', Array.isArray(await li({ activity_to: '2020-06-01 10:00' })) && ids(await li({ activity_to: '2020-06-01 10:00' })) === '' && ids(await li({ activity_to: '2020-06-01' })) === 'cm-inv1', ids(await li({ activity_to: '2020-06-01' })));
+  check('list_invoices sort_by=last_activity_at puts the untouched invoice last', list(await li({ sort_by: 'last_activity_at' })).at(-1)?.id === 'cm-inv1', ids(await li({ sort_by: 'last_activity_at' })));
+  check('list_invoices: a non-admin key with invoices access sees the paid amounts too', list(await call(TOKENS.editor, 'list_invoices', { search: 'CMProbe' })).find((i) => i.id === 'cm-inv2')?.paid === 240, JSON.stringify(await call(TOKENS.editor, 'list_invoices', { search: 'CMProbe' })).slice(0, 200));
+  const gi = await call(A, 'get_invoice', { id: 'cm-inv3' });
+  check('get_invoice: payment state, ISO moments, last_activity_at, items', gi.payment_status === 'paid' && gi.paid === 360 && gi.open === 0 && gi.paid_date === yesterday && unix(gi.updated_at) === 1590998400 && isoRe.test(gi.created_at) && unix(gi.last_activity_at) > 1590998400 && Array.isArray(gi.items), JSON.stringify(gi).slice(0, 400));
+  check('get_invoice: derived overdue and status_changed_at', (await call(A, 'get_invoice', { id: 'cm-inv1' })).payment_status === 'overdue' && (await call(A, 'get_invoice', { id: 'cm-inv1' })).status_changed_at === '2026-11-01', '');
+  check('get_client_invoices says whether it was truncated', (await call(A, 'get_client_invoices', { identifier: 'Villatesta' })).truncated === false, '');
+
+  // ---- expenses
+  const ex = (n, issue, due, status = 'pending') => `('cm-ex${n}','expense','expense','CMProbe expense ${n}',${n * 10},0,'EUR','${status}','${issue}',${due ? `'${due}'` : 'NULL'})`;
+  sql(`DELETE FROM financial_records WHERE id LIKE 'cm-ex%';
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,due_date) VALUES
+         ${ex(1, shift(today, -10), shift(today, -5))}, ${ex(2, shift(today, -2), in5)}, ${ex(3, shift(today, -2), null)};`);
+  const le = (a) => call(A, 'list_expenses', { search: 'CMProbe expense', ...a });
+  r = await le({});
+  check('list_expenses returns created_at and updated_at as ISO moments', list(r).length === 3 && list(r).every((e) => isoRe.test(e.created_at) && isoRe.test(e.updated_at)), JSON.stringify(list(r)[0]));
+  check('list_expenses start_date/end_date still filter the issue date', sortedIds(await le({ start_date: shift(today, -3) })) === 'cm-ex2,cm-ex3' && sortedIds(await le({ end_date: shift(today, -5) })) === 'cm-ex1', '');
+  check('list_expenses validates its dates', isErr(await le({ start_date: 'last week' }), /YYYY-MM-DD/) && isErr(await le({ end_date: '2026-13-45' }), /YYYY-MM-DD/), '');
+  check('list_expenses due_from/due_to', sortedIds(await le({ due_to: shift(today, -1) })) === 'cm-ex1' && sortedIds(await le({ due_from: today })) === 'cm-ex2', '');
+  age('financial_records', `id = 'cm-ex1'`);
+  check('list_expenses updated_from leaves out an expense last changed before it', !ids(await le({ updated_from: '2021-01-01' })).includes('cm-ex1') && ids(await le({ updated_from: '2021-01-01' })).includes('cm-ex2'), '');
+  check('list_expenses offset pages (ties broken by id)', ids(await le({ limit: 1, offset: 0 })) !== ids(await le({ limit: 1, offset: 1 })) && list(await le({ limit: 2, offset: 2 })).length === 1, '');
+
+  // ---- ledger movements: derived overdue, due / paid / issue ranges, updated_at
+  const mv = (n, type, status, planned, real, issue, due, paid) => `('cm-mv${n}','${type}','invoice','CMProbe mv ${n}',${planned},${real},'EUR','${status}','${issue}',${due ? `'${due}'` : 'NULL'},${paid ? `'${paid}'` : 'NULL'})`;
+  const d9 = shift(today, -9), d3 = shift(today, -3);
+  sql(`DELETE FROM financial_records WHERE id LIKE 'cm-mv%' OR id = 'cm-rec1';
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,due_date,paid_date) VALUES
+         ${mv(1, 'income', 'pending', 100, 0, shift(today, -10), d3)},
+         ${mv(2, 'expense', 'overdue', 40, 0, d9, in10)},
+         ${mv(3, 'income', 'pending', 30, 0, d9, in5)},
+         ${mv(4, 'income', 'paid', 60, 60, d9, shift(today, -8), yesterday)},
+         ${mv(5, 'income', 'planned', 25, 0, d9, d3)},
+         ${mv(6, 'income', 'partially_paid', 100, 100, d9, d3)},
+         ${mv(7, 'income', 'partially_paid', 200, 50, d9, shift(today, -2))},
+         ${mv(8, 'income', 'pending', 11, 0, d9, today)};
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,is_recurring,recurring_frequency,recurring_config_json,recurring_start_date,recurring_amount_history_json) VALUES
+         ('cm-rec1','expense','overhead','CMProbe rule',20,0,'EUR','planned','2026-01-01',1,'monthly',${sq(JSON.stringify({ monthlyType: 'day_of_month', dayOfMonth: 1 }))},'2026-01-01',${sq(JSON.stringify([{ until: '2026-03-31', amountPlanned: 10, amountReal: 10 }]))});`);
+  const lm = (a) => call(A, 'list_financial_movements', { search: 'CMProbe mv', ...a });
+  r = await lm({});
+  check('list_financial_movements returns updated_at and created_at as ISO moments', list(r).length === 8 && list(r).every((m) => isoRe.test(m.updated_at) && isoRe.test(m.created_at)), JSON.stringify(list(r)[0]));
+  check('list_financial_movements rows carry the derived payment_status', list(r).map((m) => `${m.id.replace('cm-mv', '')}:${m.payment_status}`).sort().join() === '1:overdue,2:overdue,3:unpaid,4:paid,5:planned,6:paid,7:overdue,8:unpaid', list(r).map((m) => `${m.id}:${m.payment_status}`).join());
+  r = await lm({ status: 'overdue' });
+  check('list_financial_movements status=overdue is derived: unpaid and past due, or flagged (not planned, not covered by payments)', sortedIds(r) === 'cm-mv1,cm-mv2,cm-mv7', sortedIds(r));
+  check('list_financial_movements status=overdue agrees with the row payment_status', list(r).every((m) => m.payment_status === 'overdue'), '');
+  check('list_financial_movements paid_from/paid_to: what was paid yesterday', sortedIds(await lm({ paid_from: yesterday, paid_to: yesterday })) === 'cm-mv4', '');
+  check('list_financial_movements due_from/due_to', sortedIds(await lm({ due_from: d3, due_to: d3 })) === 'cm-mv1,cm-mv5,cm-mv6', '');
+  check('list_financial_movements issue_from/issue_to', sortedIds(await lm({ issue_from: shift(today, -10), issue_to: shift(today, -10) })) === 'cm-mv1', '');
+  check('list_financial_movements keeps from/to on the filed date', sortedIds(await lm({ from: yesterday, to: yesterday })) === 'cm-mv4', '');
+  check('list_financial_movements refuses a malformed paid_from', isErr(await lm({ paid_from: 'yesterday' }), /YYYY-MM-DD/), '');
+  age('financial_records', `id = 'cm-mv1'`);
+  check('list_financial_movements updated_from leaves out a movement last changed before it', !ids(await lm({ updated_from: '2021-01-01' })).includes('cm-mv1') && ids(await lm({ updated_from: '2021-01-01' })).includes('cm-mv2'), '');
+  check('list_financial_movements offset pages', list(await lm({ limit: 3 })).length === 3 && list(await lm({ limit: 3, offset: 6 })).length === 2, '');
+  const rec = list(await call(A, 'list_recurring_movements', {})).find((x) => x.id === 'cm-rec1');
+  check('list_recurring_movements returns the amount history', rec?.amount_history?.length === 1 && rec.amount_history[0].until === '2026-03-31' && rec.amount_history[0].amountPlanned === 10, JSON.stringify(rec));
+
+  // ---- forecast: overdue block
+  const fc = await call(A, 'get_cash_flow_forecast', { months: 3, include_items: true });
+  const od = fc.overdue || {};
+  const odItem = (id) => (od.items || []).find((i) => i.record_id === id);
+  check('get_cash_flow_forecast keeps as_of and has an overdue block with totals and items', fc.as_of === today && Array.isArray(od.items) && od.truncated === false && od.totals && od.count === od.items.length, JSON.stringify(od).slice(0, 300));
+  check('forecast overdue: unpaid issued movements dated before today, at the amount still open', odItem('cm-mv1')?.amount === 100 && odItem('cm-mv1')?.days_overdue === 3 && odItem('cm-mv7')?.amount === 150, JSON.stringify([odItem('cm-mv1'), odItem('cm-mv7')]));
+  check('forecast overdue leaves out planned, paid, future and due-today movements', ['cm-mv3', 'cm-mv4', 'cm-mv5', 'cm-mv6', 'cm-mv8', 'cm-mv2'].every((id) => !odItem(id)), JSON.stringify((od.items || []).map((i) => i.record_id)));
+  check('forecast overdue: planned movements already past are counted apart, due-today money too', od.planned_past?.count >= 1 && od.due_today?.count >= 1 && od.due_today.income >= 11, JSON.stringify([od.planned_past, od.due_today]));
+  check('forecast overdue: totals net = income - expense', Math.abs(od.totals.net - (od.totals.income - od.totals.expense)) < 0.011 && od.totals.income >= 250, JSON.stringify(od.totals));
+  check('forecast months still hold the future movements and not the overdue ones', (fc.items || []).some((i) => i.record_id === 'cm-mv3') && !(fc.items || []).some((i) => ['cm-mv1', 'cm-mv7', 'cm-mv5'].includes(i.record_id)), '');
+
+  // ---- project billing summary paging; financial mode / simplified table moments
+  const b1 = await call(A, 'get_project_billing_summary', { limit: 2 });
+  const b2 = await call(A, 'get_project_billing_summary', { limit: 2, offset: 2 });
+  const bIds = (b) => (b.projects || []).map((p) => p.project_id);
+  check('get_project_billing_summary: offset pages and truncated says a next page exists', bIds(b1).length === 2 && bIds(b2).length === 2 && bIds(b1).every((id) => !bIds(b2).includes(id)) && b1.truncated === true, JSON.stringify([bIds(b1), bIds(b2), b1.truncated]));
+  const setMoment = (key) => Number(cell(`SELECT FLOOR(UNIX_TIMESTAMP(updated_at)) FROM system_settings WHERE \`key\` = '${key}'`));
+  const mode = await call(A, 'get_financial_mode', {});
+  check('get_financial_mode returns updated_at as the stored moment', isoRe.test(mode.updated_at) && unix(mode.updated_at) === setMoment('FINANCIAL_MODE'), JSON.stringify(mode));
+  const simp = await call(A, 'get_financial_simplified_table', {});
+  check('get_financial_simplified_table returns updated_at as the stored moment', isoRe.test(simp.updated_at) && unix(simp.updated_at) === setMoment('FINANCIAL_SIMPLIFIED_TABLE'), JSON.stringify(simp.updated_at));
+
+  // ---- clean up (the scratch database is dropped at the end, but later sections should not see these rows)
+  sql(`SET FOREIGN_KEY_CHECKS=0;
+       DELETE FROM tasks WHERE related_project_id LIKE 'cm-p%';
+       DELETE FROM proj_gantt_ptparity WHERE id LIKE 'cmg%';
+       DELETE FROM projects WHERE id LIKE 'cm-p%' OR id LIKE 'cm-bulk%';
+       DELETE FROM invoices_offers WHERE id LIKE 'cm-inv%';
+       DELETE FROM financial_records WHERE id LIKE 'fr-inv-cm-inv%' OR id LIKE 'cm-ex%' OR id LIKE 'cm-mv%' OR id = 'cm-rec1';
+       SET FOREIGN_KEY_CHECKS=1;`);
+}
+
+// ---- (separator: keep these stubs apart so git merges them cleanly) ----
+
+async function changePeopleChecks() {
+  section('change visibility: employees, salaries, vacations, stock, workflows, registries');
+  const A = TOKENS.admin;
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+  // 1590998400 = 2020-06-01 10:00 in Europe/Bratislava (CEST), independent of the MySQL session zone.
+  const AGED = 1590998400;
+  const age = (table, id) => sql(`UPDATE ${table} SET updated_at = FROM_UNIXTIME(${AGED}) WHERE id = ${sq(id)}`);
+  const unix = (iso) => Date.parse(iso) / 1000;
+  const ids = (r) => (Array.isArray(r) ? r.map((x) => x.id).join() : JSON.stringify(r).slice(0, 200));
+  const shift = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+  // "Today" as the app sees it (PHP zone), not this machine's.
+  const today = (await call(A, 'get_vacation_balance', { employee_id: 'pe-2' })).on_date;
+  check('get_vacation_balance names the day it answers for', /^\d{4}-\d{2}-\d{2}$/.test(today || ''), String(today));
+
+  // ---- employees: ISO moments, updated_from, offset
+  age('employees', 'pe-2');
+  sql(`UPDATE employees SET position = position WHERE id = 'pe-1'`);
+  const emp1 = (await call(A, 'list_employees', { search: 'Probe' })).find?.((e) => e.id === 'pe-1');
+  const empDbUnix = Number(cell(`SELECT FLOOR(UNIX_TIMESTAMP(updated_at)) FROM employees WHERE id = 'pe-1'`));
+  check('list_employees returns created_at and updated_at as ISO moments with an offset', emp1 && isoRe.test(emp1.created_at) && isoRe.test(emp1.updated_at), JSON.stringify(emp1)?.slice(0, 200));
+  check('list_employees updated_at is the moment the database holds', emp1 && unix(emp1.updated_at) === empDbUnix, `${emp1?.updated_at} vs ${empDbUnix}`);
+  const empSince = async (from) => ids(await call(A, 'list_employees', { search: 'Probe', updated_from: from })).split(',');
+  check('list_employees updated_from leaves out a record last changed before it', !(await empSince('2021-01-01')).includes('pe-2') && (await empSince('2021-01-01')).includes('pe-1'), '');
+  check('list_employees updated_from takes a time of day', (await empSince('2020-06-01 09:59')).includes('pe-2') && !(await empSince('2020-06-01 10:01')).includes('pe-2'), '');
+  const empAll = await call(A, 'list_employees', { search: 'Probe' });
+  const empP1 = await call(A, 'list_employees', { search: 'Probe', limit: 1 });
+  const empP2 = await call(A, 'list_employees', { search: 'Probe', limit: 1, offset: 1 });
+  check('list_employees pages by offset in a stable order', empAll.length >= 2 && empP1.length === 1 && empP1[0].id === empAll[0].id && empP2[0]?.id === empAll[1].id, ids(empAll));
+  check('list_employees sort_by=updated_at puts the most recent first', (await call(A, 'list_employees', { search: 'Probe', sort_by: 'updated_at' }))[0]?.id !== 'pe-2', '');
+  check('list_employees refuses a malformed updated_from', isErr(await call(A, 'list_employees', { updated_from: 'yesterday' }), /YYYY-MM-DD/), '');
+  const getEmp = await call(A, 'get_employee', { id: 'pe-2' });
+  check('get_employee returns created_at and updated_at as ISO moments', isoRe.test(getEmp.created_at || '') && unix(getEmp.updated_at) === AGED, JSON.stringify(getEmp)?.slice(0, 200));
+
+  // ---- salaries: ISO incl. closed_at, change window, due / payment ranges, paging
+  sql(`DELETE FROM employee_salaries WHERE id IN ('cp-sal-1','cp-sal-2');
+       INSERT INTO employee_salaries (id,employee_id,period_type,period_key,year,period_number,items_json,total_salary,total_paid,status,due_date,payment_date,closed_at)
+       VALUES ('cp-sal-1','pe-2','monthly','2031-01',2031,1,'[]',1000,1000,'paid','2031-01-15','2031-01-14','2031-01-14 12:30:00'),
+              ('cp-sal-2','pe-2','monthly','2031-02',2031,2,'[]',1000,0,'pending','2031-02-15',NULL,NULL);`);
+  const sal = async (args) => call(A, 'list_salaries', { employee_id: 'pe-2', ...args });
+  let r = await sal({ year: 2031 });
+  check('list_salaries lists the newest period first', ids(r) === 'cp-sal-2,cp-sal-1', ids(r));
+  const s1 = r.find?.((x) => x.id === 'cp-sal-1');
+  check('list_salaries returns created_at and updated_at as ISO moments', s1 && isoRe.test(s1.created_at) && isoRe.test(s1.updated_at), JSON.stringify(s1)?.slice(0, 200));
+  check('list_salaries closed_at is an ISO moment (the app writes local wall time)', s1?.closed_at === '2031-01-14T12:30:00+01:00', String(s1?.closed_at));
+  check('list_salaries leaves closed_at null for an open month', r.find?.((x) => x.id === 'cp-sal-2')?.closed_at === null, '');
+  check('list_salaries due_from / due_to', ids(await sal({ due_from: '2031-02-01' })) === 'cp-sal-2' && ids(await sal({ due_to: '2031-01-31' })) === 'cp-sal-1' && ids(await sal({ due_from: '2031-01-15', due_to: '2031-01-15' })) === 'cp-sal-1', '');
+  check('list_salaries payment_from / payment_to', ids(await sal({ payment_from: '2031-01-01' })) === 'cp-sal-1' && ids(await sal({ payment_to: '2030-12-31', year: 2031 })) === '', '');
+  check('list_salaries refuses a reversed due range', isErr(await sal({ due_from: '2031-03-01', due_to: '2031-01-01' }), /after/), '');
+  age('employee_salaries', 'cp-sal-1');
+  check('list_salaries updated_from leaves out a record last changed before it', ids(await sal({ year: 2031, updated_from: '2021-01-01' })) === 'cp-sal-2', '');
+  check('list_salaries pages by offset', ids(await sal({ year: 2031, limit: 1 })) === 'cp-sal-2' && ids(await sal({ year: 2031, limit: 1, offset: 1 })) === 'cp-sal-1', '');
+  const getEmpSal = (await call(A, 'get_employee', { id: 'pe-2' })).salaries?.find?.((x) => x.id === 'cp-sal-1');
+  check('get_employee salaries carry ISO moments, closed_at included', getEmpSal && isoRe.test(getEmpSal.created_at) && unix(getEmpSal.updated_at) === AGED && getEmpSal.closed_at === '2031-01-14T12:30:00+01:00', JSON.stringify(getEmpSal)?.slice(0, 200));
+  check('list_salaries stays closed to a role without employees.salaries', forbidden(await call(TOKENS.editor, 'list_salaries', {})), '');
+
+  // ---- vacations: overlap range, change window, on_date, ISO
+  sql(`DELETE FROM employee_vacations WHERE id IN ('cp-vac-1','cp-vac-2');
+       INSERT INTO employee_vacations (id,employee_id,vacation_type_id,start_date,end_date,days_count,status)
+       VALUES ('cp-vac-1','pe-2','annual','2031-03-03','2031-03-07',5,'approved'), ('cp-vac-2','pe-2','annual','2031-03-20','2031-03-21',2,'approved');`);
+  const vac = async (args) => call(A, 'list_vacations', { employee_id: 'pe-2', ...args });
+  r = await vac({ year: 2031 });
+  check('list_vacations keeps the year filter and returns ISO moments', ids(r) === 'cp-vac-2,cp-vac-1' && isoRe.test(r[0].created_at) && isoRe.test(r[0].updated_at), JSON.stringify(r)?.slice(0, 200));
+  check('list_vacations from/to finds an entry that starts before the range', ids(await vac({ from: '2031-03-05', to: '2031-03-10' })) === 'cp-vac-1', '');
+  check('list_vacations from/to is inclusive at both ends', ids(await vac({ from: '2031-03-07', to: '2031-03-07' })) === 'cp-vac-1' && ids(await vac({ from: '2031-03-02', to: '2031-03-03' })) === 'cp-vac-1', '');
+  check('list_vacations from/to leaves out entries wholly outside', ids(await vac({ from: '2031-03-08', to: '2031-03-19' })) === '' && ids(await vac({ to: '2031-03-02' })) === '', '');
+  check('list_vacations a range with only "from" or only "to"', ids(await vac({ from: '2031-03-10' })) === 'cp-vac-2' && ids(await vac({ to: '2031-03-10' })) === 'cp-vac-1', '');
+  check('list_vacations refuses a reversed range and a malformed date', isErr(await vac({ from: '2031-04-01', to: '2031-03-01' }), /after/) && isErr(await vac({ from: 'next week' }), /YYYY-MM-DD/), '');
+  age('employee_vacations', 'cp-vac-1');
+  check('list_vacations updated_from leaves out an entry last changed before it', ids(await vac({ updated_from: '2021-01-01' })) === 'cp-vac-2', '');
+  check('list_vacations pages by offset', ids(await vac({ limit: 1 })) === 'cp-vac-2' && ids(await vac({ limit: 1, offset: 1 })) === 'cp-vac-1', '');
+  const onLeave = async (d) => (await call(A, 'get_vacation_balance', { on_date: d })).on_leave?.map((e) => e.id) || [];
+  check('get_vacation_balance on_date: who is on leave that day', (await onLeave('2031-03-04')).includes('pe-2') && (await onLeave('2031-03-07')).includes('pe-2') && !(await onLeave('2031-03-10')).includes('pe-2'), '');
+  const balToday = await call(A, 'get_vacation_balance', { employee_id: 'pe-2' });
+  check('get_vacation_balance keeps on_leave_today, answered for today', Array.isArray(balToday.on_leave_today) && balToday.on_date === today && JSON.stringify(balToday.on_leave) === JSON.stringify(balToday.on_leave_today), JSON.stringify(balToday).slice(0, 200));
+  const balLater = await call(A, 'get_vacation_balance', { on_date: '2031-03-04' });
+  check('get_vacation_balance on_leave_today stays about today when on_date is another day', balLater.on_date === '2031-03-04' && !balLater.on_leave_today.some((e) => e.id === 'pe-2'), JSON.stringify(balLater.on_leave_today).slice(0, 200));
+  check('get_vacation_balance refuses a malformed on_date', isErr(await call(A, 'get_vacation_balance', { on_date: 'tomorrow' }), /YYYY-MM-DD/), '');
+  const getEmpVac = (await call(A, 'get_employee', { id: 'pe-2' })).vacations?.find?.((x) => x.id === 'cp-vac-1');
+  check('get_employee vacations carry ISO moments', getEmpVac && isoRe.test(getEmpVac.created_at) && unix(getEmpVac.updated_at) === AGED, JSON.stringify(getEmpVac)?.slice(0, 200));
+
+  // ---- team members: ISO created_at
+  const team = await call(A, 'list_team_members', { search: 'Probe', limit: 1 });
+  check('list_team_members returns created_at as an ISO moment and pages', Array.isArray(team) && team.length === 1 && isoRe.test(team[0].created_at) && isoRe.test(team[0].updated_at), JSON.stringify(team).slice(0, 200));
+
+  // ---- inventory items (warehouse_items.updated_at)
+  sql(`DELETE FROM warehouse_items WHERE id = 'cp-item-2';
+       INSERT INTO warehouse_items (id,sku,name,min_stock,avg_purchase_price,default_sell_price) VALUES ('cp-item-2','CP-ITEM-2','Probe item two',1,1,2);`);
+  age('warehouse_items', 'pi-1');
+  const itemsSince = async (from) => ids(await call(A, 'list_inventory_items', { search: 'Probe item', updated_from: from })).split(',');
+  const pi1 = (await call(A, 'list_inventory_items', { search: 'Probe item' })).find?.((x) => x.id === 'pi-1');
+  check('list_inventory_items returns created_at and updated_at as ISO moments', pi1 && isoRe.test(pi1.created_at) && unix(pi1.updated_at) === AGED, JSON.stringify(pi1)?.slice(0, 200));
+  check('list_inventory_items updated_from leaves out an item last changed before it', !(await itemsSince('2021-01-01')).includes('pi-1') && (await itemsSince('2021-01-01')).includes('cp-item-2'), '');
+  sql(`UPDATE warehouse_items SET description = 'changed by the probe' WHERE id = 'pi-1'`);
+  check('editing an item moves its updated_at', (await itemsSince('2021-01-01')).includes('pi-1'), '');
+  age('warehouse_items', 'pi-1');
+  sql(`UPDATE warehouse_items SET description = 'changed by the probe' WHERE id = 'pi-1'`);
+  check('re-saving an item with the same values leaves updated_at alone', !(await itemsSince('2021-01-01')).includes('pi-1'), '');
+  sql(`UPDATE warehouse_items SET description = NULL WHERE id = 'pi-1'`);
+  age('warehouse_items', 'pi-1');
+  const itAll = await call(A, 'list_inventory_items', { search: 'Probe item' });
+  check('list_inventory_items pages by offset in name order', itAll.length >= 2 && ids(await call(A, 'list_inventory_items', { search: 'Probe item', limit: 1 })) === itAll[0].id && ids(await call(A, 'list_inventory_items', { search: 'Probe item', limit: 1, offset: 1 })) === itAll[1].id, ids(itAll));
+  const gi = await call(A, 'get_inventory_item', { id: 'pi-1' });
+  check('get_inventory_item returns created_at and updated_at as ISO moments', isoRe.test(gi.created_at || '') && unix(gi.updated_at) === AGED, JSON.stringify(gi)?.slice(0, 200));
+
+  // ---- suppliers
+  sql(`DELETE FROM suppliers WHERE id IN ('cp-sup-1','cp-sup-2');
+       INSERT INTO suppliers (id,name) VALUES ('cp-sup-1','Probe Supplier A'), ('cp-sup-2','Probe Supplier B');`);
+  age('suppliers', 'cp-sup-1');
+  const sup = async (args) => call(A, 'list_suppliers', { search: 'Probe Supplier', ...args });
+  r = await sup({});
+  check('list_suppliers returns created_at and updated_at as ISO moments', ids(r) === 'cp-sup-1,cp-sup-2' && unix(r[0].updated_at) === AGED && isoRe.test(r[1].created_at), JSON.stringify(r)?.slice(0, 200));
+  check('list_suppliers updated_from leaves out a supplier last changed before it', ids(await sup({ updated_from: '2021-01-01' })) === 'cp-sup-2', '');
+  check('list_suppliers pages by offset', ids(await sup({ limit: 1 })) === 'cp-sup-1' && ids(await sup({ limit: 1, offset: 1 })) === 'cp-sup-2', '');
+
+  // ---- stock movements: time of day on issued_at, change window
+  sql(`DELETE FROM warehouse_movements WHERE id IN ('cp-mov-1','cp-mov-2');
+       INSERT INTO warehouse_movements (id,document_number,type,status,warehouse_id,created_by,issued_at)
+       VALUES ('cp-mov-1','CP-MOV-1','inward','confirmed','pw-1','probe','2031-04-10 14:30:00'), ('cp-mov-2','CP-MOV-2','inward','confirmed','pw-1','probe','2031-04-10 09:00:00');`);
+  const mov = async (args) => call(A, 'list_stock_movements', { warehouse_id: 'pw-1', ...args });
+  r = await mov({ from: '2031-04-10', to: '2031-04-10' });
+  check('list_stock_movements whole-day from/to still covers the day, latest first', ids(r) === 'cp-mov-1,cp-mov-2', ids(r));
+  check('list_stock_movements from takes a time of day (inclusive)', ids(await mov({ from: '2031-04-10 12:00', to: '2031-04-11' })) === 'cp-mov-1' && ids(await mov({ from: '2031-04-10 09:00', to: '2031-04-10 09:01' })) === 'cp-mov-2', '');
+  check('list_stock_movements to with a time is exclusive', ids(await mov({ from: '2031-04-10', to: '2031-04-10 14:30' })) === 'cp-mov-2', '');
+  check('list_stock_movements refuses a malformed from', isErr(await mov({ from: 'yesterday' }), /YYYY-MM-DD/), '');
+  check('list_stock_movements pages by offset', ids(await mov({ from: '2031-04-10', to: '2031-04-10', limit: 1, offset: 1 })) === 'cp-mov-2', '');
+  check('list_stock_movements returns created_at and updated_at as ISO moments', isoRe.test(r[0]?.created_at || '') && isoRe.test(r[0]?.updated_at || ''), JSON.stringify(r[0])?.slice(0, 200));
+  age('warehouse_movements', 'cp-mov-2');
+  check('list_stock_movements updated_from leaves out a document last changed before it', ids(await mov({ from: '2031-04-10', to: '2031-04-10', updated_from: '2021-01-01' })) === 'cp-mov-1', '');
+  check('list_stock_movements sort_by=updated_at puts the most recently changed first', ids(await mov({ from: '2031-04-10', to: '2031-04-10', sort_by: 'updated_at' })) === 'cp-mov-1,cp-mov-2', '');
+
+  // ---- batches: expiry relative to the app's today, change window
+  const days = (iso) => Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000);
+  sql(`DELETE FROM warehouse_batches WHERE id IN ('cp-bat-1','cp-bat-2');
+       INSERT INTO warehouse_batches (id,item_id,warehouse_id,batch_number,expiration_date,initial_quantity,current_quantity)
+       VALUES ('cp-bat-1','pi-1','pw-1','CP1','2031-06-01',10,10), ('cp-bat-2','pi-1','pw-1','CP2','2031-12-01',10,10);`);
+  const bat = async (args) => call(A, 'list_batches', { item_id: 'pi-1', ...args });
+  check('list_batches expiring_within_days counts from the app\'s today (boundary included)', ids(await bat({ expiring_within_days: days('2031-06-01') })) === 'cp-bat-1' && ids(await bat({ expiring_within_days: days('2031-06-01') - 1 })) === '', '');
+  r = await bat({});
+  check('list_batches returns created_at and updated_at as ISO moments', ids(r) === 'cp-bat-1,cp-bat-2' && isoRe.test(r[0].created_at) && isoRe.test(r[0].updated_at), JSON.stringify(r)?.slice(0, 200));
+  age('warehouse_batches', 'cp-bat-1');
+  check('list_batches updated_from leaves out a batch last changed before it', ids(await bat({ updated_from: '2021-01-01' })) === 'cp-bat-2', '');
+  check('list_batches pages by offset', ids(await bat({ limit: 1 })) === 'cp-bat-1' && ids(await bat({ limit: 1, offset: 1 })) === 'cp-bat-2', '');
+
+  // ---- categories: updated_at as ISO
+  const cc = await call(A, 'list_client_categories', {});
+  check('list_client_categories returns updated_at as an ISO moment', Array.isArray(cc) && cc.every((c) => isoRe.test(c.updated_at || '')), JSON.stringify(cc?.[0]));
+  const fc = await call(A, 'list_financial_categories', {});
+  check('list_financial_categories returns updated_at as an ISO moment', Array.isArray(fc) && fc.length > 0 && fc.every((c) => isoRe.test(c.updated_at || '')), JSON.stringify(fc?.[0]));
+
+  // ---- workflows and runs
+  sql(`DELETE FROM workflow_logs WHERE workflow_id = 'cp-wf-1'; DELETE FROM workflows WHERE id = 'cp-wf-1';
+       INSERT INTO workflows (id,name,trigger_type,nodes_json,edges_json) VALUES ('cp-wf-1','Probe workflow','manual','[]','[]');
+       INSERT INTO workflow_logs (id,workflow_id,status,execution_time_ms,trigger_event,execution_log_json,created_at) VALUES
+         ('cp-wl-1','cp-wf-1','success',10,'manual','[]',FROM_UNIXTIME(${AGED})),
+         ('cp-wl-2','cp-wf-1','failed',20,'manual','[]',FROM_UNIXTIME(${AGED})),
+         ('cp-wl-3','cp-wf-1','success',5,'manual','[]',FROM_UNIXTIME(${AGED + 60}));`);
+  const wf = (await call(A, 'list_workflows', {})).find?.((w) => w.id === 'cp-wf-1');
+  check('list_workflows last_run is an ISO moment equal to the database moment', wf && isoRe.test(wf.last_run || '') && unix(wf.last_run) === AGED + 60 && wf.last_status === 'success', JSON.stringify(wf)?.slice(0, 200));
+  check('list_workflows returns the workflow\'s own updated_at (and created_at) as ISO', wf && isoRe.test(wf.updated_at || '') && isoRe.test(wf.created_at || ''), JSON.stringify(wf)?.slice(0, 200));
+  const runs = async (args) => call(A, 'get_workflow_runs', { workflow_id: 'cp-wf-1', ...args });
+  r = await runs({});
+  check('get_workflow_runs newest first with an id tiebreak, created_at as ISO', ids(r) === 'cp-wl-3,cp-wl-1,cp-wl-2' && unix(r[0].created_at) === AGED + 60, JSON.stringify(r)?.slice(0, 200));
+  check('get_workflow_runs pages by offset', ids(await runs({ limit: 1, offset: 1 })) === 'cp-wl-1' && ids(await runs({ limit: 2, offset: 2 })) === 'cp-wl-2', '');
+  check('get_workflow_runs created_from takes a time of day', ids(await runs({ created_from: '2020-06-01 10:01' })) === 'cp-wl-3', '');
+  check('get_workflow_runs refuses updated_from (runs are never edited)', isErr(await runs({ updated_from: '2021-01-01' }), /not available/), '');
+
+  // ---- custom registries: due date range / bucket, window, deterministic order
+  const t = today;
+  sql(`DELETE FROM unified_entries WHERE id IN ('cpreg','cpplain'); DROP TABLE IF EXISTS ue_cpreg; DROP TABLE IF EXISTS ue_cpplain;
+       INSERT INTO unified_entries (id,name,icon,color,modules_json) VALUES ('cpreg','Probe registry','Folder','#000000','["title","due_date"]'), ('cpplain','Probe plain registry','Folder','#000000','["title"]');
+       CREATE TABLE ue_cpreg (id VARCHAR(50) NOT NULL PRIMARY KEY, parent_id VARCHAR(50) NULL, is_folder TINYINT(1) NOT NULL DEFAULT 0,
+         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         title VARCHAR(255) NULL, due_date DATE NULL, warning_days INT NOT NULL DEFAULT 0);
+       CREATE TABLE ue_cpplain (id VARCHAR(50) NOT NULL PRIMARY KEY, parent_id VARCHAR(50) NULL, is_folder TINYINT(1) NOT NULL DEFAULT 0,
+         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, title VARCHAR(255) NULL);
+       INSERT INTO ue_cpreg (id,title,due_date) VALUES ('cp-r1','Overdue',${sq(shift(t, -3))}), ('cp-r2','Today',${sq(t)}), ('cp-r3','Tomorrow',${sq(shift(t, 1))}), ('cp-r4','Later',${sq(shift(t, 10))}), ('cp-r5','No date',NULL);
+       INSERT INTO ue_cpplain (id,title) VALUES ('cp-p1','One'), ('cp-p2','Two');`);
+  const reg = async (args) => call(A, 'get_unified_entry_rows', { registry_id: 'cpreg', ...args });
+  check('get_unified_entry_rows bucket=overdue / today / tomorrow / upcoming', ids(await reg({ bucket: 'overdue' })) === 'cp-r1' && ids(await reg({ bucket: 'today' })) === 'cp-r2' && ids(await reg({ bucket: 'tomorrow' })) === 'cp-r3' && ids(await reg({ bucket: 'upcoming' })) === 'cp-r4', '');
+  check('get_unified_entry_rows due_from / due_to is inclusive and leaves out rows without a date', ids(await reg({ due_from: t, due_to: shift(t, 1), sort_by: 'due_date' })) === 'cp-r2,cp-r3', '');
+  check('get_unified_entry_rows refuses a reversed range and bucket=done', isErr(await reg({ due_from: shift(t, 5), due_to: t }), /after/) && isErr(await reg({ bucket: 'done' }), /bucket/), '');
+  r = await reg({ sort_by: 'due_date', limit: 10 });
+  check('get_unified_entry_rows sort_by=due_date orders the dated rows', ids(r).split(',').filter((x) => x !== 'cp-r5').join() === 'cp-r1,cp-r2,cp-r3,cp-r4', ids(r));
+  check('get_unified_entry_rows has a deterministic order that pages without gaps', ids(await reg({ sort_by: 'due_date', limit: 2 })) + '|' + ids(await reg({ sort_by: 'due_date', limit: 2, offset: 2 })) + '|' + ids(await reg({ sort_by: 'due_date', limit: 2, offset: 4 })) === 'cp-r5,cp-r1|cp-r2,cp-r3|cp-r4', '');
+  check('get_unified_entry_rows returns created_at and updated_at as ISO moments', r.every((x) => isoRe.test(x.created_at || '') && isoRe.test(x.updated_at || '')), JSON.stringify(r[0])?.slice(0, 200));
+  age('ue_cpreg', 'cp-r1');
+  check('get_unified_entry_rows updated_from leaves out a row last changed before it', !ids(await reg({ updated_from: '2021-01-01' })).split(',').includes('cp-r1') && ids(await reg({ updated_from: '2021-01-01' })).split(',').includes('cp-r2'), '');
+  const plain = (args) => call(A, 'get_unified_entry_rows', { registry_id: 'cpplain', ...args });
+  check('a registry without a due date lists its rows in a deterministic order', ids(await plain({})).split(',').sort().join() === 'cp-p1,cp-p2' && ids(await plain({})) === ids(await plain({})), '');
+  check('a registry without a due date refuses due_from and bucket', isErr(await plain({ due_from: t }), /no due date/) && isErr(await plain({ bucket: 'overdue' }), /no due date/), '');
+
+  // ---- tidy up what this section made
+  sql(`DELETE FROM employee_salaries WHERE id IN ('cp-sal-1','cp-sal-2'); DELETE FROM employee_vacations WHERE id IN ('cp-vac-1','cp-vac-2');
+       DELETE FROM warehouse_batches WHERE id IN ('cp-bat-1','cp-bat-2'); DELETE FROM warehouse_movements WHERE id IN ('cp-mov-1','cp-mov-2');
+       DELETE FROM suppliers WHERE id IN ('cp-sup-1','cp-sup-2'); DELETE FROM warehouse_items WHERE id = 'cp-item-2';
+       DELETE FROM workflow_logs WHERE workflow_id = 'cp-wf-1'; DELETE FROM workflows WHERE id = 'cp-wf-1';
+       DELETE FROM unified_entries WHERE id IN ('cpreg','cpplain'); DROP TABLE IF EXISTS ue_cpreg; DROP TABLE IF EXISTS ue_cpplain;`);
+}
+
+// ---- (separator: keep these stubs apart so git merges them cleanly) ----
+
+async function changeSyncChecks() {
+  section('change visibility: child bumps, activity, deletions');
+  const A = TOKENS.admin;
+  const AGED = 1590998400;
+  const age = (table, id) => sql(`UPDATE ${table} SET updated_at = FROM_UNIXTIME(${AGED}) WHERE id = ${sq(id)}`);
+  const stampOf = (table, id) => Number(cell(`SELECT UNIX_TIMESTAMP(updated_at) FROM ${table} WHERE id = ${sq(id)}`));
+
+  // ---- create_milestone: the blocking milestone task is part of the project (the sync.php child bumps
+  // - managers, Gantt rows, line items, action items, movement lines - need a push through sync.php and
+  // are checked in scripts/probe-persistence.mjs, changeVisibilityChecks()).
+  const typeId = cell(`SELECT id FROM project_types LIMIT 1`);
+  sql(`DELETE FROM projects WHERE id = 'ds-proj'; INSERT INTO projects (id,project_type_id,name,status) VALUES ('ds-proj',${sq(typeId)},'Sync visibility probe','active');`);
+  age('projects', 'ds-proj');
+  check('probe fixture: the project starts aged', stampOf('projects', 'ds-proj') === AGED, String(stampOf('projects', 'ds-proj')));
+  const ms = await call(A, 'create_milestone', { project_id: 'ds-proj', title: 'Probe go-live', deadline: '2031-05-01' });
+  check('create_milestone moves the project\'s updated_at', !ms.__error && stampOf('projects', 'ds-proj') > AGED + 3600, JSON.stringify(ms) + ' ts=' + stampOf('projects', 'ds-proj'));
+  sql(`DELETE FROM tasks WHERE related_project_id = 'ds-proj'; DELETE FROM projects WHERE id = 'ds-proj';`);
+
+  // ---- list_deleted_records. The MCP never deletes (the source check above), so the tombstones are written
+  // here the way sync.php writes them; the delete paths themselves are checked in probe-persistence.mjs.
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+  const unix = (iso) => Date.parse(iso) / 1000;
+  const at = (k) => AGED + 60 * k;
+  const utc = (k) => new Date(at(k) * 1000).toISOString().slice(0, 19) + 'Z';
+  sql(`DELETE FROM deleted_records WHERE entity_id LIKE 'ds-%';
+       INSERT INTO deleted_records (entity, entity_id, label, deleted_by, extra, deleted_at) VALUES
+         ('leads', 'ds-l1', 'Lead one', 'Probe Admin', '{"client":false}', FROM_UNIXTIME(${at(0)})),
+         ('leads', 'ds-c1', 'Client one', 'Probe Admin', '{"client":true}', FROM_UNIXTIME(${at(1)})),
+         ('projects', 'ds-p1', 'Project one', 'Probe Admin', NULL, FROM_UNIXTIME(${at(2)})),
+         ('tasks', 'ds-t1', 'Task one', NULL, NULL, FROM_UNIXTIME(${at(3)})),
+         ('employee_salaries', 'ds-s1', '2020-05', 'Probe Admin', NULL, FROM_UNIXTIME(${at(4)}));`);
+  const window = { deleted_from: utc(0), deleted_to: utc(10) }; // isolates the five rows above from any real tombstone
+  const list = (token, args = {}) => call(token, 'list_deleted_records', { ...window, ...args });
+  const dsIds = (r) => (Array.isArray(r) ? r.filter((x) => String(x.entity_id).startsWith('ds-')).map((x) => x.entity_id).join() : JSON.stringify(r).slice(0, 200));
+
+  let r = await list(A);
+  check('list_deleted_records: oldest first, one row per tombstone', dsIds(r) === 'ds-l1,ds-c1,ds-p1,ds-t1,ds-s1', dsIds(r));
+  const lead = r.find?.((x) => x.entity_id === 'ds-l1');
+  check('list_deleted_records: entity, label, deleted_by and deleted_at as an ISO moment', lead?.entity === 'leads' && lead.label === 'Lead one' && lead.deleted_by === 'Probe Admin' && isoRe.test(lead.deleted_at || '') && unix(lead.deleted_at) === at(0), JSON.stringify(lead));
+  check('list_deleted_records: a client record is reported as clients, a lead as leads', r.find?.((x) => x.entity_id === 'ds-c1')?.entity === 'clients' && lead?.entity === 'leads', JSON.stringify(r.slice?.(0, 2)));
+  check('list_deleted_records: no raw TIMESTAMP and no tombstone internals leave the server', r.every?.((x) => !('extra' in x) && !('deleted_at__ts' in x) && Object.keys(x).sort().join() === 'deleted_at,deleted_by,entity,entity_id,label'), JSON.stringify(r[0]));
+  check('list_deleted_records: entity=clients returns only client records, entity=leads only leads', dsIds(await list(A, { entity: 'clients' })) === 'ds-c1' && dsIds(await list(A, { entity: 'leads' })) === 'ds-l1', '');
+  check('list_deleted_records: entity=projects', dsIds(await list(A, { entity: 'projects' })) === 'ds-p1', '');
+  check('list_deleted_records: deleted_from is inclusive, deleted_to exclusive', dsIds(await call(A, 'list_deleted_records', { deleted_from: utc(2), deleted_to: utc(10) })) === 'ds-p1,ds-t1,ds-s1' && dsIds(await call(A, 'list_deleted_records', { deleted_from: utc(0), deleted_to: utc(2) })) === 'ds-l1,ds-c1', '');
+  check('list_deleted_records: sort_order=desc reverses it', dsIds(await list(A, { sort_order: 'desc' })) === 'ds-s1,ds-t1,ds-p1,ds-c1,ds-l1', '');
+  check('list_deleted_records: limit + offset page without gaps', dsIds(await list(A, { limit: 2 })) + '|' + dsIds(await list(A, { limit: 2, offset: 2 })) + '|' + dsIds(await list(A, { limit: 2, offset: 4 })) === 'ds-l1,ds-c1|ds-p1,ds-t1|ds-s1', '');
+  check('list_deleted_records: a malformed deleted_from or deleted_to is refused', isErr(await call(A, 'list_deleted_records', { deleted_from: 'yesterday' }), /deleted_from/) && isErr(await call(A, 'list_deleted_records', { deleted_to: '2020-13-45' }), /deleted_to/), '');
+  check('list_deleted_records: an unknown entity is refused', isErr(await call(A, 'list_deleted_records', { entity: 'users' }), /entity/), '');
+
+  // Permissions: a row is visible only when the key may view that record's module.
+  const rbac = JSON.parse(cell("SELECT `value` FROM system_settings WHERE `key` = 'ROLES_RBAC'"));
+  const only = (name, ...modules) => { const x = role(name, 'nothing'); for (const m of modules) x.permissions[m] = 'view'; return x; };
+  const extra = [only('ProbeLeadsOnly', 'leads'), only('ProbeClientsOnly', 'clients'), only('ProbeProjectsOnly', 'projects')];
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${sq(JSON.stringify([...rbac.filter((x) => !extra.some((e) => e.name === x.name)), ...extra]))});`);
+  const limited = {};
+  for (const [k, name] of [['leadsOnly', 'ProbeLeadsOnly'], ['clientsOnly', 'ProbeClientsOnly'], ['projectsOnly', 'ProbeProjectsOnly']]) {
+    const id = `probe-${k}`;
+    limited[k] = `ccrm_mcp_probe_${k}_${'0'.repeat(40)}`;
+    sql(`DELETE FROM mcp_keys WHERE id = ${sq('pk-' + k)}; DELETE FROM users WHERE id = ${sq(id)} OR email = ${sq(id + '@probe.test')};
+         INSERT INTO users (id,name,email,password_hash,role) VALUES (${sq(id)},${sq('Probe ' + k)},${sq(id + '@probe.test')},'x',${sq(name)});
+         INSERT INTO mcp_keys (id,user_id,key_hash,key_prefix,name,created_at) VALUES (${sq('pk-' + k)},${sq(id)},${sq(createHash('sha256').update(limited[k]).digest('hex'))},'ccrm_mcp_p...','probe',NOW() - INTERVAL 1 DAY);`);
+  }
+  check('list_deleted_records: a leads-only key sees lead deletions only (no client, project, task or salary)', dsIds(await list(limited.leadsOnly)) === 'ds-l1', dsIds(await list(limited.leadsOnly)));
+  check('list_deleted_records: a clients-only key sees client deletions only', dsIds(await list(limited.clientsOnly)) === 'ds-c1', dsIds(await list(limited.clientsOnly)));
+  check('list_deleted_records: a projects-only key sees project deletions only', dsIds(await list(limited.projectsOnly)) === 'ds-p1', dsIds(await list(limited.projectsOnly)));
+  check('list_deleted_records: entity=projects is empty for a leads-only key', dsIds(await list(limited.leadsOnly, { entity: 'projects' })) === '', dsIds(await list(limited.leadsOnly, { entity: 'projects' })));
+  check('list_deleted_records: pages stay full for a limited key (the filter runs in SQL)', dsIds(await list(limited.leadsOnly, { limit: 1 })) === 'ds-l1', '');
+  r = await list(TOKENS.editor);
+  check('list_deleted_records: without tasks.view_all or employees.salaries the task and salary deletions stay hidden', dsIds(r) === 'ds-l1,ds-c1,ds-p1', dsIds(r));
+  check('list_deleted_records: the nothing-role is refused (-32003)', forbidden(await list(TOKENS.none)), '');
+  check('list_deleted_records is listed for a key that can view leads, not for the nothing-role', (await listTools(limited.leadsOnly)).includes('list_deleted_records') && !(await listTools(TOKENS.none)).includes('list_deleted_records'), '');
+  sql(`DELETE FROM deleted_records WHERE entity_id LIKE 'ds-%'; DELETE FROM mcp_keys WHERE id LIKE 'pk-%Only'; DELETE FROM users WHERE id LIKE 'probe-%Only';`);
+}
+
+// Review fixes of the change-visibility work: one overdue rule (flagged, or due date else issue date, before
+// today), documents with no ledger movement are not receivables, list_clients created_at ascends, undated last.
+async function changeReviewFixChecks() {
+  section('change visibility review fixes: overdue rule, no-movement documents, client order, undated last');
+  const A = TOKENS.admin;
+  const today = (await call(A, 'get_financial_overview', { year: 2026 })).as_of;   // the app's date, not this machine's
+  const shift = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const [yesterday, in5, in10] = [-1, 5, 10].map((n) => shift(today, n));
+  const list = (r) => (Array.isArray(r) ? r : []);
+  const ids = (rs) => list(rs).map((r) => r.id).join();
+  const sortedIds = (rs) => list(rs).map((r) => r.id).sort().join();
+  const cleanup = () => sql(`SET FOREIGN_KEY_CHECKS=0;
+       DELETE FROM invoices_offers WHERE id LIKE 'rv-inv%';
+       DELETE FROM financial_records WHERE id LIKE 'rv-mv%' OR id LIKE 'fr-inv-rv-inv%';
+       DELETE FROM leads WHERE id LIKE 'client-rv-%';
+       SET FOREIGN_KEY_CHECKS=1;`);
+  cleanup();
+
+  // ---- seed. Movements: 1 pending, no due date, issued 5 days ago (overdue by its issue date);
+  // 2 flagged overdue, issued today, no due date (overdue by the flag, but not dated before today);
+  // 3 pending, due in 5 days.
+  const mv = (n, status, issue, due) => `('rv-mv${n}','income','invoice','RVProbe mv ${n}',70,0,'EUR','${status}','${issue}',${due ? `'${due}'` : 'NULL'})`;
+  // Invoices: 1 rejected, 2 proforma, both with a due date in the past and no ledger movement (no receivable);
+  // 3 live invoice, no due date, issued 3 days ago, movement missing (kept as pending: overdue by its issue date);
+  // 4 live invoice due in 10 days with its movement.
+  const inv = (n, o) => `('rv-inv${n}','RVP-${n}','${o.type}','rv-lead','rv-client','RVProbe Client','Inv ${n}','Inv ${n}',100,20,120,'${o.status}','${o.issued}',${o.due ? `'${o.due}'` : 'NULL'})`;
+  sql(`SET FOREIGN_KEY_CHECKS=0;
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,due_date) VALUES
+         ${mv(1, 'pending', shift(today, -5), null)}, ${mv(2, 'overdue', today, null)}, ${mv(3, 'pending', today, in5)};
+       INSERT INTO invoices_offers (id,document_number,type,lead_id,client_id,client_name,title,subject,subtotal,vat_amount,total_price,status,issued_at,due_date) VALUES
+         ${inv(1, { type: 'invoice', status: 'rejected', issued: shift(today, -5), due: yesterday })},
+         ${inv(2, { type: 'proforma', status: 'sent', issued: shift(today, -5), due: yesterday })},
+         ${inv(3, { type: 'invoice', status: 'sent', issued: shift(today, -3), due: null })},
+         ${inv(4, { type: 'invoice', status: 'sent', issued: shift(today, -1), due: in10 })};
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,due_date,invoice_number) VALUES
+         ('fr-inv-rv-inv4','income','invoice','Inv 4',120,0,'EUR','pending','${shift(today, -1)}','${in10}','RVP-4');
+       INSERT INTO leads (id,name,owner,status,created_at,archived,adjustment) VALUES
+         ('client-rv-1','RVProbe C','Probe Admin','accepted','2020-01-01',0,0), ('client-rv-2','RVProbe A','Probe Admin','accepted','2020-01-02',0,0),
+         ('client-rv-3','RVProbe B','Probe Admin','accepted','2020-01-03',0,0);
+       SET FOREIGN_KEY_CHECKS=1;`);
+
+  // ---- 1. one overdue rule
+  const lm = (a) => call(A, 'list_financial_movements', { search: 'RVProbe mv', limit: 100, ...a });
+  let r = await lm({});
+  const row = (n) => list(r).find((m) => m.id === `rv-mv${n}`);
+  check('overdue rule: a pending movement with no due date and an old issue date has payment_status overdue', row(1)?.payment_status === 'overdue', JSON.stringify(row(1)));
+  check('overdue rule: a flagged movement dated today is overdue, an unflagged one due in 5 days is not', row(2)?.payment_status === 'overdue' && row(3)?.payment_status === 'unpaid', JSON.stringify([row(2), row(3)]));
+  r = await lm({ status: 'overdue' });
+  check('overdue rule: list_financial_movements status=overdue lists the issue-date one and the flagged one, agreeing with payment_status', sortedIds(r) === 'rv-mv1,rv-mv2' && list(r).every((m) => m.payment_status === 'overdue'), sortedIds(r));
+  const fc = await call(A, 'get_cash_flow_forecast', { months: 3, include_items: true });
+  const odItem = (id) => (fc.overdue?.items || []).find((i) => i.record_id === id);
+  check('overdue rule: the forecast overdue block holds the issue-date one with its age', odItem('rv-mv1')?.amount === 70 && odItem('rv-mv1')?.days_overdue === 5 && odItem('rv-mv1')?.due_date === null, JSON.stringify(odItem('rv-mv1')));
+  check('overdue rule: the forecast block leaves out a flagged movement dated today and one due later (months unchanged)', !odItem('rv-mv2') && !odItem('rv-mv3') && (fc.items || []).some((i) => i.record_id === 'rv-mv3') && !(fc.items || []).some((i) => i.record_id === 'rv-mv1'), JSON.stringify((fc.overdue?.items || []).map((i) => i.record_id)));
+  check('overdue rule: the forecast basis no longer claims flagged rows', typeof fc.overdue?.basis === 'string' && !/\(pending, partially paid, flagged overdue\)/.test(fc.overdue.basis) && /due date, else issue date/.test(fc.overdue.basis), fc.overdue?.basis);
+
+  // ---- 2. documents with no ledger movement are not receivables
+  const li = (a) => call(A, 'list_invoices', { search: 'RVProbe', limit: 100, ...a });
+  r = await li({});
+  const doc = (n) => list(r).find((d) => d.id === `rv-inv${n}`);
+  check('no movement: a rejected invoice has payment_status null, paid 0 and open 0', doc(1)?.payment_status === null && doc(1)?.paid === 0 && doc(1)?.open === 0, JSON.stringify(doc(1)));
+  check('no movement: a proforma has payment_status null, paid 0 and open 0', doc(2)?.payment_status === null && doc(2)?.paid === 0 && doc(2)?.open === 0, JSON.stringify(doc(2)));
+  check('no movement: a live invoice whose movement is missing keeps pending, open = total (overdue by its issue date)', doc(3)?.payment_status === 'overdue' && doc(3)?.open === 120 && doc(4)?.payment_status === 'unpaid' && doc(4)?.open === 120, JSON.stringify([doc(3), doc(4)]));
+  r = await li({ payment_status: 'overdue' });
+  check('no movement: payment_status=overdue returns neither the rejected invoice nor the proforma', sortedIds(r) === 'rv-inv3', sortedIds(r));
+  const gi = await call(A, 'get_invoice', { id: 'rv-inv1' });
+  check('no movement: get_invoice of the rejected invoice says the same', gi.payment_status === null && gi.open === 0 && gi.paid === 0, JSON.stringify([gi.payment_status, gi.open, gi.paid]));
+
+  // ---- 3. list_clients created_at ascends by default (oldest first); updated_at stays newest first
+  const cl = async (a) => ids(await call(A, 'list_clients', { search: 'RVProbe', limit: 100, ...a }));
+  check('list_clients: sort_by=created_at is ascending by default (oldest first)', (await cl({ sort_by: 'created_at' })) === 'client-rv-1,client-rv-2,client-rv-3', await cl({ sort_by: 'created_at' }));
+  check('list_clients: sort_by=created_at with sort_order=desc is newest first', (await cl({ sort_by: 'created_at', sort_order: 'desc' })) === 'client-rv-3,client-rv-2,client-rv-1', await cl({ sort_by: 'created_at', sort_order: 'desc' }));
+  check('list_clients: the default order is still by name', (await cl({})) === 'client-rv-2,client-rv-3,client-rv-1', await cl({}));
+
+  // ---- 4. undated rows sort last in both directions
+  check('list_invoices sort_by=due_date sort_order=desc puts the undated invoice last', ids(await li({ sort_by: 'due_date', sort_order: 'desc' })) === 'rv-inv4,rv-inv1,rv-inv2,rv-inv3', ids(await li({ sort_by: 'due_date', sort_order: 'desc' })));
+  check('list_invoices sort_by=due_date ascending still puts the undated invoice last', ids(await li({ sort_by: 'due_date' })) === 'rv-inv1,rv-inv2,rv-inv4,rv-inv3', ids(await li({ sort_by: 'due_date' })));
+  check('list_financial_movements sort_by=due_date sort_order=desc puts undated movements last', ids(await lm({ sort_by: 'due_date', sort_order: 'desc' })) === 'rv-mv3,rv-mv1,rv-mv2', ids(await lm({ sort_by: 'due_date', sort_order: 'desc' })));
+
+  cleanup();
+}
+
+async function wpExpansionChecks() {
+  section('WP1-WP6 expansion: catalog, CRM+, commercial, HR contractor_type, TT2, agency, newsletter, comms, admin diagnostics, search');
+  const A = TOKENS.admin;
+  const cleanup = () => sql(`SET FOREIGN_KEY_CHECKS=0;
+       DELETE FROM leads WHERE id LIKE 'wp-%';
+       DELETE FROM client_categories WHERE id LIKE 'wp-%' OR name LIKE 'WP Probe Category%';
+       DELETE FROM suppliers WHERE id LIKE 'wp-%' OR name = 'WP Probe Supplier';
+       DELETE FROM warehouses WHERE id LIKE 'wp-%' OR code = 'WPWH1';
+       DELETE FROM support_contracts WHERE id LIKE 'wp-%' OR client_id = 'wp-client-1' OR notes = 'WP Support Contract';
+       DELETE FROM weekly_plan_cards WHERE content = 'WP Probe Plan Card';
+       DELETE FROM employees WHERE first_name = 'WPFree' OR company_id = '99887766';
+       DELETE FROM time_entries WHERE description = 'WP TT2 entry';
+       DELETE FROM agency_worker_checklists WHERE worker_id IN (SELECT id FROM agency_workers WHERE full_name = 'WP Agency Worker');
+       DELETE FROM agency_timeline_events WHERE worker_id IN (SELECT id FROM agency_workers WHERE full_name = 'WP Agency Worker');
+       DELETE FROM agency_payments WHERE worker_id IN (SELECT id FROM agency_workers WHERE full_name = 'WP Agency Worker');
+       DELETE FROM agency_workers WHERE full_name = 'WP Agency Worker';
+       DELETE FROM newsletter_campaigns WHERE name = 'WP Probe Campaign';
+       SET FOREIGN_KEY_CHECKS=1;`);
+  cleanup();
+
+  // ---- WP1: Catalog
+  const cat = await call(A, 'get_workspace_catalog', {});
+  check('WP1 get_workspace_catalog returns lead_states, task_states, project_statuses', Array.isArray(cat?.lead_states) && Array.isArray(cat?.task_states) && Array.isArray(cat?.project_statuses), JSON.stringify(cat).slice(0, 200));
+  for (const t of ['list_lead_attributes', 'list_project_types', 'list_offer_categories', 'list_price_levels']) {
+    const r = await call(A, t, {});
+    check(`WP1 ${t} returns without error`, r && !r.__error && !r.__rpc, JSON.stringify(r).slice(0, 150));
+    check(`WP1 ${t} refused to nothing-role (-32003)`, forbidden(await call(TOKENS.none, t, {})), '');
+  }
+
+  // ---- WP2: Client categories, tags
+  const ccat = await call(A, 'create_client_category', { name: 'WP Probe Category', color: '#10b981' });
+  const ccatUp = ccat?.id ? await call(A, 'update_client_category', { id: ccat.id, name: 'WP Probe Category 2' }) : null;
+  const ccatRow = ccat?.id ? rows(`SELECT name FROM client_categories WHERE id = ${sq(ccat.id)}`)[0] : null;
+  check('WP2 client category create + update', !!ccat?.success && !!ccatUp?.success && ccatRow?.[0] === 'WP Probe Category 2', JSON.stringify([ccat, ccatUp, ccatRow]));
+  if (ccat?.id) sql(`DELETE FROM client_categories WHERE id = ${sq(ccat.id)}`);
+  const tags = await call(A, 'list_tags', {});
+  check('WP2 list_tags returns array', Array.isArray(tags) || Array.isArray(tags?.tags), JSON.stringify(tags).slice(0, 150));
+
+  // ---- WP3: Suppliers, Warehouses, Support Contracts, Weekly Plan archive/restore
+  const sup = await call(A, 'create_supplier', { name: 'WP Probe Supplier', company_id: '55443322', city: 'Bratislava' });
+  const supUp = sup?.id ? await call(A, 'update_supplier', { id: sup.id, city: 'Košice' }) : null;
+  const supGot = sup?.id ? await call(A, 'get_supplier', { id: sup.id }) : null;
+  check('WP3 supplier create/update/get', !!sup?.success && !!supUp?.success && supGot?.name === 'WP Probe Supplier' && supGot?.city === 'Košice', JSON.stringify([sup, supUp, supGot]));
+  const wh = await call(A, 'create_warehouse', { name: 'WP Probe WH', code: 'WPWH1' });
+  const whUp = wh?.id ? await call(A, 'update_warehouse', { id: wh.id, name: 'WP Probe WH 2' }) : null;
+  const whRow = wh?.id ? rows(`SELECT name FROM warehouses WHERE id = ${sq(wh.id)}`)[0] : null;
+  check('WP3 warehouse create + update', !!wh?.success && !!whUp?.success && whRow?.[0] === 'WP Probe WH 2', JSON.stringify([wh, whUp, whRow]));
+  sql(`INSERT IGNORE INTO leads (id,name,owner,status,created_at,archived,adjustment) VALUES ('wp-client-1','WP Probe Client','Probe Admin','accepted','2026-01-01',0,0);`);
+  const sc = await call(A, 'create_support_contract', { client_id: 'wp-client-1', tier: 'pro', monthly_hours: 10, hourly_rate: 45, notes: 'WP Support Contract' });
+  const scUp = sc?.id ? await call(A, 'update_support_contract', { id: sc.id, monthly_hours: 20 }) : null;
+  const scGot = sc?.id ? await call(A, 'get_support_contract', { id: sc.id }) : null;
+  check('WP3 support contract create/update/get', !!sc?.success && !!scUp?.success && scGot?.tier === 'pro' && Number(scGot?.monthly_hours) === 20, JSON.stringify([sc, scUp, scGot]));
+  const wpc = await call(A, 'create_weekly_plan_card', { date: '2026-11-16', content: 'WP Probe Plan Card' });
+  const wpcId = wpc?.id;
+  await call(A, 'update_weekly_plan_card', { id: wpcId, archived: true });
+  const wpHidden = await call(A, 'get_weekly_plan', { date: '2026-11-16' });
+  await call(A, 'update_weekly_plan_card', { id: wpcId, archived: false });
+  const wpRestored = await call(A, 'get_weekly_plan', { date: '2026-11-16' });
+  check('WP3 weekly plan card create + soft-delete archive + restore', !!wpcId && !wpHidden?.cards?.some((c) => c.id === wpcId) && !!wpRestored?.cards?.some((c) => c.id === wpcId), JSON.stringify([wpc, wpHidden?.cards?.length, wpRestored?.cards?.length]));
+
+  // ---- WP4: contractor_type, holidays, TT2 archive/restore, Agency
+  check('WP4 contractor_type=person refuses company_id', isErr(await call(A, 'create_employee', { kind: 'contractor', contractor_type: 'person', first_name: 'WPFree', last_name: 'Bad', company_id: '12345678' }), /person|company_id/i), '');
+  const empPerson = await call(A, 'create_employee', { kind: 'contractor', contractor_type: 'person', first_name: 'WPFree', last_name: 'Lancer', work_country: 'SK' });
+  const empGot = empPerson?.id ? await call(A, 'get_employee', { id: empPerson.id }) : null;
+  check('WP4 contractor_type=person creates without company_name/ICO', empPerson?.contractor_type === 'person' && empPerson?.name === 'WPFree Lancer' && empGot?.company_id === null, JSON.stringify([empPerson, empGot]));
+  const empSole = empPerson?.id ? await call(A, 'update_employee', { id: empPerson.id, contractor_type: 'sole_trader', company_name: 'WPFree Studio', company_id: '99887766' }) : null;
+  const empSoleGot = empSole?.success ? await call(A, 'get_employee', { id: empPerson.id }) : null;
+  const empBack = empPerson?.id ? await call(A, 'update_employee', { id: empPerson.id, contractor_type: 'person', first_name: 'WPFree', last_name: 'Lancer' }) : null;
+  const empBackGot = empBack?.success ? await call(A, 'get_employee', { id: empPerson.id }) : null;
+  check('WP4 contractor_type sole_trader -> person clears company_id', empSoleGot?.company_id === '99887766' && empBackGot?.contractor_type === 'person' && empBackGot?.company_id === null, JSON.stringify([empSole, empSoleGot, empBack, empBackGot]));
+
+  const hols = await call(A, 'list_public_holidays', { country: 'SK', year: 2026 });
+  check('WP4 list_public_holidays returns array for SK 2026', Array.isArray(hols?.days) && hols.days.length > 0, JSON.stringify(hols).slice(0, 200));
+
+  const te = await call(A, 'log_time_entry', { entry_date: '2026-11-18', duration_minutes: 30, description: 'WP TT2 entry', tags: ['wp-tag', 'mcp'] });
+  const teId = te?.entry?.id;
+  const teArch = teId ? await call(A, 'update_time_entry', { id: teId, archived: true }) : null;
+  const teListHidden = await call(A, 'list_time_entries', { from: '2026-11-18', to: '2026-11-18' });
+  const teRest = teId ? await call(A, 'update_time_entry', { id: teId, archived: false, tags: ['restored-tag'] }) : null;
+  check('WP4 time_entry tags + archive/restore via deleted_at', !!teId && teArch?.archived === true && Array.isArray(teListHidden) && !teListHidden.some((x) => x.id === teId) && teRest?.archived === false && teRest?.entry?.tags?.[0] === 'restored-tag', JSON.stringify([teArch, teRest]));
+
+  // Agency tools (enable temporarily in settings for probe)
+  const prevAg = rows(`SELECT \`value\` FROM system_settings WHERE \`key\` = 'AGENCY_SETTINGS'`)[0]?.[0];
+  // The module switch is INTEGRATIONS_CONFIG.disabledModules (ccrm_agency_is_module_enabled): no row means disabled.
+  const prevInt = rows(`SELECT \`value\` FROM system_settings WHERE \`key\` = 'INTEGRATIONS_CONFIG'`)[0]?.[0];
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('INTEGRATIONS_CONFIG', '{"disabledModules":[]}')`);
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('AGENCY_SETTINGS', '{"enabled":true,"stages":[{"id":"sourced","label":"Sourced"}],"checklistItems":[{"key":"id_doc","label":"ID"}]}')`);
+  const agW = await call(A, 'create_agency_worker', { fullName: 'WP Agency Worker', workerStatus: 'candidate' });
+  const agChk = agW?.id ? await call(A, 'update_agency_checklist', { workerId: agW.id, items: [{ itemKey: 'id_doc', label: 'ID Doc', status: 'submitted' }] }) : null;
+  const agPayDraft = agW?.id ? await call(A, 'record_agency_payment', { workerId: agW.id, periodYm: '2026-11', basePay: 1000, status: 'draft' }) : null;
+  const agPayPaid = agW?.id ? await call(A, 'record_agency_payment', { workerId: agW.id, periodYm: '2026-11', basePay: 1000, status: 'paid' }) : null;
+  check('WP4 agency worker + checklist + payment draft allowed & paid blocked (D2)', !!agW?.id && agChk?.checklist?.[0]?.status === 'submitted' && agPayDraft?.payment?.status === 'draft' && isErr(agPayPaid, /status|draft|approved/i), JSON.stringify([agChk, agPayDraft, agPayPaid]).slice(0, 300));
+  if (prevAg !== undefined) sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('AGENCY_SETTINGS', ${sq(prevAg)})`);
+  if (prevInt !== undefined) sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('INTEGRATIONS_CONFIG', ${sq(prevInt)})`);
+  else sql(`DELETE FROM system_settings WHERE \`key\` = 'INTEGRATIONS_CONFIG'`);
+
+  // ---- WP5: Newsletter Option A, Comms, Admin-Only Diagnostics
+  const nl = await call(A, 'create_newsletter_campaign', { name: 'WP Probe Campaign', subject: 'Hello WP' });
+  const nlId = nl?.campaign?.id;
+  const nlArch = nlId ? await call(A, 'update_newsletter_campaign', { id: nlId, archived: true }) : null;
+  const nlRest = nlId ? await call(A, 'update_newsletter_campaign', { id: nlId, archived: false, subject: 'Hello Restored' }) : null;
+  check('WP5 newsletter campaign create + archive + restore', !!nlId && nlArch?.archived === true && nlRest?.archived === false && nlRest?.campaign?.subject === 'Hello Restored', JSON.stringify([nl, nlArch, nlRest]).slice(0, 250));
+
+  const mAcc = await call(A, 'list_mail_accounts', {});
+  const aiUse = await call(A, 'get_ai_usage_summary', { month: '2026-11' });
+  check('WP5 mail accounts & AI usage summary return cleanly', Array.isArray(mAcc?.accounts) && Array.isArray(aiUse?.rows), JSON.stringify([mAcc, aiUse]).slice(0, 200));
+
+  const edToolsWp = await listTools(TOKENS.editor);
+  for (const diag of ['list_audit_logs', 'list_error_logs', 'get_vector_index_status']) {
+    const admRes = await call(A, diag, {});
+    check(`WP5 admin-only ${diag}: succeeds for admin, -32003 for editor & none`, admRes && !admRes.__error && !admRes.__rpc && !edToolsWp.includes(diag) && forbidden(await call(TOKENS.editor, diag, {})) && forbidden(await call(TOKENS.none, diag, {})), JSON.stringify(admRes).slice(0, 150));
+  }
+
+  // ---- WP6: Expanded search_entities
+  const seSup = await call(A, 'search_entities', { query: 'WP Probe Supplier', entity_types: ['suppliers'] });
+  const seEmp = await call(A, 'search_entities', { query: 'WPFree Lancer', entity_types: ['employees'] });
+  const seNone = await call(TOKENS.none, 'search_entities', { query: 'WP', entity_types: ['suppliers', 'employees', 'agency_workers'] });
+  check('WP6 search_entities finds suppliers & employees when permitted, empty for nothing-role', (seSup?.suppliers?.length || 0) >= 1 && (seEmp?.employees?.length || 0) >= 1 && Object.keys(seNone || {}).length === 0, JSON.stringify([seSup, seEmp, seNone]).slice(0, 250));
+
+  cleanup();
+}
+
 // ----------------------------------------------------------------------------- main
 try {
   setup();
   await authorizationChecks();
+  await employeeTimeEntryChecks();
   await employeeIdentityChecks();
   await parityChecks();
   await writeChecks();
   await intelChecks();
+  await changeCrmChecks();
+  await changeMoneyChecks();
+  await changePeopleChecks();
+  await changeSyncChecks();
+  await changeReviewFixChecks();
+  await wpExpansionChecks();
 } catch (e) {
   failures++;
   console.log('\nPROBE ERROR: ' + (e && e.stack ? e.stack : e));

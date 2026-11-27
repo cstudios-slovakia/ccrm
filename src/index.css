@@ -34,18 +34,33 @@
   --color-card-foreground: rgb(var(--card-foreground));
   --color-sidebar: rgb(var(--sidebar));
   --color-sidebar-foreground: rgb(var(--sidebar-foreground));
+
+  /* Entity-scoped accent tokens are declared below in @theme inline */
   
   --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 4px);
-  --radius-sm: calc(var(--radius) - 8px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
   
   --font-sans: "Google Sans", "Product Sans", sans-serif;
   --font-heading: "Google Sans", "Product Sans", sans-serif;
   /* Quotations only — the login screen's quote of the day. */
   --font-quote: "Newsreader", Georgia, "Times New Roman", serif;
   
-  --shadow-glass: 0 10px 40px -10px rgba(79, 70, 229, 0.08), 0 2px 12px -2px rgba(0, 0, 0, 0.03);
-  --shadow-glass-sm: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  --shadow-glass: 0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+  --shadow-glass-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+
+  /* Tremor Blocks Radix / Motion animations */
+  --animate-hide: hide 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-down-and-fade: slideDownAndFade 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-left-and-fade: slideLeftAndFade 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-up-and-fade: slideUpAndFade 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-right-and-fade: slideRightAndFade 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-accordion-open: accordionOpen 150ms cubic-bezier(0.87, 0, 0.13, 1);
+  --animate-accordion-close: accordionClose 150ms cubic-bezier(0.87, 0, 0.13, 1);
+  --animate-dialog-overlay-show: dialogOverlayShow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-dialog-content-show: dialogContentShow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-drawer-slide-left-and-fade: drawerSlideLeftAndFade 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-drawer-slide-right-and-fade: drawerSlideRightAndFade 150ms cubic-bezier(0.16, 1, 0.3, 1);
 
   --animate-slide-in-right: slide-in-right 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   --animate-slide-out-right: slide-out-right 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -94,6 +109,64 @@
     0%, 100% { box-shadow: 0 0 0 0 rgb(244 63 94 / 0); }
     50% { box-shadow: 0 0 0 4px rgb(244 63 94 / 0.35); }
   }
+  @keyframes hide {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+  @keyframes slideDownAndFade {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slideLeftAndFade {
+    from { opacity: 0; transform: translateX(6px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes slideUpAndFade {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slideRightAndFade {
+    from { opacity: 0; transform: translateX(-6px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes accordionOpen {
+    from { height: 0px; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordionClose {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0px; }
+  }
+  @keyframes dialogOverlayShow {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes dialogContentShow {
+    from { opacity: 0; transform: translate(-50%, -45%) scale(0.95); }
+    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
+  @keyframes drawerSlideLeftAndFade {
+    from { opacity: 0; transform: translateX(100%); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes drawerSlideRightAndFade {
+    from { opacity: 0; transform: translateX(0); }
+    to { opacity: 1; transform: translateX(100%); }
+  }
+}
+
+/* Inline entity-scoped tokens so Tailwind utilities emit var(--entity-accent-*)
+   directly and react dynamically to <EntityScope> / entityAccentStyle(...) subtrees. */
+@theme inline {
+  --color-entity: var(--entity-accent);
+  --color-entity-solid: var(--entity-accent-solid);
+  --color-entity-solid-hover: var(--entity-accent-solid-hover);
+  --color-entity-text: var(--entity-accent-text);
+  --color-entity-subtle: var(--entity-accent-subtle);
+  --color-entity-soft: var(--entity-accent-muted);
+  --color-entity-muted: var(--entity-accent-muted);
+  --color-entity-border: var(--entity-accent-border);
+  --color-entity-ring: var(--entity-accent-ring);
 }
 
 /* Lift applied to database-configured colours (pipeline states, lead sources,
@@ -102,7 +175,14 @@
 :root {
   --accent-lift-color: #ffffff;
   --accent-lift-amount: 0%;
-  --entity-accent: #4f6edb;
+  --entity-accent: #4f46e5;
+  --entity-accent-solid: #4f46e5;
+  --entity-accent-solid-hover: #4338ca;
+  --entity-accent-text: #4f46e5;
+  --entity-accent-subtle: rgba(79, 70, 229, 0.1);
+  --entity-accent-muted: rgba(79, 70, 229, 0.16);
+  --entity-accent-border: rgba(79, 70, 229, 0.28);
+  --entity-accent-ring: rgba(79, 70, 229, 0.25);
 }
 
 :root,
@@ -139,7 +219,7 @@
   --sidebar: 255 255 255;
   --sidebar-foreground: 71 85 105;
 
-  --radius: 1.5rem; /* Softer, natural rounded corners */
+  --radius: 0.5rem; /* Crisp Tremor geometry */
 }
 
 /* Herb Theme: Sezame (Warm Light, Toned-Down Soft Colors & Feather-Soft Readability) */
@@ -211,13 +291,11 @@ body {
   background: rgb(var(--primary) / 0.4);
 }
 
-/* Softer Glassmorphism Helpers */
+/* Tremor-aligned elevated panel surface over AuroraBackground */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(16px) saturate(120%);
-  -webkit-backdrop-filter: blur(16px) saturate(120%);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 8px 30px -10px rgba(79, 70, 229, 0.05), 0 2px 10px -2px rgba(0, 0, 0, 0.02);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgb(var(--border));
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
 }
 
 [data-theme="sezame"] .glass-panel {
@@ -467,8 +545,8 @@ dialog[open]::backdrop {
   /* Surfaces the plugin substitutes for `bg-white` / `border-white`, which have
      no ramp shade to invert. The card sits above the page background and below
      `bg-slate-100`, so the light-mode stacking order survives the flip. */
-  --dark-surface: oklch(21.5% 0.014 257.4);
-  --dark-hairline: oklch(100% 0 0 / 0.08);
+  --dark-surface: #0f1522;
+  --dark-hairline: oklch(100% 0 0 / 0.09);
 
   /* --- Semantic tokens (the `background`/`card`/`primary`… scale) ---------- */
   --background: 13 17 23;
@@ -505,7 +583,7 @@ dialog[open]::backdrop {
   --sidebar: 18 23 31;
   --sidebar-foreground: 203 213 225;
 
-  --radius: 1.5rem;
+  --radius: 0.5rem;
 
   /* --- The inverted Tailwind palette -------------------------------------- */
   /* Neutrals: surfaces and hairlines at the light end, type at the dark end. */
@@ -781,6 +859,13 @@ dialog[open]::backdrop {
 [data-theme="dark"] .text-\[\#0b1329\] {
   color: oklch(94% 0.008 257.4);
 }
+[data-theme="dark"] .text-\[\#4a5a20\],
+[data-theme="dark"] .text-\[\#5c6f28\] {
+  color: oklch(82% 0.12 125);
+}
+[data-theme="dark"] .hover\:text-\[\#4a5a20\]:hover {
+  color: oklch(86% 0.13 125);
+}
 [data-theme="dark"] .bg-\[\#f8fafc\],
 [data-theme="dark"] .bg-\[\#f4f7fe\] {
   background-color: oklch(17% 0.01 257.4);
@@ -804,11 +889,9 @@ dialog[open]::backdrop {
 }
 
 [data-theme="dark"] .glass-panel {
-  background: rgba(22, 27, 36, 0.72);
-  backdrop-filter: blur(16px) saturate(130%);
-  -webkit-backdrop-filter: blur(16px) saturate(130%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 8px 30px -10px rgba(0, 0, 0, 0.6), 0 2px 10px -2px rgba(0, 0, 0, 0.4);
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-hairline);
+  box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.5), 0 1px 3px 0 rgba(0, 0, 0, 0.3);
 }
 
 /* Coloured glows read as light leaks on a dark surface; keep them as a hint. */
@@ -1652,7 +1735,7 @@ dialog[open]::backdrop {
 
 /* ===========================================================================
    VIEW SIZE — see docs/VIEW-SIZE.md
-   Compact values are the defaults. Values are literal in every block on
+   Normal (`1.0`) values are the defaults. Values are literal in every block on
    purpose: a variable that references another resolves where it is declared,
    so a `.view-size-fixed` subtree would still inherit the root's value.
    =========================================================================== */
@@ -1677,13 +1760,61 @@ dialog[open]::backdrop {
   --drawer-sm: 24rem; --drawer-md: 30rem; --drawer-lg: 42rem; --drawer-xl: 80rem;
 }
 
+[data-view-size="compact"] {
+  --vs-scale: 0.8;
+  --spacing: 0.1875rem;
+  --gutter: 0.75rem;
+  --text-micro: 0.625rem;     --text-micro--line-height: 1.15;
+  --text-caption: 0.65625rem; --text-caption--line-height: 1.2;
+  --text-ui: 0.6875rem;       --text-ui--line-height: 1.25;
+  --text-body: 0.75rem;       --text-body--line-height: 1.35;
+  --text-title-sm: 0.8125rem; --text-title-sm--line-height: 1.25;
+  --text-title: 0.9375rem;    --text-title--line-height: 1.2;
+  --text-heading: 1.125rem;   --text-heading--line-height: 1.15;
+  --text-display: 1.375rem;   --text-display--line-height: 1.1;
+  --text-metric: 1.25rem;     --text-metric--line-height: 1.05;
+  --container-3xs: 13.5rem; --container-2xs: 15rem; --container-xs: 17rem;
+  --container-sm: 20rem;    --container-md: 23rem;  --container-lg: 26rem;
+  --container-xl: 30rem;    --container-2xl: 35rem; --container-3xl: 40rem;
+  --container-4xl: 46rem;   --container-5xl: 52rem; --container-6xl: 58rem;
+  --container-7xl: 66rem;
+  --drawer-sm: 20rem; --drawer-md: 25rem; --drawer-lg: 35rem; --drawer-xl: 66rem;
+}
+
 [data-view-size="normal"] {
+  --vs-scale: 1;
+  --spacing: 0.25rem;
+  --gutter: 1.5rem;
+  --text-micro: 0.625rem;     --text-micro--line-height: 1.25;
+  --text-caption: 0.6875rem;  --text-caption--line-height: 1.35;
+  --text-ui: 0.75rem;         --text-ui--line-height: 1.4;
+  --text-body: 0.875rem;      --text-body--line-height: 1.55;
+  --text-title-sm: 0.9375rem; --text-title-sm--line-height: 1.35;
+  --text-title: 1.125rem;     --text-title--line-height: 1.3;
+  --text-heading: 1.5rem;     --text-heading--line-height: 1.2;
+  --text-display: 1.875rem;   --text-display--line-height: 1.1;
+  --text-metric: 1.75rem;     --text-metric--line-height: 1.1;
+  --container-3xs: 16rem;  --container-2xs: 18rem;    --container-xs: 20rem;
+  --container-sm: 24rem;   --container-md: 28rem;     --container-lg: 32rem;
+  --container-xl: 36rem;   --container-2xl: 42rem;    --container-3xl: 48rem;
+  --container-4xl: 56rem;  --container-5xl: 64rem;    --container-6xl: 72rem;
+  --container-7xl: 80rem;
+  --drawer-sm: 24rem; --drawer-md: 30rem; --drawer-lg: 42rem; --drawer-xl: 80rem;
+}
+
+[data-view-size="big"] {
   --vs-scale: 1.125;
   --spacing: 0.28125rem;
   --gutter: 2rem;
-  --text-micro: 0.75rem;   --text-caption: 0.8125rem; --text-ui: 0.875rem;
-  --text-body: 1rem;       --text-title-sm: 1.0625rem; --text-title: 1.25rem;
-  --text-heading: 1.75rem; --text-display: 2.125rem;  --text-metric: 2rem;
+  --text-micro: 0.75rem;     --text-micro--line-height: 1.25;
+  --text-caption: 0.8125rem; --text-caption--line-height: 1.35;
+  --text-ui: 0.875rem;       --text-ui--line-height: 1.4;
+  --text-body: 1rem;         --text-body--line-height: 1.55;
+  --text-title-sm: 1.0625rem;--text-title-sm--line-height: 1.35;
+  --text-title: 1.25rem;     --text-title--line-height: 1.3;
+  --text-heading: 1.75rem;   --text-heading--line-height: 1.2;
+  --text-display: 2.125rem;  --text-display--line-height: 1.1;
+  --text-metric: 2rem;       --text-metric--line-height: 1.1;
   --container-3xs: 18rem;    --container-2xs: 20.25rem; --container-xs: 22.5rem;
   --container-sm: 27rem;     --container-md: 31.5rem;   --container-lg: 36rem;
   --container-xl: 40.5rem;   --container-2xl: 47.25rem; --container-3xl: 54rem;
@@ -1692,40 +1823,43 @@ dialog[open]::backdrop {
   --drawer-sm: 27rem; --drawer-md: 33.75rem; --drawer-lg: 47.25rem; --drawer-xl: 90rem;
 }
 
-[data-view-size="big"] {
-  --vs-scale: 1.25;
-  --spacing: 0.3125rem;
-  --gutter: 2.5rem;
-  --text-micro: 0.8125rem; --text-caption: 0.875rem;  --text-ui: 1rem;
-  --text-body: 1.0625rem;  --text-title-sm: 1.1875rem; --text-title: 1.4375rem;
-  --text-heading: 2rem;    --text-display: 2.5rem;    --text-metric: 2.375rem;
-  --container-3xs: 20rem;    --container-2xs: 22.5rem;  --container-xs: 25rem;
-  --container-sm: 30rem;     --container-md: 35rem;     --container-lg: 40rem;
-  --container-xl: 45rem;     --container-2xl: 52.5rem;  --container-3xl: 60rem;
-  --container-4xl: 70rem;    --container-5xl: 80rem;    --container-6xl: 90rem;
-  --container-7xl: 100rem;
-  --drawer-sm: 30rem; --drawer-md: 37.5rem; --drawer-lg: 52.5rem; --drawer-xl: 100rem;
-}
-
-/* Phones keep a 16px gutter whatever size is chosen. After the size blocks,
+/* Phones keep a 16px gutter in Normal/Big and 12px in Compact. After the size blocks,
    so it wins over them by source order at equal specificity. */
 @media (max-width: 639.98px) {
-  :root, [data-view-size] { --gutter: 1rem; }
+  [data-view-size="normal"], [data-view-size="big"] { --gutter: 1rem; }
 }
 
-/* The aside and paper documents: always the Compact (= stock) values. */
+/* The aside and paper documents: always the Normal (= 1.0 stock) values. */
 .view-size-fixed {
   --vs-scale: 1;
   --spacing: 0.25rem;
-  --text-micro: 0.625rem;  --text-caption: 0.6875rem; --text-ui: 0.75rem;
-  --text-body: 0.875rem;   --text-title-sm: 0.9375rem; --text-title: 1.125rem;
-  --text-heading: 1.5rem;  --text-display: 1.875rem;  --text-metric: 1.75rem;
+  --text-micro: 0.625rem;     --text-micro--line-height: 1.25;
+  --text-caption: 0.6875rem;  --text-caption--line-height: 1.35;
+  --text-ui: 0.75rem;         --text-ui--line-height: 1.4;
+  --text-body: 0.875rem;      --text-body--line-height: 1.55;
+  --text-title-sm: 0.9375rem; --text-title-sm--line-height: 1.35;
+  --text-title: 1.125rem;     --text-title--line-height: 1.3;
+  --text-heading: 1.5rem;     --text-heading--line-height: 1.2;
+  --text-display: 1.875rem;   --text-display--line-height: 1.1;
+  --text-metric: 1.75rem;     --text-metric--line-height: 1.1;
   --container-3xs: 16rem;  --container-2xs: 18rem;    --container-xs: 20rem;
   --container-sm: 24rem;   --container-md: 28rem;     --container-lg: 32rem;
   --container-xl: 36rem;   --container-2xl: 42rem;    --container-3xl: 48rem;
   --container-4xl: 56rem;  --container-5xl: 64rem;    --container-6xl: 72rem;
   --container-7xl: 80rem;
   --drawer-sm: 24rem; --drawer-md: 30rem; --drawer-lg: 42rem; --drawer-xl: 80rem;
+}
+
+/* Compact desktop table rows: pack more records per screen without affecting mobile cards. */
+@media (min-width: 1024px) {
+  [data-view-size="compact"] .workspace .table-page-wrap table > thead > tr > th {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+  }
+  [data-view-size="compact"] .workspace .table-page-wrap table > tbody > tr > td {
+    padding-top: 0.3125rem;
+    padding-bottom: 0.3125rem;
+  }
 }
 
 .workspace {
@@ -1809,6 +1943,12 @@ dialog[open]::backdrop {
     z-index: 26;
     overflow: hidden;
   }
+  .table-page-foot-mirror {
+    position: sticky;
+    bottom: calc(var(--gutter) * -1);
+    z-index: 26;
+    overflow: hidden;
+  }
   .table-page-sticky-head th {
     position: sticky;
     /* Sticky offsets are measured from the scroller's content box, so the
@@ -1817,6 +1957,157 @@ dialog[open]::backdrop {
     z-index: 20;
     background-color: var(--color-slate-50);
     box-shadow: inset 0 -1px 0 var(--color-slate-200);
+  }
+  /* Sticky table summary/totals footers (normal workspace tables) */
+  .workspace table:not(.view-size-fixed table) > tfoot > tr > td,
+  .workspace table:not(.view-size-fixed table) > tfoot > tr > th {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    background-color: var(--color-slate-50);
+    box-shadow: inset 0 2px 0 var(--color-slate-200);
+  }
+  .workspace .table-page-wrap[data-hscroll="false"] table > tfoot > tr > td,
+  .workspace .table-page-wrap[data-hscroll="false"] table > tfoot > tr > th {
+    bottom: calc(var(--gutter) * -1);
+  }
+  :is([data-theme="dark"], [data-appearance="dark"], .dark) .workspace table:not(.view-size-fixed table) > tfoot > tr > td,
+  :is([data-theme="dark"], [data-appearance="dark"], .dark) .workspace table:not(.view-size-fixed table) > tfoot > tr > th {
+    background-color: #1e293b;
+    box-shadow: inset 0 2px 0 rgba(71, 85, 105, 0.75);
+  }
+}
+
+/* Universal table fullscreen trigger & host container (unlayered so it wins over .workspace & utilities) */
+.ccrm-table-fs-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid rgba(203, 213, 225, 0.85);
+  background-color: rgba(255, 255, 255, 0.9);
+  color: #64748b;
+  opacity: 0.78;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease, transform 0.12s ease;
+}
+.ccrm-table-fs-btn:hover,
+.ccrm-table-fs-btn:focus-visible {
+  opacity: 1;
+  color: #0f172a;
+  background-color: #ffffff;
+  outline: none;
+}
+.ccrm-table-fs-btn:active {
+  transform: scale(0.94);
+}
+.ccrm-fs-ancestor {
+  transform: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  contain: none !important;
+  container: none !important;
+  container-type: normal !important;
+  isolation: auto !important;
+  z-index: auto !important;
+}
+.ccrm-table-fullscreen-host,
+.ccrm-table-fullscreen-host:popover-open {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9990 !important;
+  display: block !important;
+  container: workspace / inline-size;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 3.5rem 1.5rem 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  overflow: auto !important;
+  background-color: #ffffff !important;
+  box-shadow: none !important;
+  color: inherit;
+}
+.ccrm-table-fullscreen-host::backdrop {
+  background: rgba(15, 23, 42, 0.35);
+}
+.ccrm-table-fs-exit-btn,
+.ccrm-table-fs-exit-btn:popover-open {
+  position: fixed !important;
+  top: 0.75rem !important;
+  right: 1rem !important;
+  left: auto !important;
+  bottom: auto !important;
+  margin: 0 !important;
+  z-index: 9999 !important;
+}
+:is([data-theme="dark"], [data-appearance="dark"], .dark) .ccrm-table-fullscreen-host {
+  background-color: #0f172a !important;
+}
+:is([data-theme="dark"], [data-appearance="dark"], .dark) .ccrm-table-fs-btn {
+  background-color: rgba(30, 41, 59, 0.9);
+  border-color: rgba(71, 85, 105, 0.85);
+  color: #94a3b8;
+}
+:is([data-theme="dark"], [data-appearance="dark"], .dark) .ccrm-table-fs-btn:hover,
+:is([data-theme="dark"], [data-appearance="dark"], .dark) .ccrm-table-fs-btn:focus-visible {
+  color: #f8fafc;
+  background-color: #1e293b;
+}
+.ccrm-table-fullscreen-host > .ccrm-table-fs-btn {
+  display: none !important;
+}
+.ccrm-table-fullscreen-host .table-page-wrap,
+.ccrm-table-fullscreen-host > .overflow-x-auto,
+.ccrm-table-fullscreen-host > .overflow-auto {
+  width: 100% !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+.ccrm-table-fullscreen-host table {
+  width: 100% !important;
+}
+.ccrm-table-fullscreen-host .table-page-head-mirror,
+.ccrm-table-fullscreen-host .table-page-foot-mirror {
+  display: none !important;
+}
+.ccrm-table-fullscreen-host thead th {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 25;
+}
+.ccrm-table-fullscreen-host tfoot td,
+.ccrm-table-fullscreen-host tfoot th {
+  position: sticky !important;
+  bottom: 0 !important;
+  z-index: 25;
+  background-color: #f8fafc !important;
+  box-shadow: inset 0 2px 0 #cbd5e1;
+}
+.ccrm-table-fullscreen-host tfoot td.sticky,
+.ccrm-table-fullscreen-host tfoot th.sticky {
+  z-index: 28;
+}
+:is([data-theme="dark"], [data-appearance="dark"], .dark) .ccrm-table-fullscreen-host tfoot td,
+:is([data-theme="dark"], [data-appearance="dark"], .dark) .ccrm-table-fullscreen-host tfoot th {
+  background-color: #1e293b !important;
+  box-shadow: inset 0 2px 0 rgba(71, 85, 105, 0.85);
+}
+@media print {
+  .workspace table > tfoot > tr > td,
+  .workspace table > tfoot > tr > th {
+    position: static !important;
   }
 }
 
@@ -1844,3 +2135,309 @@ dialog[open]::backdrop {
   scrollbar-width: none;
   &::-webkit-scrollbar { display: none; }
 }
+
+/* A scroller with no visible scrollbar that still says "there is more".
+   The bar is hidden, and instead the content fades out on each edge that has
+   more behind it. <ScrollFade> (components/settings/ScrollFade.tsx) sets
+   data-fade="start" / "end" / "start end" from the scroll position, so the
+   fade only shows where something is hidden and never on a list that fits.
+   Items cut off at the faded edge are the second cue. */
+@utility scroll-fade-x {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+  --fade-start: 0px;
+  --fade-end: 0px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  &[data-fade~="start"] { --fade-start: 2.25rem; }
+  &[data-fade~="end"] { --fade-end: 2.25rem; }
+}
+@utility scroll-fade-y {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+  --fade-start: 0px;
+  --fade-end: 0px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  &[data-fade~="start"] { --fade-start: 1.75rem; }
+  &[data-fade~="end"] { --fade-end: 1.75rem; }
+}
+
+/* Settings: tile lift, tab panel / results / menu entrance.
+   All of it stands still under prefers-reduced-motion. */
+.settings-tile {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.settings-tile:hover,
+.settings-tile:focus-visible {
+  transform: translateY(-2px);
+}
+.settings-tile:active {
+  transform: translateY(0) scale(0.985);
+}
+@keyframes settings-panel-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.settings-panel-in {
+  animation: settings-panel-in 0.2s ease-out;
+}
+@keyframes settings-results-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.settings-results-in {
+  animation: settings-results-in 0.18s ease-out both;
+}
+@keyframes settings-menu-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.settings-menu-in {
+  animation: settings-menu-in 0.16s ease-out both;
+  transform-origin: top center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-tile { transition: none; }
+  .settings-tile:hover,
+  .settings-tile:focus-visible,
+  .settings-tile:active { transform: none; }
+  .settings-panel-in,
+  .settings-results-in,
+  .settings-menu-in { animation: none; }
+}
+
+/* ===========================================================================
+   NEW-TASK COMPOSER MOTION (src/components/QuickTaskModal.tsx)
+   ---------------------------------------------------------------------------
+   From the "New Task Modal Redesign" motion board. The card is a container
+   transform: it starts clipped to the exact rect of the button that opened it
+   (`--nt-from`, set per open in JS) and the clip grows to the whole card. The
+   clicked button's colour and label sit on top as a veil and dissolve into the
+   white card; closing plays it all backwards into the same button.
+   =========================================================================== */
+.nt-press { transition: transform 120ms ease, background-color 200ms ease, box-shadow 200ms ease; }
+.nt-press:active { transform: scale(0.98); }
+@keyframes nt-grow { from { clip-path: var(--nt-from); } to { clip-path: inset(-48px -48px -48px -48px round 24px); } }
+@keyframes nt-shrink { from { clip-path: inset(-48px -48px -48px -48px round 24px); } to { clip-path: var(--nt-from); } }
+.nt-grow { animation: nt-grow 480ms cubic-bezier(0.2, 0, 0, 1) both; }
+.nt-shrink { animation: nt-shrink 340ms cubic-bezier(0.3, 0, 0.8, 0.15) both; }
+@keyframes nt-veil-out { 0%, 28% { opacity: 1; } 72%, 100% { opacity: 0; } }
+@keyframes nt-veil-in { 0%, 35% { opacity: 0; } 80%, 100% { opacity: 1; } }
+.nt-veil-out { animation: nt-veil-out 480ms linear both; }
+.nt-veil-in { animation: nt-veil-in 340ms linear both; }
+@keyframes nt-label-out { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes nt-label-in { 0%, 70% { opacity: 0; } 100% { opacity: 1; } }
+.nt-veil-out .nt-label { animation: nt-label-out 120ms ease-out both; }
+.nt-veil-in .nt-label { animation: nt-label-in 340ms linear both; }
+@keyframes nt-ripple { from { transform: scale(0); opacity: 0.5; } to { transform: scale(60); opacity: 0; } }
+.nt-ripple { animation: nt-ripple 560ms cubic-bezier(0.2, 0, 0, 1) both; }
+@keyframes nt-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.nt-fade-in { animation: nt-fade-in 160ms ease-out both; }
+@keyframes nt-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.nt-rise { animation: nt-rise 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes nt-strip { from { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; } to { max-height: 80px; opacity: 1; } }
+.nt-strip { overflow: hidden; animation: nt-strip 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* Finishing a recording: the waveform settles flat, then the strip folds away. */
+@keyframes nt-strip-out { 0%, 35% { max-height: 80px; opacity: 1; } 100% { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; border-bottom-width: 0; } }
+.nt-strip-out { overflow: hidden; animation: nt-strip-out 420ms cubic-bezier(0.3, 0, 0.2, 1) both; }
+.nt-wave-stop { transform: scaleY(0.15); opacity: 0.5; transition: transform 160ms ease-out, opacity 160ms ease-out; }
+@keyframes nt-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.nt-dot { animation: nt-dot 1.2s ease-in-out infinite; }
+@keyframes nt-fill { 0% { background-color: var(--color-blue-100); border-color: var(--color-blue-400); } 100% { background-color: var(--nt-fill-bg); border-color: var(--color-blue-200); } }
+.nt-fill { --nt-fill-bg: #f8fbff; animation: nt-fill 900ms ease-out both; }
+[data-theme="dark"] .nt-fill { --nt-fill-bg: var(--color-blue-50); }
+@keyframes nt-word { from { opacity: 0; filter: blur(2px); } to { opacity: 1; filter: none; } }
+.nt-word { animation: nt-word 220ms ease-out both; }
+@keyframes nt-toast { 0% { opacity: 0; transform: translate(-50%, 10px); } 12% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 4px); } }
+.nt-toast { animation: nt-toast 2600ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes nt-menu { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+.nt-menu { transform-origin: top center; animation: nt-menu 160ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .nt-grow, .nt-shrink, .nt-ripple, .nt-veil-out, .nt-veil-in, .nt-label, .nt-fade-in, .nt-rise, .nt-strip, .nt-fill, .nt-word, .nt-toast, .nt-menu { animation-duration: 1ms !important; animation-delay: 0ms !important; }
+  .nt-veil-out .nt-label, .nt-veil-in .nt-label { animation-duration: 1ms !important; }
+  .nt-strip-out { animation-duration: 1ms !important; }
+  .nt-dot { animation: none !important; }
+  .nt-press { transition: none; }
+}
+
+/* Rows of a long list table that are far off screen are not painted
+   (hooks/useHideOffscreenRows.ts sets the attribute). They keep their size, so
+   the layout and the scroll position are untouched. Printed in full. */
+tr[data-offscreen-row] {
+  visibility: hidden;
+}
+.ccrm-table-fullscreen-host tr[data-offscreen-row] {
+  visibility: visible !important;
+}
+@media print {
+  tr[data-offscreen-row] {
+    visibility: visible;
+  }
+}
+
+/* Leads list row hover, driven by an attribute instead of React state
+   (utils/leadRowHover.ts). Each element names its resting and hovered
+   background in --lead-bg / --lead-bg-hover. The stage strip opens with a
+   transform over the bottom padding of the row above it, so no row moves and
+   the table is not laid out again while it animates. */
+.lead-hover-row,
+.lead-hover-actions {
+  --lead-bg-now: var(--lead-bg);
+}
+.lead-hover-row[data-lead-hover],
+.lead-hover-row[data-lead-hover] > .lead-hover-actions {
+  --lead-bg-now: var(--lead-bg-hover);
+}
+.lead-hover-row {
+  background-color: var(--lead-bg-now);
+}
+.lead-hover-actions {
+  background-image: linear-gradient(var(--lead-bg-now), var(--lead-bg-now));
+}
+.lead-hover-strip-cell {
+  position: relative;
+  height: 3px;
+}
+.lead-hover-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 16px;
+  z-index: 11;
+  transform-origin: bottom;
+  transform: scaleY(0.1875);
+  transition: transform 300ms;
+}
+tr[data-lead-hover] .lead-hover-strip {
+  transform: none;
+}
+.lead-hover-strip-label {
+  visibility: hidden;
+}
+tr[data-lead-hover] .lead-hover-strip-label {
+  visibility: visible;
+}
+
+/* Initial sync loading spinner: semantic indeterminate <progress> element
+   styled via conic-gradient() + border-area / mask-image fallback, obeying
+   theme tokens, forced-colors, and prefers-reduced-motion slowdown. */
+@property --arc-start {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --arc-end {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --progress-dash-animation {
+  syntax: "*";
+  inherits: false;
+  initial-value: , progress-dash 3s ease-in-out infinite;
+}
+
+/* One rule per engine: a selector list is dropped whole when any one selector is
+   unknown to the browser (Chrome ignores ::slider-fill), which left the native grey
+   bar visible and spinning on the dev server. */
+progress.loading-spinner:indeterminate::-webkit-progress-bar,
+progress.loading-spinner:indeterminate::-webkit-progress-value {
+  display: none;
+  background: none;
+}
+progress.loading-spinner:indeterminate::-moz-progress-bar {
+  display: none;
+  background: none;
+}
+progress.loading-spinner:indeterminate::slider-fill {
+  display: none;
+  background: none;
+}
+
+progress.loading-spinner:indeterminate {
+  --_from: calc(90deg + var(--arc-start, 0deg));
+  --_to: calc(90deg + var(--arc-end, 158deg));
+  --size: 44px;
+  --thickness: 3px;
+  --spinner-color: rgb(var(--primary));
+  --track-color: rgb(var(--border));
+  --spinner-duration: 1.5s;
+  --_used-spinner-duration: var(--spinner-duration);
+
+  position: relative;
+  display: block;
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  appearance: none;
+  background: conic-gradient(
+      from var(--_from),
+      var(--spinner-color) calc(var(--_to) - var(--_from)),
+      transparent 0
+    )
+    var(--track-color);
+
+  @supports (background-clip: border-area) {
+    background-clip: border-area;
+    border: var(--thickness) solid transparent;
+    background-origin: border-box;
+  }
+
+  @supports not (background-clip: border-area) {
+    --clip-boundary: calc(100% - var(--thickness));
+    mask-image: radial-gradient(
+      farthest-side,
+      transparent var(--clip-boundary),
+      black var(--clip-boundary)
+    );
+    border: 0;
+  }
+
+  @media (forced-colors: active) {
+    forced-color-adjust: none;
+    --spinner-color: CanvasText;
+    --track-color: Canvas;
+  }
+
+  animation:
+    progress-spin var(--_used-spinner-duration) linear infinite
+    var(--progress-dash-animation, );
+}
+
+@keyframes progress-spin {
+  to {
+    rotate: 1turn;
+  }
+}
+
+@keyframes progress-dash {
+  from {
+    --arc-start: 0deg;
+    --arc-end: 3deg;
+  }
+  50% {
+    --arc-start: 100deg;
+    --arc-end: 358deg;
+  }
+  to {
+    --arc-start: 360deg;
+    --arc-end: 363deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  progress.loading-spinner:indeterminate {
+    --_used-spinner-duration: 6s;
+    --progress-dash-animation: ;
+    --arc-end: 158deg;
+  }
+}
+
+
+/* Resizable list columns: once a width is stored the table is fixed-layout and cells truncate. */
+table[data-col-resized] { table-layout: fixed; }
+table[data-col-resized] td { overflow: hidden; text-overflow: ellipsis; }

@@ -76,19 +76,19 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
   };
 
   return (
-    <div className="space-y-4 pt-3 border-t border-slate-200/80">
+    <div className="space-y-4 pt-3 border-t border-gray-200/80">
       {/* -------------------------------------------------- Appearance mode */}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <label className="type-overline text-slate-600 flex items-center gap-1.5">
+          <label className="type-overline text-gray-600 flex items-center gap-1.5">
             {isDark ? (
-              <Moon className="h-3.5 w-3.5 text-indigo-500" />
+              <Moon className="h-3.5 w-3.5 text-entity-text" />
             ) : (
               <Sun className="h-3.5 w-3.5 text-amber-500" />
             )}
             {t("Appearance", "Vzhľad", "Megjelenés")}
           </label>
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-micro font-bold text-slate-700 shadow-xs">
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200 text-micro font-bold text-gray-700 shadow-xs">
             <span>{isDark ? "🌙" : "☀️"}</span>
             <span>
               {t("Now", "Teraz", "Most")}:{" "}
@@ -100,7 +100,7 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
         <div
           role="radiogroup"
           aria-label={t("Appearance", "Vzhľad", "Megjelenés")}
-          className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 rounded-2xl bg-slate-50 border border-slate-200/80"
+          className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 rounded-lg bg-gray-50 border border-gray-200/80"
         >
           {THEME_MODES.map((mode) => {
             const selected = mode.id === themeMode;
@@ -114,14 +114,14 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
                 whileHover={reduceMotion ? undefined : { y: -1 }}
                 whileTap={reduceMotion ? undefined : { scale: 0.97 }}
                 transition={{ duration: 0.15, ease: EASE_OUT }}
-                className={`relative flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${
-                  selected ? "text-indigo-700" : "text-slate-500 hover:text-slate-800"
+                className={`relative flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-md cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40 focus-visible:ring-offset-1 ${
+                  selected ? "text-entity-text" : "text-gray-500 hover:text-gray-800"
                 }`}
               >
                 {selected && (
                   <motion.span
                     layoutId="theme-mode-pill"
-                    className="absolute inset-0 rounded-xl bg-white border border-indigo-200 shadow-sm"
+                    className="absolute inset-0 rounded-md bg-white border border-entity-border shadow-xs"
                     transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
                   />
                 )}
@@ -136,7 +136,7 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
           })}
         </div>
 
-        <p className="text-caption text-slate-500 font-medium leading-relaxed">
+        <p className="text-caption text-gray-500 font-medium leading-relaxed">
           {activeMode.description[systemLanguage] || activeMode.description.en}
         </p>
       </div>
@@ -152,7 +152,7 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
             transition={{ duration: 0.25, ease: EASE_OUT }}
             className="overflow-hidden"
           >
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/80 space-y-2.5">
+            <div className="p-3 rounded-md bg-amber-50 border border-amber-200/80 space-y-2.5">
               {schedule.polarDay || schedule.polarNight ? (
                 <p className="text-caption font-semibold text-amber-900 leading-relaxed">
                   {schedule.polarDay
@@ -213,7 +213,7 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
                     whileHover={reduceMotion || locating ? undefined : { y: -1 }}
                     whileTap={reduceMotion || locating ? undefined : { scale: 0.97 }}
                     transition={{ duration: 0.15, ease: EASE_OUT }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white type-overline shadow-sm transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-1"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white type-overline shadow-xs transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-1"
                   >
                     {locating ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -230,9 +230,9 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
       </AnimatePresence>
 
       {/* -------------------------------------------------- Theme style & palette */}
-      <div className="space-y-2.5 pt-3 border-t border-slate-200/80">
+      <div className="space-y-2.5 pt-3 border-t border-gray-200/80">
         <div className="flex items-center justify-between">
-          <label className="type-overline text-slate-600 flex items-center gap-1.5">
+          <label className="type-overline text-gray-600 flex items-center gap-1.5">
             <Palette className="h-3.5 w-3.5 text-amber-600" />
             {t("Theme Style & Palette", "Štýl témy a paleta", "Téma stílusa és paletta")}
           </label>
@@ -265,18 +265,18 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
                   if (setUserTheme) setUserTheme(theme.id);
                   else applyTheme(theme.id);
                 }}
-                className={`flex flex-col justify-between gap-2 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                className={`flex flex-col justify-between gap-2 p-2.5 rounded-md border text-left transition-all cursor-pointer ${
                   active
-                    ? "bg-indigo-50/70 border-indigo-500 ring-1 ring-indigo-500/40 shadow-xs"
-                    : "bg-white hover:bg-slate-50 border-slate-200/90"
+                    ? "bg-entity-soft border-entity-border ring-1 ring-entity-solid/25 shadow-xs"
+                    : "bg-white hover:bg-gray-50 border-gray-200/90"
                 }`}
               >
                 <div className="flex items-center justify-between gap-1.5 w-full">
-                  <span className="text-micro font-bold text-slate-800 truncate">
+                  <span className="text-micro font-bold text-gray-800 truncate">
                     {theme.icon} {(theme.name[systemLanguage] || theme.name.en).split(" (")[0]}
                   </span>
                   {active && (
-                    <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0" />
+                    <span className="w-2 h-2 rounded-full bg-entity-solid shrink-0" />
                   )}
                 </div>
                 <div
@@ -338,12 +338,12 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
           })}
         </div>
 
-        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-ui">
-          <p className="text-caption text-slate-600 font-medium leading-relaxed">
+        <div className="p-3 rounded-md bg-gray-50 border border-gray-200/80 space-y-2 text-ui">
+          <p className="text-caption text-gray-600 font-medium leading-relaxed">
             {currentThemeObj.description[systemLanguage] || currentThemeObj.description.en}
           </p>
           {isDark && currentThemeObj.category !== "radical" && (
-            <p className="text-micro text-slate-500 font-semibold leading-relaxed">
+            <p className="text-micro text-gray-500 font-semibold leading-relaxed">
               {t(
                 "The palette above applies whenever the interface is light.",
                 "Paleta vyššie sa uplatní vždy, keď je rozhranie svetlé.",
@@ -351,8 +351,8 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
               )}
             </p>
           )}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
-            <span className="type-overline text-slate-500">
+          <div className="flex items-center justify-between pt-2 border-t border-gray-200/60">
+            <span className="type-overline text-gray-500">
               {t("Theme Palette:", "Paleta témy:", "Téma paletta:")}
             </span>
             <div className="flex items-center gap-1.5">
@@ -368,7 +368,7 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
                   layout={!reduceMotion}
                   animate={{ backgroundColor: currentThemeObj.preview[key] }}
                   transition={{ duration: 0.25, ease: EASE_OUT }}
-                  className="w-4 h-4 rounded-full border border-slate-300 shadow-xs"
+                  className="w-4 h-4 rounded-full border border-gray-300 shadow-xs"
                   title={title}
                 />
               ))}

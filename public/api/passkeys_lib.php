@@ -109,7 +109,7 @@ function ccrm_passkey_rp(?string $overrideHost = null, ?string $overrideScheme =
     return [
         'id' => $id,
         'origin' => $origin,
-        'name' => 'CCRM',
+        'name' => 'Koperniq',
     ];
 }
 

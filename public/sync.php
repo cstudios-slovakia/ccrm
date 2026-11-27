@@ -10,11 +10,23 @@
  *
  * Schema/migrations come from the shared api/schema.php (single source of truth).
  */
+require_once __DIR__ . '/api/brand.php';
 require_once __DIR__ . '/api/auth.php';
 require_once __DIR__ . '/api/schema.php';
 require_once __DIR__ . '/api/warehouse_item_fields.php';
 require_once __DIR__ . '/api/task_reminders.php';
+require_once __DIR__ . '/api/recurring_tasks.php';
 require_once __DIR__ . '/api/read_scope.php';
+require_once __DIR__ . '/api/offer_document.php';
+require_once __DIR__ . '/api/sync_child_bumps.php';
+require_once __DIR__ . '/api/deleted_records.php';
+require_once __DIR__ . '/api/sync_write_guards.php';
+require_once __DIR__ . '/api/project_scope.php';
+require_once __DIR__ . '/api/github_pushes.php';
+require_once __DIR__ . '/api/clickup_lib.php';
+// ccrm_employee_file_key() / ccrm_employee_private_gc(). schema.php loads this file only when
+// a migration actually runs, which the schema fingerprint skips on almost every request.
+require_once __DIR__ . '/api/employee_files.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -27,7 +39,7 @@ $configFile = __DIR__ . '/config.php';
 if (!file_exists($configFile) || @filesize($configFile) < 100) {
     echo json_encode([
         'installed' => false,
-        'message' => 'CCRM is not installed yet.'
+        'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')
     ]);
     exit;
 }
@@ -136,14 +148,17 @@ function ccrm_attr_column(string $attrId): string {
 /**
  * Creates the dynamic tables of one project type — proj_data_<id>,
  * proj_timeline_<id>, proj_gantt_<id> — and adds a column for every attribute
- * the type defines. Idempotent. `$prune` also drops the columns of attributes
- * the type no longer has; the self-heal in ccrm_heal_project_type_tables()
- * passes false, because it rebuilds the type from the stored row and must
- * never delete a column on that evidence alone.
+ * the type defines. Idempotent.
+ *
+ * It never drops a column. Removing an attribute (or a file slot, or a
+ * timeline attribute) from the type used to DROP its column, which erased that
+ * field in every project of the type, past ones included. The column now
+ * stays: the attribute is no longer shown because the type no longer defines
+ * it, and adding it back under the same id brings its stored values back.
  *
  * Runs DDL, which MySQL commits implicitly: call it outside a transaction.
  */
-function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $prune = true): void {
+function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt): void {
     $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($pt['id']));
     $dataTable = "proj_data_" . $safeId;
     $timelineTable = "proj_timeline_" . $safeId;
@@ -162,11 +177,11 @@ function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $pru
     // comma before it, or the statement ends in ", )" and never parses.
     if ($ragPdo) try { $ragPdo->exec(preg_replace('/,\s*FOREIGN KEY \(`project_id`\) REFERENCES `projects` \(`id`\) ON DELETE CASCADE/', '', $createData)); } catch(\Exception $e) {}
 
-    // Add or Remove Columns for Data Table
+    // Add Columns for Data Table (never removed — see the doc comment).
     // The built-in "Files" attribute keeps each document slot's uploads
     // in a column of its own, exactly like a "files" attribute. The
     // columns stay while the switch is off, so turning it off hides the
-    // files instead of deleting them; only removing a slot drops one.
+    // files instead of deleting them.
     $attributes = array_merge(
         is_array($pt['attributes'] ?? null) ? $pt['attributes'] : [],
         is_array($pt['fileFields'] ?? null) ? $pt['fileFields'] : []
@@ -176,33 +191,12 @@ function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $pru
     while($col = $currentColsStmt->fetch(PDO::FETCH_ASSOC)) {
         $existingCols[] = $col['Field'];
     }
-    $expectedCols = ['id', 'project_id', 'created_at', 'updated_at'];
-
     foreach ($attributes as $attr) {
         $colName = ccrm_attr_column($attr['id']);
-        $expectedCols[] = $colName;
         if (!in_array($colName, $existingCols)) {
             $addCol = "ALTER TABLE `{$dataTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
             $pdo->exec($addCol);
             if ($ragPdo) try { $ragPdo->exec($addCol); } catch(\Exception $e) {}
-        }
-    }
-
-    // A client older than the Files attribute sends no fileFields at all.
-    // Its silence must not read as "every slot was removed", which would
-    // drop the columns and every file uploaded into them.
-    $keepFileCols = !$prune || !array_key_exists('fileFields', $pt);
-    // The same rule for the attribute list itself: a record that does
-    // not carry `attributes` at all (a partial writer, an older build)
-    // says nothing about which columns to keep, so none are dropped.
-    $keepAttrCols = !$prune || !array_key_exists('attributes', $pt);
-    foreach ($existingCols as $col) {
-        if ($keepFileCols && str_starts_with($col, 'attr_file_')) continue;
-        if ($keepAttrCols && !str_starts_with($col, 'attr_file_')) continue;
-        if (str_starts_with($col, 'attr_') && !in_array($col, $expectedCols)) {
-            $dropCol = "ALTER TABLE `{$dataTable}` DROP COLUMN `{$col}`";
-            $pdo->exec($dropCol);
-            if ($ragPdo) try { $ragPdo->exec($dropCol); } catch(\Exception $e) {}
         }
     }
 
@@ -227,7 +221,7 @@ function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $pru
         if ($ragPdo) try { $ragPdo->exec($addEvType); } catch(\Exception $e) {}
     }
 
-    // Add or Remove Columns for Timeline Table
+    // Add Columns for Timeline Table (never removed either)
     $timelineAttributes = [];
     if (isset($pt['timelineEventTypes']) && is_array($pt['timelineEventTypes'])) {
         foreach ($pt['timelineEventTypes'] as $et) {
@@ -244,27 +238,12 @@ function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $pru
     while($col = $currentTcolsStmt->fetch(PDO::FETCH_ASSOC)) {
         $existingTcols[] = $col['Field'];
     }
-    $expectedTcols = ['id', 'project_id', 'type', 'event_type', 'timestamp', 'title', 'content'];
-
     foreach ($timelineAttributes as $attr) {
         $colName = ccrm_attr_column($attr['id']);
-        $expectedTcols[] = $colName;
         if (!in_array($colName, $existingTcols)) {
             $addCol = "ALTER TABLE `{$timelineTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
             $pdo->exec($addCol);
             if ($ragPdo) try { $ragPdo->exec($addCol); } catch(\Exception $e) {}
-        }
-    }
-
-    // A record without `timelineEventTypes` says nothing about which
-    // columns to keep (see $keepAttrCols above) — drop none.
-    $keepTimelineCols = !$prune || !array_key_exists('timelineEventTypes', $pt);
-    foreach ($existingTcols as $col) {
-        if ($keepTimelineCols) break;
-        if (str_starts_with($col, 'attr_') && !in_array($col, $expectedTcols)) {
-            $dropCol = "ALTER TABLE `{$timelineTable}` DROP COLUMN `{$col}`";
-            $pdo->exec($dropCol);
-            if ($ragPdo) try { $ragPdo->exec($dropCol); } catch(\Exception $e) {}
         }
     }
 
@@ -321,7 +300,7 @@ function ccrm_heal_project_type_tables(PDO $pdo, array $projects, $ragPdo = null
                 'attributes' => json_decode($row['attributes_json'] ?? '[]', true) ?: [],
                 'fileFields' => json_decode($row['file_fields_json'] ?? '[]', true) ?: [],
                 'timelineEventTypes' => json_decode($row['timeline_event_types_json'] ?? '[]', true) ?: [],
-            ], false);
+            ]);
         } catch (Throwable $e) {
             if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
         }
@@ -375,7 +354,7 @@ function ccrm_decode_attr_value($stored) {
 }
 
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates', 'employees', 'employee_salaries', 'employee_vacations', 'orders', 'order_items', 'support_contracts', 'tickets', 'ticket_messages', 'ticket_task_links', 'ticket_time_entries'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'project_employees', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'offer_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates', 'employees', 'employee_salaries', 'employee_vacations', 'orders', 'order_items', 'support_contracts', 'tickets', 'ticket_messages', 'ticket_task_links', 'ticket_time_entries', 'whatsapp_links', 'whatsapp_numbers'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -512,6 +491,12 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         if ($incClient !== $dbClient) return false;
     }
 
+    // Contact first / last name (docs/NEWSLETTER.md C18): an older bundle never sends them, so
+    // their absence is "no opinion" as well.
+    foreach (['contactFirstName' => 'contact_first_name', 'contactLastName' => 'contact_last_name'] as $incKey => $dbCol) {
+        if (array_key_exists($incKey, $inc) && trim((string)($inc[$incKey] ?? '')) !== trim((string)($db[$dbCol] ?? ''))) return false;
+    }
+
     // Same "no opinion" rule for the price level an older bundle never sends.
     if (array_key_exists('priceLevelId', $inc)) {
         $incLevel = ($inc['priceLevelId'] ?? '') !== '' ? $inc['priceLevelId'] : null;
@@ -519,10 +504,48 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         if ($incLevel !== $dbLevel) return false;
     }
 
+    if (array_key_exists('companyClientId', $inc)) {
+        $incComp = ($inc['companyClientId'] ?? '') !== '' ? (string)$inc['companyClientId'] : null;
+        $dbComp = ($db['company_client_id'] ?? '') !== '' ? (string)$db['company_client_id'] : null;
+        if ($incComp !== $dbComp) return false;
+    }
+    if (array_key_exists('contactRole', $inc)) {
+        $incRole = ($inc['contactRole'] ?? '') !== '' ? (string)$inc['contactRole'] : null;
+        $dbRole = ($db['contact_role'] ?? '') !== '' ? (string)$db['contact_role'] : null;
+        if ($incRole !== $dbRole) return false;
+    }
+    if (array_key_exists('contactTags', $inc)) {
+        $incTags = is_array($inc['contactTags']) ? array_values(array_filter(array_map('trim', $inc['contactTags']))) : [];
+        $dbTags = (!empty($db['contact_tags'])) ? (json_decode($db['contact_tags'], true) ?: []) : [];
+        if ($incTags !== $dbTags) return false;
+    }
+    if (array_key_exists('assignedEmployees', $inc)) {
+        $incEmp = is_array($inc['assignedEmployees']) ? array_values(array_unique(array_filter(array_map(fn($x) => trim((string)$x), $inc['assignedEmployees'])))) : [];
+        $dbEmp = (!empty($db['assigned_employees'])) ? (json_decode($db['assigned_employees'], true) ?: []) : [];
+        if ($incEmp !== $dbEmp) return false;
+    }
+
     if (array_key_exists('ticketAllowedEmails', $inc)) {
         $incEmails = is_array($inc['ticketAllowedEmails']) ? array_values(array_filter(array_map('trim', $inc['ticketAllowedEmails']))) : [];
         $dbEmails = (!empty($db['ticket_allowed_emails'])) ? (json_decode($db['ticket_allowed_emails'], true) ?: []) : [];
         if ($incEmails !== $dbEmails) return false;
+    }
+
+    if (array_key_exists('data', $inc)) {
+        $sortRec = static function (&$v) use (&$sortRec): void {
+            if (!is_array($v)) return;
+            $isList = array_keys($v) === range(0, count($v) - 1);
+            if (!$isList) ksort($v);
+            foreach ($v as &$item) $sortRec($item);
+        };
+        $incData = is_array($inc['data']) ? $inc['data'] : [];
+        $dbData = (!empty($db['custom_fields_json'])) ? (json_decode($db['custom_fields_json'], true) ?: []) : [];
+        if (!is_array($dbData)) $dbData = [];
+        $sortRec($incData);
+        $sortRec($dbData);
+        if (json_encode($incData, JSON_UNESCAPED_UNICODE) !== json_encode($dbData, JSON_UNESCAPED_UNICODE)) {
+            return false;
+        }
     }
     
     foreach ($fields as $col => $val) {
@@ -631,252 +654,6 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     return true;
 }
 
-/**
- * Delete rows the client removed — either by omitting them from a v1 snapshot
- * or by naming them in a v2 `deleted` list.
- *
- * For delete-by-omission, never remove a row that changed after the client's
- * last sync ($baseSyncedAt). Otherwise a stale snapshot would wipe records
- * another user created in the meantime. Named (v2) deletions skip that clock
- * check: the client listed the id on purpose, including a row it created a
- * moment earlier whose updated_at is newer than the previous GET.
- *
- * $baseSyncedAt is the DB clock value captured in the GET the client synced
- * from. Null (legacy client) falls back to an unconditional delete.
- *
- * $table is only ever a trusted, sanitized name (fixed table names or the
- * already-validated ue_<id>), never raw user input.
- */
-// Mass-deletion circuit breaker thresholds (see ccrm_delete_omitted). A single
-// sync may never delete-by-omission ALL remaining rows of a table, nor a large
-// FRACTION of them at once: that is the signature of a client that logged in
-// with empty/stale state and pushed an empty collection (the 2026-07-06 and the
-// 2026-07-10 users-table data-loss incidents). MIN_ROWS keeps everyday small
-// deletions on ordinary tables flowing; access-critical tables (users) run in
-// $strict mode where that floor is dropped so even an N-1 wipe is blocked.
-// Tunable if a deployment legitimately needs large bulk deletes through sync.
-if (!defined('CCRM_MASS_DELETE_MIN_ROWS')) define('CCRM_MASS_DELETE_MIN_ROWS', 5);
-if (!defined('CCRM_MASS_DELETE_FRACTION')) define('CCRM_MASS_DELETE_FRACTION', 0.5);
-
-/**
- * The write-side counterpart of ccrm_delete_omitted: true when the stored row
- * changed AFTER the snapshot this client is pushing from, meaning the payload
- * carries a copy of the row the client never saw.
- *
- * This matters because the pre-v2 client re-sends every record on every save. So
- * a user who edits one lead also re-submits their stale copy of every other lead,
- * and the upsert (which has no version check of its own) silently reverts any edit
- * another user made since that client last polled. Skipping the row instead keeps
- * the newer data; the stale client picks it up on its next poll.
- *
- * Resolution is one second — updated_at is a plain TIMESTAMP and $baseSyncedAt
- * comes from NOW(), neither carrying a fractional part — matching the precision
- * ccrm_delete_omitted already relies on. Two edits inside the same second remain
- * last-write-wins. A null $baseSyncedAt (legacy client that never sent one) keeps
- * the old unconditional-write behaviour.
- */
-function ccrm_write_would_clobber(?array $dbRow, ?string $baseSyncedAt): bool {
-    if ($dbRow === null || $baseSyncedAt === null) {
-        return false;
-    }
-    $updatedAt = $dbRow['updated_at'] ?? null;
-    if (!is_string($updatedAt) || $updatedAt === '') {
-        return false;
-    }
-    $rowTime = ccrm_ts_to_micro($updatedAt);
-    $baseTime = ccrm_ts_to_micro($baseSyncedAt);
-    if ($rowTime === null || $baseTime === null) {
-        return false;
-    }
-    return $rowTime > $baseTime;
-}
-
-/**
- * Parse a MySQL DATETIME/TIMESTAMP string to a float epoch, KEEPING the fractional
- * part. strtotime() alone silently truncates to whole seconds, which would throw
- * away exactly the millisecond precision the conflict guard depends on (see
- * ccrm_migrate_updated_at_precision) and reopen the same-second clobber window.
- *
- * Accepts both 'Y-m-d H:i:s' (pre-migration rows, older clients' baseSyncedAt) and
- * 'Y-m-d H:i:s.uuu' (NOW(3) and TIMESTAMP(3) columns).
- */
-function ccrm_ts_to_micro(string $ts): ?float {
-    $ts = trim($ts);
-    if ($ts === '') {
-        return null;
-    }
-    if (!preg_match('/^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?$/', $ts, $m)) {
-        return null;
-    }
-    $seconds = strtotime(str_replace('T', ' ', $m[1]));
-    if ($seconds === false) {
-        return null;
-    }
-    return ((float) $seconds) + (isset($m[2]) ? (float) ('0.' . $m[2]) : 0.0);
-}
-
-/**
- * The DB clock the client echoes back as baseSyncedAt. NOW(3) is preferred so
- * the concurrency guard can tell two writes in the same second apart; hosts
- * that reject fractional-second NOW() fall back to whole seconds. Always a
- * string (or null) so json_encode + the client's `typeof === "string"` check
- * agree — some PDO builds otherwise hand back a DateTime that becomes `{}`.
- */
-function ccrm_db_clock(PDO $pdo): ?string {
-    foreach (['SELECT NOW(3)', 'SELECT NOW()'] as $sql) {
-        try {
-            $value = $pdo->query($sql)->fetchColumn();
-            if ($value !== false && $value !== null && $value !== '') {
-                return (string) $value;
-            }
-        } catch (\Throwable $e) {
-            continue;
-        }
-    }
-    return null;
-}
-
-/**
- * Ids a protocol-v2 client explicitly asked to delete for one entity.
- *
- * v1 clients never reach this: their deletions are inferred from whatever is
- * missing out of a complete snapshot, which is why a v1 payload must always carry
- * every record and why the mass-delete circuit breaker has to exist at all. v2
- * states deletions outright, so an absent section means "unchanged" and an empty
- * push deletes nothing.
- */
-function ccrm_explicit_deleted_ids(array $deleted, string $entity): array {
-    $ids = $deleted[$entity] ?? [];
-    if (!is_array($ids)) {
-        return [];
-    }
-    $out = [];
-    foreach ($ids as $id) {
-        if (is_string($id) || is_int($id)) {
-            $id = (string) $id;
-            if ($id !== '') {
-                $out[] = $id;
-            }
-        }
-    }
-    return array_values(array_unique($out));
-}
-
-/**
- * The mass-deletion circuit breaker, on its own so every delete-by-omission site
- * can use it — not just ccrm_delete_omitted().
- *
- * Returns the ids that may safely be deleted: either the full list, or an empty
- * one when the request looks like an empty/stale client push. Tables whose
- * deletion is irreversible (project_types DROPs its dynamic data tables) pass
- * $strict so even an N-1 wipe is refused.
- */
-function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool $strict = false, bool $explicit = false): array {
-    if (empty($toDelete)) {
-        return [];
-    }
-
-    // Refuse to delete-by-omission a large share of a table in one request. An
-    // empty/stale client push makes array_diff() mark most or all rows for
-    // deletion; without this guard that silently wipes the table (leads cascade
-    // to categories + timeline). Ordinary small deletions — the real use case —
-    // stay below the threshold and pass through untouched. When tripped we keep
-    // the data and log instead of destroying it; the client re-pulls the rows on
-    // its next GET.
-    $deleteCount = count($toDelete);
-    try {
-        $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
-    } catch (\Throwable $e) {
-        // Cannot size the table, so cannot prove the delete is safe. Keep the data.
-        error_log('[ccrm] BLOCKED delete-by-omission on `' . $table . '`: row count failed — ' . $e->getMessage());
-        return [];
-    }
-
-    // (a) Never delete EVERY remaining row of a table by OMISSION — that is only
-    //     ever an empty/stale push, never a legitimate edit. Applies to every
-    //     table regardless of size, so even a 1- or 2-row table can't be emptied.
-    //     $explicit marks a delta-sync deletion the client NAMED in its `deleted`
-    //     list. That is recorded user intent, not an inferred omission -- and the
-    //     incident this guard was written for was omission, not naming. Such a
-    //     delete may empty an ordinary table, so removing the only price offer you
-    //     have actually sticks instead of silently reappearing on the next sync.
-    //     $strict tables (users, project_types) are never emptied either way, and
-    //     rule (b) below still caps how much one request may remove.
-    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal)
-        && (!$explicit || $strict);
-
-    // (b) Refuse to delete a large FRACTION of a table in one request. Ordinary
-    //     data tables keep a small absolute-row floor so everyday little
-    //     deletions still pass. In $strict mode — access-critical or irreversible
-    //     tables such as `users` and `project_types`, where the sync may keep the
-    //     calling account so a full wipe tops out at N-1 rows and never reaches
-    //     100% — the floor drops to 1, so the 4-of-5 users wipe that slipped under
-    //     the row floor is now caught.
-    $minRows = $strict ? 1 : CCRM_MASS_DELETE_MIN_ROWS;
-    $massFraction = ($serverTotal > 0
-        && $deleteCount >= $minRows
-        && ($deleteCount / $serverTotal) >= CCRM_MASS_DELETE_FRACTION);
-
-    // Named (v2) deletions skip the fraction cap the same way they skip the
-    // empty-table rule: the client listed the ids. Omission still cannot wipe
-    // half a table in one push. $strict tables (users, project_types) keep the
-    // empty-table block even when named, so the last project type cannot DROP
-    // its data tables through a single-item delete.
-    if ($wouldEmptyTable || ($massFraction && !$explicit)) {
-        error_log(sprintf(
-            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%%s%s) — likely an empty/stale client push; no rows deleted.',
-            $table, $deleteCount, $serverTotal, 100 * $deleteCount / max(1, $serverTotal), $strict ? ', strict' : '', $explicit ? ', named' : ''
-        ));
-        $GLOBALS['ccrm_delete_blocked'] = $GLOBALS['ccrm_delete_blocked'] ?? [];
-        $GLOBALS['ccrm_delete_blocked'][$table] = array_values($toDelete);
-        return [];
-    }
-
-    return $toDelete;
-}
-
-function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false, bool $explicit = false): void {
-    if (empty($idsToDelete)) {
-        return;
-    }
-
-    // Resolve the rows this sync would actually remove (excluding protected ids
-    // such as the session user).
-    $toDelete = [];
-    foreach ($idsToDelete as $id) {
-        if (!in_array($id, $skipIds, true)) {
-            $toDelete[] = $id;
-        }
-    }
-
-    $toDelete = ccrm_filter_mass_delete($pdo, $table, $toDelete, $strict, $explicit);
-    if (empty($toDelete)) {
-        return;
-    }
-
-    // Named (protocol-v2) deletions are recorded user intent, so they must not
-    // be blocked by the snapshot clock. The updated_at guard exists for
-    // delete-by-omission: a stale full snapshot must not wipe rows another user
-    // created after it was taken. A client that listed the id in `deleted` saw
-    // that row and chose to remove it — including a row they themselves created
-    // a moment earlier, whose updated_at is newer than the previous GET.
-    // TIMESTAMP(3) hosts make that race the common case for "create then
-    // immediately delete"; without this the DELETE matches zero rows and the
-    // lead reappears on the next refresh.
-    if ($baseSyncedAt !== null && !$explicit) {
-        $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ? AND `updated_at` <= ?");
-    } else {
-        $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ?");
-    }
-    foreach ($toDelete as $id) {
-        if ($baseSyncedAt !== null && !$explicit) {
-            $stmt->execute([$id, $baseSyncedAt]);
-        } else {
-            $stmt->execute([$id]);
-        }
-    }
-}
-
 // 3. Handle GET Request: Read from Database
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $settings = fetch_system_settings($pdo);
@@ -926,7 +703,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'dataVersion' => $dataVersion,
                 'users' => $users,
                 'settings' => [
-                    'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
+                    // '' = no custom name: the client shows its default (Koperniq).
+                    'systemName' => $settings['SYSTEM_NAME'] ?? '',
                     'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
                     'systemCurrency' => $settings['SYSTEM_CURRENCY'] ?? '',
                 ]
@@ -934,7 +712,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             exit;
         } else {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Authentication required.']);
+            // The company language is not sensitive and the login screen needs
+            // it: a browser that has never been used has nothing else to go on.
+            // Keep this list to values that are safe to show anyone.
+            $publicLang = $settings['SYSTEM_LANGUAGE'] ?? 'sk';
+            echo json_encode([
+                'success' => false,
+                'message' => 'Authentication required.',
+                'publicSettings' => [
+                    'systemLanguage' => in_array($publicLang, ['sk', 'hu', 'en'], true) ? $publicLang : 'sk',
+                ],
+            ]);
             exit;
         }
     }
@@ -950,6 +738,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             fastcgi_finish_request();
         }
         ccrm_maybe_process_task_reminders($pdo);
+        ccrm_maybe_process_recurring_tasks($pdo);
     });
 
     // Identity of the session, resolved from `users` rather than taken from the
@@ -972,7 +761,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'installed' => true,
             'demoMode' => $isDemoMode,
             'dataVersion' => $dataVersion,
-            'sessionUser' => ['email' => $sessionEmail],
+            'sessionUser' => ['id' => (string)$sessionUser['id'], 'email' => $sessionEmail],
         ]);
         exit;
     }
@@ -1027,12 +816,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $event['fileName'] = $te['file_name'];
                 $event['fileSize'] = $te['file_size'];
                 $event['fileType'] = $te['file_type'];
-                $attachments = (isset($te['attachments_json']) && $te['attachments_json'] !== '' && $te['attachments_json'] !== null)
-                    ? json_decode($te['attachments_json'], true)
-                    : null;
-                if (is_array($attachments) && $attachments) {
-                    $event['attachments'] = $attachments;
-                }
+            }
+            // Any entry may carry files, e.g. a web-form inquiry's note (api/pipeline.php).
+            $attachments = !empty($te['attachments_json']) ? json_decode($te['attachments_json'], true) : null;
+            if (is_array($attachments) && $attachments) {
+                $event['attachments'] = $attachments;
             }
             if ($te['type'] === 'appointment') {
                 $event['extraTime'] = $te['extra_time'];
@@ -1070,6 +858,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             }
             if (isset($te['transcription']) && $te['transcription'] !== '' && $te['transcription'] !== null) {
                 $event['transcription'] = $te['transcription'];
+            }
+            if (isset($te['external_url']) && $te['external_url'] !== '' && $te['external_url'] !== null) {
+                $event['externalUrl'] = $te['external_url'];
             }
             $timelineByLead[$te['lead_id']][] = $event;
         }
@@ -1112,6 +903,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'vatId' => $row['vat_id'] ?? '',
                 'vatValidationResult' => isset($row['vat_validation_result']) && !empty($row['vat_validation_result']) ? json_decode($row['vat_validation_result'], true) : null,
                 'contactPerson' => $row['contact_person'] ?? '',
+                'contactFirstName' => $row['contact_first_name'] ?? '',
+                'contactLastName' => $row['contact_last_name'] ?? '',
                 'priceLevelId' => ($row['price_level_id'] ?? '') !== '' ? $row['price_level_id'] : null,
                 'website' => $row['website'] ?? '',
                 'address' => [
@@ -1139,8 +932,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'district' => $row['district'] ?? '',
                 'financialSummary' => $row['financial_summary'] ?? '',
                 'clientCategoryId' => $row['client_category_id'] ?? null,
+                'companyClientId' => ($row['company_client_id'] ?? '') !== '' ? $row['company_client_id'] : null,
+                'contactRole' => ($row['contact_role'] ?? '') !== '' ? $row['contact_role'] : null,
+                'assignedEmployees' => (!empty($row['assigned_employees']) && is_array($ae = json_decode($row['assigned_employees'], true))) ? array_values(array_filter(array_map(fn($x) => trim((string)$x), $ae))) : [],
+                'contactTags' => (!empty($row['contact_tags']) && is_array($ct = json_decode($row['contact_tags'], true))) ? array_values(array_filter(array_map(fn($x) => trim((string)$x), $ct))) : [],
                 // Ticket-module data riding on the lead row: withheld without `tickets`.
                 'ticketAllowedEmails' => (ccrm_can($scope, 'tickets') && !empty($row['ticket_allowed_emails'])) ? (json_decode($row['ticket_allowed_emails'], true) ?: []) : [],
+                'data' => (!empty($row['custom_fields_json']) && is_array($cf = json_decode($row['custom_fields_json'], true))) ? (object)$cf : (object)[],
                 'archived' => intval($row['archived'] ?? 0) === 1,
                 'followUps' => (isset($row['follow_ups']) && $row['follow_ups'] !== '' && $row['follow_ups'] !== null) ? json_decode($row['follow_ups'], true) : (object)[]
             ];
@@ -1155,6 +953,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // The ticket link on a task (`relatedTicketId`) is ticket-module data: a
     // caller without `tickets` sees the task but not which ticket it belongs to.
     $canTickets = ccrm_can($scope, 'tickets');
+    $canAgency = ccrm_can($scope, 'agency');
+    $refAgencyWorkerIds = [];
     $ticketByTask = [];
     if ($canTickets) {
         try {
@@ -1165,6 +965,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         } catch (\Throwable $e) {}
     }
     $tasks = [];
+    $recurringTasks = [];
     $allKnownTags = [];
     if ($canTasks) {
         $assigneesByTask = [];
@@ -1188,13 +989,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             }
         } catch (\Throwable $e) {}
 
-        $tasksStmt = $pdo->query("SELECT * FROM `tasks` ORDER BY `created_at` DESC");
+        $tasksStmt = $pdo->query("SELECT * FROM `tasks` WHERE " . ccrm_sql_real_tasks() . " ORDER BY `created_at` DESC");
         while ($row = $tasksStmt->fetch()) {
             $taskId = $row['id'];
             $assignedUsers = $assigneesByTask[$taskId] ?? [];
             $relTicketId = !$canTickets ? null : (!empty($row['related_ticket_id'])
                 ? $row['related_ticket_id']
                 : ($ticketByTask[$taskId] ?? null));
+
+            $relAgencyWorkerId = ($canAgency && !empty($row['related_agency_worker_id'])) ? (string)$row['related_agency_worker_id'] : null;
+            if ($relAgencyWorkerId !== null) {
+                $refAgencyWorkerIds[$relAgencyWorkerId] = true;
+            }
 
             $taskItem = [
                 'id' => $taskId,
@@ -1211,6 +1017,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'relatedLeadId' => $row['related_lead_id'] ?? null,
                 'relatedProjectId' => $row['related_project_id'] ?? null,
                 'relatedTicketId' => $relTicketId,
+                'relatedAgencyWorkerId' => $relAgencyWorkerId,
                 'isLocking' => intval($row['is_locking']) === 1,
                 'archived' => intval($row['archived'] ?? 0) === 1,
                 'completedBy' => $row['completed_by'] ?? null,
@@ -1218,12 +1025,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
                 'requiresConclusion' => intval($row['requires_conclusion'] ?? 0) === 1,
                 'conclusion' => $row['conclusion'] ?? null,
+                'estimateMinutes' => isset($row['estimate_minutes']) ? (int)$row['estimate_minutes'] : null,
+                'category' => $row['category'] ?? null,
+                'reopens' => ccrm_task_reopens_decode($row['reopens_json'] ?? null), // read-only for clients (api/task_done.php)
+                // Deadline history: kept by the server on every save (see the tasks upsert), read-only for clients.
+                'originalDeadline' => $row['original_deadline'] ?? null,
+                'deadlineMoves' => (int)($row['deadline_moves'] ?? 0),
+                'firstStartedAt' => $row['first_started_at'] ?? null,
+                'reopenedCount' => ccrm_task_reopened_total($row['reopened_count'] ?? 0, $row['reopens_json'] ?? null), // the larger of the counter and the log (api/task_done.php)
+                // Pushed in over the machine API (server-only columns, never written back by a client save).
+                'externalSource' => $row['external_source'] ?? null,
+                'externalUrl' => $row['external_url'] ?? null,
+                'dueInferred' => ccrm_task_due_inferred($row),
+                'parentTaskId' => $row['parent_task_id'] ?? null,
+                'clickupMeta' => ccrm_decode_clickup_task_meta($row['external_source'] ?? null, $row['external_meta_json'] ?? null),
+                'recurringSourceId' => $row['recurring_source_id'] ?? null,
+                'recurringOccurrenceDate' => $row['recurring_occurrence_date'] ?? null,
+                'commentCount' => (int)($row['comment_count'] ?? 0),
+                'fileCount' => (int)($row['file_count'] ?? 0),
+                'reactions' => (!empty($row['reactions_json']) && is_array($rx = json_decode((string)$row['reactions_json'], true))) ? $rx : null,
                 'assignedUsers' => $assignedUsers,
                 'tags' => $tagsByTask[$taskId] ?? []
             ];
 
             if ($canTasksViewAll || ccrm_can_view_task($taskItem, $scope)) {
                 $tasks[] = $taskItem;
+            }
+        }
+
+        $recStmt = $pdo->query("SELECT * FROM `tasks` WHERE `task_kind` = 'recurring' ORDER BY `created_at` DESC"); /* recurring-template: fetch recurring task templates */
+        while ($row = $recStmt->fetch()) {
+            $rId = $row['id'];
+            $assignedUsers = $assigneesByTask[$rId] ?? [];
+            $relTicketId = !$canTickets ? null : (!empty($row['related_ticket_id']) ? $row['related_ticket_id'] : ($ticketByTask[$rId] ?? null));
+            $relAgencyWorkerId = ($canAgency && !empty($row['related_agency_worker_id'])) ? (string)$row['related_agency_worker_id'] : null;
+            if ($relAgencyWorkerId !== null) {
+                $refAgencyWorkerIds[$relAgencyWorkerId] = true;
+            }
+            $recItem = [
+                'id' => $rId,
+                'title' => $row['title'],
+                'description' => $row['description'] ?? '',
+                'priority' => $row['priority'],
+                'startDate' => $row['start_date'] ?? null,
+                'deadline' => $row['deadline'],
+                'deadlineTime' => $row['deadline_time'] ?? null,
+                'owner' => $row['owner'],
+                'createdBy' => $row['created_by'] ?? null,
+                'createdAt' => $row['created_at'] ?? null,
+                'relatedLeadId' => $row['related_lead_id'] ?? null,
+                'relatedProjectId' => $row['related_project_id'] ?? null,
+                'relatedTicketId' => $relTicketId,
+                'relatedAgencyWorkerId' => $relAgencyWorkerId,
+                'isLocking' => intval($row['is_locking']) === 1,
+                'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
+                'requiresConclusion' => intval($row['requires_conclusion'] ?? 0) === 1,
+                'estimateMinutes' => isset($row['estimate_minutes']) ? (int)$row['estimate_minutes'] : null,
+                'category' => $row['category'] ?? null,
+                'recurrence' => ccrm_recurring_validate_json(json_decode($row['recurrence_json'] ?? '[]', true) ?: []),
+                'assignedUsers' => $assignedUsers,
+                'tags' => $tagsByTask[$rId] ?? []
+            ];
+            if ($canTasksViewAll || ccrm_can_view_task($recItem, $scope)) {
+                $recurringTasks[] = $recItem;
             }
         }
     }
@@ -1285,8 +1149,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStates = isset($settings['LEAD_STATES']) ? json_decode($settings['LEAD_STATES'], true) : $defaultLists['leadStates'];
     $leadSources = isset($settings['LEAD_SOURCES']) ? json_decode($settings['LEAD_SOURCES'], true) : $defaultLists['leadSources'];
     $leadCategories = isset($settings['LEAD_CATEGORIES']) ? json_decode($settings['LEAD_CATEGORIES'], true) : $defaultLists['leadCategories'];
-    $divisions = isset($settings['DIVISIONS']) ? json_decode($settings['DIVISIONS'], true) : ($defaultLists['divisions'] ?? ['Cstudios', 'Cstudios Budapest']);
-    $divisionColors = (isset($settings['DIVISION_COLORS']) ? json_decode($settings['DIVISION_COLORS'], true) : ['Cstudios' => '#3b82f6', 'Cstudios Budapest' => '#8b5cf6']) ?: (object)[];
+    $divisions = isset($settings['DIVISIONS']) ? json_decode($settings['DIVISIONS'], true) : ($defaultLists['divisions'] ?? []);
+    $divisionColors = (isset($settings['DIVISION_COLORS']) ? json_decode($settings['DIVISION_COLORS'], true) : []) ?: (object)[];
     // Every one of these is a map keyed by name on the client. A map the
     // client saved empty ({}) decodes to an empty PHP array here and would be
     // re-encoded as a JSON list ([]), landing in a Record<string,...> state as
@@ -1321,6 +1185,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // on the way out so the UI never has to defend against a malformed blob.
     $leadAssignment = ccrm_normalize_lead_assignment(
         isset($settings['LEAD_ASSIGNMENT']) ? json_decode($settings['LEAD_ASSIGNMENT'], true) : null
+    );
+    $leadAttributes = ccrm_normalize_lead_attributes(
+        isset($settings['LEAD_ATTRIBUTES']) ? json_decode($settings['LEAD_ATTRIBUTES'], true) : null
     );
     // Whether every incoming lead is paired with a freshly created project, and
     // of which type. Normalized on the way out for the same reason.
@@ -1363,6 +1230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if (!is_array($taskStateColors) || !$taskStateColors) {
         $taskStateColors = ccrm_default_task_state_colors(is_array($taskStates) ? $taskStates : []);
     }
+    $taskStateTimerActions = ccrm_normalize_task_state_timer_actions(isset($settings['TASK_STATE_TIMER_ACTIONS']) ? json_decode($settings['TASK_STATE_TIMER_ACTIONS'], true) : null, is_array($taskStates) ? $taskStates : null);
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
     // SECURITY: never send real secret values to the browser — mask them. The
     // frontend only needs to know a secret is set (e.g. "OpenAI configured");
@@ -1650,6 +1518,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             while ($mgr = $mgrStmt->fetch(PDO::FETCH_ASSOC)) {
                 $managersByProject[$mgr['project_id']][] = $mgr['user_id'];
             }
+            // Fetch assigned employees (same shape as managers; the table may not exist yet on an old install)
+            $employeesByProject = [];
+            if ($pdo->query("SHOW TABLES LIKE 'project_employees'")->rowCount() > 0) {
+                $empStmt = $pdo->query("SELECT `project_id`, `user_id` FROM `project_employees`");
+                while ($emp = $empStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $employeesByProject[$emp['project_id']][] = $emp['user_id'];
+                }
+            }
 
             $projStmt = $pdo->query("SELECT * FROM `projects` ORDER BY `created_at` DESC, `id` DESC");
             while ($pRow = $projStmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1677,6 +1553,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'createdAt' => $pRow['created_at'] ?? null,
                     'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
                     'value' => isset($pRow['value']) ? (float)$pRow['value'] : null,
+                    'hoursBudget' => isset($pRow['hours_budget']) ? (float)$pRow['hours_budget'] : null,
+                    'billableRate' => isset($pRow['billable_rate']) ? (float)$pRow['billable_rate'] : null,
+                    'isInternal' => isset($pRow['is_internal']) && (int)$pRow['is_internal'] === 1,
+                    'contactPhone' => $pRow['contact_phone'] ?? null,
+                    'contactEmail' => $pRow['contact_email'] ?? null,
+                    'acceptanceCriteria' => ccrm_scope_criteria_decode($pRow['acceptance_criteria_json'] ?? null),
+                    'scopeApprovedAt' => ccrm_scope_ts_from_db($pRow['scope_approved_at'] ?? null),
+                    'scopeApprovedBy' => $pRow['scope_approved_by'] ?? null,
+                    'githubRepo' => $pRow['github_repo'] ?? null,
+                    'githubBranch' => $pRow['github_branch'] ?? null,
+                    'clickupLists' => ccrm_decode_clickup_lists($pRow['clickup_lists_json'] ?? null),
                     'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
                     // Widget and public status-board settings. `ticketPublicHash` is the
                     // key to the public board, so it stays server-side without `tickets`.
@@ -1688,6 +1575,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'ticketRetainer' => $canTickets && isset($decodedWidgetCfg['retainer']) && is_array($decodedWidgetCfg['retainer']) ? $decodedWidgetCfg['retainer'] : null,
                     'archived' => isset($pRow['archived']) && (int)$pRow['archived'] === 1,
                     'managers' => $managersByProject[$projId] ?? [],
+                    'employees' => $employeesByProject[$projId] ?? [],
                     'data' => [],
                     'timeline' => [],
                     'gantt' => []
@@ -1859,12 +1747,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             if ($pdo->query("SHOW TABLES LIKE 'warehouse_stock'")->rowCount() > 0) {
                 $stockStmt = $pdo->query("SELECT * FROM `warehouse_stock`");
                 while ($row = $stockStmt->fetch()) {
+                    // Synthetic id: the table's key is (warehouse_id, item_id). Without an id
+                    // the client's delta diff cannot track a row and re-sends the whole
+                    // stock table as absolute quantities on every push, reverting
+                    // concurrent changes (MCP, other tabs). Same format as stockRowId()
+                    // in src/utils/syncDiff.ts. Writes ignore it.
                     $warehouseStock[] = [
                         'warehouseId' => $row['warehouse_id'],
                         'itemId' => $row['item_id'],
                         'quantity' => (float)($row['quantity'] ?? 0),
                         'reservedQuantity' => (float)($row['reserved_quantity'] ?? 0),
                         'location' => $row['location'],
+                        'id' => $row['warehouse_id'] . ':' . $row['item_id'],
                     ];
                 }
             }
@@ -1943,6 +1837,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // 3.8. Fetch Financial Categories and Records, Invoices & Price Offers
     $financialCategories = [];
     $clientCategories = [];
+    $clientContacts = [];
+    $offerCategories = [];
     $financialRecords = [];
     $invoicesOffers = [];
     $aiCustomTemplates = [];
@@ -1971,6 +1867,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $ccStmt = $pdo->query("SELECT * FROM `client_categories` ORDER BY `level` ASC, `sort_order` ASC, `name` ASC");
             while ($row = $ccStmt->fetch()) {
                 $clientCategories[] = [
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'parentId' => $row['parent_id'],
+                    'level' => (int)($row['level'] ?? 1),
+                    'sortOrder' => (int)($row['sort_order'] ?? 0),
+                    'color' => $row['color'],
+                    'icon' => $row['icon'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+
+        // Company & standalone personal contacts (separate from `leads`)
+        if (ccrm_can($scope, 'clients') || ccrm_can($scope, 'leads')) {
+            require_once __DIR__ . '/api/client_contacts_lib.php';
+            $clientContacts = ccrm_sync_fetch_client_contacts($pdo);
+        }
+
+        // Price-offer categories (Settings → Offers & invoicing): the same shape as
+        // the customer tree, gated like the offers they file.
+        if (ccrm_can($scope, 'invoices') && $pdo->query("SHOW TABLES LIKE 'offer_categories'")->rowCount() > 0) {
+            $ocStmt = $pdo->query("SELECT * FROM `offer_categories` ORDER BY `level` ASC, `sort_order` ASC, `name` ASC");
+            while ($row = $ocStmt->fetch()) {
+                $offerCategories[] = [
                     'id' => $row['id'],
                     'name' => $row['name'],
                     'parentId' => $row['parent_id'],
@@ -2022,6 +1943,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'recurringSkippedDates' => !empty($row['recurring_skipped_dates_json']) ? json_decode($row['recurring_skipped_dates_json'], true) : null,
                     'recurringSourceId' => $row['recurring_source_id'] ?? null,
                     'recurringOccurrenceDate' => $row['recurring_occurrence_date'] ?? null,
+                    'recurringMaterializedThrough' => $row['recurring_materialized_through'] ?? null,
                     'projectId' => $row['project_id'],
                     'clientId' => $row['client_id'],
                     'invoiceNumber' => $row['invoice_number'],
@@ -2081,6 +2003,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'greetingNote' => $row['greeting_note'],
                     'introNote' => $row['intro_note'],
                     'uspCards' => !empty($row['usp_cards_json']) ? json_decode($row['usp_cards_json'], true) : [],
+                    'customFields' => ($cf = ccrm_offer_custom_field_values($row['custom_fields_json'] ?? null)) ? $cf : null,
                     'reassuranceNote' => $row['reassurance_note'],
                     'items' => $itemsByIo[$row['id']] ?? [],
                     'subtotal' => (float)$row['subtotal'],
@@ -2097,6 +2020,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'signOffTeam' => $row['sign_off_team'],
                     'customTemplateId' => $row['custom_template_id'],
                     'customTemplateStyle' => !empty($row['custom_template_style_json']) ? json_decode($row['custom_template_style_json'], true) : null,
+                    'categoryId' => $row['category_id'] ?? null,
                     'status' => $row['status'],
                     'statusChangedAt' => $row['status_changed_at'] ?? null,
                     'issuedAt' => $row['issued_at'],
@@ -2127,6 +2051,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'badgeStyle' => $row['badge_style'] ?? 'rounded',
                     // NULL for a template generated before the variants existed.
                     'layout' => isset($row['layout_json']) && $row['layout_json'] !== '' ? json_decode($row['layout_json'], true) : null,
+                    'document' => (isset($row['document_json']) && $row['document_json'] !== '' && ($doc = json_decode($row['document_json'], true)) && is_array($doc)) ? $doc : null,
                     'createdAt' => $row['created_at'],
                 ];
             }
@@ -2149,6 +2074,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'firstName' => $row['first_name'] ?? null,
                     'lastName' => $row['last_name'] ?? null,
                     'kind' => $row['kind'] ?? 'employee',
+                    'contractorType' => $row['contractor_type'] ?? null,
                     'companyId' => $row['company_id'] ?? null,
                     'taxId' => $row['tax_id'] ?? null,
                     'vatId' => $row['vat_id'] ?? null,
@@ -2161,6 +2087,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'addressCity' => $row['address_city'],
                     'addressZip' => $row['address_zip'],
                     'addressCountry' => $row['address_country'] ?? 'Slovakia',
+                    'workCountry' => $row['work_country'] ?? null,
+                    'hoursPerDay' => isset($row['hours_per_day']) ? (float)$row['hours_per_day'] : null,
                     'salaryType' => $row['salary_type'] ?? 'monthly',
                     'salaryAmount' => (float)($row['salary_amount'] ?? 0),
                     'salaryDueDay' => $row['salary_due_day'] !== null ? (int)$row['salary_due_day'] : null,
@@ -2196,12 +2124,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'items' => !empty($row['items_json']) ? json_decode($row['items_json'], true) : [],
                     'totalSalary' => (float)($row['total_salary'] ?? 0),
                     'totalPaid' => (float)($row['total_paid'] ?? 0),
+                    'laborCost' => isset($row['labor_cost']) ? (float)$row['labor_cost'] : null,
+                    'netPay' => isset($row['net_pay']) ? (float)$row['net_pay'] : null,
                     'status' => $row['status'] ?? 'pending',
                     'dueDate' => $row['due_date'],
                     'paymentDate' => $row['payment_date'],
                     'paymentMethod' => $row['payment_method'] ?? 'bank_transfer',
                     'financialRecordId' => $row['financial_record_id'],
                     'note' => $row['note'],
+                    // Absent (not null) before the column exists, so the client falls back to the status
+                    ...(array_key_exists('closed_at', $row) ? ['closedAt' => $row['closed_at'], 'closedBy' => $row['closed_by'] ?? null] : []),
                     'createdAt' => $row['created_at'],
                     'updatedAt' => $row['updated_at'],
                 ];
@@ -2269,6 +2201,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'customerType' => $row['customer_type'] ?? 'client',
                     'clientId' => $row['client_id'],
                     'supplierId' => $row['supplier_id'],
+                    'projectId' => $row['project_id'] ?? null,
                     'guest' => [
                         'name' => $row['guest_name'],
                         'email' => $row['guest_email'],
@@ -2404,22 +2337,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 }
             }
 
-            $timeByTicket = [];
-            if ($pdo->query("SHOW TABLES LIKE 'ticket_time_entries'")->rowCount() > 0) {
-                $teStmt = $pdo->query("SELECT * FROM `ticket_time_entries` ORDER BY `logged_at` DESC, `created_at` DESC");
+            // Ticket time lives in time_entries now. The blob no longer carries the
+            // rows (a stale client must not be able to delete them). loggedMinutes
+            // stays a derived total so an old client still shows a number.
+            $minutesByTicket = [];
+            if ($pdo->query("SHOW TABLES LIKE 'time_entries'")->rowCount() > 0) {
+                $teStmt = $pdo->query("SELECT `ticket_id`, COALESCE(SUM(`duration_sec`), 0) AS `sec` FROM `time_entries` WHERE `deleted_at` IS NULL AND `ticket_id` IS NOT NULL GROUP BY `ticket_id`");
                 while ($te = $teStmt->fetch(PDO::FETCH_ASSOC)) {
-                    $timeByTicket[$te['ticket_id']][] = [
-                        'id' => $te['id'],
-                        'ticketId' => $te['ticket_id'],
-                        'userId' => $te['user_id'] ?? null,
-                        'userName' => $te['user_name'] ?? '',
-                        'minutes' => (int)($te['minutes'] ?? 0),
-                        'billable' => (int)($te['billable'] ?? 1) === 1,
-                        'note' => $te['note'] ?? null,
-                        'description' => $te['note'] ?? null,
-                        'loggedAt' => $te['logged_at'],
-                        'createdAt' => $te['created_at'],
-                    ];
+                    $minutesByTicket[$te['ticket_id']] = (int)round(((int)$te['sec']) / 60);
                 }
             }
 
@@ -2431,12 +2356,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $assigneeId = $row['assignee_id'] ?? null;
                 $assignedUser = $assigneeName ?: $assigneeId;
                 $assignedUsers = !empty($watchers) ? $watchers : ($assignedUser ? [$assignedUser] : []);
-                $tEntries = $timeByTicket[$tid] ?? [];
-                $loggedMins = 0;
-                foreach ($tEntries as $teItem) {
-                    $loggedMins += (int)($teItem['minutes'] ?? 0);
-                }
+                $loggedMins = $minutesByTicket[$tid] ?? 0;
                 $isArch = (int)($row['archived'] ?? 0) === 1;
+                $tckAgencyWorkerId = ($canAgency && !empty($row['agency_worker_id'])) ? (string)$row['agency_worker_id'] : null;
+                if ($tckAgencyWorkerId !== null) {
+                    $refAgencyWorkerIds[$tckAgencyWorkerId] = true;
+                }
                 $tickets[] = [
                     'id' => $tid,
                     'ticketNumber' => $row['ticket_number'],
@@ -2451,6 +2376,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'projectId' => $row['project_id'] ?? null,
                     'leadId' => $row['client_id'] ?? null,
                     'clientId' => $row['client_id'] ?? null,
+                    'agencyWorkerId' => $tckAgencyWorkerId,
                     'reporterName' => $row['reporter_name'] ?? null,
                     'reporterEmail' => $row['reporter_email'] ?? null,
                     'reporterPhone' => $row['reporter_phone'] ?? null,
@@ -2476,6 +2402,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'loggedMinutes' => $loggedMins,
                     'resolvedAt' => $row['resolved_at'] ?? null,
                     'closedAt' => $row['closed_at'] ?? null,
+                    'reopenedCount' => (int)($row['reopened_count'] ?? 0),
                     'satisfactionScore' => isset($row['satisfaction_score']) && $row['satisfaction_score'] !== null ? (int)$row['satisfaction_score'] : null,
                     'satisfactionComment' => $row['satisfaction_comment'] ?? null,
                     'isArchived' => $isArch,
@@ -2484,7 +2411,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'updatedAt' => $row['updated_at'],
                     'messages' => $msgsByTicket[$tid] ?? [],
                     'taskLinks' => $linksByTicket[$tid] ?? [],
-                    'timeEntries' => $tEntries,
+                    'timeEntries' => [],
                 ];
             }
         }
@@ -2559,10 +2486,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     if (!ccrm_can($scope, 'clients') && !ccrm_can($scope, 'leads')) {
         $restricted[] = 'clientCategories';
+        $restricted[] = 'clientContacts';
     }
 
     if (!ccrm_can($scope, 'invoices')) {
         $restricted[] = 'invoicesOffers';
+        $restricted[] = 'offerCategories';
     }
 
     if (!ccrm_can($scope, 'invoices') && !ccrm_can($scope, 'general_config')) {
@@ -2622,6 +2551,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     }
 
+    // Without the projects module the caller still needs the names of the projects they may log
+    // time on (with time tracking: every active one), so task rows and entries can name them.
+    if (!ccrm_can($scope, 'projects')) {
+        foreach (ccrm_workable_projects($pdo, $scope) as $wpId => $wpName) {
+            if (!isset($visibleProjectIds[(string)$wpId])) {
+                $refProjectIds[(string)$wpId] = true;
+            }
+        }
+    }
+
     foreach ($projects as $p) {
         $leadId = (string)($p['leadId'] ?? $p['client'] ?? '');
         if ($leadId !== '' && !isset($visibleLeadIds[$leadId])) {
@@ -2666,13 +2605,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     }
 
+    $refAgencyWorkers = [];
+    if ($canAgency && !empty($refAgencyWorkerIds) && ccrm_table_exists($pdo, 'agency_workers')) {
+        $placeholders = implode(',', array_fill(0, count($refAgencyWorkerIds), '?'));
+        $refStmt = $pdo->prepare("SELECT `id`, `full_name` FROM `agency_workers` WHERE `id` IN ($placeholders)");
+        $refStmt->execute(array_keys($refAgencyWorkerIds));
+        while ($r = $refStmt->fetch(\PDO::FETCH_ASSOC)) {
+            $name = trim((string)($r['full_name'] ?? ''));
+            $refAgencyWorkers[$r['id']] = $name !== '' ? $name : 'Unknown';
+        }
+    }
+
     $readScope = [
         'restricted' => array_values(array_unique($restricted)),
         'rowScoped' => array_values(array_unique($rowScoped)),
         'referenceNames' => [
             'leads' => !empty($refLeads) ? (object)$refLeads : (object)[],
             'projects' => !empty($refProjects) ? (object)$refProjects : (object)[],
+            'agencyWorkers' => !empty($refAgencyWorkers) ? (object)$refAgencyWorkers : (object)[],
         ],
+        // Without the projects module: every active project, client and project type, names only,
+        // for the time-tracking picker and its "create project" form (ccrm_time_picker_options).
+        'timePicker' => ccrm_can($scope, 'projects') ? null : ccrm_time_picker_options($pdo, $scope),
     ];
 
     // DB clock at read time. The client echoes this back as baseSyncedAt on the
@@ -2696,6 +2650,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         ];
     }
 
+    // WhatsApp chats WAAI has paired with clients, leads and projects, and the "is this number on
+    // WhatsApp" answers (docs/WAAI-INTEGRATION.md §4.2). Read-only here: only the machine API writes
+    // them. Gated by the `whatsapp` permission, so until that module exists only an administrator gets them.
+    $whatsappLinks = [];
+    $whatsappNumbers = [];
+    if (ccrm_can($scope, 'whatsapp')) {
+        try {
+            $waStmt = $pdo->query("SELECT `conversation_ref`, `entity_type`, `entity_id`, `link_source`, `title`, `is_group`, `phone_digits`, `owner_user_id`, `path`, `last_message_at` FROM `whatsapp_links` ORDER BY `conversation_ref`, `entity_type`, `entity_id`");
+            while ($wa = $waStmt->fetch(PDO::FETCH_ASSOC)) {
+                $whatsappLinks[] = [
+                    'conversationRef' => $wa['conversation_ref'],
+                    'entityType' => $wa['entity_type'],
+                    'entityId' => $wa['entity_id'],
+                    'source' => $wa['link_source'],
+                    'title' => $wa['title'],
+                    'isGroup' => (int)$wa['is_group'] === 1,
+                    'phone' => $wa['phone_digits'],
+                    'ownerUserId' => $wa['owner_user_id'],
+                    'path' => $wa['path'],
+                    'lastMessageAt' => $wa['last_message_at'],
+                ];
+            }
+            $nStmt = $pdo->query("SELECT `phone_digits`, `status`, `checked_at` FROM `whatsapp_numbers` ORDER BY `phone_digits`");
+            while ($n = $nStmt->fetch(PDO::FETCH_ASSOC)) {
+                $whatsappNumbers[] = ['phone' => $n['phone_digits'], 'status' => $n['status'], 'checkedAt' => $n['checked_at']];
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm sync] whatsapp links skipped: ' . $e->getMessage());
+        }
+    }
+
     echo json_encode([
         'installed' => true,
         // Lets the client tell a real read apart from the unauthenticated
@@ -2707,7 +2692,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // silently rebinds this tab's writes to them, with no 401 to notice.
         // Reporting the identity back lets the client stop instead of filing
         // one person's work under another's name.
-        'sessionUser' => ['email' => $sessionEmail],
+        'sessionUser' => ['id' => (string)$sessionUser['id'], 'email' => $sessionEmail],
         'demoMode' => $isDemoMode,
         // Highest POST protocol this build understands. The client MUST see this
         // before it may send a delta payload: an older sync.php has no idea what
@@ -2720,6 +2705,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'db_info' => $dbInfo,
         'leads' => $leads,
         'tasks' => $tasks,
+        'recurringTasks' => $recurringTasks,
         'allTags' => $allKnownTags,
         'users' => $users,
         'roles' => $roles,
@@ -2729,6 +2715,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'customDashboards' => $customDashboards,
         'projectTypes' => $projectTypes,
         'projects' => $projects,
+        'whatsappLinks' => $whatsappLinks,
+        'whatsappNumbers' => $whatsappNumbers,
         'warehouses' => $warehouses,
         'suppliers' => $suppliers,
         'warehouseItems' => $warehouseItems,
@@ -2737,6 +2725,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'warehouseMovements' => $warehouseMovements,
         'financialCategories' => $financialCategories,
         'clientCategories' => $clientCategories,
+        'clientContacts' => $clientContacts,
+        'offerCategories' => $offerCategories,
         'financialRecords' => $financialRecords,
         'invoicesOffers' => $invoicesOffers,
         'aiCustomTemplates' => $aiCustomTemplates,
@@ -2757,7 +2747,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'financialMode' => ccrm_can($scope, 'financial') ? ($settings['FINANCIAL_MODE'] ?? 'connected') : 'connected',
         'financialSimplifiedTable' => ccrm_can($scope, 'financial') ? (json_decode($settings['FINANCIAL_SIMPLIFIED_TABLE'] ?? '{}', true) ?: (object)[]) : (object)[],
         'settings' => [
-            'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
+            // '' = no custom name: the client shows its default (Koperniq).
+            'systemName' => $settings['SYSTEM_NAME'] ?? '',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
             'systemCurrency' => $settings['SYSTEM_CURRENCY'] ?? '',
             'leadStates' => $leadStates,
@@ -2778,9 +2769,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             // the client would read as a list and normalize back to {} forever.
             'leadStateSla' => $leadStateSla ?: (object)[],
             'leadAssignment' => $leadAssignment,
+            'leadAttributes' => $leadAttributes,
             'projectAutoCreate' => $projectAutoCreate,
             'taskStates' => $taskStates,
             'taskStateColors' => $taskStateColors,
+            'taskStateTimerActions' => $taskStateTimerActions ?: (object)[],
             'taskSettings' => $taskSettings,
             'projectStatuses' => $projectStatuses,
             'offerStatuses' => $offerStatuses,
@@ -2790,6 +2783,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'ticketStatuses' => $ticketStatuses,
             'ticketSettings' => $ticketSettings,
             'integrationsConfig' => $integrationsConfig,
+            'clickupConnected' => ccrm_clickup_is_connected($pdo),
             'companyBillingSettings' => (ccrm_can($scope, 'invoices') || ccrm_can($scope, 'financial') || ccrm_can($scope, 'general_config')) && isset($settings['COMPANY_BILLING_SETTINGS']) ? json_decode($settings['COMPANY_BILLING_SETTINGS'], true) : null,
             'invoicingIntegrations' => (ccrm_can($scope, 'invoices') || ccrm_can($scope, 'financial') || ccrm_can($scope, 'general_config')) ? $invoicingIntegrations : (object)[],
             'customLabels' => isset($settings['CUSTOM_LABELS']) ? json_decode($settings['CUSTOM_LABELS'], true) : (object)[]
@@ -2853,6 +2847,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // right; this flag decides whether the ticket part of the payload counts.
     // Without it the stored value is kept: the client never saw the real one.
     $canEditTickets = $isAdmin || ccrm_perm_can_edit($perms, 'tickets');
+    $canEditAgency = $isAdmin || ccrm_perm_can_edit($perms, 'agency');
 
     // Read scope of the caller: the same resolution the GET filters by, so a write
     // is limited to what the caller was allowed to read in the first place.
@@ -2968,8 +2963,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'leads', 'meetingNotes', 'users', 'customDashboards', 'projects', 'projectTypes',
             'warehouses', 'suppliers', 'warehouseItems', 'warehouseStock', 'warehouseBatches',
             'warehouseMovements', 'financialCategories', 'financialRecords', 'invoicesOffers',
-            'aiCustomTemplates', 'clientCategories', 'employees', 'employeeSalaries', 'employeeVacations',
-            'orders', 'supportContracts', 'tickets',
+            'aiCustomTemplates', 'clientCategories', 'clientContacts', 'offerCategories', 'employees', 'employeeSalaries', 'employeeVacations',
+            'orders', 'supportContracts', 'tickets', 'recurringTasks',
         ] as $entity) {
             if (!isset($payload[$entity]) && ccrm_explicit_deleted_ids($explicitDeletes, $entity)) {
                 $payload[$entity] = [];
@@ -2995,6 +2990,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Dynamic tables belonging to deleted project types. DDL implicitly commits in
     // MySQL, so these are collected during the transaction and executed after it.
     $deferredTableDrops = [];
+    $recurringTemplatesToProcess = [];
     // Private employee documents a save detached or whose employee it removed. Unlinked
     // only after the commit, and only if no record references them any more.
     $deferredEmployeeFileKeys = [];
@@ -3106,6 +3102,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try { $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_tickets` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_files`"); } catch (\Throwable $e) {}
             }
         }
+        if (isset($payload['employees']) && is_array($payload['employees']) && ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'hours_per_day')) {
+            try { $pdo->exec("ALTER TABLE `employees` ADD COLUMN `hours_per_day` DECIMAL(4,2) NULL COMMENT 'Contracted hours per day; NULL = company hoursPerDay (time tracking settings)' AFTER `salary_due_day`"); } catch (\Throwable $e) {}
+        }
         if (isset($payload['projects']) && is_array($payload['projects']) && !$ccrm_skip_writes('projects', 'projects')) {
             if (!ccrm_column_exists($pdo, 'projects', 'value')) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `value` DECIMAL(14,2) NULL COMMENT 'Project Contract Value / Invoicable' AFTER `budget`");
@@ -3116,15 +3115,265 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'projects', 'completion_deadline')) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `completion_deadline` DATE NULL AFTER `invoice_date`");
             }
+            if (!ccrm_column_exists($pdo, 'projects', 'hours_budget')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `hours_budget` DECIMAL(8,2) NULL COMMENT 'Hours the project is expected to take'");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'billable_rate')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `billable_rate` DECIMAL(10,2) NULL COMMENT 'Default billable hourly rate for time entries'");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'is_internal')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Internal work: excluded from client billing'");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'contact_phone')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it'");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'acceptance_criteria_json')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `acceptance_criteria_json` TEXT NULL");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'github_repo')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `github_repo` VARCHAR(200) NULL COMMENT 'Paired GitHub repository, owner/name; pushes to it are stored in project_pushes'");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'github_branch')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `github_branch` VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch'");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'contact_email')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `contact_email` VARCHAR(190) NULL COMMENT 'E-mail of the project contact; copied from the lead on conversion'");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'clickup_lists_json')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `clickup_lists_json` TEXT NULL COMMENT 'JSON array of linked ClickUp lists [{id,name,folderName,spaceName}]'");
+            }
+            // Assigned employees: same shape as project_managers (healed here, never inside the transaction).
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `project_employees` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              PRIMARY KEY (`project_id`, `user_id`),
+              FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         }
-        // ccrm_apply_schema() skips itself once SCHEMA_FINGERPRINT matches, and a
-        // worker still running the previous release's cached schema.php can stamp
-        // that marker without having added the column. The template upsert below
-        // names layout_json, so without this guard every save on such an install
-        // fails with "Unknown column" until someone runs `php ccrm migrate`.
+        if (isset($payload['tasks']) && is_array($payload['tasks']) && !$ccrm_skip_writes('tasks', 'tasks')) {
+            if (!ccrm_column_exists($pdo, 'tasks', 'original_deadline')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `original_deadline` DATE NULL COMMENT 'Deadline the task was first given; set when it is created or first postponed'");
+            }
+            if (!ccrm_column_exists($pdo, 'tasks', 'deadline_moves')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_moves` INT NOT NULL DEFAULT 0 COMMENT 'How many times the deadline was pushed to a later date'");
+            }
+            require_once __DIR__ . '/api/task_activity_lib.php';
+            ccrm_migrate_task_activities($pdo);
+            require_once __DIR__ . '/api/task_files_lib.php';
+            ccrm_migrate_task_files($pdo);
+        }
+        if ((isset($payload['tasks']) && is_array($payload['tasks'])) || (isset($payload['projects']) && is_array($payload['projects']))) {
+            ccrm_heal_clickup_columns($pdo);
+        }
+        if ((isset($payload['tasks']) && is_array($payload['tasks'])) || (isset($payload['tickets']) && is_array($payload['tickets']))) {
+            require_once __DIR__ . '/api/project_breakdown_migrations.php';
+            ccrm_heal_project_breakdown_columns($pdo);
+        }
+        if (isset($payload['leads']) && is_array($payload['leads']) && !$ccrm_skip_writes('leads', 'leads')) {
+            if (!ccrm_column_exists($pdo, 'timeline_events', 'external_url')) {
+                $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `external_url` VARCHAR(255) NULL COMMENT 'Deep link path into the external system (e.g. /c/xyz?m=abc)'");
+            }
+            // The task a comment note belongs to (written by the MCP add_task_comment tool, carried through every save below).
+            if (!ccrm_column_exists($pdo, 'timeline_events', 'task_id')) {
+                $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `task_id` VARCHAR(50) NULL COMMENT 'The task a note comments on (written by the MCP add_task_comment tool); NULL for every other entry. No foreign key: the note stays on the client timeline when the task goes'");
+            }
+            // The contact person's first / last name, written right after the lead upsert below.
+            if (!ccrm_column_exists($pdo, 'leads', 'contact_first_name')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_first_name` VARCHAR(100) NULL AFTER `contact_person`");
+            }
+            if (!ccrm_column_exists($pdo, 'leads', 'contact_last_name')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_last_name` VARCHAR(100) NULL AFTER `contact_first_name`");
+            }
+        }
+        if (!ccrm_table_exists($pdo, 'mail_envelopes')) {
+            try {
+                $pdo->exec(
+                    "CREATE TABLE IF NOT EXISTS `mail_envelopes` (
+                      `mailbox_key` VARCHAR(100) NOT NULL COMMENT 'c:<company mailbox id> or u:<user email>',
+                      `folder` VARCHAR(120) NOT NULL COMMENT 'Canonical UI folder key (INBOX, Sent, or custom folder)',
+                      `uid` BIGINT NOT NULL,
+                      `event_id` VARCHAR(64) NOT NULL,
+                      `subject` VARCHAR(500) NOT NULL DEFAULT '',
+                      `from_name` VARCHAR(255) NOT NULL DEFAULT '',
+                      `from_address` VARCHAR(255) NOT NULL DEFAULT '',
+                      `to_name` VARCHAR(255) NOT NULL DEFAULT '',
+                      `to_address` VARCHAR(255) NOT NULL DEFAULT '',
+                      `email_date` DATETIME NULL,
+                      `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0,
+                      `seen` TINYINT(1) NOT NULL DEFAULT 0,
+                      `size` INT NOT NULL DEFAULT 0,
+                      `message_id` VARCHAR(255) NOT NULL DEFAULT '',
+                      `in_reply_to` VARCHAR(255) NOT NULL DEFAULT '',
+                      `references_hdr` TEXT NULL,
+                      `preview` VARCHAR(500) NOT NULL DEFAULT '',
+                      `attachment_count` INT NOT NULL DEFAULT 0,
+                      `timeline_hidden` TINYINT(1) NOT NULL DEFAULT 0,
+                      `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                      PRIMARY KEY (`mailbox_key`, `folder`, `uid`),
+                      INDEX `idx_mail_envelopes_lookup` (`mailbox_key`, `folder`, `email_date` DESC, `uid` DESC)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+            } catch (\Throwable $e) {}
+        }
+
+        if ((isset($payload['tasks']) && is_array($payload['tasks']) && !$ccrm_skip_writes('tasks', 'tasks'))
+            || (isset($payload['recurringTasks']) && is_array($payload['recurringTasks']))) {
+            if (!ccrm_column_exists($pdo, 'tasks', 'task_kind')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `task_kind` VARCHAR(20) NULL COMMENT 'NULL = normal task, recurring = series template'");
+            }
+            if (!ccrm_column_exists($pdo, 'tasks', 'recurrence_json')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurrence_json` TEXT NULL COMMENT 'Template only: recurrence schedule config and cursor'");
+            }
+            if (!ccrm_column_exists($pdo, 'tasks', 'recurring_source_id')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurring_source_id` VARCHAR(50) NULL COMMENT 'Occurrence only: template id'");
+            }
+            if (!ccrm_column_exists($pdo, 'tasks', 'recurring_occurrence_date')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurring_occurrence_date` DATE NULL COMMENT 'Occurrence only: the unshifted scheduled date'");
+            }
+            if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_kind')) {
+                try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_kind` (`task_kind`)"); } catch (\Throwable $e) {}
+            }
+            if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_recurring_source')) {
+                try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_recurring_source` (`recurring_source_id`)"); } catch (\Throwable $e) {}
+            }
+            if (!ccrm_index_exists($pdo, 'tasks', 'uq_recurring_occurrence')) {
+                try { $pdo->exec("ALTER TABLE `tasks` ADD UNIQUE KEY `uq_recurring_occurrence` (`recurring_source_id`, `recurring_occurrence_date`)"); } catch (\Throwable $e) {}
+            }
+        }
+
+        if (isset($payload['employees']) && is_array($payload['employees']) && !$ccrm_skip_writes('employees', 'employees')) {
+            if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'contractor_type')) {
+                $pdo->exec("ALTER TABLE `employees` ADD COLUMN `contractor_type` VARCHAR(20) NULL COMMENT 'person | sole_trader | company (for kind = contractor)' AFTER `kind`");
+            }
+        }
+
+        if (isset($payload['employeeSalaries']) && is_array($payload['employeeSalaries']) && !$ccrm_skip_writes('employees', 'employeeSalaries')) {
+            if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'labor_cost')) {
+                $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `labor_cost` DECIMAL(12, 2) NULL COMMENT 'Cena práce from the payslip, typed by hand; employees only' AFTER `total_paid`");
+            }
+            if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'net_pay')) {
+                $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only' AFTER `labor_cost`");
+            }
+            if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'closed_at')) {
+                $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `closed_at` DATETIME NULL COMMENT 'Month closed: stamped when first paid in full; locks its time entries; cleared only by an admin reopen' AFTER `note`");
+            }
+            if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'closed_by')) {
+                $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `closed_by` VARCHAR(255) NULL COMMENT 'Who saved the record that closed the month' AFTER `closed_at`");
+            }
+        }
+
+        // 4.14 writes the recurring rule's watermark (recurringRuleDeletion.ts).
+        if (isset($payload['financialRecords']) && is_array($payload['financialRecords']) && !$ccrm_skip_writes('financial', 'financialRecords')) {
+            if (ccrm_table_exists($pdo, 'financial_records') && !ccrm_column_exists($pdo, 'financial_records', 'recurring_materialized_through')) {
+                $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_materialized_through` DATE NULL COMMENT 'Recurring rule: every charge on or before this day is stored or deliberately absent; the schedule only draws after it'");
+            }
+        }
+
+        // Offer categories: the table, and the column that files an offer under one.
+        // A worker still holding the previous release's schema.php can stamp the
+        // schema fingerprint without having created either (see the 4-place rule).
+        if (isset($payload['offerCategories']) && is_array($payload['offerCategories']) && !$ccrm_skip_writes('invoices', 'offerCategories')) {
+            if (!ccrm_table_exists($pdo, 'offer_categories')) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `offer_categories` (
+                  `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                  `name` VARCHAR(150) NOT NULL,
+                  `parent_id` VARCHAR(50) NULL,
+                  `level` INT NOT NULL DEFAULT 1,
+                  `sort_order` INT NOT NULL DEFAULT 0,
+                  `color` VARCHAR(30) NULL,
+                  `icon` VARCHAR(50) NULL,
+                  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX idx_oc_parent (`parent_id`),
+                  INDEX idx_oc_level (`level`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
+        }
+        if (isset($payload['invoicesOffers']) && is_array($payload['invoicesOffers']) && !$ccrm_skip_writes('invoices', 'invoicesOffers')) {
+            if (!ccrm_column_exists($pdo, 'invoices_offers', 'category_id')) {
+                $pdo->exec("ALTER TABLE `invoices_offers` ADD COLUMN `category_id` VARCHAR(50) NULL COMMENT 'offer_categories.id - not a foreign key, the app clears it when a category is deleted' AFTER `custom_template_style_json`");
+            }
+        }
+        // Same guard for the AI offer template columns the upsert below names: a worker
+        // on a cached schema.php can stamp SCHEMA_FINGERPRINT without adding them, and
+        // every save then fails with "Unknown column" until `php ccrm migrate` runs.
         if (isset($payload['aiCustomTemplates']) && is_array($payload['aiCustomTemplates']) && !$ccrm_skip_writes('general_config', 'aiCustomTemplates')) {
             if (!ccrm_column_exists($pdo, 'ai_custom_templates', 'layout_json')) {
                 $pdo->exec("ALTER TABLE `ai_custom_templates` ADD COLUMN `layout_json` TEXT NULL AFTER `badge_style`");
+            }
+            if (!ccrm_column_exists($pdo, 'ai_custom_templates', 'document_json')) {
+                $pdo->exec("ALTER TABLE `ai_custom_templates` ADD COLUMN `document_json` LONGTEXT NULL AFTER `layout_json`");
+            }
+        }
+
+        // Stock tables gained `updated_at` (MCP change visibility). The upserts below do not name it,
+        // but a database without it must not lag behind the migration: heal it here, outside the transaction.
+        foreach (['suppliers' => 'suppliers', 'warehouseItems' => 'warehouse_items', 'warehouseBatches' => 'warehouse_batches', 'warehouseMovements' => 'warehouse_movements'] as $stockKey => $stockTable) {
+            if (isset($payload[$stockKey]) && is_array($payload[$stockKey]) && !$ccrm_skip_writes('warehouse', $stockKey)) {
+                if (!ccrm_column_exists($pdo, $stockTable, 'updated_at')) {
+                    $pdo->exec("ALTER TABLE `{$stockTable}` ADD COLUMN `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)");
+                }
+            }
+        }
+
+        // Tombstone table (deleted_records): same rule as a column heal. Outside the transaction (DDL
+        // commits); ccrm_record_deleted() is fail-soft on top, so a push never 500s over it.
+        if (!ccrm_table_exists($pdo, 'deleted_records')) ccrm_migrate_deleted_records($pdo);
+        if (!ccrm_table_exists($pdo, 'client_contacts')) { require_once __DIR__ . '/api/client_contacts_lib.php'; ccrm_migrate_client_contacts($pdo); }
+
+        if (isset($payload['leads']) && is_array($payload['leads']) && !$ccrm_skip_writes('leads', 'leads')) {
+            if (!ccrm_column_exists($pdo, 'leads', 'company_client_id')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `company_client_id` VARCHAR(50) NULL AFTER `client_category_id`");
+            }
+            if (!ccrm_column_exists($pdo, 'leads', 'contact_role')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_role` VARCHAR(120) NULL AFTER `company_client_id`");
+            }
+            if (!ccrm_column_exists($pdo, 'leads', 'contact_tags')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_tags` TEXT NULL AFTER `contact_role`");
+            }
+            if (!ccrm_column_exists($pdo, 'leads', 'assigned_employees')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `assigned_employees` TEXT NULL COMMENT 'JSON array of user names working on the lead besides its owner' AFTER `owner`");
+            }
+            if (!ccrm_column_exists($pdo, 'leads', 'custom_fields_json')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id' AFTER `ticket_allowed_emails`");
+            }
+            if (!ccrm_index_exists($pdo, 'leads', 'idx_lead_company_client')) {
+                try { $pdo->exec("ALTER TABLE `leads` ADD INDEX `idx_lead_company_client` (`company_client_id`)"); } catch (\Throwable $e) {}
+            }
+        }
+
+        if (isset($payload['orders']) && is_array($payload['orders']) && !$ccrm_skip_writes('orders', 'orders') && ccrm_table_exists($pdo, 'orders')) {
+            if (!ccrm_column_exists($pdo, 'orders', 'project_id')) {
+                $pdo->exec("ALTER TABLE `orders` ADD COLUMN `project_id` VARCHAR(50) NULL COMMENT 'References projects.id: the project this order belongs to' AFTER `supplier_id`");
+            }
+            if (!ccrm_index_exists($pdo, 'orders', 'idx_orders_project')) {
+                try { $pdo->exec("ALTER TABLE `orders` ADD INDEX `idx_orders_project` (`project_id`)"); } catch (\Throwable $e) {}
+            }
+        }
+
+        if ((isset($payload['tasks']) || isset($payload['recurringTasks'])) && !$ccrm_skip_writes('tasks', 'tasks')) {
+            if (!ccrm_column_exists($pdo, 'tasks', 'related_agency_worker_id')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_agency_worker_id` VARCHAR(64) NULL AFTER `related_ticket_id`");
+            }
+            if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_agency_worker')) {
+                try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_agency_worker` (`related_agency_worker_id`)"); } catch (\Throwable $e) {}
+            }
+            if (!ccrm_column_exists($pdo, 'tasks', 'category')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `category` VARCHAR(32) NULL");
+            }
+            if (!ccrm_column_exists($pdo, 'tasks', 'reopens_json')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `reopens_json` TEXT NULL");
+            }
+        }
+
+        if (isset($payload['tickets']) && is_array($payload['tickets']) && !$ccrm_skip_writes('tickets', 'tickets')) {
+            if (ccrm_table_exists($pdo, 'tickets')) {
+                if (!ccrm_column_exists($pdo, 'tickets', 'agency_worker_id')) {
+                    $pdo->exec("ALTER TABLE `tickets` ADD COLUMN `agency_worker_id` VARCHAR(64) NULL AFTER `client_id`");
+                }
+                if (!ccrm_index_exists($pdo, 'tickets', 'idx_tickets_agency_worker')) {
+                    try { $pdo->exec("ALTER TABLE `tickets` ADD INDEX `idx_tickets_agency_worker` (`agency_worker_id`)"); } catch (\Throwable $e) {}
+                }
             }
         }
 
@@ -3153,7 +3402,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingIntegrations = ($existingIntegrationsRaw !== false && $existingIntegrationsRaw !== null) ? json_decode($existingIntegrationsRaw, true) : [];
             if (!is_array($existingIntegrations)) { $existingIntegrations = []; }
             if (isset($s['integrationsConfig']) && is_array($s['integrationsConfig'])) {
-                $mergedIntegrations = ccrm_merge_secrets($s['integrationsConfig'], $existingIntegrations, ccrm_integration_secret_keys());
+                // A blank secret only clears the stored one when the client says the
+                // user did it (`clearSecrets`); a stale blank from an old tab is ignored.
+                $clearSecrets = isset($s['clearSecrets']) && is_array($s['clearSecrets'])
+                    ? array_values(array_filter($s['clearSecrets'], 'is_string'))
+                    : [];
+                // Leave a trail in the audit log whenever a stored secret meets a blank:
+                // who cleared which key, or that a blank was ignored. Key names only.
+                foreach (ccrm_integration_secret_keys() as $secretKey) {
+                    $inboundSecret = $s['integrationsConfig'][$secretKey] ?? null;
+                    if (!empty($existingIntegrations[$secretKey]) && array_key_exists($secretKey, $s['integrationsConfig'])
+                        && ($inboundSecret === null || $inboundSecret === '')) {
+                        $cleared = in_array($secretKey, $clearSecrets, true);
+                        ccrm_audit_log($pdo, $sessionUser, $cleared ? 'settings.secret_cleared' : 'settings.secret_blank_ignored', $secretKey);
+                    }
+                }
+                $mergedIntegrations = ccrm_merge_secrets($s['integrationsConfig'], $existingIntegrations, ccrm_integration_secret_keys(), $clearSecrets);
                 // Encrypt secrets at rest before persisting. Values preserved from
                 // storage are already encrypted (encrypt is a no-op on them).
                 $mergedIntegrations = ccrm_encrypt_config_secrets($mergedIntegrations, ccrm_integration_secret_keys());
@@ -3206,7 +3470,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // used to fall back to `[]` / a default, so any save that merely
                 // lacked a list (a script, an old tab, an API client) emptied the
                 // pipeline stages, sources and categories for everyone.
-                'SYSTEM_NAME' => isset($s['systemName']) && is_string($s['systemName']) && $s['systemName'] !== '' ? $s['systemName'] : null,
+                // '' is a real value: "no custom name, use the default". Only an omitted key means unchanged.
+                'SYSTEM_NAME' => isset($s['systemName']) && is_string($s['systemName']) ? trim($s['systemName']) : null,
                 'SYSTEM_LANGUAGE' => isset($s['systemLanguage']) && is_string($s['systemLanguage']) && $s['systemLanguage'] !== '' ? $s['systemLanguage'] : null,
                 'SYSTEM_CURRENCY' => isset($s['systemCurrency']) && is_string($s['systemCurrency']) ? $s['systemCurrency'] : null,
                 // The stage list also never saves empty: a lead has to sit in some
@@ -3245,6 +3510,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_ASSIGNMENT' => isset($s['leadAssignment']) && is_array($s['leadAssignment'])
                     ? json_encode(ccrm_normalize_lead_assignment($s['leadAssignment']))
                     : null,
+                'LEAD_ATTRIBUTES' => isset($s['leadAttributes']) && is_array($s['leadAttributes'])
+                    ? json_encode(ccrm_normalize_lead_attributes($s['leadAttributes']), JSON_UNESCAPED_UNICODE)
+                    : null,
                 // Same contract: omitted means unchanged, so an older client
                 // cannot switch automatic project creation off for everyone.
                 // The per-category rules get the contract one level down as
@@ -3266,6 +3534,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : null,
                 'TASK_STATES' => ccrm_settings_list_value($s, 'taskStates', false),
                 'TASK_STATE_COLORS' => ccrm_settings_list_value($s, 'taskStateColors', true),
+                'TASK_STATE_TIMER_ACTIONS' => ccrm_task_state_timer_actions_value($s),
                 // Omitted means unchanged: a client that predates Settings → Tasks
                 // must not switch the option off for everyone by saving an
                 // unrelated setting.
@@ -3313,10 +3582,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($canSettingsGeneral) {
                 $settingsAllowedKeys = array_merge($settingsAllowedKeys, [
                     'SYSTEM_NAME', 'SYSTEM_LANGUAGE', 'SYSTEM_CURRENCY',
-                    'TASK_STATES', 'TASK_STATE_COLORS', 'CUSTOM_LABELS',
+                    'TASK_STATES', 'TASK_STATE_COLORS', 'TASK_STATE_TIMER_ACTIONS', 'CUSTOM_LABELS',
                     'COMPANY_BILLING_SETTINGS', 'INVOICING_INTEGRATIONS',
                     'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES', 'OFFER_STATUSES', 'INVOICE_STATUSES', 'ORDER_STATUSES', 'PRICE_LEVELS', 'TASK_SETTINGS',
                     'TICKET_STATUSES', 'TICKET_SETTINGS',
+                    'LEAD_ATTRIBUTES',
                 ]);
             }
             if ($canSettingsPipeline) {
@@ -3324,7 +3594,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'LEAD_STATES', 'LEAD_CATEGORIES', 'LEAD_CATEGORY_IDS',
                     'LEAD_STATE_COLORS', 'LEAD_CATEGORY_COLORS',
                     'LEAD_STAGE_GROUPS', 'LEAD_STATE_PARENTS', 'LEAD_STATE_FOLLOWUP',
-                    'LEAD_STATE_SLA', 'LEAD_ASSIGNMENT',
+                    'LEAD_STATE_SLA', 'LEAD_ASSIGNMENT', 'LEAD_ATTRIBUTES',
                 ]);
             }
             if ($canSettingsSources) {
@@ -3335,7 +3605,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // getPermission("traffic_sources")). Refusing them here while the
                     // UI accepted the edit made the rename revert on the next reload
                     // with no message at all.
-                    'TASK_STATES', 'TASK_STATE_COLORS',
+                    'TASK_STATES', 'TASK_STATE_COLORS', 'TASK_STATE_TIMER_ACTIONS',
                     'LEAD_CATEGORIES', 'LEAD_CATEGORY_IDS', 'LEAD_CATEGORY_COLORS',
                     // Divisions live on the same screen behind the same gate.
                     // Missing from every list, they were refused even for an
@@ -3774,6 +4044,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 4.2.5. Synchronize Project Types & Projects
+        // Project types this push deletes. Applied after the projects section,
+        // once that push's own project deletions have happened.
+        $ptPendingDelete = [];
         if (isset($payload['projectTypes']) && is_array($payload['projectTypes']) && !$ccrm_skip_writes('general_config', 'projectTypes')) {
             // (`has_tickets` column healing runs before the transaction opens — see above.)
             $existingPtIds = $pdo->query("SELECT `id` FROM `project_types`")->fetchAll(PDO::FETCH_COLUMN);
@@ -3874,22 +4147,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 : array_diff($existingPtIds, $processedPtIds);
             $ptToDelete = ccrm_filter_mass_delete($pdo, 'project_types', $ptToDelete, true, $isDeltaSync);
             if (!empty($ptToDelete) && !$ccrm_skip_deletes('general_config', 'projectTypes')) {
-                $delPt = $pdo->prepare("DELETE FROM `project_types` WHERE `id` = ?");
-                foreach ($ptToDelete as $ptId) {
-                    $delPt->execute([$ptId]);
-                    // Queue the dynamic-table DROPs for AFTER the commit. Running DDL
-                    // here implicitly commits the transaction in MySQL, so the final
-                    // commit() then threw "There is no active transaction" and the whole
-                    // push reported a 500 even though the rows had been written — and
-                    // every earlier write in the request lost its rollback. Deferring
-                    // keeps the transaction intact; the tables are orphaned rather than
-                    // dropped if the transaction is rolled back, which is recoverable
-                    // (dropping them is not).
-                    $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
-                    $deferredTableDrops[] = "proj_data_{$safeId}";
-                    $deferredTableDrops[] = "proj_timeline_{$safeId}";
-                    $deferredTableDrops[] = "proj_gantt_{$safeId}";
-                }
+                // Carried out after the projects section below, so a push that
+                // deletes a type's last projects and then the type lands both.
+                $ptPendingDelete = array_values($ptToDelete);
             }
         }
 
@@ -3905,7 +4165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`, `contact_phone`, `contact_email`, `acceptance_criteria_json`, `github_repo`, `github_branch`, `clickup_lists_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`), `contact_phone`=IF(? = 1, VALUES(`contact_phone`), `contact_phone`), `contact_email`=IF(? = 1, VALUES(`contact_email`), `contact_email`), `acceptance_criteria_json`=IF(? = 1, VALUES(`acceptance_criteria_json`), `acceptance_criteria_json`), `github_repo`=IF(? = 1, VALUES(`github_repo`), `github_repo`), `github_branch`=IF(? = 1, VALUES(`github_branch`), `github_branch`), `clickup_lists_json`=IF(? = 1, VALUES(`clickup_lists_json`), `clickup_lists_json`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -3916,6 +4176,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // reproducible before this change.
             $delMgr = $pdo->prepare("DELETE FROM `project_managers` WHERE `project_id` = ?");
             $insMgr = $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)");
+            $delEmp = $pdo->prepare("DELETE FROM `project_employees` WHERE `project_id` = ?");
+            $insEmp = $pdo->prepare("INSERT IGNORE INTO `project_employees` (`project_id`, `user_id`) VALUES (?, ?)");
 
             foreach ($payload['projects'] as $p) {
                 if (!isset($p['id']) || !isset($p['projectTypeId'])) continue;
@@ -3951,7 +4213,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : null;
 
                 // Total project / contract value from which invoices are billed.
-                $projValue = (isset($p['value']) && is_numeric($p['value']) && (float)$p['value'] > 0)
+                // Explicit 0 is preserved so a project sharing a lead does not fall back to lead.value.
+                $projValue = (isset($p['value']) && is_numeric($p['value']) && (float)$p['value'] >= 0)
                     ? round(min((float)$p['value'], 999999999999.99), 2)
                     : null;
 
@@ -4017,6 +4280,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Archived state: column is NOT NULL DEFAULT 0, so never pass null into VALUES.
                 $projArchived = !empty($p['archived']) ? 1 : 0;
 
+                // Hours budget, billable rate and the internal flag. A client that
+                // does not send the key leaves the stored value alone.
+                $hoursSent = array_key_exists('hoursBudget', $p) ? 1 : 0;
+                $projHours = ($hoursSent && is_numeric($p['hoursBudget']) && (float)$p['hoursBudget'] > 0)
+                    ? round(min((float)$p['hoursBudget'], 999999.99), 2) : null;
+                $rateSent = array_key_exists('billableRate', $p) ? 1 : 0;
+                $projBillableRate = ($rateSent && is_numeric($p['billableRate']) && (float)$p['billableRate'] >= 0)
+                    ? round(min((float)$p['billableRate'], 99999999.99), 2) : null;
+                $internalSent = array_key_exists('isInternal', $p) ? 1 : 0;
+                $projInternal = $internalSent ? (!empty($p['isInternal']) ? 1 : 0) : 0;
+
+                // The phone WAAI pairs a WhatsApp chat to this project by. Free text like leads.phone;
+                // a client that does not send the key leaves the stored value alone, "" clears it.
+                $contactPhoneSent = array_key_exists('contactPhone', $p) ? 1 : 0;
+                $projContactPhone = null;
+                if ($contactPhoneSent) {
+                    $projContactPhone = trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$p['contactPhone']));
+                    $projContactPhone = $projContactPhone === '' ? null : mb_substr($projContactPhone, 0, 50);
+                }
+
+                // The contact's e-mail, same rules as the phone: key omitted = unchanged, "" clears.
+                $contactEmailSent = array_key_exists('contactEmail', $p) ? 1 : 0;
+                $projContactEmail = null;
+                if ($contactEmailSent) {
+                    $projContactEmail = trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$p['contactEmail']));
+                    $projContactEmail = $projContactEmail === '' ? null : mb_substr($projContactEmail, 0, 190);
+                }
+
+                // Acceptance criteria: merged into the stored list, stamped by the server (api/project_scope.php).
+                // A key the client omits leaves the stored list alone. The scope approval never rides on a save:
+                // `scopeApprovedAt` / `scopeApprovedBy` in the payload are ignored (api/project_scope_action.php).
+                $scope = ccrm_scope_resolve_write($pdo, (string)$projId, $p, $sessionUserName !== '' ? $sessionUserName : null);
+
+                // GitHub pairing (api/github_pushes.php): a key the client omits leaves the stored value alone,
+                // "" or an invalid value clears it. The repository is normalised to owner/name.
+                $githubRepoSent = array_key_exists('githubRepo', $p) ? 1 : 0;
+                $githubBranchSent = array_key_exists('githubBranch', $p) ? 1 : 0;
+                $projGithubRepo = $githubRepoSent ? ccrm_github_normalize_repo($p['githubRepo']) : null;
+                $projGithubBranch = $githubBranchSent ? ccrm_github_normalize_branch($p['githubBranch']) : null;
+                $clickupListsSent = array_key_exists('clickupLists', $p) ? 1 : 0;
+                $projClickupLists = $clickupListsSent ? ccrm_encode_clickup_lists($p['clickupLists']) : null;
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -4039,16 +4344,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projTicketAllowedEmails,
                     $projTicketPublicHash,
                     $projTicketWidgetConfig,
-                    $projArchived
+                    $projArchived,
+                    $projHours,
+                    $projBillableRate,
+                    $projInternal,
+                    $projContactPhone,
+                    $projContactEmail,
+                    $scope['criteria'],
+                    $projGithubRepo,
+                    $projGithubBranch,
+                    $projClickupLists,
+                    $hoursSent,
+                    $rateSent,
+                    $internalSent,
+                    $contactPhoneSent,
+                    $contactEmailSent,
+                    $scope['criteriaSent'],
+                    $githubRepoSent,
+                    $githubBranchSent,
+                    $clickupListsSent,
                 ]);
+                if ($clickupListsSent && $projClickupLists === null) {
+                    ccrm_clickup_prune_project_tasks($pdo, (string)$projId);
+                }
 
                 // Only rewrite this project's managers when the payload actually carries
                 // the list. An omitted `managers` key means "unchanged", not "none".
                 if (array_key_exists('managers', $p) && is_array($p['managers'])) {
+                    $mgrBefore = ccrm_child_snapshot($pdo, 'managers', $projId);
                     $delMgr->execute([$projId]);
                     foreach ($p['managers'] as $uid) {
                         $insMgr->execute([$projId, $uid]);
                     }
+                    ccrm_child_bump($pdo, 'managers', $projId, $mgrBefore); // only on a real change
+                }
+                // Assigned employees: same rule, an omitted `employees` key means "unchanged".
+                if (array_key_exists('employees', $p) && is_array($p['employees'])) {
+                    $empBefore = ccrm_child_snapshot($pdo, 'employees', $projId);
+                    $delEmp->execute([$projId]);
+                    foreach ($p['employees'] as $uid) {
+                        $insEmp->execute([$projId, (string)$uid]);
+                    }
+                    ccrm_child_bump($pdo, 'employees', $projId, $empBefore);
                 }
 
                 $processedProjIds[] = $projId;
@@ -4142,6 +4479,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Same rule as the timeline above: a failed insert keeps the old rows.
                     $pdo->exec("SAVEPOINT ccrm_proj_gantt");
                     try {
+                        $ganttBefore = ccrm_child_snapshot($pdo, 'gantt', $projId, $ganttTable);
                         $pdo->prepare("DELETE FROM `{$ganttTable}` WHERE `project_id` = ?")->execute([$projId]);
                         if (isset($ragPdo) && $ragPdo) {
                             try { $ragPdo->prepare("DELETE FROM `{$ganttTable}` WHERE `project_id` = ?")->execute([$projId]); } catch(\Exception $e) {}
@@ -4155,6 +4493,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $insGantt->execute($args);
                             if ($ragInsGantt) try { $ragInsGantt->execute($args); } catch(\Exception $e) {}
                         }
+                        ccrm_child_bump($pdo, 'gantt', $projId, $ganttBefore, $ganttTable); // only on a real change
                     } catch (\Throwable $e) {
                         try { $pdo->exec("ROLLBACK TO SAVEPOINT ccrm_proj_gantt"); } catch (\Throwable $_) {}
                         if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
@@ -4173,11 +4512,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $delProj = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
                 // The project's tasks stay on the Tasks board; only the link to
                 // the project that no longer exists goes.
-                $unlinkProjTasks = $pdo->prepare("UPDATE `tasks` SET `related_project_id` = NULL WHERE `related_project_id` = ?");
+                $unlinkProjTasks = $pdo->prepare("UPDATE `tasks` SET `related_project_id` = NULL WHERE `related_project_id` = ?"); /* recurring-template: unlinking deleted project from all tasks and templates */
                 foreach ($projToDelete as $pid) {
+                    $tomb = ccrm_deleted_snapshot($pdo, 'projects', (string)$pid);
                     $delProj->execute([$pid]);
+                    if ($tomb !== null && $delProj->rowCount() > 0) ccrm_record_deleted($pdo, 'projects', (string)$pid, $tomb);
                     $unlinkProjTasks->execute([$pid]);
                 }
+            }
+        }
+
+        // Deletion of Project Types (queued above).
+        //
+        // A project type is a template. Deleting it used to CASCADE to every
+        // project of that type and DROP their data, timeline and Gantt tables, so
+        // removing an "obsolete" template erased the projects made from it. A type
+        // that still has projects (archived ones included) is now refused and
+        // reported in `deleteBlocked`: its projects have to be moved to another
+        // type or deleted first. The FK is ON DELETE RESTRICT as a backstop.
+        if (!empty($ptPendingDelete)) {
+            $ptInUse = $pdo->prepare("SELECT 1 FROM `projects` WHERE `project_type_id` = ? LIMIT 1");
+            $delPt = $pdo->prepare("DELETE FROM `project_types` WHERE `id` = ?");
+            $ptRefused = [];
+            foreach ($ptPendingDelete as $ptId) {
+                $ptInUse->execute([$ptId]);
+                $hasProjects = $ptInUse->fetchColumn() !== false;
+                $ptInUse->closeCursor();
+                if ($hasProjects) {
+                    $ptRefused[] = $ptId;
+                    continue;
+                }
+                $delPt->execute([$ptId]);
+                // Queue the dynamic-table DROPs for AFTER the commit. Running DDL
+                // here implicitly commits the transaction in MySQL, so the final
+                // commit() then threw "There is no active transaction" and the whole
+                // push reported a 500 even though the rows had been written — and
+                // every earlier write in the request lost its rollback. Deferring
+                // keeps the transaction intact; the tables are orphaned rather than
+                // dropped if the transaction is rolled back, which is recoverable
+                // (dropping them is not). The type has no projects left, so the
+                // tables hold no project's data.
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
+                $deferredTableDrops[] = "proj_data_{$safeId}";
+                $deferredTableDrops[] = "proj_timeline_{$safeId}";
+                $deferredTableDrops[] = "proj_gantt_{$safeId}";
+            }
+            if ($ptRefused) {
+                error_log('[ccrm] REFUSED project type delete, projects still use it: ' . implode(', ', $ptRefused));
+                $GLOBALS['ccrm_delete_blocked'] = $GLOBALS['ccrm_delete_blocked'] ?? [];
+                $GLOBALS['ccrm_delete_blocked']['project_types'] = array_values(array_unique(array_merge(
+                    $GLOBALS['ccrm_delete_blocked']['project_types'] ?? [],
+                    $ptRefused
+                )));
             }
         }
 
@@ -4284,6 +4670,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
+                // Contact first / last name and the full name composed from them (C18, contact_name.php).
+                $contactName = ccrm_contact_name_for_sync($l, $dbLeads[$leadId] ?? null);
+                if ($contactName !== null) $l['contactPerson'] = $contactName[2];
+
                 // Optimization: Skip if the lead is identical to what we have in the DB
                 if (isset($dbLeads[$leadId]) && ccrm_leads_are_identical($l, $dbLeads[$leadId], $defaultOwner)) {
                     continue;
@@ -4375,11 +4765,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ccrm_date_only($l['createdAt'] ?? null)
                 ]);
 
+                if ($contactName !== null) {
+                    $pdo->prepare("UPDATE `leads` SET `contact_first_name` = ?, `contact_last_name` = ? WHERE `id` = ?")
+                        ->execute([$contactName[0], $contactName[1], $leadId]);
+                }
+
                 // The client's price level. Written on its own and only when the payload
                 // names it: a bundle that predates price levels must not clear it.
                 if (array_key_exists('priceLevelId', $l)) {
                     $pdo->prepare("UPDATE `leads` SET `price_level_id` = ? WHERE `id` = ?")
                         ->execute([($l['priceLevelId'] ?? '') !== '' ? (string)$l['priceLevelId'] : null, $leadId]);
+                }
+                // Person contact-to-company attachment (`leads.company_client_id`, `leads.contact_role`).
+                if (array_key_exists('companyClientId', $l)) {
+                    $pdo->prepare("UPDATE `leads` SET `company_client_id` = ? WHERE `id` = ?")
+                        ->execute([($l['companyClientId'] ?? '') !== '' ? (string)$l['companyClientId'] : null, $leadId]);
+                }
+                if (array_key_exists('contactRole', $l)) {
+                    $pdo->prepare("UPDATE `leads` SET `contact_role` = ? WHERE `id` = ?")
+                        ->execute([($l['contactRole'] ?? '') !== '' ? trim((string)$l['contactRole']) : null, $leadId]);
+                }
+                if (array_key_exists('contactTags', $l)) {
+                    $cleanTags = is_array($l['contactTags'])
+                        ? array_values(array_unique(array_filter(array_map(fn($x) => trim((string)$x), $l['contactTags']))))
+                        : [];
+                    $pdo->prepare("UPDATE `leads` SET `contact_tags` = ? WHERE `id` = ?")
+                        ->execute([$cleanTags ? json_encode($cleanTags, JSON_UNESCAPED_UNICODE) : null, $leadId]);
+                }
+                // Assigned employees besides the owner (`leads.assigned_employees`); only when sent.
+                if (array_key_exists('assignedEmployees', $l)) {
+                    $cleanEmp = is_array($l['assignedEmployees'])
+                        ? array_values(array_unique(array_filter(array_map(fn($x) => trim((string)$x), $l['assignedEmployees']))))
+                        : [];
+                    $pdo->prepare("UPDATE `leads` SET `assigned_employees` = ? WHERE `id` = ?")
+                        ->execute([$cleanEmp ? json_encode($cleanEmp, JSON_UNESCAPED_UNICODE) : null, $leadId]);
+                }
+                // Custom Lead fields (`leads.custom_fields_json`): only touch when `data` is supplied
+                // so partial callers (`ClientsView`, legacy bundles) never clear stored values.
+                if (array_key_exists('data', $l)) {
+                    $cfJson = (is_array($l['data']) && !empty($l['data']))
+                        ? json_encode($l['data'], JSON_UNESCAPED_UNICODE)
+                        : null;
+                    $pdo->prepare("UPDATE `leads` SET `custom_fields_json` = ? WHERE `id` = ?")
+                        ->execute([$cfJson, $leadId]);
                 }
 
                 // Automatic project creation (Projects → Settings). Runs before
@@ -4474,11 +4902,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // Sync lead chronological event logs timeline
+                $existingExtUrls = [];
+                $extUrlStmt = $pdo->prepare("SELECT `id`, `external_url` FROM `timeline_events` WHERE `lead_id` = ? AND `external_url` IS NOT NULL");
+                $extUrlStmt->execute([$leadId]);
+                while ($r = $extUrlStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $existingExtUrls[$r['id']] = $r['external_url'];
+                }
+                // The client never sees task_id, so the delete-and-reinsert below would drop it: carry it over by event id.
+                $existingTaskLinks = [];
+                $taskLinkStmt = $pdo->prepare("SELECT `id`, `task_id` FROM `timeline_events` WHERE `lead_id` = ? AND `task_id` IS NOT NULL");
+                $taskLinkStmt->execute([$leadId]);
+                while ($r = $taskLinkStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $existingTaskLinks[$r['id']] = $r['task_id'];
+                }
                 $delTimeline = $pdo->prepare("DELETE FROM `timeline_events` WHERE `lead_id` = ? AND `id` NOT LIKE 'email-%'");
                 $delTimeline->execute([$leadId]);
 
                 if (isset($l['timeline']) && is_array($l['timeline'])) {
-                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `is_outgoing`, `author`, `audio_file`, `transcription`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `is_outgoing`, `author`, `audio_file`, `transcription`, `external_url`, `task_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     // Editing an entry the mail importer owns: only these columns
                     // are the user's to change. Everything else belongs to the
                     // message and is rewritten from IMAP on the next read.
@@ -4488,7 +4929,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // client sends it flagged `hidden`, and the row stays behind as
                     // a tombstone — deleting it would let the next mailbox read
                     // file the message again.
-                    $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change'];
+                    $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp', 'note_activity'];
                     foreach ($l['timeline'] as $te) {
                         $teId = $te['id'] ?? ('ev-' . uniqid());
                         if (strpos($teId, 'email-') === 0) {
@@ -4586,7 +5027,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             !empty($te['isOutgoing']) ? 1 : 0,
                             $teAuthor,
                             $teAudioFile,
-                            $teTranscription
+                            $teTranscription,
+                            $existingExtUrls[$teId] ?? null,
+                            $existingTaskLinks[$teId] ?? null
                         ];
 
                         $isNewTe = true;
@@ -4676,7 +5119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // updated_at comes along so the conflict guard below can tell a stale
             // re-send apart from a genuine edit.
             $dbTasks = [];
-            $stmt = $pdo->query("SELECT `id`, `updated_at` FROM `tasks`");
+            $stmt = $pdo->query("SELECT `id`, `updated_at` FROM `tasks` WHERE " . ccrm_sql_real_tasks());
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $dbTasks[$row['id']] = $row;
             }
@@ -4701,15 +5144,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`)");
+            // Deadline history is kept here, not trusted from the client: the two assignments before
+            // `deadline = VALUES(deadline)` run first (MySQL evaluates SET left to right), so they still
+            // see the stored date. A later date counts as one postponement and pins the original.
+                        $insTask = $pdo->prepare("/* recurring-template: sync creates or updates normal tasks */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `related_agency_worker_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`, `estimate_minutes`, `original_deadline`, `category`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `original_deadline` = IF(VALUES(`deadline`) > `deadline` AND `original_deadline` IS NULL, `deadline`, `original_deadline`), `deadline_moves` = `deadline_moves` + IF(VALUES(`deadline`) > `deadline`, 1, 0), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `related_agency_worker_id` = VALUES(`related_agency_worker_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`), `estimate_minutes` = IF(? = 1, VALUES(`estimate_minutes`), `estimate_minutes`), `category` = IF(? = 1, VALUES(`category`), `category`)"); /* recurring-template: sync creates or updates normal tasks */
 
-            // "Requires conclusion": which states finish a task, for the guard below.
-            $conclusionTaskStates = json_decode((string)($pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn() ?: '[]'), true);
-            $conclusionTaskStates = is_array($conclusionTaskStates) ? array_values($conclusionTaskStates) : [];
+            // Which states finish a task: the "requires conclusion" guard, the
+            // recurring trigger, completion notifications and ticket auto-resolve
+            // below all ask the one rule in api/task_done.php.
+            require_once __DIR__ . '/api/task_done.php';
+            $conclusionTaskStates = ccrm_task_states_setting($pdo);
             $conclusionIsDone = function ($status) use ($conclusionTaskStates) {
-                $status = (string)$status;
-                return strtolower($status) === 'done'
-                    || ($conclusionTaskStates && $status === (string)end($conclusionTaskStates));
+                return ccrm_task_status_is_done($status, $conclusionTaskStates);
             };
 
             foreach ($payload['tasks'] as $t) {
@@ -4722,6 +5168,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
                 $taskId = $t['id'];
+
+                // Write guard: tasks collection cannot touch recurring templates or read-only ClickUp mirrors
+                $chkKind = $pdo->prepare("SELECT `task_kind`, `external_source` FROM `tasks` WHERE `id` = ? LIMIT 1"); /* recurring-template: template & clickup check */
+                $chkKind->execute([$taskId]);
+                $kindRow = $chkKind->fetch(PDO::FETCH_ASSOC);
+                if ($kindRow && ($kindRow['task_kind'] ?? null) === 'recurring') {
+                    if (is_array($t) && !empty($t['id'])) $conflictedIds['tasks'][] = (string)$t['id'];
+                    $processedTaskIds[] = $taskId;
+                    continue;
+                }
+                if (($kindRow && ($kindRow['external_source'] ?? null) === 'clickup') || (($t['externalSource'] ?? null) === 'clickup')) {
+                    $processedTaskIds[] = $taskId;
+                    continue;
+                }
 
                 if ($visibleTaskIds !== null && isset($dbTasks[$taskId]) && !isset($visibleTaskIds[(string)$taskId])) {
                     $ccrm_note_out_of_scope('tasks:outside-scope');
@@ -4741,17 +5201,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $isNewTask = !isset($dbTasks[$taskId]);
                 $oldTaskStatus = null;
                 $oldTaskOwner = null;
+                $oldTaskPriority = null;
+                $oldTaskDeadline = null;
+                $oldTaskArchived = false;
+                $oldTaskConclusion = null;
                 $oldRequiresConclusion = false;
                 $oldRelatedTicketId = null;
+                $oldRelatedAgencyWorkerId = null;
                 if (!$isNewTask) {
-                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id` FROM `tasks` WHERE `id` = ? LIMIT 1");
+                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `priority`, `deadline`, `archived`, `conclusion`, `requires_conclusion`, `related_ticket_id`, `related_agency_worker_id`, `completed_at` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1 FOR UPDATE");
                     $oldStatusStmt->execute([$taskId]);
                     $oldRow = $oldStatusStmt->fetch(PDO::FETCH_ASSOC);
                     if ($oldRow) {
                         $oldTaskStatus = $oldRow['status'] ?? null;
                         $oldTaskOwner = $oldRow['owner'] ?? null;
+                        $oldTaskPriority = $oldRow['priority'] ?? null;
+                        $oldTaskDeadline = $oldRow['deadline'] ?? null;
+                        $oldTaskArchived = intval($oldRow['archived'] ?? 0) === 1;
+                        $oldTaskConclusion = $oldRow['conclusion'] ?? null;
                         $oldRequiresConclusion = intval($oldRow['requires_conclusion'] ?? 0) === 1;
                         $oldRelatedTicketId = (isset($oldRow['related_ticket_id']) && $oldRow['related_ticket_id'] !== '') ? $oldRow['related_ticket_id'] : null;
+                        $oldRelatedAgencyWorkerId = (isset($oldRow['related_agency_worker_id']) && $oldRow['related_agency_worker_id'] !== '') ? (string)$oldRow['related_agency_worker_id'] : null;
                     }
                 }
 
@@ -4779,7 +5249,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$ticketLinkAllowed) {
                     $relTicketIdVal = $oldRelatedTicketId;
                 }
+                $relAgencyWorkerIdVal = (isset($t['relatedAgencyWorkerId']) && $t['relatedAgencyWorkerId'] !== '') ? (string)$t['relatedAgencyWorkerId'] : null;
+                if (!$canEditAgency) {
+                    $relAgencyWorkerIdVal = $oldRelatedAgencyWorkerId;
+                }
 
+                [$catVal, $catFlag] = ccrm_task_category_write($t); // api/recurring_tasks.php
                 $insTask->execute([
                     $taskId,
                     $t['title'],
@@ -4794,13 +5269,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $t['relatedLeadId'] ?? null,
                     (isset($t['relatedProjectId']) && $t['relatedProjectId'] !== '') ? $t['relatedProjectId'] : null,
                     $relTicketIdVal,
+                    $relAgencyWorkerIdVal,
                     ($t['isLocking'] ?? false) ? 1 : 0,
                     ($t['archived'] ?? false) ? 1 : 0,
                     (isset($t['completedBy']) && $t['completedBy'] !== '') ? $t['completedBy'] : null,
                     (isset($t['completedAt']) && $t['completedAt'] !== '') ? substr($t['completedAt'], 0, 16) : null,
                     ccrm_encode_task_reminders($t['emailReminders'] ?? null),
                     !empty($t['requiresConclusion']) ? 1 : 0,
-                    $incomingConclusion !== '' ? mb_substr($incomingConclusion, 0, 5000) : null
+                    $incomingConclusion !== '' ? mb_substr($incomingConclusion, 0, 5000) : null,
+                    (array_key_exists('estimateMinutes', $t) && is_numeric($t['estimateMinutes'])) ? max(0, (int)$t['estimateMinutes']) : null,
+                    $t['deadline'],
+                    $catVal,
+                    array_key_exists('estimateMinutes', $t) ? 1 : 0,
+                    $catFlag,
                 ]);
                 if ($relTicketIdVal !== null && $ticketLinkAllowed) {
                     try {
@@ -4808,6 +5289,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } catch (\Throwable $e) {}
                 }
                 $processedTaskIds[] = $taskId;
+
+                $isClosedNow = $conclusionIsDone($t['status'] ?? '') || !empty($t['completedAt']);
+                $wasClosedBefore = $oldTaskStatus !== null && ($conclusionIsDone($oldTaskStatus) || !empty($oldRow['completed_at']));
+                require_once __DIR__ . '/api/project_breakdown_migrations.php';
+                // Also logs a reopening (finished task saved as unfinished: who and when) through ccrm_task_record_reopen(), the one writer.
+                ccrm_stamp_task_breakdown_transition($pdo, (string)$taskId, (string)($t['status'] ?? ''), $isNewTask ? null : $oldTaskStatus, $isClosedNow, $wasClosedBefore, $conclusionTaskStates, $sessionUserName !== '' ? $sessionUserName : null);
+                if ($isClosedNow && !$wasClosedBefore) {
+                    $srcStmt = $pdo->prepare("SELECT `recurring_source_id` FROM `tasks` WHERE `id` = ?"); /* recurring-template: check occurrence source */
+                    $srcStmt->execute([$taskId]);
+                    $recSrc = $srcStmt->fetchColumn();
+                    if ($recSrc) {
+                        $recurringTemplatesToProcess[(string)$recSrc] = true;
+                    }
+                }
 
                 // Workflow Triggers & Task Email/Push Notifications
                 require_once __DIR__ . '/api/workflows_engine.php';
@@ -4826,7 +5321,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ]);
                         ccrm_trigger_workflow('task_status_changed', $triggerPayload, $pdo);
 
-                        if (strtolower($newTaskStatus) === 'done' || (function_exists('ccrm_is_done_task_status') && ccrm_is_done_task_status($newTaskStatus, $pdo))) {
+                        // Configured done state (e.g. "Hotovo", "Kész"), not just the
+                        // literal 'done': the old check called a helper that was never
+                        // defined, so SK/HU installs sent no completion mail or push and
+                        // never auto-resolved linked tickets.
+                        if ($conclusionIsDone($newTaskStatus) && !$conclusionIsDone($oldTaskStatus)) {
                             ccrm_send_task_completed_email_notification($pdo, $t, $sessionUserName);
                             ccrm_send_task_completed_push_notification($pdo, $t, $sessionUserName);
 
@@ -4839,19 +5338,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $otherTasksStmt = $pdo->prepare("
                                         SELECT t.`status`
                                         FROM `ticket_task_links` l
-                                        JOIN `tasks` t ON t.`id` = l.`task_id`
+                                        JOIN `tasks` t ON t.`id` = l.`task_id` AND " . ccrm_sql_real_tasks('t') . "
                                         WHERE l.`ticket_id` = ?
                                     ");
                                     $otherTasksStmt->execute([$linkedTckId]);
                                     $allDone = true;
                                     foreach ($otherTasksStmt->fetchAll(PDO::FETCH_COLUMN) ?: [] as $linkedSt) {
-                                        if (strtolower((string)$linkedSt) !== 'done' && !(function_exists('ccrm_is_done_task_status') && ccrm_is_done_task_status((string)$linkedSt, $pdo))) {
+                                        if (!$conclusionIsDone((string)$linkedSt)) {
                                             $allDone = false;
                                             break;
                                         }
                                     }
                                     if ($allDone) {
-                                        $pdo->prepare("UPDATE `tickets` SET `status` = 'resolved', `resolved_at` = COALESCE(`resolved_at`, NOW()), `updated_at` = NOW() WHERE `id` = ? AND `status` NOT IN ('resolved', 'closed')")->execute([$linkedTckId]);
+                                        // The resolved status and the terminal set come from the
+                                        // configured TICKET_STATUSES, not a hardcoded 'resolved'.
+                                        $resolvedKey = null;
+                                        $firstTerminalKey = null;
+                                        $terminalKeys = ['resolved', 'closed'];
+                                        $statusDefs = [];
+                                        $sysLang = 'sk';
+                                        try {
+                                            $cfgStmt = $pdo->query("SELECT `key`, `value` FROM `system_settings` WHERE `key` IN ('TICKET_STATUSES', 'SYSTEM_LANGUAGE')");
+                                            $cfg = $cfgStmt ? ($cfgStmt->fetchAll(PDO::FETCH_KEY_PAIR) ?: []) : [];
+                                            if (!empty($cfg['SYSTEM_LANGUAGE'])) $sysLang = strtolower(trim((string)$cfg['SYSTEM_LANGUAGE'], "\" \t"));
+                                            $defs = !empty($cfg['TICKET_STATUSES']) ? json_decode((string)$cfg['TICKET_STATUSES'], true) : null;
+                                            if (is_array($defs)) {
+                                                foreach ($defs as $d) {
+                                                    if (!is_array($d)) continue;
+                                                    $k = (string)($d['key'] ?? ($d['id'] ?? ''));
+                                                    if ($k === '') continue;
+                                                    $statusDefs[$k] = $d;
+                                                    $cat = (string)($d['category'] ?? ($d['group'] ?? ''));
+                                                    if (!empty($d['isTerminal']) || $cat === 'resolved' || $cat === 'closed') {
+                                                        $terminalKeys[] = $k;
+                                                        if ($firstTerminalKey === null) $firstTerminalKey = $k;
+                                                    }
+                                                    if ($resolvedKey === null && $cat === 'resolved') $resolvedKey = $k;
+                                                }
+                                            }
+                                        } catch (\Throwable $e) {}
+                                        $resolvedKey = $resolvedKey ?? $firstTerminalKey ?? 'resolved';
+                                        $terminalKeys = array_values(array_unique($terminalKeys));
+
+                                        $oldStStmt = $pdo->prepare("SELECT `status` FROM `tickets` WHERE `id` = ?");
+                                        $oldStStmt->execute([$linkedTckId]);
+                                        $oldTicketStatus = $oldStStmt->fetchColumn();
+                                        if ($oldTicketStatus !== false && !in_array((string)$oldTicketStatus, $terminalKeys, true)) {
+                                            $termPh = implode(',', array_fill(0, count($terminalKeys), '?'));
+                                            $resolveStmt = $pdo->prepare("UPDATE `tickets` SET `status` = ?, `resolved_at` = COALESCE(`resolved_at`, NOW()), `updated_at` = NOW() WHERE `id` = ? AND `status` NOT IN ($termPh)");
+                                            $resolveStmt->execute(array_merge([$resolvedKey, $linkedTckId], $terminalKeys));
+                                            if ($resolveStmt->rowCount() > 0) {
+                                                // Leave the same trace in the thread as a manual status change
+                                                // (TicketsView createStatusChangeMessage). The guarded UPDATE
+                                                // above makes this run once per resolution; INSERT IGNORE on a
+                                                // deterministic id covers a retried request.
+                                                $labelOf = function (string $key) use ($statusDefs, $sysLang): string {
+                                                    $d = $statusDefs[$key] ?? null;
+                                                    if (!is_array($d)) return $key;
+                                                    $field = 'label' . ucfirst($sysLang);
+                                                    foreach ([$field, 'labelSk', 'labelEn', 'label', 'name'] as $f) {
+                                                        if (!empty($d[$f])) return (string)$d[$f];
+                                                    }
+                                                    return $key;
+                                                };
+                                                $reasons = ['sk' => 'všetky prepojené úlohy sú hotové', 'en' => 'all linked tasks are done', 'hu' => 'minden kapcsolódó feladat kész'];
+                                                $reason = $reasons[$sysLang] ?? $reasons['en'];
+                                                $autoNow = date('Y-m-d H:i:s');
+                                                $autoMsgId = 'tmsg-auto-' . substr(sha1($linkedTckId . '|' . $taskId . '|' . $autoNow), 0, 24);
+                                                $pdo->prepare("INSERT IGNORE INTO `ticket_messages` (`id`, `ticket_id`, `author_type`, `author_name`, `is_internal`, `event_type`, `body`, `attachments_json`, `created_at`) VALUES (?, ?, 'system', 'System', 0, 'status_changed', ?, '[]', ?)")
+                                                    ->execute([$autoMsgId, $linkedTckId, $labelOf((string)$oldTicketStatus) . ' → ' . $labelOf($resolvedKey) . ' (' . $reason . ')', $autoNow]);
+                                            }
+                                        }
                                     }
                                 }
                             } catch (\Throwable $e) {
@@ -4889,12 +5446,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     if (!empty($addedAssignees)) {
                         $reassignedTask = array_merge($t, ['assignedUsers' => $addedAssignees, 'owner' => null]);
+                        ccrm_send_task_assigned_email_notification($pdo, $reassignedTask, $sessionUserName);
                         ccrm_send_task_assigned_push_notification($pdo, $reassignedTask, $sessionUserName);
                     }
                 }
 
+                // Record task creation or field diffs into the lightweight ClickUp-style activity timeline
+                require_once __DIR__ . '/api/task_activity_lib.php';
+                if ($isNewTask) {
+                    ccrm_record_task_created($pdo, $taskId, $sessionUserName);
+                } else {
+                    ccrm_record_task_changes($pdo, $taskId, [
+                        'status' => $oldTaskStatus,
+                        'priority' => $oldTaskPriority,
+                        'deadline' => $oldTaskDeadline,
+                        'archived' => $oldTaskArchived,
+                        'conclusion' => $oldTaskConclusion,
+                        'assignees' => $oldAssignees,
+                    ], [
+                        'status' => $t['status'] ?? 'todo',
+                        'priority' => $t['priority'] ?? 'medium',
+                        'deadline' => $t['deadline'],
+                        'archived' => !empty($t['archived']),
+                        'conclusion' => $incomingConclusion !== '' ? $incomingConclusion : null,
+                        'assignees' => isset($t['assignedUsers']) && is_array($t['assignedUsers']) ? $t['assignedUsers'] : [],
+                    ], $sessionUserName);
+                }
+
                 // Sync task tags (Delete & Insert list)
+                $oldTags = [];
+                $newTags = [];
                 try {
+                    if (!$isNewTask) {
+                        $oldTagStmt = $pdo->prepare("SELECT `tag_name` FROM `task_tags` WHERE `task_id` = ?");
+                        $oldTagStmt->execute([$taskId]);
+                        $oldTags = $oldTagStmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+                    }
+
                     $delTaskTags = $pdo->prepare("DELETE FROM `task_tags` WHERE `task_id` = ?");
                     $delTaskTags->execute([$taskId]);
 
@@ -4908,17 +5496,147 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $tagId = 'tag-' . substr(md5(strtolower($cleanTag)), 0, 16);
                                 $insTagDef->execute([$tagId, $cleanTag]);
                                 $insTaskTag->execute([$taskId, $cleanTag]);
+                                $newTags[] = $cleanTag;
                             }
                         }
                     }
                 } catch (\Throwable $e) {
                     ccrm_log_exception($e);
                 }
+
+                // Assignees and tags live in their own tables, so changing only them
+                // leaves tasks.updated_at untouched and the task never shows up as
+                // "changed since" (MCP list_tasks updated_from). Bump it, but only on
+                // a real change: an unchanged re-send must not look like an edit.
+                if (!$isNewTask) {
+                    $newAssigneeList = isset($t['assignedUsers']) && is_array($t['assignedUsers']) ? $t['assignedUsers'] : [];
+                    if (!ccrm_same_name_set($oldAssignees, $newAssigneeList) || !ccrm_same_name_set($oldTags, $newTags)) {
+                        $pdo->prepare("UPDATE `tasks` SET `updated_at` = CURRENT_TIMESTAMP(3) WHERE `id` = ?")->execute([$taskId]); /* recurring-template: by-id touch, any task kind */
+                    }
+                }
             }
 
             // Task deletion is intentionally not inferred from an omitted snapshot.
             // It uses api/task.php so permission checks and server confirmation
             // cannot be bypassed by a stale or incomplete client payload.
+        }
+
+        // 4.4b. Synchronize Recurring Task Templates
+        if (isset($payload['recurringTasks']) && is_array($payload['recurringTasks']) && !$ccrm_skip_writes('tasks', 'tasks')) {
+            $dbTemplates = [];
+            $stmt = $pdo->query("SELECT `id`, `updated_at`, `recurrence_json`, `related_agency_worker_id` FROM `tasks` WHERE `task_kind` = 'recurring'"); /* recurring-template: sync existing templates */
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $dbTemplates[$row['id']] = $row;
+            }
+            $existingTemplateIds = array_keys($dbTemplates);
+            $processedTemplateIds = [];
+
+            $insRecTemplate = $pdo->prepare("/* recurring-template: sync recurring task template */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `related_agency_worker_id`, `is_locking`, `archived`, `email_reminders_json`, `requires_conclusion`, `estimate_minutes`, `task_kind`, `recurrence_json`, `category`) VALUES (?, ?, ?, ?, ?, ?, ?, 'New', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'recurring', ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `related_agency_worker_id` = VALUES(`related_agency_worker_id`), `is_locking` = VALUES(`is_locking`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `estimate_minutes` = VALUES(`estimate_minutes`), `recurrence_json` = VALUES(`recurrence_json`), `category` = IF(? = 1, VALUES(`category`), `category`)");
+
+            foreach ($payload['recurringTasks'] as $rt) {
+                if (!is_array($rt) || empty($rt['id']) || !isset($rt['title']) || $rt['title'] === '') {
+                    if (is_array($rt) && !empty($rt['id'])) $conflictedIds['recurringTasks'][] = (string)$rt['id'];
+                    continue;
+                }
+                $templateId = (string)$rt['id'];
+
+                if (ccrm_write_would_clobber($dbTemplates[$templateId] ?? null, $baseSyncedAt)) {
+                    $processedTemplateIds[] = $templateId;
+                    $conflictedIds['recurringTasks'][] = $templateId;
+                    continue;
+                }
+
+                $chkReal = $pdo->prepare("SELECT `id` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
+                $chkReal->execute([$templateId]);
+                if ($chkReal->fetchColumn()) {
+                    $conflictedIds['recurringTasks'][] = $templateId;
+                    $processedTemplateIds[] = $templateId;
+                    continue;
+                }
+
+                $storedRow = $dbTemplates[$templateId] ?? null;
+                $storedRec = $storedRow ? (json_decode($storedRow['recurrence_json'] ?? '[]', true) ?: []) : null;
+
+                $incomingRec = is_array($rt['recurrence'] ?? null) ? $rt['recurrence'] : [];
+                $cleanRec = ccrm_recurring_validate_json($incomingRec, $storedRec);
+
+                if ($storedRec && !empty($storedRec['paused']) && empty($cleanRec['paused'])) {
+                    $today = date('Y-m-d');
+                    $cleanRec['lastOccurrence'] = ccrm_recurring_shift_cursor_on_resume($cleanRec, $today);
+                }
+
+                $recJson = json_encode($cleanRec, JSON_UNESCAPED_UNICODE);
+
+                $nextScheduled = ccrm_recurring_next_occurrence($cleanRec, $cleanRec['lastOccurrence'] ?? null);
+                $nextDeadline = $nextScheduled ? ccrm_recurring_shift_deadline($nextScheduled, $cleanRec['weekendRule'] ?? 'keep', $cleanRec['frequency'] ?? 'monthly') : null;
+                $nextStartDate = $nextDeadline ? ccrm_recurring_start_date($nextDeadline, (int)($cleanRec['leadDays'] ?? 0)) : null;
+
+                $recAgencyWorkerVal = $canEditAgency
+                    ? (!empty($rt['relatedAgencyWorkerId']) ? (string)$rt['relatedAgencyWorkerId'] : null)
+                    : (!empty($storedRow['related_agency_worker_id']) ? (string)$storedRow['related_agency_worker_id'] : null);
+
+                [$catVal, $catFlag] = ccrm_task_category_write($rt);
+                $insRecTemplate->execute([
+                    $templateId,
+                    $rt['title'],
+                    $rt['description'] ?? '',
+                    $rt['priority'] ?? 'medium',
+                    $nextStartDate,
+                    $nextDeadline,
+                    $rt['deadlineTime'] ?? null,
+                    $rt['owner'] ?? '',
+                    $rt['createdBy'] ?? null,
+                    !empty($rt['relatedLeadId']) ? $rt['relatedLeadId'] : null,
+                    !empty($rt['relatedProjectId']) ? $rt['relatedProjectId'] : null,
+                    !empty($rt['relatedTicketId']) ? $rt['relatedTicketId'] : null,
+                    $recAgencyWorkerVal,
+                    !empty($rt['isLocking']) ? 1 : 0,
+                    !empty($rt['emailReminders']) ? json_encode($rt['emailReminders']) : null,
+                    !empty($rt['requiresConclusion']) ? 1 : 0,
+                    isset($rt['estimateMinutes']) ? (int)$rt['estimateMinutes'] : null,
+                    $recJson,
+                    $catVal,
+                    $catFlag,
+                ]);
+
+                $delAss = $pdo->prepare("DELETE FROM `task_assignees` WHERE `task_id` = ?");
+                $delAss->execute([$templateId]);
+                if (isset($rt['assignedUsers']) && is_array($rt['assignedUsers'])) {
+                    $insAss = $pdo->prepare("INSERT INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
+                    foreach ($rt['assignedUsers'] as $un) {
+                        $insAss->execute([$templateId, $un]);
+                    }
+                }
+
+                try {
+                    $delTags = $pdo->prepare("DELETE FROM `task_tags` WHERE `task_id` = ?");
+                    $delTags->execute([$templateId]);
+                    if (isset($rt['tags']) && is_array($rt['tags'])) {
+                        $insTagDef = $pdo->prepare("INSERT IGNORE INTO `tags` (`id`, `name`) VALUES (?, ?)");
+                        $insTaskTag = $pdo->prepare("INSERT IGNORE INTO `task_tags` (`task_id`, `tag_name`) VALUES (?, ?)");
+                        foreach ($rt['tags'] as $tagName) {
+                            $cleanTag = trim((string)$tagName);
+                            if ($cleanTag !== '') {
+                                $cleanTag = ltrim($cleanTag, '#');
+                                $tagId = 'tag-' . substr(md5(strtolower($cleanTag)), 0, 16);
+                                $insTagDef->execute([$tagId, $cleanTag]);
+                                $insTaskTag->execute([$templateId, $cleanTag]);
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {}
+
+                $processedTemplateIds[] = $templateId;
+                $recurringTemplatesToProcess[$templateId] = true;
+            }
+
+            $templatesToDelete = $isDeltaSync
+                ? $deletionsFor('recurringTasks', $existingTemplateIds)
+                : array_values(array_diff($existingTemplateIds, $processedTemplateIds));
+
+            if (!empty($templatesToDelete)) {
+                ccrm_delete_omitted($pdo, 'tasks', $templatesToDelete, $baseSyncedAt, [], false, $isDeltaSync, 'recurring');
+            }
         }
 
         // 4.5. Synchronize Meeting Notes & meeting_tasks
@@ -4979,6 +5697,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // Sync meeting_tasks (Delete & Insert list)
+                $actionsBefore = ccrm_child_snapshot($pdo, 'meeting_tasks', $meetingId);
                 $delTasks = $pdo->prepare("DELETE FROM `meeting_tasks` WHERE `meeting_id` = ?");
                 $delTasks->execute([$meetingId]);
 
@@ -4998,6 +5717,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ]);
                     }
                 }
+                ccrm_child_bump($pdo, 'meeting_tasks', $meetingId, $actionsBefore); // only on a real change
             }
 
             // Delete any meeting notes not present in payload
@@ -5244,7 +5964,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $dash['color'],
                     json_encode($prompts),
                     json_encode($layout),
-                    $dash['activeModel'] ?? 'gpt-4o',
+                    $dash['activeModel'] ?? 'gpt-6.1-terra',
                     ($dash['archived'] ?? false) ? 1 : 0
                 ]);
                 $processedDashIds[] = $dashId;
@@ -5455,6 +6175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Sync items of this movement
                 if (isset($mov['items']) && is_array($mov['items'])) {
+                    $linesBefore = ccrm_child_snapshot($pdo, 'movement_items', $movId);
                     $delMovItems->execute([$movId]);
                     foreach ($mov['items'] as $mItem) {
                         $itemId = $mItem['id'] ?? ('mi-' . bin2hex(random_bytes(8)));
@@ -5471,6 +6192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $mItem['note'] ?? null
                         ]);
                     }
+                    ccrm_child_bump($pdo, 'movement_items', $movId, $linesBefore); // only on a real change
                 }
             }
 
@@ -5542,6 +6264,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        // 4.13d. Synchronize Client Contacts (company contact persons + standalone personal contacts).
+        if (isset($payload['clientContacts']) && is_array($payload['clientContacts']) && !$ccrm_skip_writes('clients', 'clientContacts')) {
+            require_once __DIR__ . '/api/client_contacts_lib.php';
+            ccrm_sync_save_client_contacts($pdo, $payload['clientContacts'], $isDeltaSync, $deletionsFor, $ccrm_skip_deletes('clients', 'clientContacts'));
+        }
+
+        // 4.13c. Synchronize Offer Categories — the same rules again, gated like the
+        // offers they file (`invoices`). Deleting a category does not touch the offers
+        // filed under it here: the app clears their categoryId itself and pushes those
+        // offers alongside.
+        if (isset($payload['offerCategories']) && is_array($payload['offerCategories']) && !$ccrm_skip_writes('invoices', 'offerCategories')) {
+            $stmt = $pdo->query("SELECT `id` FROM `offer_categories`");
+            $existingOcIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedOcIds = [];
+
+            $insOc = $pdo->prepare("INSERT INTO `offer_categories` (`id`, `name`, `parent_id`, `level`, `sort_order`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `parent_id` = VALUES(`parent_id`), `level` = VALUES(`level`), `sort_order` = VALUES(`sort_order`), `color` = VALUES(`color`), `icon` = VALUES(`icon`)");
+
+            foreach ($payload['offerCategories'] as $oc) {
+                if (!is_array($oc) || empty($oc['id'])) {
+                    continue;
+                }
+                $insOc->execute([
+                    (string)$oc['id'],
+                    $oc['name'] ?? '',
+                    !empty($oc['parentId']) ? $oc['parentId'] : null,
+                    max(1, min(3, (int)($oc['level'] ?? 1))),
+                    (int)($oc['sortOrder'] ?? 0),
+                    $oc['color'] ?? null,
+                    $oc['icon'] ?? null
+                ]);
+                $processedOcIds[] = (string)$oc['id'];
+            }
+
+            $ocToDelete = $isDeltaSync ? $deletionsFor('offerCategories', $existingOcIds) : array_diff($existingOcIds, $processedOcIds);
+            if (!empty($ocToDelete) && !$ccrm_skip_deletes('invoices', 'offerCategories')) {
+                ccrm_delete_omitted($pdo, 'offer_categories', $ocToDelete, null, [], false, $isDeltaSync);
+            }
+        }
+
         // 4.14. Synchronize Financial Records
         if (isset($payload['financialRecords']) && is_array($payload['financialRecords']) && !$ccrm_skip_writes('financial', 'financialRecords')) {
             $storedFr = [];
@@ -5553,7 +6314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $processedFrIds = [];
             $canSeeSalaryRows = ccrm_can($scope, 'employees.salaries');
 
-            $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `recurring_planned_end_date`, `recurring_amount_history_json`, `recurring_skipped_dates_json`, `recurring_source_id`, `recurring_occurrence_date`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `recurring_planned_end_date` = VALUES(`recurring_planned_end_date`), `recurring_amount_history_json` = VALUES(`recurring_amount_history_json`), `recurring_skipped_dates_json` = VALUES(`recurring_skipped_dates_json`), `recurring_source_id` = VALUES(`recurring_source_id`), `recurring_occurrence_date` = VALUES(`recurring_occurrence_date`), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
+            $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `recurring_planned_end_date`, `recurring_amount_history_json`, `recurring_skipped_dates_json`, `recurring_source_id`, `recurring_occurrence_date`, `recurring_materialized_through`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `recurring_planned_end_date` = VALUES(`recurring_planned_end_date`), `recurring_amount_history_json` = VALUES(`recurring_amount_history_json`), `recurring_skipped_dates_json` = VALUES(`recurring_skipped_dates_json`), `recurring_source_id` = VALUES(`recurring_source_id`), `recurring_occurrence_date` = VALUES(`recurring_occurrence_date`), `recurring_materialized_through` = IF(VALUES(`is_recurring`) = 1, GREATEST(COALESCE(`recurring_materialized_through`, VALUES(`recurring_materialized_through`)), COALESCE(VALUES(`recurring_materialized_through`), `recurring_materialized_through`)), NULL), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
 
             foreach ($payload['financialRecords'] as $fr) {
                 $frId = $fr['id'];
@@ -5581,6 +6342,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $frRecurringEndDate = ccrm_date_only($fr['recurringEndDate'] ?? null);
                 $frRecurringPlannedEndDate = ccrm_date_only($fr['recurringPlannedEndDate'] ?? null);
                 $frRecurringOccurrenceDate = ccrm_date_only($fr['recurringOccurrenceDate'] ?? null);
+                $frMaterializedThrough = !empty($fr['isRecurring']) ? ccrm_date_only($fr['recurringMaterializedThrough'] ?? null) : null;
                 // Only well-formed days make it into the skipped list — the schedule
                 // compares them as strings, so a stray datetime would never match.
                 $frSkippedDates = [];
@@ -5616,6 +6378,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($frSkippedDates) ? json_encode($frSkippedDates) : null,
                     !empty($fr['recurringSourceId']) ? mb_substr((string) $fr['recurringSourceId'], 0, 50, 'UTF-8') : null,
                     $frRecurringOccurrenceDate,
+                    $frMaterializedThrough,
                     !empty($fr['projectId']) ? $fr['projectId'] : null,
                     $frClientId,
                     $fr['invoiceNumber'] ?? null,
@@ -5674,8 +6437,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `subtotal`, `vat_amount`, `total_price`, `price_range_min`, `price_range_max`, `currency`,
                 `duration_text`, `start_date_text`, `warranty_text`, `next_steps_note`, `closing_note`, `sign_off_team`,
                 `custom_template_id`, `custom_template_style_json`, `status`, `status_changed_at`, `issued_at`, `valid_until`, `due_date`,
-                `file_name`, `file_path`, `created_by`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `file_name`, `file_path`, `created_by`, `custom_fields_json`, `category_id`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `document_number` = VALUES(`document_number`), `type` = VALUES(`type`), `mode` = VALUES(`mode`),
                 `external_provider` = VALUES(`external_provider`), `external_id` = VALUES(`external_id`), `external_pdf_url` = VALUES(`external_pdf_url`),
@@ -5691,7 +6454,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `next_steps_note` = VALUES(`next_steps_note`), `closing_note` = VALUES(`closing_note`), `sign_off_team` = VALUES(`sign_off_team`),
                 `custom_template_id` = VALUES(`custom_template_id`), `custom_template_style_json` = VALUES(`custom_template_style_json`),
                 `status` = VALUES(`status`), `status_changed_at` = VALUES(`status_changed_at`), `issued_at` = VALUES(`issued_at`), `valid_until` = VALUES(`valid_until`), `due_date` = VALUES(`due_date`),
-                `file_name` = VALUES(`file_name`), `file_path` = VALUES(`file_path`), `created_by` = VALUES(`created_by`)");
+                `file_name` = VALUES(`file_name`), `file_path` = VALUES(`file_path`), `created_by` = VALUES(`created_by`),
+                `custom_fields_json` = VALUES(`custom_fields_json`),
+                `category_id` = IF(? = 1, `category_id`, VALUES(`category_id`))");
 
             $delIoItems = $pdo->prepare("DELETE FROM `invoice_offer_items` WHERE `invoice_offer_id` = ?");
             $insIoItem = $pdo->prepare("INSERT INTO `invoice_offer_items` (
@@ -5749,11 +6514,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($io['dueDate']) ? $io['dueDate'] : null,
                     $io['fileName'] ?? null,
                     $io['filePath'] ?? null,
-                    $io['createdBy'] ?? $sessionEmail
+                    $io['createdBy'] ?? $sessionEmail,
+                    ($cf = ccrm_offer_custom_field_values($io['customFields'] ?? null))
+                        ? json_encode($cf, JSON_UNESCAPED_UNICODE)
+                        : null,
+                    !empty($io['categoryId']) ? (string)$io['categoryId'] : null,
+                    // A client that predates categories sends no categoryId at all: keep the stored one.
+                    array_key_exists('categoryId', $io) ? 0 : 1
                 ]);
                 $processedIoIds[] = $ioId;
 
                 if (isset($io['items']) && is_array($io['items'])) {
+                    $itemsBefore = ccrm_child_snapshot($pdo, 'invoice_items', $ioId);
                     $delIoItems->execute([$ioId]);
                     foreach ($io['items'] as $item) {
                         $itemId = $item['id'] ?? ('ioi-' . bin2hex(random_bytes(8)));
@@ -5772,6 +6544,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             (float)($item['totalPrice'] ?? 0)
                         ]);
                     }
+                    ccrm_child_bump($pdo, 'invoice_items', $ioId, $itemsBefore); // only on a real change
                 }
             }
 
@@ -5789,14 +6562,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $insAct = $pdo->prepare("INSERT INTO `ai_custom_templates` (
                 `id`, `name`, `description`, `source_pdf_url`, `source_pdf_name`,
-                `colors_json`, `typography_json`, `sections_order_json`, `custom_banner_text`, `badge_style`, `layout_json`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `colors_json`, `typography_json`, `sections_order_json`, `custom_banner_text`, `badge_style`, `layout_json`, `document_json`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `name` = VALUES(`name`), `description` = VALUES(`description`),
                 `source_pdf_url` = VALUES(`source_pdf_url`), `source_pdf_name` = VALUES(`source_pdf_name`),
                 `colors_json` = VALUES(`colors_json`), `typography_json` = VALUES(`typography_json`),
                 `sections_order_json` = VALUES(`sections_order_json`), `custom_banner_text` = VALUES(`custom_banner_text`),
-                `badge_style` = VALUES(`badge_style`), `layout_json` = VALUES(`layout_json`)");
+                `badge_style` = VALUES(`badge_style`), `layout_json` = VALUES(`layout_json`),
+                `document_json` = VALUES(`document_json`)");
 
             foreach ($payload['aiCustomTemplates'] as $act) {
                 $actId = $act['id'];
@@ -5815,6 +6589,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // validates them again, so this only bounds what a client can park here.
                     isset($act['layout']) && is_array($act['layout']) && strlen((string)json_encode($act['layout'])) <= 4000
                         ? json_encode($act['layout'], JSON_UNESCAPED_UNICODE)
+                        : null,
+                    // The block document. Anything that is not an object, or that
+                    // encodes past 100_000 characters, is stored as NULL.
+                    (isset($act['document']) && is_array($act['document'])
+                        && ($docJson = json_encode($act['document'], JSON_UNESCAPED_UNICODE))
+                        && mb_strlen($docJson) <= 100000)
+                        ? $docJson
                         : null
                 ]);
                 $processedActIds[] = $actId;
@@ -5843,15 +6624,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $canLinkEmpUsers = ccrm_can_link_employee_user($scope) && ccrm_column_exists($pdo, 'employees', 'user_id');
 
             $insEmp = $pdo->prepare("INSERT INTO `employees` (
-                `id`, `name`, `first_name`, `last_name`, `kind`, `company_id`, `tax_id`, `vat_id`, `position`, `department`, `pin`, `email`, `phone`, `address_street`, `address_city`,
+                `id`, `name`, `first_name`, `last_name`, `kind`, `contractor_type`, `company_id`, `tax_id`, `vat_id`, `position`, `department`, `pin`, `email`, `phone`, `address_street`, `address_city`,
                 `address_zip`, `address_country`, `salary_type`, `salary_amount`, `salary_due_day`,
                 `vacation_allowances_json`, `time_tracking_provider`, `time_tracking_user_id`,
                 `time_tracking_user_name`, `auto_expense`, `expense_category_id`, `files_json`,
-                `is_active`, `notes`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `is_active`, `notes`, `work_country`, `hours_per_day`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `name` = VALUES(`name`), `first_name` = VALUES(`first_name`), `last_name` = VALUES(`last_name`),
-                `kind` = VALUES(`kind`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`),
+                `kind` = VALUES(`kind`), `contractor_type` = VALUES(`contractor_type`),
+                `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`),
                 `position` = VALUES(`position`), `department` = VALUES(`department`),
                 `pin` = VALUES(`pin`), `email` = VALUES(`email`), `phone` = VALUES(`phone`),
                 `address_street` = VALUES(`address_street`), `address_city` = VALUES(`address_city`),
@@ -5861,7 +6643,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `time_tracking_provider` = VALUES(`time_tracking_provider`), `time_tracking_user_id` = VALUES(`time_tracking_user_id`),
                 `time_tracking_user_name` = VALUES(`time_tracking_user_name`), `auto_expense` = VALUES(`auto_expense`),
                 `expense_category_id` = VALUES(`expense_category_id`), `files_json` = VALUES(`files_json`),
-                `is_active` = VALUES(`is_active`), `notes` = VALUES(`notes`)");
+                `is_active` = VALUES(`is_active`), `notes` = VALUES(`notes`), `work_country` = VALUES(`work_country`), `hours_per_day` = VALUES(`hours_per_day`)");
 
             foreach ($payload['employees'] as $emp) {
                 if (!is_array($emp) || empty($emp['id'])) {
@@ -5885,20 +6667,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 };
                 $kind = array_key_exists('kind', $emp) ? (string)$emp['kind'] : (string)$keep('kind', 'employee');
                 if (!in_array($kind, CCRM_EMPLOYEE_KINDS, true)) $kind = 'employee';
-                // A contractor keeps its contact person's name beside the trade name; a ledger item has none.
+                $rawContractorType = array_key_exists('contractorType', $emp)
+                    ? (string)$emp['contractorType']
+                    : (string)$keep('contractor_type', 'company');
+                $contractorType = $kind === 'contractor'
+                    ? (in_array($rawContractorType, CCRM_CONTRACTOR_TYPES, true) ? $rawContractorType : 'company')
+                    : null;
+                // A contractor keeps its contact person's name (or freelancer person's own name); a ledger item has none.
                 $firstName = $kind !== 'ledger' ? $idField('firstName', 'first_name') : null;
                 $lastName = $kind !== 'ledger' ? $idField('lastName', 'last_name') : null;
-                // IČO / DIČ / IČ DPH belong to an external supplier only.
-                $companyId = $kind === 'contractor' ? $idField('companyId', 'company_id') : null;
-                $taxId = $kind === 'contractor' ? $idField('taxId', 'tax_id') : null;
-                $vatId = $kind === 'contractor' ? $idField('vatId', 'vat_id') : null;
-                $displayName = ccrm_compose_employee_name($kind, $firstName, $lastName, (string)($emp['name'] ?? $keep('name', 'Unnamed Employee')));
+                // IČO / DIČ / IČ DPH belong to a business external supplier (sole trader or company) only.
+                $hasCompanyIds = $kind === 'contractor' && $contractorType !== 'person';
+                $companyId = $hasCompanyIds ? $idField('companyId', 'company_id') : null;
+                $taxId = $hasCompanyIds ? $idField('taxId', 'tax_id') : null;
+                $vatId = $hasCompanyIds ? $idField('vatId', 'vat_id') : null;
+                $displayName = ccrm_compose_employee_name($kind, $firstName, $lastName, (string)($emp['name'] ?? $keep('name', 'Unnamed Employee')), $contractorType);
                 $insEmp->execute([
                     $empId,
                     $displayName !== '' ? $displayName : 'Unnamed Employee',
                     $firstName,
                     $lastName,
                     $kind,
+                    $contractorType,
                     $companyId,
                     $taxId,
                     $vatId,
@@ -5928,7 +6718,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ? json_encode($emp['files'] ?? [], JSON_UNESCAPED_UNICODE)
                         : $keep('files_json', json_encode([])),
                     isset($emp['isActive']) ? ((bool)$emp['isActive'] ? 1 : 0) : 1,
-                    $personal ? ($emp['notes'] ?? null) : $keep('notes', null)
+                    $personal ? ($emp['notes'] ?? null) : $keep('notes', null),
+                    // Whose public-holiday calendar the person works by (time tracking cost rate). It
+                    // follows pay: it changes what a month's salary divides by. A client that does not
+                    // send it (an older cached app) leaves the stored value alone.
+                    ($pay && array_key_exists('workCountry', $emp))
+                        ? (in_array(strtoupper((string)$emp['workCountry']), ['SK', 'HU'], true) ? strtoupper((string)$emp['workCountry']) : null)
+                        : $keep('work_country', null),
+                    // Contracted hours per day (part-time); follows pay. Only 0 < h <= 24 is kept.
+                    ($pay && array_key_exists('hoursPerDay', $emp))
+                        ? ((is_numeric($emp['hoursPerDay']) && (float)$emp['hoursPerDay'] > 0 && (float)$emp['hoursPerDay'] <= 24) ? round((float)$emp['hoursPerDay'], 2) : null)
+                        : $keep('hours_per_day', null)
                 ]);
                 $processedEmpIds[] = $empId;
 
@@ -5992,9 +6792,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 4.18. Synchronize Employee Salaries & Auto-Expense Linkage
         if (isset($payload['employeeSalaries']) && is_array($payload['employeeSalaries']) && !$ccrm_skip_writes('employees', 'employeeSalaries') && !$ccrm_skip_unless('employees.salaries', 'employeeSalaries')) {
-            $stmt = $pdo->query("SELECT `id` FROM `employee_salaries`");
-            $existingSalIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            // Stored status and close stamp per id: `closed_at` is server-owned (stamped when the month
+            // first becomes paid, cleared only by an admin reopen), so the payload never sets it.
+            $storedSalById = [];
+            $stmt = $pdo->query("SELECT `id`, `status`, `closed_at`, `closed_by` FROM `employee_salaries`");
+            while ($sRow = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $storedSalById[$sRow['id']] = $sRow;
+            }
+            $existingSalIds = array_keys($storedSalById);
             $processedSalIds = [];
+            // Another record already holding this employee's month (unique key uk_emp_period)
+            $findSalClash = $pdo->prepare("SELECT * FROM `employee_salaries` WHERE `employee_id` = ? AND `period_key` = ? AND `id` <> ?");
 
             // Load employee lookup for auto-expense checks
             $empLookup = [];
@@ -6012,10 +6820,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $insSal = $pdo->prepare("INSERT INTO `employee_salaries` (
                 `id`, `employee_id`, `period_type`, `period_key`, `year`, `period_number`,
-                `items_json`, `total_salary`, `total_paid`, `status`, `due_date`, `payment_date`,
-                `payment_method`, `financial_record_id`, `note`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `items_json`, `total_salary`, `total_paid`, `labor_cost`, `net_pay`, `status`, `due_date`, `payment_date`,
+                `payment_method`, `financial_record_id`, `note`, `closed_at`, `closed_by`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
+                `closed_at` = VALUES(`closed_at`),
+                `closed_by` = VALUES(`closed_by`),
                 `employee_id` = VALUES(`employee_id`),
                 `period_type` = VALUES(`period_type`),
                 `period_key` = VALUES(`period_key`),
@@ -6024,6 +6834,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `items_json` = VALUES(`items_json`),
                 `total_salary` = VALUES(`total_salary`),
                 `total_paid` = VALUES(`total_paid`),
+                `labor_cost` = VALUES(`labor_cost`),
+                `net_pay` = VALUES(`net_pay`),
                 `status` = VALUES(`status`),
                 `due_date` = VALUES(`due_date`),
                 `payment_date` = VALUES(`payment_date`),
@@ -6031,16 +6843,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `financial_record_id` = VALUES(`financial_record_id`),
                 `note` = VALUES(`note`)");
 
-            // Prepared statement for financial_records upsert
+            // Prepared statement for financial_records upsert. The payroll month is the source of
+            // truth for amounts, status and dates; title, description and category are set when the
+            // expense is created only, so re-saving an old month does not move it to today's
+            // category or employee name, nor revert a category chosen in Finance.
             $upsertFr = $pdo->prepare("INSERT INTO `financial_records` (
                 `id`, `type`, `subtype`, `title`, `description`, `category_id`,
                 `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`,
                 `due_date`, `paid_date`, `payment_method`, `created_by`
             ) VALUES (?, 'expense', 'salary', ?, ?, ?, ?, ?, 'EUR', ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-                `title` = VALUES(`title`),
-                `description` = VALUES(`description`),
-                `category_id` = VALUES(`category_id`),
                 `amount_planned` = VALUES(`amount_planned`),
                 `amount_real` = VALUES(`amount_real`),
                 `status` = VALUES(`status`),
@@ -6054,17 +6866,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $empId = $sal['employeeId'];
                 $empInfo = $empLookup[$empId] ?? null;
 
+                // The month's identity is year + month. A key without its year (`M05`, written by an
+                // older client) is rebuilt from the record, or May of two years would collide.
+                $salPeriodKey = ccrm_salary_period_key($sal);
+
+                // A different id already holds this employee's month: the unique key would make this
+                // upsert overwrite that row in place. Keep one (more paid out, then newer edit); the
+                // other is logged in full to the audit log.
+                $findSalClash->execute([$empId, $salPeriodKey, $salId]);
+                $salClash = $findSalClash->fetch(PDO::FETCH_ASSOC);
+                if ($salClash) {
+                    if (ccrm_salary_keep_first($salClash, $sal)) {
+                        ccrm_payroll_audit($pdo, $sessionUser, 'salary.duplicate_rejected',
+                            "Payroll month {$salPeriodKey} of employee {$empId} already stored as {$salClash['id']}; dropped incoming {$salId}: "
+                            . json_encode($sal, JSON_UNESCAPED_UNICODE));
+                        $processedSalIds[] = $salId;
+                        continue;
+                    }
+                    ccrm_salary_retire_duplicate($pdo, $salClash, (string)$salId, $sessionUser);
+                }
+
                 $totalSalary = (float)($sal['totalSalary'] ?? 0);
                 $totalPaid = (float)($sal['totalPaid'] ?? 0);
+                $salLaborCost = isset($sal['laborCost']) && is_numeric($sal['laborCost']) ? (float)$sal['laborCost'] : null;
+                // What the month costs the company: Cena práce once the payslip is in, otherwise the
+                // gross. Vyplatené is measured against it, and it is the amount the expense books.
+                $salDue = ccrm_salary_due(['laborCost' => $salLaborCost, 'totalSalary' => $totalSalary]);
+                $salStatus = ccrm_salary_status($salDue, $totalPaid);
 
-                // Determine salary record status
-                $salStatus = $sal['status'] ?? 'pending';
-                if ($totalPaid >= $totalSalary && $totalSalary > 0) {
-                    $salStatus = 'paid';
-                } elseif ($totalPaid > 0) {
-                    $salStatus = 'partially_paid';
-                } else {
-                    $salStatus = 'pending';
+                // Closing the month is an event, recorded once: the first time it becomes paid in full.
+                // A later edit that makes it partially paid again (Cena práce typed in above the gross)
+                // does not reopen it; only an admin's explicit reopen does.
+                $storedSal = $storedSalById[$salId] ?? null;
+                $salClosedAt = $storedSal['closed_at'] ?? null;
+                $salClosedBy = $storedSal['closed_by'] ?? null;
+                $salReopened = false;
+                // The request names the stamp it reopens, so a stale copy cannot undo a newer close
+                if ($salClosedAt !== null && isset($sal['reopenClosedAt']) && (string)$sal['reopenClosedAt'] === (string)$salClosedAt) {
+                    if (ccrm_is_admin($sessionUser)) {
+                        ccrm_payroll_audit($pdo, $sessionUser, 'salary.reopen',
+                            "Reopened payroll month {$salPeriodKey} of employee {$empId} ({$salId}), closed {$salClosedAt}");
+                        $salClosedAt = null;
+                        $salClosedBy = null;
+                        $salReopened = true;
+                    }
+                }
+                if ($salClosedAt === null && !$salReopened && $salStatus === 'paid' && ($storedSal['status'] ?? null) !== 'paid') {
+                    $salClosedAt = date('Y-m-d H:i:s');
+                    $salClosedBy = $sessionEmail;
                 }
 
                 // Compute due date if not provided
@@ -6082,11 +6931,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Auto-Expense linkage
                 $empAutoExp = isset($empInfo['auto_expense']) ? ((int)$empInfo['auto_expense'] === 1) : $defaultAutoExpense;
-                if ($empAutoExp && ($totalSalary > 0 || $totalPaid > 0)) {
+                if ($empAutoExp && ($salDue > 0 || $totalPaid > 0)) {
                     $targetCatId = !empty($empInfo['expense_category_id']) ? $empInfo['expense_category_id'] : $defaultExpenseCatId;
                     $empDisplayName = $empInfo['name'] ?? ('Employee ' . $empId);
-                    $frTitle = "Salary: {$empDisplayName} ({$sal['periodKey']})";
-                    $frStatus = ($totalPaid >= $totalSalary && $totalSalary > 0) ? 'paid' : ($totalPaid > 0 ? 'partially_paid' : 'planned');
+                    $frTitle = "Salary: {$empDisplayName} ({$salPeriodKey})";
+                    $frStatus = ($totalPaid >= $salDue && $salDue > 0) ? 'paid' : ($totalPaid > 0 ? 'partially_paid' : 'planned');
                     $paidDate = ($totalPaid > 0) ? (!empty($sal['paymentDate']) ? $sal['paymentDate'] : date('Y-m-d')) : null;
                     $issueDate = sprintf('%04d-%02d-01', (int)($sal['year'] ?? date('Y')), (int)($sal['periodNumber'] ?? date('n')));
 
@@ -6099,7 +6948,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $frTitle,
                         "Monthly payroll salary payout for {$empDisplayName}",
                         $targetCatId,
-                        $totalSalary,
+                        $salDue,
                         $totalPaid,
                         $frStatus,
                         $issueDate,
@@ -6114,18 +6963,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $salId,
                     $empId,
                     $sal['periodType'] ?? 'monthly',
-                    $sal['periodKey'],
+                    $salPeriodKey,
                     (int)$sal['year'],
                     (int)$sal['periodNumber'],
                     json_encode($sal['items'] ?? [], JSON_UNESCAPED_UNICODE),
                     $totalSalary,
                     $totalPaid,
+                    $salLaborCost,
+                    isset($sal['netPay']) && is_numeric($sal['netPay']) ? (float)$sal['netPay'] : null,
                     $salStatus,
                     $dueDate,
                     !empty($sal['paymentDate']) ? $sal['paymentDate'] : null,
                     $sal['paymentMethod'] ?? 'bank_transfer',
                     $finRecordId,
-                    $sal['note'] ?? null
+                    $sal['note'] ?? null,
+                    $salClosedAt,
+                    $salClosedBy
                 ]);
                 $processedSalIds[] = $salId;
             }
@@ -6165,13 +7018,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $vacStatus = $vac['status'] ?? 'approved';
                 // Who approved is the server's call, never the client's: it is the
                 // session user at the moment the status BECOMES approved or rejected,
-                // and the stored value while it stays that way. Any other status has
-                // nobody who decided it.
+                // and the stored value while it stays that way. Leave that was approved
+                // and is now taken keeps its approver: taking it does not undo who
+                // approved it. Any other status has nobody who decided it.
                 $prevVac = $storedVac[$vacId] ?? null;
                 if (in_array($vacStatus, ['approved', 'rejected'], true)) {
                     $vacApprovedBy = ($prevVac !== null && $prevVac['status'] === $vacStatus && ($prevVac['approved_by'] ?? '') !== '')
                         ? $prevVac['approved_by']
                         : $sessionEmail;
+                } elseif ($vacStatus === 'taken' && $prevVac !== null && in_array($prevVac['status'], ['approved', 'taken'], true) && ($prevVac['approved_by'] ?? '') !== '') {
+                    $vacApprovedBy = $prevVac['approved_by'];
                 } else {
                     $vacApprovedBy = null;
                 }
@@ -6196,7 +7052,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 4.20. Synchronize Employee Settings
-        if (isset($payload['employeeSettings']) && is_array($payload['employeeSettings']) && !$ccrm_skip_writes('general_config', 'employeeSettings')) {
+        //
+        // The client sends this blob on every push. A role that can see People but
+        // cannot edit general_config is handed a projection (salary and leave
+        // types, no API tokens) and echoes it back. Recording that echo as
+        // permissionSkipped makes the app warn "some changes were not saved" on
+        // any save — a theme change, a login — even though nothing was edited.
+        // Only an incoming value that differs from the projection this caller was
+        // shown is a refused write.
+        if (isset($payload['employeeSettings']) && is_array($payload['employeeSettings'])) {
+            $canWriteEmployeeSettings = $isAdmin || ccrm_perm_can_edit($perms, 'general_config');
+            if (!$canWriteEmployeeSettings) {
+                $storedEmpSettingsRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'EMPLOYEE_SETTINGS'")->fetchColumn();
+                $storedEmpSettings = ($storedEmpSettingsRaw !== false && $storedEmpSettingsRaw !== null && $storedEmpSettingsRaw !== '')
+                    ? json_decode($storedEmpSettingsRaw, true) : null;
+                $visibleEmpSettings = ccrm_project_employee_settings(is_array($storedEmpSettings) ? $storedEmpSettings : null, $scope);
+                if (!ccrm_json_same($payload['employeeSettings'], $visibleEmpSettings ?? [])) {
+                    $ccrm_note_out_of_scope('employeeSettings');
+                }
+            } else {
             // The GET masks the Toggl / Clockify credentials, so what comes back is
             // the mask: keep the stored secret (the integrations pattern above).
             $incomingEmpSettings = $payload['employeeSettings'];
@@ -6216,6 +7090,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $empSettingsVal = json_encode($incomingEmpSettings, JSON_UNESCAPED_UNICODE);
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('EMPLOYEE_SETTINGS', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
             $insSet->execute([$empSettingsVal]);
+            }
         }
 
         // 4.21. Synchronize Orders & Order Items
@@ -6226,7 +7101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $insOrder = $pdo->prepare("
                 INSERT INTO `orders` (
-                    `id`, `order_number`, `type`, `status`, `customer_type`, `client_id`, `supplier_id`,
+                    `id`, `order_number`, `type`, `status`, `customer_type`, `client_id`, `supplier_id`, `project_id`,
                     `guest_name`, `guest_email`, `guest_phone`, `guest_company`, `guest_ico`, `guest_dic`, `guest_ic_dph`,
                     `delivery_recipient`, `delivery_street`, `delivery_city`, `delivery_zip`, `delivery_country`, `delivery_phone`, `delivery_notes`,
                     `shipping_method`, `shipping_pickup_point_id`, `shipping_tracking_number`,
@@ -6235,7 +7110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     `currency`, `items_net_amount`, `services_net_amount`, `total_net_amount`, `total_tax_amount`, `total_gross_amount`,
                     `order_date`, `requested_delivery_date`, `confirmed_delivery_date`, `warehouse_id`, `notes`, `customer_note`, `created_by`
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?,
@@ -6251,6 +7126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     `customer_type` = VALUES(`customer_type`),
                     `client_id` = VALUES(`client_id`),
                     `supplier_id` = VALUES(`supplier_id`),
+                    `project_id` = VALUES(`project_id`),
                     `guest_name` = VALUES(`guest_name`),
                     `guest_email` = VALUES(`guest_email`),
                     `guest_phone` = VALUES(`guest_phone`),
@@ -6316,6 +7192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $ord['customerType'] ?? 'client',
                     $ord['clientId'] ?? null,
                     $ord['supplierId'] ?? null,
+                    $ord['projectId'] ?? null,
                     $guest['name'] ?? null,
                     $guest['email'] ?? null,
                     $guest['phone'] ?? null,
@@ -6440,7 +7317,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         elseif (!in_array($rawTier, ['basic', 'pro', 'enterprise', 'project_only'], true)) $rawTier = 'basic';
 
                         $clientId = !empty($sc['clientId']) ? (string)$sc['clientId'] : (!empty($sc['leadId']) ? (string)$sc['leadId'] : null);
-                        $hourlyRate = isset($sc['hourlyRate']) && $sc['hourlyRate'] !== '' ? (float)$sc['hourlyRate'] : (isset($sc['hourlyOverageRate']) && $sc['hourlyOverageRate'] !== '' ? (float)$sc['hourlyOverageRate'] : 0.0);
+                        // The Tickets view used to send `overageRate` / `monthlyHoursIncluded` only,
+                        // which this block did not read: the contract came back with 10 h and rate 0.
+                        // Accept every spelling the client types carry.
+                        $hourlyRate = 0.0;
+                        foreach (['hourlyRate', 'hourlyOverageRate', 'overageRate'] as $rateKey) {
+                            if (isset($sc[$rateKey]) && $sc[$rateKey] !== '' && $sc[$rateKey] !== null) { $hourlyRate = (float)$sc[$rateKey]; break; }
+                        }
+                        $monthlyHours = 10.0;
+                        foreach (['monthlyHours', 'monthlyHoursIncluded'] as $hoursKey) {
+                            if (isset($sc[$hoursKey]) && $sc[$hoursKey] !== '' && $sc[$hoursKey] !== null) { $monthlyHours = (float)$sc[$hoursKey]; break; }
+                        }
                         $validFrom = !empty($sc['validFrom']) ? substr((string)$sc['validFrom'], 0, 10) : (!empty($sc['periodStart']) ? substr((string)$sc['periodStart'], 0, 10) : null);
                         $validUntil = !empty($sc['validUntil']) ? substr((string)$sc['validUntil'], 0, 10) : (!empty($sc['periodEnd']) ? substr((string)$sc['periodEnd'], 0, 10) : null);
                         $notes = isset($sc['notes']) && $sc['notes'] !== '' ? (string)$sc['notes'] : (isset($sc['name']) ? (string)$sc['name'] : null);
@@ -6450,7 +7337,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $clientId,
                             !empty($sc['projectId']) ? (string)$sc['projectId'] : null,
                             $rawTier,
-                            (float)($sc['monthlyHours'] ?? 10.0),
+                            $monthlyHours,
                             $hourlyRate,
                             (float)($sc['slaResponseCriticalHours'] ?? 1),
                             (float)($sc['slaResponseHighHours'] ?? 4),
@@ -6481,19 +7368,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($payload['tickets']) && is_array($payload['tickets']) && !$ccrm_skip_writes('tickets', 'tickets')) {
             try {
                 if ($pdo->query("SHOW TABLES LIKE 'tickets'")->rowCount() > 0) {
-                    $existingTicketIds = $pdo->query("SELECT `id` FROM `tickets`")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+                    $existingTicketWorkers = [];
+                    $existingTicketStatuses = [];
+                    $tckWStmt = $pdo->query("SELECT `id`, `agency_worker_id`, `status` FROM `tickets`");
+                    while ($tw = $tckWStmt->fetch(PDO::FETCH_ASSOC)) {
+                        $existingTicketWorkers[(string)$tw['id']] = !empty($tw['agency_worker_id']) ? (string)$tw['agency_worker_id'] : null;
+                        $existingTicketStatuses[(string)$tw['id']] = (string)($tw['status'] ?? 'new');
+                    }
+                    require_once __DIR__ . '/api/project_breakdown_migrations.php';
+                    $terminalTicketKeys = ccrm_ticket_terminal_keys($pdo);
+                    $existingTicketIds = array_keys($existingTicketWorkers);
                     $processedTicketIds = [];
 
+                    // SLA due dates are set once at creation. COALESCE keeps them when a push
+                    // lacks them (an older tab, a key spelling it does not know) instead of
+                    // erasing the commitment.
                     $upsertTicket = $pdo->prepare("
                         INSERT INTO `tickets` (
                             `id`, `ticket_number`, `title`, `description`, `status`, `priority`, `type`, `source`,
-                            `project_id`, `client_id`, `reporter_name`, `reporter_email`, `reporter_phone`,
+                            `project_id`, `client_id`, `agency_worker_id`, `reporter_name`, `reporter_email`, `reporter_phone`,
                             `assignee_id`, `assignee_name`, `watchers_json`, `tags_json`,
                             `metadata_json`, `attachments_json`, `email_message_id`,
                             `first_response_due_at`, `first_responded_at`, `resolve_due_at`, `sla_paused_at`, `sla_paused_seconds`,
                             `resolved_at`, `closed_at`, `satisfaction_score`, `satisfaction_comment`, `archived`,
                             `created_at`, `updated_at`
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON DUPLICATE KEY UPDATE
                             `ticket_number` = VALUES(`ticket_number`),
                             `title` = VALUES(`title`),
@@ -6504,6 +7403,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             `source` = VALUES(`source`),
                             `project_id` = VALUES(`project_id`),
                             `client_id` = VALUES(`client_id`),
+                            `agency_worker_id` = VALUES(`agency_worker_id`),
                             `reporter_name` = VALUES(`reporter_name`),
                             `reporter_email` = VALUES(`reporter_email`),
                             `reporter_phone` = VALUES(`reporter_phone`),
@@ -6514,9 +7414,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             `metadata_json` = VALUES(`metadata_json`),
                             `attachments_json` = VALUES(`attachments_json`),
                             `email_message_id` = COALESCE(`tickets`.`email_message_id`, VALUES(`email_message_id`)),
-                            `first_response_due_at` = VALUES(`first_response_due_at`),
+                            `first_response_due_at` = COALESCE(VALUES(`first_response_due_at`), `tickets`.`first_response_due_at`),
                             `first_responded_at` = VALUES(`first_responded_at`),
-                            `resolve_due_at` = VALUES(`resolve_due_at`),
+                            `resolve_due_at` = COALESCE(VALUES(`resolve_due_at`), `tickets`.`resolve_due_at`),
                             `sla_paused_at` = VALUES(`sla_paused_at`),
                             `sla_paused_seconds` = VALUES(`sla_paused_seconds`),
                             `resolved_at` = VALUES(`resolved_at`),
@@ -6547,16 +7447,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ON DUPLICATE KEY UPDATE `sync_mode` = VALUES(`sync_mode`)
                     ");
 
-                    $upsertTimeEntry = $pdo->prepare("
-                        INSERT INTO `ticket_time_entries` (`id`, `ticket_id`, `user_id`, `user_name`, `minutes`, `billable`, `note`, `logged_at`)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE
-                            `minutes` = VALUES(`minutes`),
-                            `billable` = VALUES(`billable`),
-                            `note` = VALUES(`note`),
-                            `logged_at` = VALUES(`logged_at`)
-                    ");
-
                     foreach ($payload['tickets'] as $tck) {
                         $tckId = (string)($tck['id'] ?? '');
                         if ($tckId === '') continue;
@@ -6575,9 +7465,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         $firstRespDue = !empty($tck['slaFirstResponseDueAt']) ? $tck['slaFirstResponseDueAt'] : ($tck['firstResponseDueAt'] ?? null);
                         $firstRespAt = !empty($tck['slaFirstRespondedAt']) ? $tck['slaFirstRespondedAt'] : ($tck['firstRespondedAt'] ?? null);
-                        $resolveDue = !empty($tck['slaResolutionDueAt']) ? $tck['slaResolutionDueAt'] : ($tck['resolveDueAt'] ?? null);
+                        // Three spellings reach this point: `slaResolutionDueAt` (what we return),
+                        // `resolveDueAt` (older clients) and `resolutionDueAt` (TicketsView before
+                        // the fix, and what computeTicketSlaDueDates() returns). Missing the last one
+                        // stored NULL and lost the resolution SLA of every manual ticket.
+                        $resolveDue = !empty($tck['slaResolutionDueAt']) ? $tck['slaResolutionDueAt']
+                            : (!empty($tck['resolutionDueAt']) ? $tck['resolutionDueAt'] : ($tck['resolveDueAt'] ?? null));
                         $pausedSecs = isset($tck['slaPausedTotalSeconds']) ? (int)$tck['slaPausedTotalSeconds'] : (int)($tck['slaPausedSeconds'] ?? 0);
                         $isArchivedVal = (!empty($tck['isArchived']) || !empty($tck['archived'])) ? 1 : 0;
+
+                        $tckAgencyWorkerVal = $canEditAgency
+                            ? (!empty($tck['agencyWorkerId']) ? (string)$tck['agencyWorkerId'] : null)
+                            : ($existingTicketWorkers[$tckId] ?? null);
 
                         $upsertTicket->execute([
                             $tckId,
@@ -6590,6 +7489,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $sourceVal,
                             !empty($tck['projectId']) ? (string)$tck['projectId'] : null,
                             $clientIdVal,
+                            $tckAgencyWorkerVal,
                             isset($tck['reporterName']) ? (string)$tck['reporterName'] : null,
                             isset($tck['reporterEmail']) ? (string)$tck['reporterEmail'] : null,
                             isset($tck['reporterPhone']) ? (string)$tck['reporterPhone'] : null,
@@ -6614,6 +7514,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $updatedAt,
                         ]);
                         $processedTicketIds[] = $tckId;
+                        $nextTicketStatus = (string)($tck['status'] ?? 'new');
+                        $prevTicketStatus = $existingTicketStatuses[$tckId] ?? null;
+                        if ($prevTicketStatus !== null && in_array($prevTicketStatus, $terminalTicketKeys, true) && !in_array($nextTicketStatus, $terminalTicketKeys, true)) {
+                            $pdo->prepare("UPDATE `tickets` SET `reopened_count` = `reopened_count` + 1 WHERE `id` = ?")->execute([$tckId]);
+                        }
 
                         if (isset($tck['messages']) && is_array($tck['messages'])) {
                             $keepMsgIds = [];
@@ -6641,14 +7546,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                             if (empty($keepMsgIds)) {
                                 if ($isDeltaSync && $baseSyncedAt !== null) {
-                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND NOT (`author_type` = 'client' AND `created_at` > ?)")->execute([$tckId, $baseSyncedAt]);
+                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND NOT (`author_type` IN ('client', 'system') AND `created_at` > ?)")->execute([$tckId, $baseSyncedAt]);
                                 } else {
                                     $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ?")->execute([$tckId]);
                                 }
                             } else {
                                 $ph = implode(',', array_fill(0, count($keepMsgIds), '?'));
                                 if ($isDeltaSync && $baseSyncedAt !== null) {
-                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND `id` NOT IN ($ph) AND NOT (`author_type` = 'client' AND `created_at` > ?)")->execute(array_merge([$tckId], $keepMsgIds, [$baseSyncedAt]));
+                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND `id` NOT IN ($ph) AND NOT (`author_type` IN ('client', 'system') AND `created_at` > ?)")->execute(array_merge([$tckId], $keepMsgIds, [$baseSyncedAt]));
                                 } else {
                                     $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND `id` NOT IN ($ph)")->execute(array_merge([$tckId], $keepMsgIds));
                                 }
@@ -6668,7 +7573,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $lCreated,
                                 ]);
                                 try {
-                                    $pdo->prepare("UPDATE `tasks` SET `related_ticket_id` = ? WHERE `id` = ? AND (`related_ticket_id` IS NULL OR `related_ticket_id` = '')")->execute([$tckId, $lTaskId]);
+                                    $pdo->prepare("UPDATE `tasks` SET `related_ticket_id` = ? WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " AND (`related_ticket_id` IS NULL OR `related_ticket_id` = '')")->execute([$tckId, $lTaskId]);
                                 } catch (\Throwable $e) {}
                                 $keepTaskIds[] = $lTaskId;
                             }
@@ -6680,34 +7585,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         }
 
-                        if (isset($tck['timeEntries']) && is_array($tck['timeEntries'])) {
-                            $keepTeIds = [];
-                            foreach ($tck['timeEntries'] as $te) {
-                                $teId = (string)($te['id'] ?? '');
-                                if ($teId === '') continue;
-                                $teLogged = !empty($te['loggedAt']) ? substr(str_replace('T', ' ', (string)$te['loggedAt']), 0, 19) : date('Y-m-d H:i:s');
-                                $teNote = isset($te['note']) && $te['note'] !== ''
-                                    ? (string)$te['note']
-                                    : (isset($te['description']) && $te['description'] !== '' ? (string)$te['description'] : null);
-                                $upsertTimeEntry->execute([
-                                    $teId,
-                                    $tckId,
-                                    !empty($te['userId']) ? (string)$te['userId'] : null,
-                                    (string)($te['userName'] ?? ''),
-                                    (int)($te['minutes'] ?? 0),
-                                    !isset($te['billable']) || $te['billable'] ? 1 : 0,
-                                    $teNote,
-                                    $teLogged,
-                                ]);
-                                $keepTeIds[] = $teId;
-                            }
-                            if (empty($keepTeIds)) {
-                                $pdo->prepare("DELETE FROM `ticket_time_entries` WHERE `ticket_id` = ?")->execute([$tckId]);
-                            } else {
-                                $ph = implode(',', array_fill(0, count($keepTeIds), '?'));
-                                $pdo->prepare("DELETE FROM `ticket_time_entries` WHERE `ticket_id` = ? AND `id` NOT IN ($ph)")->execute(array_merge([$tckId], $keepTeIds));
-                            }
-                        }
+                        // Incoming timeEntries are ignored. Native entries are written
+                        // through api/time_entries.php; a stale client must not delete them.
                     }
 
                     $ticketsToDelete = $isDeltaSync ? $deletionsFor('tickets', $existingTicketIds) : array_diff($existingTicketIds, $processedTicketIds);
@@ -6743,6 +7622,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ccrm_employee_private_gc($pdo, $deferredEmployeeFileKeys);
         }
 
+        foreach (array_keys($recurringTemplatesToProcess) as $tmplId) {
+            try {
+                ccrm_process_recurring_tasks($pdo, (string)$tmplId);
+            } catch (\Throwable $e) {
+                error_log('[ccrm recurring_tasks post-sync] ' . $e->getMessage());
+            }
+        }
+
         // Now that the transaction is closed, drop the dynamic tables of any project
         // type this push deleted. Best-effort: an orphaned table is harmless, and a
         // failure here must not turn a committed sync into an error for the client.
@@ -6765,7 +7652,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $serverTime = ccrm_db_clock($pdo);
         echo json_encode([
             'success' => true,
-            'message' => 'CCRM Database Synced Successfully!',
+            'message' => (KOPERNIQ_PRODUCT_NAME . ' Database Synced Successfully!'),
             'dataVersion' => ccrm_compute_data_version($pdo),
             'serverTime' => $serverTime,
             // Ids whose stored row was newer than this client's snapshot and were

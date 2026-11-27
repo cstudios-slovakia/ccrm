@@ -1,0 +1,723 @@
+import { expect, test, type Page } from '@playwright/test';
+import { gotoView, startSession } from './helpers/appDriver';
+
+/**
+ * Time tracking, as the browser sees it. The backend is mocked (tests/e2e/helpers/timeTrackingMock.ts
+ * follows the real server's rules); what the real server stores and strips is proven by
+ * `npm run test:time-tracking`.
+ *
+ * The QA workspace speaks Slovak, so text checks accept all three languages where they match words.
+ */
+
+const FREELANCER = { id: 'user-free', name: 'Freelancer Fero', email: 'fero@crm.com', role: 'Admin', color: '#16a34a', password: 'x', activityLog: [], metadata_json: '{}' };
+const LEAD_ROLE = {
+  name: 'Lead',
+  permissions: { tasks: 'edit', 'tasks.view_all': 'edit', projects: 'edit', time_tracking: 'edit', time_tracking_team: 'edit', general_config: 'nothing' },
+};
+const LEAD_USER = { id: 'user-lead', name: 'Vedúci', email: 'lead@crm.com', role: 'Lead', color: '#0ea5e9', password: 'x', activityLog: [], metadata_json: '{}' };
+
+const rows = (page: Page) => page.getByTestId('time-entry-row');
+const row = (page: Page, text: string) => rows(page).filter({ hasText: text });
+
+/** The dock hides its label until expanded; the button keeps the accessible name. */
+async function openTimeTrackingFromSidebar(page: Page) {
+  await page.locator('nav, aside').getByRole('button', { name: /Evidencia času|Time tracking|Időkövetés/ }).click();
+}
+
+/** Me / one person / whole team. "Whole team" is what the old native select called "all". */
+async function viewWholeTeam(page: Page) {
+  await page.getByTestId('viewing-as').getByRole('button').click();
+  await page.getByRole('option', { name: /Celý tím|Whole team|Teljes csapat/ }).click();
+}
+
+/** Every task the app pushed to /sync.php, newest write winning per id. */
+function recordSyncedTasks(page: Page) {
+  const pushed = new Map<string, Record<string, unknown>>();
+  void page.route('**/sync.php**', async (route) => {
+    const request = route.request();
+    if (request.method() !== 'GET') {
+      try {
+        const body = request.postDataJSON() as { tasks?: Record<string, unknown>[] };
+        for (const task of body?.tasks ?? []) pushed.set(String(task.id), task);
+      } catch {
+        /* not JSON */
+      }
+    }
+    await route.fallback();
+  });
+  return pushed;
+}
+
+test.describe('Time tracking', () => {
+  test('the module opens from the sidebar with the week, the seeded entries and today\'s total', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#tasks');
+    await openTimeTrackingFromSidebar(page);
+    await expect(page).toHaveURL(/#time-tracking/);
+    await expect(page.getByTestId('timer-bar')).toBeVisible();
+    await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
+    // 1:30 + 0:45 logged by Erik today; Mária's hour is not his.
+    await expect(page.getByTestId('stat-today')).toHaveText('2:15:00');
+    await expect(row(page, 'Fakturácia')).toHaveCount(0);
+  });
+
+  test('List filter: Billable → Not billable shows only the non-billable entry, Clear restores every row, the stat tiles keep the whole week', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#tasks');
+    await openTimeTrackingFromSidebar(page);
+    await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
+    // The seeded "Porada s klientom" is dated yesterday: on a Monday it falls in the previous week, so count instead of assuming three.
+    const before = await rows(page).count();
+    const weekTotal = ((await page.getByTestId('stat-week').textContent()) ?? '').trim(); // the digits are separate spans: innerText would put each on its own line
+
+    await page.getByTestId('time-filter-button').click();
+    await expect(page.getByTestId('time-filter-popover')).toBeVisible();
+    await page.getByTestId('time-filter-billable-not-billable').click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('time-filter-popover')).toHaveCount(0);
+    await expect(page.getByTestId('time-filter-summary')).toBeVisible();
+    await expect(row(page, 'Návrh cenovej ponuky')).toHaveCount(0);
+    await expect(row(page, 'Objednať krytinu')).toHaveCount(0);
+    expect(await rows(page).count()).toBeLessThan(before);
+    await expect(page.getByTestId('stat-week')).toHaveText(weekTotal);
+
+    await page.getByTestId('time-filter-button').click();
+    await page.getByTestId('time-filter-clear').click();
+    await expect(page.getByTestId('time-filter-summary')).toHaveCount(0);
+    await expect(rows(page)).toHaveCount(before);
+    await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
+  });
+
+  test('start, stop (asks for a project when enabled), then Continue replaces the running timer and Undo brings it back', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await page.evaluate(async () => {
+      await fetch('/api/time_entries.php?action=settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'settings', settings: { requireProjectToStop: true }, requireProjectToStop: true }),
+      });
+    });
+    await page.reload();
+    await page.getByTestId('timer-title').fill('Prvá práca');
+    await page.getByTestId('timer-start').click();
+    await expect(page.getByTestId('header-timer-running')).toContainText('Prvá práca');
+
+    // "Require a project before Stop" (explicitly enabled above): the picker opens instead of the stop failing.
+    await page.getByTestId('timer-stop').click();
+    await expect(page.getByTestId('stop-report-popover')).toBeVisible();
+    await page.getByTestId('stop-report-submit').click();
+    await expect(page.getByTestId('project-request-dialog')).toBeVisible();
+    await page.getByTestId('project-request-dialog').getByTestId('project-option').first().click();
+    await expect(page.getByTestId('timer-start')).toBeVisible();
+    await expect(page.getByTestId('header-timer-running')).toHaveCount(0);
+    await expect(row(page, 'Prvá práca')).toBeVisible();
+
+    // Start a second timer, then ▶ Continue another entry: one timer runs, the first is stopped, Undo reverts.
+    await page.getByTestId('timer-title').fill('Druhá práca');
+    await page.getByTestId('timer-start').click();
+    await expect(page.getByTestId('header-timer-running')).toContainText('Druhá práca');
+    const seeded = row(page, 'Návrh cenovej ponuky');
+    await seeded.hover();
+    await seeded.getByTestId('time-entry-continue').click();
+    // Parallel tracking is on by default (C4), so a start while one runs asks first (C3).
+    await page.getByTestId('start-mode-switch').click();
+    await expect(page.getByTestId('header-timer-running')).toContainText('Návrh cenovej ponuky');
+    await expect(page.getByTestId('undo-toast')).toBeVisible();
+    await page.getByTestId('undo-toast-undo').click();
+    await expect(page.getByTestId('header-timer-running')).toContainText('Druhá práca');
+    await expect(page.locator('[data-testid="header-timer-running"]')).toHaveCount(1);
+  });
+
+  test('a task-linked entry has no title of its own: its title is the task\'s, and renaming it renames the task', async ({ page }) => {
+    await startSession(page);
+    const pushed = recordSyncedTasks(page);
+    await gotoView(page, '#time-tracking');
+    const linked = row(page, 'Objednať krytinu');
+    await expect(linked).toBeVisible();
+    await linked.getByTestId('time-entry-title').click();
+    await expect(page.getByTestId('entry-drawer')).toBeVisible();
+    await expect(page.getByTestId('entry-linked-task')).toContainText('Objednať krytinu');
+    await expect(page.getByTestId('entry-drawer')).toContainText(/Premenuje úlohu|Renames the task|Átnevezi a feladatot/);
+    await page.getByTestId('entry-title').fill('Objednať krytinu a lepenku');
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    // The TASK was saved through the normal sync path...
+    await expect.poll(() => (pushed.get('task-3') as { title?: string } | undefined)?.title).toBe('Objednať krytinu a lepenku');
+    // ...and the entry shows the task's new title.
+    await expect(row(page, 'Objednať krytinu a lepenku')).toBeVisible();
+  });
+
+  test('unlinking gives the entry its own title, prefilled with the task\'s', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await row(page, 'Objednať krytinu').getByTestId('time-entry-title').click();
+    await page.getByTestId('entry-unlink').click();
+    await expect(page.getByTestId('entry-title')).toHaveValue('Objednať krytinu');
+    await page.getByTestId('entry-title').fill('Samostatný záznam');
+    await page.getByTestId('entry-save').click();
+    await expect(row(page, 'Samostatný záznam')).toBeVisible();
+  });
+
+  test('linking an entry that has different text of its own asks first', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').click();
+    await page.getByTestId('entry-task-search').fill('Pripraviť');
+    await page.getByTestId('entry-task-option').first().click();
+    await expect(page.getByTestId('entry-link-confirm')).toBeVisible();
+    await page.getByTestId('entry-link-confirm-ok').click();
+    await expect(page.getByTestId('entry-linked-task')).toContainText('Pripraviť cenovú ponuku');
+    await expect(page.getByTestId('entry-title')).toHaveValue('Pripraviť cenovú ponuku');
+  });
+
+  test('a monthly employee\'s rate differs between months: 20 working days in May 2026, 22 in June', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').click();
+    await page.getByTestId('entry-date').fill('2026-05-12');
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    // Open it again from the Day tab of that date is unwieldy: reopen through the week list is not
+    // possible (different week), so read the cost off the drawer straight after a second edit.
+    await page.getByRole('tab', { name: /Deň|Day|Nap/ }).click();
+    await page.getByTestId('day-chip').first().waitFor();
+    // Navigate the strip back to May 2026 by clicking "earlier" until the 12th is on it.
+    for (let i = 0; i < 40 && (await page.locator('[data-testid="day-chip"][data-date="2026-05-12"]').count()) === 0; i++) {
+      await page.getByRole('button', { name: /Skôr|Earlier|Korábbi/ }).click();
+    }
+    await page.locator('[data-testid="day-chip"][data-date="2026-05-12"]').click();
+    // Amounts start hidden; one click on the toolbar eye reveals every amount of the open section.
+    await page.getByTestId('money-reveal').click();
+    await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').click();
+    await expect(page.getByTestId('entry-rate-basis')).toContainText('20');
+    await expect(page.getByTestId('entry-cost-panel')).toContainText('27,04');
+    await page.getByTestId('entry-date').fill('2026-06-09');
+    await page.getByTestId('entry-save').click();
+    for (let i = 0; i < 6 && (await page.locator('[data-testid="day-chip"][data-date="2026-06-09"]').count()) === 0; i++) {
+      await page.getByRole('button', { name: /Neskôr|Later|Későbbi/ }).click();
+    }
+    await page.locator('[data-testid="day-chip"][data-date="2026-06-09"]').click();
+    await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').click();
+    await expect(page.getByTestId('entry-rate-basis')).toContainText('22');
+    await expect(page.getByTestId('entry-cost-panel')).toContainText('24,58');
+  });
+
+  test('a public holiday lowers the weekly target and is marked in the Day strip', async ({ page }) => {
+    // 1 May 2026 is a Friday and a Slovak public holiday: the week has 4 working days, not 5.
+    await page.clock.setFixedTime(new Date(2026, 4, 1, 10, 0, 0));
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await expect(page.getByTestId('stat-target')).toContainText('32:00');
+    await expect(page.getByTestId('holiday-chip').first()).toBeVisible();
+    await page.getByRole('tab', { name: /Deň|Day|Nap/ }).click();
+    const may1 = page.locator('[data-testid="day-chip"][data-date="2026-05-01"]');
+    await expect(may1).toHaveAttribute('data-holiday', '1');
+    await expect(may1).toHaveAttribute('data-off', '1');
+    // The next Monday is an ordinary working day.
+    await expect(page.locator('[data-testid="day-chip"][data-date="2026-04-30"]')).toHaveAttribute('data-holiday', '0');
+  });
+
+  test('Day view: an hours-only row accepts 1:30 and lands in the day', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking/day');
+    await page.getByRole('tab', { name: /Deň|Day|Nap/ }).click();
+    await page.getByTestId('day-add-row').click();
+    await page.getByTestId('day-add-form').getByTestId('project-picker-trigger').click();
+    await page.getByTestId('project-option').first().click();
+    await page.getByTestId('day-row-notes').fill('Ručný riadok');
+    await page.getByTestId('day-row-hours').fill('1:30');
+    await page.getByTestId('day-row-save').click();
+    await expect(row(page, 'Ručný riadok')).toBeVisible();
+    await expect(row(page, 'Ručný riadok').getByText(/iba hodiny|hours only|csak órák/)).toBeVisible();
+  });
+
+  test('"Require a task" also refuses a manual entry: the Day row explains it and opens the drawer with the typed text, a task saves it', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking/day');
+    // The rule is off by default; switch it on as the admin does in Settings (the mock saves it like the server).
+    const saved = await page.evaluate(async () => {
+      const res = await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'settings', settings: { requireTask: true } }) });
+      return res.status;
+    });
+    expect(saved).toBe(200);
+    await page.getByRole('tab', { name: /Deň|Day|Nap/ }).click();
+    await page.getByTestId('day-add-row').click();
+    await page.getByTestId('day-add-form').getByTestId('project-picker-trigger').click();
+    await page.getByTestId('project-option').first().click();
+    await page.getByTestId('day-row-notes').fill('Riadok bez úlohy');
+    await page.getByTestId('day-row-hours').fill('1:30');
+    await page.getByTestId('day-row-save').click();
+    // The message names the rule, and the new-entry drawer opens with what was typed so nothing is lost.
+    await expect(page.getByText(/vyžaduje úlohu|requires a task|feladatot vagy jegyet kér/).first()).toBeVisible();
+    await expect(page.getByTestId('entry-drawer')).toBeVisible();
+    await expect(page.getByTestId('entry-title')).toHaveValue('Riadok bez úlohy');
+    await expect(page.getByTestId('entry-duration')).toHaveValue('1:30');
+    // The page believed the rule was off (it was switched on behind its back): the refusal makes it re-read the rule, so the Task
+    // field reads as required, like "Projekt *", and says a ticket also counts.
+    const taskLabel = page.getByTestId('entry-drawer').locator('span.type-label', { hasText: /^(Úloha|Task|Feladat)/ });
+    await expect(taskLabel).toContainText('*');
+    await expect(taskLabel).not.toContainText(/voliteľné|optional|nem kötelező/);
+    await expect(page.getByTestId('entry-task-or-ticket')).toBeVisible();
+    // Saving it still without a task is refused again and keeps the drawer open.
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toBeVisible();
+    // With a task it saves.
+    await page.getByTestId('entry-task-search').fill('Pripraviť');
+    await page.getByTestId('entry-task-option').first().click();
+    await page.getByTestId('entry-link-confirm-ok').click();
+    await expect(page.getByTestId('entry-linked-task')).toContainText('Pripraviť cenovú ponuku');
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+  });
+
+  test('the rule switched on in Settings: the new-entry drawer marks the Task field required, and off it says optional', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#settings/time-tracking');
+    await expect(page.getByTestId('tt-settings')).toBeVisible();
+    await page.getByTestId('tt-requireTask').click();
+    await page.getByTestId('tt-save').click();
+    await expect(page.getByTestId('tt-save')).toBeDisabled();
+    await gotoView(page, '#time-tracking/day');
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('ccrm-time-new-entry', { detail: {} })));
+    const taskLabel = page.getByTestId('entry-drawer').locator('span.type-label', { hasText: /^(Úloha|Task|Feladat)/ });
+    await expect(taskLabel).toContainText('*');
+    await expect(taskLabel).not.toContainText(/voliteľné|optional|nem kötelező/);
+    await page.getByTestId('entry-drawer').getByRole('button', { name: /Zrušiť|Cancel|Mégse/ }).first().click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    // The server does not enforce the rule on an old entry that never had a task, so its field stays optional...
+    await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').first().click();
+    await expect(taskLabel).toContainText(/voliteľné|optional|nem kötelező/);
+    await expect(taskLabel).not.toContainText('*');
+    await page.getByTestId('entry-drawer').getByRole('button', { name: /Zrušiť|Cancel|Mégse/ }).first().click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    // ...while an entry linked to a task would lose it on save, so its field is required.
+    await page.getByTestId('time-entry-title').filter({ hasText: 'Objednať krytinu' }).first().click();
+    await expect(taskLabel).toContainText('*');
+    await page.getByTestId('entry-drawer').getByRole('button', { name: /Zrušiť|Cancel|Mégse/ }).first().click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+
+    await gotoView(page, '#settings/time-tracking');
+    await page.getByTestId('tt-requireTask').click();
+    await page.getByTestId('tt-save').click();
+    await expect(page.getByTestId('tt-save')).toBeDisabled();
+    await gotoView(page, '#time-tracking/day');
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('ccrm-time-new-entry', { detail: {} })));
+    await expect(taskLabel).toContainText(/voliteľné|optional|nem kötelező/);
+    await expect(taskLabel).not.toContainText('*');
+  });
+
+  // The date, start, end and duration fields share one row; at every View size and drawer width they stay inside the drawer.
+  for (const size of ['compact', 'normal', 'big'] as const) {
+    for (const [width, height] of [[1440, 900], [640, 900], [375, 800]] as const) {
+      test(`entry drawer: date, start, end and duration fit inside it (${size}, ${width} px, new and existing entry)`, async ({ page }) => {
+        await page.setViewportSize({ width, height });
+        await page.addInitScript((sz) => localStorage.setItem('ccrm_view_size', sz), size);
+        await startSession(page);
+        await gotoView(page, '#time-tracking/day');
+        const fits = async () => {
+          await expect(page.getByTestId('entry-duration')).toBeVisible();
+          const m = await page.evaluate(() => {
+            const scroller = document.querySelector('[data-testid="entry-when-row"]')!.closest('.overflow-y-auto') as HTMLElement;
+            const edge = scroller.getBoundingClientRect().right;
+            const worst = ['entry-date', 'entry-start', 'entry-end', 'entry-duration']
+              .map((id) => (document.querySelector(`[data-testid="${id}"]`) as HTMLElement).getBoundingClientRect().right)
+              .reduce((a, b) => Math.max(a, b), 0);
+            return { overflow: scroller.scrollWidth - scroller.clientWidth, past: worst - edge, doc: document.documentElement.scrollWidth - window.innerWidth };
+          });
+          expect(m.overflow, 'drawer scrolls sideways').toBeLessThanOrEqual(0);
+          expect(m.past, 'a field runs past the drawer edge').toBeLessThanOrEqual(0);
+          expect(m.doc, 'page scrolls sideways').toBeLessThanOrEqual(0);
+        };
+        await page.evaluate(() => window.dispatchEvent(new CustomEvent('ccrm-time-new-entry', { detail: {} })));
+        await fits();
+        await page.getByTestId('entry-drawer').getByRole('button', { name: /Zrušiť|Cancel|Mégse/ }).first().click();
+        await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+        await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').first().click();
+        await fits();
+      });
+    }
+  }
+
+  test('team view: a freelancer is costed at a flat rate, a user with no employee record shows "no rate"', async ({ page }) => {
+    await startSession(page, { extraUsers: [FREELANCER] });
+    await gotoView(page, '#time-tracking');
+    await viewWholeTeam(page);
+    await page.getByRole('tab', { name: /Deň|Day|Nap/ }).click();
+    await expect(page.getByTestId('day-user-header').filter({ hasText: 'Mária' })).toContainText(/bez sadzby|no rate|nincs díj/);
+    // Erik is an employee on €3,200 a month: a rate is shown on his header.
+    await expect(page.getByTestId('day-user-header').filter({ hasText: 'Erik' })).toContainText(/\/\s?h/);
+  });
+
+  test('cost of other people\'s entries is hidden without time_tracking_costs, while a person still sees their own', async ({ page }) => {
+    await startSession(page, { user: LEAD_USER as never, extraUsers: [LEAD_USER as never], roles: [LEAD_ROLE as never] });
+    await gotoView(page, '#time-tracking');
+    await viewWholeTeam(page);
+    await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
+    await expect(page.getByTestId('time-entry-cost')).toHaveCount(0);
+    await expect(page.getByTestId('stat-cost')).toHaveCount(0);
+    // Opening someone else's entry shows no cost panel.
+    await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').click();
+    await expect(page.getByTestId('entry-cost-panel')).toHaveCount(0);
+  });
+
+  test('a role without the module cannot open it', async ({ page }) => {
+    await startSession(page, {
+      user: { ...LEAD_USER, role: 'Nobody' } as never,
+      extraUsers: [{ ...LEAD_USER, role: 'Nobody' } as never],
+      roles: [{ name: 'Nobody', permissions: { time_tracking: 'nothing', tasks: 'edit' } }],
+    });
+    await gotoView(page, '#time-tracking');
+    await expect(page.getByTestId('timer-bar')).toHaveCount(0);
+  });
+
+  test('Settings → Time tracking: the example follows the hours basis, an override lowers the working days', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#settings/time-tracking');
+    await expect(page.getByTestId('tt-settings')).toBeVisible();
+    const before = await page.getByTestId('tt-example').innerText();
+    await page.getByTestId('tt-multiplier').fill('1.4');
+    await expect.poll(async () => page.getByTestId('tt-example').innerText()).not.toBe(before);
+    // An extra day off in the current year lowers the working days of that month.
+    const y = new Date().getFullYear();
+    const m = new Date().getMonth();
+    const firstWeekday = new Date(y, m, 1);
+    while ([0, 6].includes(firstWeekday.getDay())) firstWeekday.setDate(firstWeekday.getDate() + 1);
+    const iso = `${firstWeekday.getFullYear()}-${String(firstWeekday.getMonth() + 1).padStart(2, '0')}-${String(firstWeekday.getDate()).padStart(2, '0')}`;
+    const daysBefore = await page.getByTestId('tt-example').locator('b').first().innerText();
+    await page.getByTestId('tt-override-date').fill(iso);
+    await page.getByTestId('tt-override-name').fill('Firemné voľno');
+    await page.getByTestId('tt-override-add').click();
+    await expect(page.getByTestId('tt-overrides')).toContainText('Firemné voľno');
+    await expect.poll(async () => page.getByTestId('tt-example').locator('b').first().innerText()).not.toBe(daysBefore);
+  });
+
+  test('Toggl import skips unpaired projects by default and reports entries that get their project now', async ({ page }) => {
+    // The importer's rules run on the server against Toggl's API; here the browser side is checked:
+    // what the panel sends and how it reports the server's counts.
+    const sent: Record<string, unknown>[] = [];
+    await startSession(page);
+    await page.route('**/api/time_entries.php**', async (route) => {
+      const req = route.request();
+      const body = req.method() === 'POST' ? ((req.postDataJSON() ?? {}) as Record<string, unknown>) : {};
+      if (body.action !== 'import') return route.fallback();
+      if (body.mode === 'catalog') {
+        return route.fulfill({ json: { success: true, projects: [{ id: 'tg-1', name: 'Maba' }, { id: 'tg-2', name: 'Iné' }], users: [{ id: 'tu-1', name: 'Erik' }], ccrmProjects: [{ id: 'project-1', name: 'Maba Elektro' }], ccrmUsers: [], projectMap: { 'tg-1': 'project-1' }, userMap: {}, defaultUserMap: {} } });
+      }
+      sent.push(body);
+      const skip = body.skipUnpaired === true;
+      return route.fulfill({ json: { success: true, preview: body.mode !== 'commit', total: 10, alreadyImported: 3, ready: skip ? 4 : 7, imported: 0, skippedUsers: 0, unmappedProjects: skip ? 0 : 3, skippedUnpaired: skip ? 3 : 0, withoutProject: skip ? 0 : 3, projectsToFill: 2, projectsFilled: 0, projectsFillLocked: 0 } });
+    });
+    await gotoView(page, '#settings/time-tracking');
+    // Surface does not forward data-testid, so the panel's controls are found by their own ids.
+    const panel = page;
+    await expect(panel.getByTestId('toggl-import-skip-unpaired')).toBeChecked();
+
+    await panel.getByTestId('toggl-import-preview').click();
+    const result = panel.getByTestId('toggl-import-result');
+    await expect(result).toContainText(/3 left in Toggl|3 ponechaných v Toggl|3 a Togglban marad/);
+    await expect(result).toContainText(/2 imported earlier will get their project|2 skôr importovaných dostane projekt|2 korábban importált/);
+    await expect(result).not.toContainText(/without a project|bez projektu|projekt nélkül/);
+    expect(sent.at(-1)?.skipUnpaired).toBe(true);
+
+    // Turning it off clears the stale preview and asks the server to import them without a project.
+    await panel.getByTestId('toggl-import-skip-unpaired').uncheck();
+    await expect(result).toHaveCount(0);
+    await panel.getByTestId('toggl-import-preview').click();
+    await expect(result).toContainText(/3 without a project|3 bez projektu|3 projekt nélkül/);
+    expect(sent.at(-1)?.skipUnpaired).toBe(false);
+  });
+
+  test('a task card has no timer; the task drawer starts it with a Description', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#tasks');
+    // Tomorrow and later stay folded, so the card is not in the document until the bucket opens.
+    await page.getByRole('button', { name: /Budúce|Future|Jövőbeli/ }).click();
+    const card = page.getByTestId('task-card').filter({ hasText: 'Objednať krytinu' });
+    await expect(card).toBeVisible();
+    await expect(page.getByTestId('task-time-start')).toHaveCount(0);
+
+    await card.getByText('Objednať krytinu').first().click();
+    await page.getByTestId('task-time-note').fill('Volal som dodávateľovi');
+    await page.getByTestId('task-time-start').click();
+    await expect(page.getByTestId('header-timer-running')).toContainText('Objednať krytinu');
+
+    // The Description went onto the running entry and is editable while it runs.
+    await expect(page.getByTestId('task-time-note')).toHaveValue('Volal som dodávateľovi');
+    await page.getByTestId('task-time-note').fill('Volal som dodávateľovi, čaká na cenu');
+    // The drawer's own ■ stops it (its overlay covers the header); the click also blurs the field, which saves it.
+    await page.getByTestId('task-time-start').click();
+    await expect(page.getByTestId('header-timer-running')).toHaveCount(0);
+    await gotoView(page, '#time-tracking');
+    await expect(row(page, 'Objednať krytinu').getByTestId('time-entry-note')).toHaveText('Volal som dodávateľovi, čaká na cenu');
+  });
+
+  test('the timer bar takes a Description before Start, and the entry drawer edits it', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await page.getByTestId('timer-title').fill('Popisná práca');
+    await page.getByTestId('timer-note-toggle').click();
+    await page.getByTestId('timer-note').fill('Prvý popis');
+    await page.getByTestId('timer-start').click();
+    await expect(page.getByTestId('timer-note')).toHaveValue('Prvý popis');
+    await page.getByTestId('timer-stop').click();
+    await expect(page.getByTestId('stop-report-popover')).toBeVisible();
+    await page.getByTestId('stop-report-submit').click();
+    await expect(page.getByTestId('project-request-dialog')).toHaveCount(0);
+    await expect(row(page, 'Popisná práca').getByTestId('time-entry-note')).toHaveText('Prvý popis');
+
+    await row(page, 'Popisná práca').getByTestId('time-entry-title').click();
+    await expect(page.getByTestId('entry-note')).toHaveValue('Prvý popis');
+    await page.getByTestId('entry-note').fill('Druhý popis');
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    await expect(row(page, 'Popisná práca').getByTestId('time-entry-note')).toHaveText('Druhý popis');
+  });
+
+  test('renaming a ticket-linked entry renames the ticket', async ({ page }) => {
+    const ticket = {
+      id: 'tck-qa',
+      ticketNumber: 'TCK-9001',
+      subject: 'Widget nefunguje',
+      title: 'Widget nefunguje',
+      status: 'open',
+      priority: 'normal',
+      type: 'bug',
+      projectId: 'project-1',
+      createdAt: '2026-10-01 09:00:00',
+      timeEntries: [],
+      messages: [],
+    };
+    await startSession(page, { tickets: [ticket] });
+    const pushed = new Map<string, { title?: string }>();
+    await page.route('**/sync.php**', async (route) => {
+      if (route.request().method() !== 'GET') {
+        try {
+          const body = route.request().postDataJSON() as { tickets?: { id?: string; title?: string }[] };
+          for (const row of body?.tickets ?? []) if (row.id) pushed.set(row.id, row);
+        } catch { /* not JSON */ }
+      }
+      await route.fallback();
+    });
+    await gotoView(page, '#time-tracking');
+    await page.getByTestId('timer-title').fill('Widget');
+    await page.getByTestId('timer-ticket-suggestion').click();
+    await page.getByTestId('timer-start').click();
+    await expect(page.getByTestId('header-timer-running')).toContainText('Widget nefunguje');
+    await page.getByTestId('timer-title').fill('Widget opravený');
+    await page.getByTestId('timer-title').blur();
+    await expect.poll(() => pushed.get('tck-qa')?.title).toBe('Widget opravený');
+  });
+
+  test('ticket time is hidden without tickets.time', async ({ page }) => {
+    const ticket = {
+      id: 'tck-qa',
+      ticketNumber: 'TCK-9001',
+      subject: 'Widget nefunguje',
+      title: 'Widget nefunguje',
+      status: 'open',
+      priority: 'normal',
+      type: 'bug',
+      projectId: 'project-1',
+      createdAt: '2026-10-01 09:00:00',
+      timeEntries: [],
+      messages: [],
+    };
+    await startSession(page, {
+      user: { ...LEAD_USER, role: 'Agent' } as never,
+      extraUsers: [{ ...LEAD_USER, role: 'Agent' } as never],
+      roles: [{ name: 'Agent', permissions: { tickets: 'edit', 'tickets.time': 'nothing', time_tracking: 'edit', tasks: 'edit', 'tasks.view_all': 'edit', projects: 'edit' } }],
+      tickets: [ticket],
+    });
+    await gotoView(page, '#tickets/tck-qa');
+    await expect(page.getByTestId('ticket-start-timer')).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: /Zaznamenaný čas|Time Logged|Rögzített idő/ })).toHaveCount(0);
+  });
+
+  test('the project Time tab lists the whole team\'s entries for a team viewer, naming colleagues and badging Toggl imports', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    // What the Toggl importer stores: an ordinary row of Mária's with source "toggl".
+    await page.evaluate(async () => {
+      await fetch('/api/time_entries.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', userId: 'user-maria', projectId: 'project-1', description: 'Z Togglu', entryDate: new Date().toISOString().slice(0, 10), durationSec: 1800, source: 'toggl' }),
+      });
+    });
+    await gotoView(page, '#projects/project-1?tab=time');
+    const entries = page.getByTestId('project-time-entry');
+    // Erik's own entry: no name, no badge.
+    const own = entries.filter({ hasText: 'Návrh cenovej ponuky' });
+    await expect(own).toBeVisible();
+    await expect(own).not.toContainText('Erik');
+    await expect(own.getByTestId('project-time-entry-toggl')).toHaveCount(0);
+    // A colleague's native entry is listed with her name, without the badge.
+    const colleague = entries.filter({ hasText: 'Fakturácia' });
+    await expect(colleague).toContainText('Mária');
+    await expect(colleague.getByTestId('project-time-entry-toggl')).toHaveCount(0);
+    // The imported one carries the badge.
+    const imported = entries.filter({ hasText: 'Z Togglu' });
+    await expect(imported).toContainText('Mária');
+    await expect(imported.getByTestId('project-time-entry-toggl')).toBeVisible();
+  });
+
+  test('the project Time tab adds time manually: the drawer opens on a new entry for this project and Save lists it', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#projects/project-1?tab=time');
+    await page.getByTestId('project-add-time').click();
+    await expect(page.getByTestId('entry-drawer')).toBeVisible();
+    // A new entry has no Delete; the project is already chosen, so only the hours are needed.
+    await expect(page.getByTestId('entry-delete')).toHaveCount(0);
+    await page.getByTestId('entry-note').fill('Doplnený čas ručne');
+    await page.getByTestId('entry-duration').fill('1:30');
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    // The tab lists only this project's entries, so seeing it there proves the prefilled project.
+    await expect(page.getByTestId('project-time-entry').filter({ hasText: 'Doplnený čas ručne' })).toContainText('1:30');
+  });
+
+  test('the task drawer adds time manually: the new-entry drawer opens with the task linked', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#tasks');
+    await page.getByRole('button', { name: /Budúce|Future|Jövőbeli/ }).click();
+    await page.getByTestId('task-card').filter({ hasText: 'Objednať krytinu' }).getByText('Objednať krytinu').first().click();
+    await page.getByTestId('task-add-time').click();
+    await expect(page.getByTestId('entry-drawer')).toBeVisible();
+    await expect(page.getByTestId('entry-delete')).toHaveCount(0);
+    await expect(page.getByTestId('entry-linked-task')).toContainText('Objednať krytinu');
+  });
+
+  test('a stale screen pressing Start on the running project timer adopts it instead of splitting it into a new entry', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#projects/project-1?tab=time');
+    const button = page.getByTestId('project-start-timer');
+    await expect(button).toContainText(/Spustiť|Start|indítása/);
+
+    // "Another tab" (or device, or agent) starts this project's timer; this screen never hears of it.
+    const startedElsewhere = await page.evaluate(async () => {
+      const res = await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start', projectId: 'project-1', description: null, originType: 'project', originId: 'project-1' }) });
+      return ((await res.json()) as { entry: { id: string } }).entry.id;
+    });
+    await expect(button).toContainText(/Spustiť|Start|indítása/);
+
+    await button.click();
+    await expect(button).toContainText(/Zastaviť|Stop|leállítása/);
+    await expect(page.getByText(/Časovač už beží|already running|már fut/).first()).toBeVisible();
+    const runningNow = await page.evaluate(async () => {
+      const res = await fetch('/api/time_entries.php?running=1');
+      return ((await res.json()) as { entry: { id: string } | null }).entry?.id ?? null;
+    });
+    expect(runningNow).toBe(startedElsewhere);
+    await expect(page.getByTestId('project-time-entry').filter({ hasText: /beží|running|fut/ })).toHaveCount(1);
+  });
+
+  test('a timer started on another device shows up on an open page without a click', async ({ page }) => {
+    await page.clock.install();
+    await startSession(page);
+    await gotoView(page, '#projects/project-1?tab=time');
+    const button = page.getByTestId('project-start-timer');
+    await expect(button).toContainText(/Spustiť|Start|indítása/);
+    await expect(page.getByTestId('header-timer-running')).toHaveCount(0);
+
+    // Another device: the server knows, this page has no channel to hear it on.
+    await page.evaluate(async () => {
+      await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start', projectId: 'project-1', description: null, originType: 'project', originId: 'project-1' }) });
+    });
+    await page.clock.fastForward(31_000);
+    await expect(page.getByTestId('header-timer-running')).toBeVisible();
+    await expect(button).toContainText(/Zastaviť|Stop|leállítása/);
+    await expect(page.getByTestId('project-time-entry').filter({ hasText: /beží|running|fut/ })).toHaveCount(1);
+  });
+
+  test('clicking the running header pill opens the timer bar under it; Stop only stops', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#tasks');
+    await page.getByTestId('header-timer-start').click();
+    await expect(page.getByTestId('header-timer-running')).toBeVisible();
+    await expect(page.getByTestId('header-timer-panel')).toHaveCount(0);
+
+    await page.getByTestId('header-timer-elapsed').click();
+    const panel = page.getByTestId('header-timer-panel');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByTestId('timer-title')).toBeVisible();
+    await panel.getByTestId('timer-note-toggle').click();
+    await expect(panel.getByTestId('timer-note')).toBeVisible();
+    await expect(panel.getByTestId('timer-stop')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+
+    // Default allows stopping without a project; stops cleanly and leaves the panel shut.
+    await page.getByTestId('header-timer-stop').click();
+    await expect(page.getByTestId('header-timer-panel')).toHaveCount(0);
+    await expect(page.getByTestId('header-timer-start')).toBeVisible();
+    await expect(page.getByTestId('header-timer-panel')).toHaveCount(0);
+  });
+
+  test('a grouped row sums its entries and expands to list each one', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await page.evaluate(async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      for (const durationSec of [37 * 60, 45 * 60]) {
+        await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', description: 'Oprava od zákazníka', projectId: 'project-1', entryDate: today, durationSec, billable: true, source: 'manual' }) });
+      }
+    });
+    await page.reload();
+    const group = row(page, 'Oprava od zákazníka');
+    await expect(group).toHaveCount(1);
+    await expect(group.getByTestId('time-entry-duration')).toHaveText('1:22:00');
+
+    await group.getByTestId('time-entry-group-toggle').click();
+    await expect(row(page, 'Oprava od zákazníka')).toHaveCount(3);
+    await expect(row(page, 'Oprava od zákazníka').getByTestId('time-entry-duration')).toHaveText(['1:22:00', '0:37:00', '0:45:00']);
+  });
+
+  test('Reports: a group row opens to its split by employee and closes again', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await page.evaluate(async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', description: 'Report drill', projectId: 'project-1', entryDate: today, durationSec: 3600, billable: true, source: 'manual' }) });
+    });
+    await gotoView(page, '#time-tracking/reports');
+    const first = page.getByTestId('report-group-row').first();
+    await expect(first).toBeVisible();
+    await expect(page.getByTestId('report-child-row')).toHaveCount(0);
+    await first.click();
+    await expect(first).toHaveAttribute('aria-expanded', 'true');
+    expect(await page.getByTestId('report-child-row').count()).toBeGreaterThan(0);
+    await first.click();
+    await expect(page.getByTestId('report-child-row')).toHaveCount(0);
+  });
+
+  test('start standalone timer, attach a client-only task while running, stop without project, and see time on the client', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+
+    await page.getByTestId('timer-title').fill('Príprava hovoru');
+    await page.getByTestId('timer-start').click();
+    await expect(page.getByTestId('header-timer-running')).toBeVisible();
+
+    await page.getByTestId('timer-title').click();
+    await page.getByTestId('timer-title').fill('Zavolať');
+    const suggestion = page.getByTestId('timer-suggestion').filter({ hasText: 'Zavolať klientke Silvii' });
+    await expect(suggestion).toBeVisible();
+    await suggestion.click();
+    await expect(page.getByTestId('timer-derived-entity')).toContainText('Silvia');
+
+    await page.getByTestId('timer-stop').click();
+    await expect(page.getByTestId('stop-report-popover')).toBeVisible();
+    await page.getByTestId('stop-report-submit').click();
+    await expect(page.getByTestId('project-request-dialog')).toHaveCount(0);
+    await expect(row(page, 'Zavolať klientke Silvii').getByTestId('entry-client-chip')).toContainText('Silvia');
+
+    await gotoView(page, '#client-Silvia');
+    const badge = page.getByTestId('client-tracked-time-badge');
+    await expect(badge).toBeVisible();
+    await badge.click();
+    await expect(page.getByTestId('client-time-tab')).toBeVisible();
+    await expect(page.getByTestId('client-time-entry').filter({ hasText: 'Zavolať klientke Silvii' })).toBeVisible();
+  });
+});

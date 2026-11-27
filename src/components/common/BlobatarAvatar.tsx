@@ -17,6 +17,7 @@ import {
   thinking,
   type Expression
 } from "blobatar/expression";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 export type ExpressionName =
   | "idle"
@@ -157,7 +158,7 @@ export const BlobatarAvatar: React.FC<BlobatarAvatarProps> = ({
               ? ""
               : "rounded-xl";
 
-  const seed = (name || "CRM").trim();
+  const seed = (name || `${PRODUCT_NAME}`).trim();
 
   const resolvedExpression = useMemo(() => {
     if (!expression) return undefined;

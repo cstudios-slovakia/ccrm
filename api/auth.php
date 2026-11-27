@@ -17,6 +17,8 @@
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 
+require_once __DIR__ . '/lead_attributes.php';
+
 if (!function_exists('ccrm_send_cors')) {
 
     /**
@@ -761,9 +763,15 @@ if (!function_exists('ccrm_send_cors')) {
         if ($cfg['mode'] === 'off') {
             return [];
         }
+        // Project Managers only, since a lead's owner is its Project Manager; every user on an
+        // install where nobody has that role. Mirrors leadAssignableUserNames() in src/utils/leadAssignment.ts.
         try {
-            $stmt = $pdo->query("SELECT `name` FROM `users` ORDER BY `name` ASC");
+            $stmt = $pdo->query("SELECT `name` FROM `users` WHERE LOWER(TRIM(`role`)) = 'project manager' ORDER BY `name` ASC");
             $names = $stmt ? $stmt->fetchAll(\PDO::FETCH_COLUMN) : [];
+            if (!$names) {
+                $stmt = $pdo->query("SELECT `name` FROM `users` ORDER BY `name` ASC");
+                $names = $stmt ? $stmt->fetchAll(\PDO::FETCH_COLUMN) : [];
+            }
         } catch (\Throwable $e) {
             return [];
         }
@@ -902,8 +910,21 @@ if (!function_exists('ccrm_send_cors')) {
             if ($label !== '') $def['label'] = $label;
             $def['color'] = $color;
             $def['group'] = $group;
+            $parent = trim((string)($item['parent'] ?? ''));
+            if ($parent !== '' && $parent !== $key) $def['parent'] = $parent;
             $out[] = $def;
         }
+        // Sub-statuses (utils/projectStatusTree.ts): one level only, a missing parent or a parent that is itself
+        // a sub-status is dropped, and a sub-status takes its parent's group.
+        $byKey = [];
+        foreach ($out as $d) $byKey[$d['key']] = $d;
+        foreach ($out as $i => $d) {
+            $p = $d['parent'] ?? null;
+            if ($p === null) continue;
+            if (!isset($byKey[$p]) || isset($byKey[$p]['parent'])) { unset($out[$i]['parent']); continue; }
+            $out[$i]['group'] = $byKey[$p]['group'];
+        }
+        $out = array_values($out);
         $hasOpen = false;
         foreach ($out as $d) {
             if ($d['group'] === 'new' || $d['group'] === 'in_progress') { $hasOpen = true; break; }
@@ -914,7 +935,11 @@ if (!function_exists('ccrm_send_cors')) {
         $ordered = [];
         foreach ($groups as $g) {
             foreach ($out as $d) {
-                if ($d['group'] === $g) $ordered[] = $d;
+                if ($d['group'] !== $g || isset($d['parent'])) continue;
+                $ordered[] = $d;
+                foreach ($out as $c) {
+                    if (($c['parent'] ?? null) === $d['key']) $ordered[] = $c;
+                }
             }
         }
         return $ordered;
@@ -974,6 +999,21 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
+     * The `finished_at` assignment that goes with moving a project to $status, as
+     * an SQL fragment for an UPDATE, or null to leave the column alone. The same
+     * rule as finishedAtForStatus() in src/utils/projects.ts and
+     * mcp_finished_at_for_status(): a completed status stamps today unless a date
+     * is already stored, a cancelled one keeps whatever is stored, and any open
+     * status clears it (reopening a project means it is not finished).
+     */
+    function ccrm_finished_at_sql_for_status(string $status, ?\PDO $pdo = null): ?string {
+        $group = ccrm_project_status_group($status, $pdo);
+        if ($group === 'completed') return "`finished_at` = COALESCE(`finished_at`, CURRENT_DATE)";
+        if ($group === 'cancelled') return null;
+        return "`finished_at` = NULL";
+    }
+
+    /**
      * The statuses every installation starts with for a price offer, before
      * anyone opens Price offers → Settings → Offer statuses. Mirrors
      * DEFAULT_OFFER_STATUS_DEFS in src/utils/offerStatuses.ts. `invoiced` is
@@ -1020,6 +1060,29 @@ if (!function_exists('ccrm_send_cors')) {
         if (!array_key_exists($key, $s) || !is_array($s[$key])) return null;
         if (!$allowEmpty && count($s[$key]) === 0) return null;
         return json_encode($s[$key]);
+    }
+
+    /**
+     * Status -> timer action map (TT2 D10.1): only start|pause|stop survive, and with
+     * `$states` only names that are a configured status. PHP twin of
+     * sanitizeTimerActions() in src/utils/taskStateTimerActions.ts.
+     */
+    function ccrm_normalize_task_state_timer_actions($raw, ?array $states = null): array {
+        $out = [];
+        if (!is_array($raw)) return $out;
+        foreach ($raw as $name => $action) {
+            if (!in_array($action, ['start', 'pause', 'stop'], true)) continue;
+            if ($states !== null && !in_array((string)$name, $states, true)) continue;
+            $out[(string)$name] = $action;
+        }
+        return $out;
+    }
+
+    /** The JSON to store for `taskStateTimerActions`, or null (keep what is stored) when not sent. */
+    function ccrm_task_state_timer_actions_value(array $s): ?string {
+        if (!isset($s['taskStateTimerActions']) || !is_array($s['taskStateTimerActions'])) return null;
+        $states = isset($s['taskStates']) && is_array($s['taskStates']) && $s['taskStates'] ? $s['taskStates'] : null;
+        return json_encode((object)ccrm_normalize_task_state_timer_actions($s['taskStateTimerActions'], $states), JSON_UNESCAPED_UNICODE);
     }
 
     /**
@@ -1502,15 +1565,7 @@ if (!function_exists('ccrm_send_cors')) {
                 // The per-type attribute row. Optional — sync.php's GET falls back to
                 // empty data when it is missing — so a type whose table has not been
                 // built yet must not take the project down with it.
-                try {
-                    $dataTable = 'proj_data_' . preg_replace('/[^a-z0-9_]/', '', strtolower($typeId));
-                    if ($pdo->query("SHOW TABLES LIKE " . $pdo->quote($dataTable))->rowCount() > 0) {
-                        $pdo->prepare("INSERT IGNORE INTO `{$dataTable}` (`id`, `project_id`) VALUES (?, ?)")
-                            ->execute([$projectId, $projectId]);
-                    }
-                } catch (\Throwable $e) {
-                    // Attributes stay empty; the project itself is already saved.
-                }
+                $projectData = ccrm_copy_lead_custom_fields_to_project($pdo, $leadId, $typeId, $projectId);
 
                 $created[] = [
                     'id' => $projectId,
@@ -1524,7 +1579,7 @@ if (!function_exists('ccrm_send_cors')) {
                     'clientId' => $leadId,
                     'status' => 'new',
                     'managers' => $managers,
-                    'data' => (object)[],
+                    'data' => !empty($projectData) ? $projectData : (object)[],
                     'timeline' => [],
                     'gantt' => [],
                 ];
@@ -1990,6 +2045,7 @@ HTACCESS;
             'user.role_change' => 'User role changed',
             'user.delete'      => 'User removed',
             'generate_mcp_key' => 'MCP API key created',
+            'integration.token_issue' => 'Integration API token created',
             'api_key.reset'    => 'Lead intake API key reset',
             'error_logs.clear' => 'Error logs cleared',
         ];
@@ -2042,13 +2098,17 @@ HTACCESS;
             'smtpPassword', 'exchClientSecret', 'exchPassword',
             'metaAppSecret', 'metaAccessToken', 'googleClientSecret',
             'googleRefreshToken', 'googleDevToken', 'mariaDbPassword',
-            'qdrantApiKey', 'pineconeApiKey', 'zernioApiKey',
+            'qdrantApiKey', 'pineconeApiKey', 'zernioApiKey', 'sonioxApiKey',
         ];
     }
 
-    /** Per-user email secrets (users.metadata_json -> emailSettings). */
+    /** Per-user email & connector secrets (users.metadata_json -> emailSettings, company_mailboxes.settings_json). */
     function ccrm_email_secret_keys(): array {
-        return ['imapPassword', 'smtpPassword', 'password'];
+        return [
+            'imapPassword', 'smtpPassword', 'password', 'subscriptionToken', 'apiKey', 'graphClientSecret',
+            'graphRefreshToken', 'graphAccessToken',
+            'botmanToken', 'botmanAppSecret', 'botmanSigningSecret', 'botmanVerifyToken',
+        ];
     }
 
     /**
@@ -2189,13 +2249,46 @@ HTACCESS;
     }
 
     /**
+     * Older model ids stored on live installs, and the current id they become.
+     * Same tier, same or lower price (OpenAI list, Oct 2026). Keep this in step
+     * with LEGACY_MODELS in src/utils/aiModels.ts — the schema migration rewrites
+     * rows with these keys.
+     *
+     * @return array<string, string>
+     */
+    function ccrm_ai_model_upgrades(): array {
+        return [
+            'gpt-5.6-luna' => 'gpt-6-luna',
+            'gpt-4o-mini' => 'gpt-6-luna',
+            'gpt-5.6-terra' => 'gpt-6.1-terra',
+            'gpt-4o' => 'gpt-6.1-terra',
+            'gpt-5.6-sol' => 'gpt-6.1-sol',
+            'claude-3-5-sonnet-20241022' => 'claude-sonnet-5-5',
+        ];
+    }
+
+    /**
+     * Rewrite a stored model id. An empty value becomes $fallback; an id this
+     * app does not recognise is returned unchanged (a hand-set custom model).
+     */
+    function ccrm_ai_upgrade_model($model, string $fallback): string {
+        if (!is_string($model) || trim($model) === '') {
+            return $fallback;
+        }
+        $model = trim($model);
+        $map = ccrm_ai_model_upgrades();
+        return $map[$model] ?? $model;
+    }
+
+    /**
      * Resolve the OpenAI chat model to use, from the admin-configured
      * INTEGRATIONS_CONFIG, falling back to a sane default. Centralised so the
      * default is not scattered as a literal across every AI endpoint.
+     * A stored older id is rewritten (see ccrm_ai_model_upgrades()).
      */
-    function ccrm_ai_model(array $config = [], string $default = 'gpt-5.6-luna'): string {
+    function ccrm_ai_model(array $config = [], string $default = 'gpt-6-luna'): string {
         $m = $config['aiModel'] ?? ($config['openAiModel'] ?? '');
-        return (is_string($m) && $m !== '') ? $m : $default;
+        return ccrm_ai_upgrade_model(is_string($m) ? $m : '', $default);
     }
 
     /**
@@ -2205,9 +2298,10 @@ HTACCESS;
      * administrator configured, instead of being forwarded to OpenAI as typed.
      */
     function ccrm_ai_requested_model(array $config, $requested): string {
-        $configured = ccrm_ai_model($config, 'gpt-5.6-terra');
-        $allowed = ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', $configured];
-        return (is_string($requested) && in_array($requested, $allowed, true)) ? $requested : $configured;
+        $configured = ccrm_ai_model($config, 'gpt-6.1-terra');
+        $requested = ccrm_ai_upgrade_model(is_string($requested) ? $requested : '', $configured);
+        $allowed = ['gpt-6-luna', 'gpt-6.1-terra', 'gpt-6.1-sol', $configured];
+        return in_array($requested, $allowed, true) ? $requested : $configured;
     }
 
     /**
@@ -2215,11 +2309,12 @@ HTACCESS;
      * on first use). Records a hit and returns false while the caller is under
      * `$max` hits in the last `$windowSeconds`; returns true — without recording —
      * once they are over. Fails OPEN: a broken ledger must never lock out real
-     * traffic.
+     * traffic. `$createLedger = false` never issues the CREATE (an endpoint that takes unauthenticated
+     * requests must not run DDL): while the table is missing the call simply fails open.
      */
-    function ccrm_rate_limit_exceeded(\PDO $pdo, string $bucket, string $subject, int $max, int $windowSeconds): bool {
+    function ccrm_rate_limit_exceeded(\PDO $pdo, string $bucket, string $subject, int $max, int $windowSeconds, bool $createLedger = true): bool {
         try {
-            if (!$pdo->inTransaction()) {
+            if ($createLedger && !$pdo->inTransaction()) {
                 $pdo->exec(
                     "CREATE TABLE IF NOT EXISTS `rate_limits` (
                       `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -2251,13 +2346,13 @@ HTACCESS;
     }
 
     /**
-     * OpenAI's reasoning-model families (o1/o3/o4/gpt-5*) reject any
+     * OpenAI's reasoning-model families (o1, o3, o4, gpt-5 and gpt-6) reject any
      * 'temperature' value other than the default (1) — sending 0.2/0.3/0.4
      * fails with "Unsupported value: 'temperature' does not support X".
      * Only include the param for models that actually accept it.
      */
     function ccrm_ai_model_supports_temperature(string $model): bool {
-        return !preg_match('/^(o[1-9]|gpt-5)/i', trim($model));
+        return !preg_match('/^(o[1-9]|gpt-[5-9])/i', trim($model));
     }
 
     /**
@@ -2554,9 +2649,22 @@ HTACCESS;
      * Merge an inbound config over the stored one, preserving secrets the client
      * left masked or omitted.
      */
-    function ccrm_merge_secrets(array $incoming, array $existing, array $secretKeys): array {
+    function ccrm_merge_secrets(array $incoming, array $existing, array $secretKeys, ?array $explicitClear = null): array {
         foreach ($secretKeys as $k) {
             $hasRealIncoming = array_key_exists($k, $incoming) && $incoming[$k] !== CCRM_SECRET_MASK;
+            // Opt-in strict mode ($explicitClear !== null): a blank is NOT a real value
+            // unless the caller listed the key as deliberately cleared. Every sync push
+            // carries the client's whole integrations config, so a tab that still holds
+            // a stale '' (loaded before the key was saved) would otherwise wipe the
+            // stored secret on its next unrelated push.
+            if ($hasRealIncoming && $explicitClear !== null
+                && (!isset($incoming[$k]) || $incoming[$k] === '')
+                && !in_array($k, $explicitClear, true)) {
+                if (!empty($existing[$k])) {
+                    error_log('[ccrm secrets] ignored a blank "' . $k . '" that was not an explicit clear');
+                }
+                $hasRealIncoming = false;
+            }
             if (!$hasRealIncoming) {
                 if (array_key_exists($k, $existing)) {
                     $incoming[$k] = $existing[$k];
@@ -2598,12 +2706,252 @@ HTACCESS;
         $existingEmail = (is_array($existing) && isset($existing['emailSettings']) && is_array($existing['emailSettings']))
             ? $existing['emailSettings'] : [];
         $incoming['emailSettings'] = ccrm_merge_secrets($incoming['emailSettings'], $existingEmail, ccrm_email_secret_keys());
+        // A Microsoft 365 sign-in is made and undone on the server (graph_oauth.php). A browser copy
+        // loaded before either must not switch a signed-in mailbox back, nor revive a removed one.
+        $storedGraph = ($existingEmail['provider'] ?? '') === 'microsoft365';
+        if ($storedGraph && ($existingEmail['graphRefreshToken'] ?? '') !== '') {
+            foreach (['provider', 'graphAccount', 'isValidated'] as $k) {
+                $incoming['emailSettings'][$k] = $existingEmail[$k] ?? null;
+            }
+        } elseif (($incoming['emailSettings']['provider'] ?? '') === 'microsoft365'
+            && (!$storedGraph || ($existingEmail['graphAccount'] ?? '') === '')) {
+            $incoming['emailSettings']['isValidated'] = false;
+            $incoming['emailSettings']['graphAccount'] = '';
+        }
         // Encrypt mailbox secrets at rest. Values preserved from the stored copy
         // are already encrypted (ccrm_encrypt_secret is a no-op on them); only a
         // freshly supplied plaintext password gets encrypted here.
         $incoming['emailSettings'] = ccrm_encrypt_config_secrets($incoming['emailSettings'], ccrm_email_secret_keys());
         $encoded = json_encode($incoming, JSON_INVALID_UTF8_SUBSTITUTE);
         return $encoded === false ? $incomingJson : $encoded;
+    }
+
+    /**
+     * Ledger of tokens (and transcription minutes) each AI feature actually consumed.
+     * Created here as well as in schema.php so a call that lands before the next
+     * sync still records. Never throws: a broken ledger must not fail the feature.
+     */
+    function ccrm_ai_usage_ensure(\PDO $pdo): void {
+        static $ready = false;
+        if ($ready || $pdo->inTransaction()) {
+            return;
+        }
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS `ai_usage` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `feature` VARCHAR(64) NOT NULL,
+              `model` VARCHAR(80) NOT NULL,
+              `input_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `cached_input_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `output_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `input_audio_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `output_audio_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `audio_seconds` DECIMAL(10,2) NOT NULL DEFAULT 0,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_ai_usage_created` (`created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+        $ready = true;
+    }
+
+    /**
+     * One successful provider call. Token fields are already split: input is
+     * uncached text, cached input is separate, audio tokens are separate, and
+     * audio_seconds is file or live transcription billed by the minute.
+     */
+    function ccrm_ai_record_usage(
+        \PDO $pdo,
+        string $feature,
+        string $model,
+        int $inputTokens,
+        int $outputTokens,
+        int $cachedInputTokens = 0,
+        int $inputAudioTokens = 0,
+        int $outputAudioTokens = 0,
+        float $audioSeconds = 0
+    ): void {
+        try {
+            $feature = strtolower(preg_replace('/[^a-z0-9_]/i', '', $feature) ?? '');
+            $feature = substr($feature !== '' ? $feature : 'unknown', 0, 64);
+            $model = trim($model);
+            if (str_starts_with($model, 'models/')) {
+                $model = substr($model, 7);
+            }
+            $model = substr($model !== '' ? $model : 'unknown', 0, 80);
+            $clamp = static function (int $n): int {
+                return max(0, min($n, 50000000));
+            };
+            $inputTokens = $clamp($inputTokens);
+            $outputTokens = $clamp($outputTokens);
+            $cachedInputTokens = $clamp($cachedInputTokens);
+            $inputAudioTokens = $clamp($inputAudioTokens);
+            $outputAudioTokens = $clamp($outputAudioTokens);
+            if ($audioSeconds < 0 || $audioSeconds > 14400) {
+                $audioSeconds = 0;
+            }
+            if ($inputTokens + $outputTokens + $cachedInputTokens + $inputAudioTokens + $outputAudioTokens === 0 && $audioSeconds <= 0) {
+                return;
+            }
+            ccrm_ai_usage_ensure($pdo);
+            $pdo->prepare(
+                "INSERT INTO `ai_usage`
+                  (`feature`, `model`, `input_tokens`, `cached_input_tokens`, `output_tokens`, `input_audio_tokens`, `output_audio_tokens`, `audio_seconds`)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            )->execute([
+                $feature,
+                $model,
+                $inputTokens,
+                $cachedInputTokens,
+                $outputTokens,
+                $inputAudioTokens,
+                $outputAudioTokens,
+                round($audioSeconds, 2),
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[ccrm ai usage] ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Read a chat, embeddings, Anthropic or Gemini JSON body and store its usage.
+     * $fallbackModel is the id we sent when the body does not echo one.
+     */
+    function ccrm_ai_capture_usage(\PDO $pdo, string $feature, $decoded, string $fallbackModel = ''): void {
+        if (!is_array($decoded)) {
+            return;
+        }
+        $model = '';
+        if (isset($decoded['model']) && is_string($decoded['model'])) {
+            $model = $decoded['model'];
+        } elseif (isset($decoded['modelVersion']) && is_string($decoded['modelVersion'])) {
+            $model = $decoded['modelVersion'];
+        }
+        if (trim($model) === '') {
+            $model = $fallbackModel;
+        }
+        $usage = null;
+        if (isset($decoded['usage']) && is_array($decoded['usage'])) {
+            $usage = $decoded['usage'];
+        } elseif (isset($decoded['usageMetadata']) && is_array($decoded['usageMetadata'])) {
+            $usage = $decoded['usageMetadata'];
+        }
+        if ($usage === null) {
+            return;
+        }
+        $input = (int)($usage['prompt_tokens'] ?? $usage['input_tokens'] ?? $usage['promptTokenCount'] ?? 0);
+        $output = (int)($usage['completion_tokens'] ?? $usage['output_tokens'] ?? $usage['candidatesTokenCount'] ?? 0);
+        $output += (int)($usage['thoughtsTokenCount'] ?? 0);
+        $cached = (int)($usage['prompt_tokens_details']['cached_tokens']
+            ?? $usage['input_token_details']['cached_tokens']
+            ?? $usage['cachedContentTokenCount']
+            ?? 0);
+        $inAudio = (int)($usage['prompt_tokens_details']['audio_tokens'] ?? $usage['input_token_details']['audio_tokens'] ?? 0);
+        $outAudio = (int)($usage['completion_tokens_details']['audio_tokens'] ?? $usage['output_token_details']['audio_tokens'] ?? 0);
+        if (isset($usage['input_token_details']['text_tokens']) || $inAudio > 0) {
+            $input = isset($usage['input_token_details']['text_tokens'])
+                ? (int)$usage['input_token_details']['text_tokens']
+                : max(0, $input - $inAudio);
+        }
+        if (isset($usage['output_token_details']['text_tokens']) || $outAudio > 0) {
+            $output = isset($usage['output_token_details']['text_tokens'])
+                ? (int)$usage['output_token_details']['text_tokens']
+                : max(0, $output - $outAudio);
+        }
+        if ($cached > 0) {
+            $input = max(0, $input - $cached);
+        }
+        $seconds = 0.0;
+        if (isset($usage['seconds']) && is_numeric($usage['seconds'])) {
+            $seconds = (float)$usage['seconds'];
+        }
+        ccrm_ai_record_usage($pdo, $feature, $model, $input, $output, $cached, $inAudio, $outAudio, $seconds);
+    }
+
+    /** Seconds the transcription body itself reports, or 0. */
+    function ccrm_ai_provider_audio_seconds($decoded): float {
+        if (!is_array($decoded)) {
+            return 0;
+        }
+        $usage = (isset($decoded['usage']) && is_array($decoded['usage'])) ? $decoded['usage'] : [];
+        $seconds = $usage['seconds'] ?? ($decoded['duration'] ?? null);
+        if (!is_numeric($seconds)) {
+            return 0;
+        }
+        $n = (float)$seconds;
+        return ($n > 0 && $n <= 14400) ? $n : 0;
+    }
+
+    /** A duration the browser measured, capped so a bad value cannot dominate the month. */
+    function ccrm_ai_posted_audio_seconds($posted): float {
+        if (!is_numeric($posted)) {
+            return 0;
+        }
+        $n = (float)$posted;
+        return ($n > 0 && $n <= 14400) ? $n : 0;
+    }
+
+    /** WAV header, then ffprobe when the shell allows it. 0 when neither can tell. */
+    function ccrm_ai_probe_audio_seconds(string $path): float {
+        $fh = @fopen($path, 'rb');
+        if ($fh) {
+            $riff = fread($fh, 12);
+            if (strlen($riff) === 12 && substr($riff, 0, 4) === 'RIFF' && substr($riff, 8, 4) === 'WAVE') {
+                $rate = 0;
+                $align = 0;
+                while (!feof($fh)) {
+                    $chunk = fread($fh, 8);
+                    if (strlen($chunk) < 8) {
+                        break;
+                    }
+                    $id = substr($chunk, 0, 4);
+                    $size = unpack('V', substr($chunk, 4, 4))[1];
+                    if ($id === 'fmt ' && $size >= 16) {
+                        $fmt = fread($fh, $size);
+                        $rate = unpack('V', substr($fmt, 4, 4))[1];
+                        $align = unpack('v', substr($fmt, 12, 2))[1];
+                    } elseif ($id === 'data' && $rate > 0 && $align > 0) {
+                        fclose($fh);
+                        return $size / ($rate * $align);
+                    } else {
+                        fseek($fh, $size + ($size % 2), SEEK_CUR);
+                    }
+                }
+            }
+            fclose($fh);
+        }
+        if (!function_exists('exec')) {
+            return 0;
+        }
+        $disabled = array_map('trim', explode(',', (string)ini_get('disable_functions')));
+        if (in_array('exec', $disabled, true)) {
+            return 0;
+        }
+        $out = [];
+        $code = 1;
+        @exec('ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 ' . escapeshellarg($path), $out, $code);
+        if ($code !== 0) {
+            return 0;
+        }
+        $n = (float)trim((string)($out[0] ?? ''));
+        return ($n > 0 && $n <= 14400) ? $n : 0;
+    }
+
+    /**
+     * Billable audio length: the provider's own seconds, then the file, then
+     * the duration the browser sent with the upload.
+     */
+    function ccrm_ai_resolve_audio_seconds($decoded, string $path, $posted): float {
+        $fromProvider = ccrm_ai_provider_audio_seconds($decoded);
+        if ($fromProvider > 0) {
+            return $fromProvider;
+        }
+        if ($path !== '' && is_file($path)) {
+            $probed = ccrm_ai_probe_audio_seconds($path);
+            if ($probed > 0) {
+                return $probed;
+            }
+        }
+        return ccrm_ai_posted_audio_seconds($posted);
     }
 }
 

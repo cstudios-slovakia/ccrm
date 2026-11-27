@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { entityAccentStyle } from "../../utils/entityAccent";
 import {
   X,
   User,
@@ -94,7 +95,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
       {
         value: "",
         label: (
-          <span className="text-slate-400 font-normal">
+          <span className="text-gray-400 font-normal">
             {t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}
           </span>
         ),
@@ -108,7 +109,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         value: currentIdStr,
         label: (
           <span className="flex items-center gap-2 min-w-0">
-            <span className="font-semibold text-slate-800 truncate">
+            <span className="font-semibold text-gray-800 truncate">
               {timeTrackingUserName || `User #${currentIdStr}`}
             </span>
             <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-normal">
@@ -133,15 +134,15 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         label: (
           <span className="flex items-center justify-between gap-2 min-w-0 w-full">
             <span className="flex items-center gap-1.5 min-w-0 truncate">
-              <span className="font-semibold text-slate-800 truncate">{displayName}</span>
+              <span className="font-semibold text-gray-800 truncate">{displayName}</span>
               {u.name && u.email && (
-                <span className="text-caption text-slate-400 font-normal truncate">
+                <span className="text-caption text-gray-400 font-normal truncate">
                   ({u.email})
                 </span>
               )}
             </span>
             {isInactive && (
-              <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-normal">
+              <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-normal">
                 {t("Inactive", "Neaktívny", "Inaktív")}
               </span>
             )}
@@ -363,21 +364,21 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+    <div style={entityAccentStyle("employees") as React.CSSProperties} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-950/60 animate-in fade-in duration-200">
+      <div className="relative w-full max-w-4xl bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-[#c29b62]/10">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-entity-subtle">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#c29b62] text-white flex items-center justify-center shadow-md shadow-[#c29b62]/30">
+            <div className="w-10 h-10 rounded-md bg-entity-solid text-white flex items-center justify-center shadow-2xs">
               <User className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-title font-bold text-slate-900">
+              <h2 className="text-title font-bold text-gray-900">
                 {isEditing
                   ? t("Edit Employee Profile", "Úprava profilu zamestnanca", "Alkalmazotti profil szerkesztése")
                   : t("Add New Employee", "Nový zamestnanec", "Új alkalmazott")}
               </h2>
-              <p className="text-ui text-slate-500">
+              <p className="text-ui text-gray-500">
                 {t(
                   "Manage personal data, compensation rate, time tracking & contract documents",
                   "Osobné údaje, mzda, meranie času a pracovné zmluvy",
@@ -388,7 +389,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition"
+            className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition"
           >
             <X className="w-5 h-5" />
           </button>
@@ -398,14 +399,14 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* SECTION 1: Personal & Identification */}
           <div className="space-y-4">
-            <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+            <h3 className="text-ui font-bold text-[#b58b4c] flex items-center gap-2">
               <User className="w-4 h-4" />
               {t("Personal & Contact Information", "Osobné a kontaktné údaje", "Személyes és elérhetőségi adatok")}
             </h3>
 
             <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-gray-700 mb-1">
                   {t("Full Name *", "Meno a priezvisko *", "Teljes név *")}
                 </label>
                 <input
@@ -414,12 +415,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Ján Novák"
-                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-gray-200 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-gray-700 mb-1">
                   {t("Personal ID / PIN (Rodné číslo)", "Rodné číslo / IČO", "Személyi azonosító")}
                 </label>
                 <input
@@ -427,12 +428,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={pin}
                   onChange={(e) => setPin(e.target.value)}
                   placeholder="e.g. 900101/1234"
-                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-gray-200 rounded-md text-gray-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-gray-700 mb-1">
                   {t("Email Address", "Emailová adresa", "E-mail cím")}
                 </label>
                 <input
@@ -440,12 +441,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="jan.novak@example.com"
-                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-gray-200 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-gray-700 mb-1">
                   {t("Phone Number", "Telefónne číslo", "Telefonszám")}
                 </label>
                 <input
@@ -453,22 +454,22 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+421 900 123 456"
-                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-gray-200 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
             </div>
           </div>
 
           {/* SECTION 2: Permanent Address */}
-          <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
-            <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+          <div className="space-y-4 pt-2 border-t border-gray-200">
+            <h3 className="text-ui font-bold text-[#b58b4c] flex items-center gap-2">
               <MapPin className="w-4 h-4" />
               {t("Permanent Address", "Trvalé bydlisko", "Állandó lakcím")}
             </h3>
 
             <div className="grid grid-cols-1 ws-md:grid-cols-4 gap-4">
               <div className="ws-md:col-span-2">
-                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-gray-700 mb-1">
                   {t("Street & Number", "Ulica a číslo", "Utca és házszám")}
                 </label>
                 <input
@@ -476,12 +477,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={addressStreet}
                   onChange={(e) => setAddressStreet(e.target.value)}
                   placeholder="Hlavná 123/4"
-                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-gray-200 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-gray-700 mb-1">
                   {t("City", "Mesto / Obec", "Város")}
                 </label>
                 <input
@@ -489,12 +490,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={addressCity}
                   onChange={(e) => setAddressCity(e.target.value)}
                   placeholder="Bratislava"
-                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-gray-200 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-gray-700 mb-1">
                   {t("Postal / ZIP Code", "PSČ", "Irányítószám")}
                 </label>
                 <input
@@ -502,28 +503,28 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={addressZip}
                   onChange={(e) => setAddressZip(e.target.value)}
                   placeholder="811 01"
-                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-gray-200 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
             </div>
           </div>
 
           {/* SECTION 3: Compensation & Due Day */}
-          <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
-            <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+          <div className="space-y-4 pt-2 border-t border-gray-200">
+            <h3 className="text-ui font-bold text-[#b58b4c] flex items-center gap-2">
               <Coins className="w-4 h-4" />
               {t("Salary & Compensation", "Mzda a odmeňovanie", "Bér és juttatások")}
             </h3>
 
             <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-gray-700 mb-1">
                   {t("Salary Type", "Typ mzdy", "Bér típusa")}
                 </label>
                 <select
                   value={salaryType}
                   onChange={(e) => setSalaryType(e.target.value as any)}
-                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-gray-200 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 >
                   <option value="monthly">{t("Monthly (Mesačná)", "Mesačná", "Havi")}</option>
                   <option value="daily">{t("Daily (Denná)", "Denná", "Napi")}</option>
@@ -532,7 +533,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-gray-700 mb-1">
                   {t(`Rate / Amount (${systemCurrency})`, `Základná sadzba (${systemCurrency})`, `Alapbér összege (${systemCurrency})`)}
                 </label>
                 <input
@@ -541,12 +542,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   min="0"
                   value={salaryAmount}
                   onChange={(e) => setSalaryAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-gray-200 rounded-md text-gray-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-gray-700 mb-1">
                   {t(
                     `Salary Due Day (Default: ${settings.salaryDueDay ?? 15})`,
                     `Výplatný deň (Predvolený: ${settings.salaryDueDay ?? 15}.)`,
@@ -560,18 +561,18 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={salaryDueDay}
                   onChange={(e) => setSalaryDueDay(e.target.value)}
                   placeholder={String(settings.salaryDueDay ?? 15)}
-                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-gray-200 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
             </div>
 
             {/* Financial auto-expense toggle & category */}
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
+            <div className="p-3.5 rounded-md bg-gray-50 border border-gray-200 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
               <div>
-                <span className="text-ui font-semibold text-slate-800 dark:text-slate-200 block">
+                <span className="text-ui font-semibold text-gray-800 block">
                   {t("Auto-sync payout to Financial Records", "Automaticky evidovať výplatu do nákladov", "Kifizetés automatikus rögzítése kiadásként")}
                 </span>
-                <span className="text-ui text-slate-500 dark:text-slate-400">
+                <span className="text-ui text-gray-500">
                   {t(
                     "Creates planned expense when unpaid, paid expense when settled",
                     "Vytvorí plánovaný výdavok pri nevyplatení, skutočný pri úhrade",
@@ -587,14 +588,14 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     onChange={(e) => setAutoExpense(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#c29b62]"></div>
+                  <div className="w-10 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#c29b62]"></div>
                 </label>
 
                 {autoExpense && (
                   <select
                     value={expenseCategoryId}
                     onChange={(e) => setExpenseCategoryId(e.target.value)}
-                    className="px-2.5 py-1 text-ui bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                    className="px-2.5 py-1 text-ui bg-white border border-gray-200 rounded-lg text-gray-900"
                   >
                     <option value="">{t("Default Category", "Predvolená kategória", "Alapértelmezett kategória")}</option>
                     {financialCategories
@@ -611,22 +612,22 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
           </div>
 
           {/* SECTION 4: Time Tracking Mapping (Toggl) */}
-          <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
-            <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+          <div className="space-y-4 pt-2 border-t border-gray-200">
+            <h3 className="text-ui font-bold text-[#b58b4c] flex items-center gap-2">
               <Clock className="w-4 h-4" />
               {t("Toggl Track User Mapping", "Prepojenie s používateľom v Toggl", "Toggl felhasználó összerendelés")}
             </h3>
 
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-3">
+            <div className="p-3.5 rounded-md bg-gray-50 border border-gray-200 space-y-3">
               {loadingTogglUsers ? (
-                <div className="flex items-center gap-2 text-ui text-slate-500 py-1">
+                <div className="flex items-center gap-2 text-ui text-gray-500 py-1">
                   <Loader2 className="w-4 h-4 animate-spin text-[#c29b62]" />
                   <span>{t("Loading workspace users from Toggl...", "Načítavam používateľov z Toggl...", "Felhasználók betöltése a Toggl-ből...")}</span>
                 </div>
               ) : togglUsers.length > 0 ? (
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-ui font-medium text-slate-700 dark:text-slate-300">
+                    <label className="block text-ui font-medium text-gray-700">
                       {t("Select Mapped Toggl User", "Vyberte používateľa v Toggl", "Válasszon Toggl felhasználót")}
                     </label>
                     {inactiveTogglUsersCount > 0 && (
@@ -636,7 +637,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                         className={`text-micro cursor-pointer transition-colors ${
                           showInactiveTogglUsers
                             ? "text-[#c29b62] font-semibold underline"
-                            : "text-slate-400 hover:text-slate-600 underline"
+                            : "text-gray-400 hover:text-gray-600 underline"
                         }`}
                       >
                         {showInactiveTogglUsers
@@ -659,14 +660,14 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     options={togglSelectOptions}
                     searchable
                     size="sm"
-                    className="bg-white border-slate-200"
+                    className="bg-white border-gray-200"
                     searchPlaceholder={t("Search user...", "Hľadať používateľa...", "Felhasználó keresése...")}
                     placeholder={t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}
                   />
                 </div>
               ) : (
                 <div className="flex items-center justify-between">
-                  <div className="text-ui text-slate-500 dark:text-slate-400">
+                  <div className="text-ui text-gray-500">
                     {hasTogglKey
                       ? t(
                           "No users loaded or manual mapping:",
@@ -684,7 +685,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     value={timeTrackingUserId}
                     onChange={(e) => setTimeTrackingUserId(e.target.value)}
                     placeholder={t("Toggl User ID (manual)", "Toggl User ID (manuálne)", "Toggl User ID (kézi)")}
-                    className="w-48 px-3 py-1.5 text-ui bg-white border border-slate-200 rounded-lg text-slate-900 font-mono"
+                    className="w-48 px-3 py-1.5 text-ui bg-white border border-gray-200 rounded-lg text-gray-900 font-mono"
                   />
                 </div>
               )}
@@ -712,8 +713,8 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
           </div>
 
           {/* SECTION 5: Vacation & Leave Allowances */}
-          <div className="space-y-4 pt-2 border-t border-slate-200">
-            <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+          <div className="space-y-4 pt-2 border-t border-gray-200">
+            <h3 className="text-ui font-bold text-[#b58b4c] flex items-center gap-2">
               <Calendar className="w-4 h-4" />
               {t("Vacation Allowances (Days / Year)", "Ročný nárok na voľno (Dni / Rok)", "Szabadságkeret (Nap / Év)")}
             </h3>
@@ -728,8 +729,8 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     { id: "unpaid", name: "Neplatené", defaultAllowance: 0 }
                   ]
               ).map((vt) => (
-                <div key={vt.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="block text-ui font-medium text-slate-600 truncate mb-1">
+                <div key={vt.id} className="p-3 rounded-md bg-gray-50 border border-gray-200">
+                  <span className="block text-ui font-medium text-gray-600 truncate mb-1">
                     {vt.name}
                   </span>
                   <div className="flex items-center gap-2">
@@ -744,9 +745,9 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                           [vt.id]: parseFloat(e.target.value) || 0
                         })
                       }
-                      className="w-full px-2.5 py-1.5 text-body bg-white border border-slate-200 rounded-lg text-slate-900 font-mono text-center focus:outline-none focus:ring-1 focus:ring-[#c29b62]"
+                      className="w-full px-2.5 py-1.5 text-body bg-white border border-gray-200 rounded-lg text-gray-900 font-mono text-center focus:outline-none focus:ring-1 focus:ring-[#c29b62]"
                     />
-                    <span className="text-ui text-slate-400">{t("d", "d", "n")}</span>
+                    <span className="text-ui text-gray-400">{t("d", "d", "n")}</span>
                   </div>
                 </div>
               ))}
@@ -754,9 +755,9 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
           </div>
 
           {/* SECTION 6: Contracts & File Attachments */}
-          <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
+          <div className="space-y-4 pt-2 border-t border-gray-200">
             <div className="flex items-center justify-between">
-              <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+              <h3 className="text-ui font-bold text-[#b58b4c] flex items-center gap-2">
                 <FileText className="w-4 h-4" />
                 {t("Contracts & Uploaded Documents", "Zmluvy a dokumenty zamestnanca", "Szerződések és dokumentumok")}
               </h3>
@@ -775,14 +776,14 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
             </div>
 
             {uploadError && (
-              <div className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-ui flex items-center gap-2">
+              <div className="p-2.5 rounded-lg bg-red-50 text-red-600 text-ui flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{uploadError}</span>
               </div>
             )}
 
             {files.length === 0 ? (
-              <div className="p-6 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-ui text-slate-400">
+              <div className="p-6 text-center border-2 border-dashed border-gray-200 rounded-md text-ui text-gray-400">
                 {t("No contracts or files attached yet.", "Zatiaľ neboli nahraté žiadne zmluvy ani dokumenty.", "Még nincsenek csatolt dokumentumok.")}
               </div>
             ) : (
@@ -790,15 +791,15 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 {files.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200"
+                    className="flex items-center justify-between p-2.5 rounded-md bg-gray-50 border border-gray-200"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-[#c29b62]/15 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-entity-subtle text-[#9e7638] flex items-center justify-center shrink-0">
                         <FileText className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-ui font-semibold text-slate-900 truncate">{file.name}</p>
-                        <p className="text-micro text-slate-400">
+                        <p className="text-ui font-semibold text-gray-900 truncate">{file.name}</p>
+                        <p className="text-micro text-gray-400">
                           {file.size ? `${(file.size / 1024).toFixed(1)} KB` : ""} •{" "}
                           {file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString() : ""}
                         </p>
@@ -811,7 +812,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                         href={employeeFileHref(employee?.id, file) as string}
                         target="_blank"
                         rel="noreferrer"
-                        className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md transition"
+                        className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md transition"
                         title={t("Download / View", "Stiahnuť / Zobraziť", "Letöltés / Megtekintés")}
                       >
                         <Download className="w-4 h-4" />
@@ -820,7 +821,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       <button
                         type="button"
                         onClick={() => handleRemoveFile(file.id)}
-                        className="p-1.5 text-slate-400 hover:text-red-500 rounded-md transition"
+                        className="p-1.5 text-gray-400 hover:text-red-500 rounded-md transition"
                         title={t("Remove file", "Odstrániť súbor", "Fájl törlése")}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -833,9 +834,9 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
           </div>
 
           {/* SECTION 7: Notes & Status */}
-          <div className="space-y-4 pt-2 border-t border-slate-200">
+          <div className="space-y-4 pt-2 border-t border-gray-200">
             <div>
-              <label className="block text-ui font-medium text-slate-700 mb-1">
+              <label className="block text-ui font-medium text-gray-700 mb-1">
                 {t("Internal Notes & Observations", "Interné poznámky", "Belső feljegyzések")}
               </label>
               <textarea
@@ -843,12 +844,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder={t("Notes, qualifications, workstation details...", "Poznámky, kvalifikácia, pracovné miesto...", "Jegyzetek, képesítések, munkakör...")}
-                className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                className="w-full px-3 py-2 text-body bg-white border border-gray-200 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="text-ui font-semibold text-slate-800">
+            <div className="flex items-center justify-between p-3 rounded-md bg-gray-50 border border-gray-200">
+              <span className="text-ui font-semibold text-gray-800">
                 {t("Active Employee Status", "Aktívny stav zamestnanca", "Aktív alkalmazotti státusz")}
               </span>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -858,25 +859,25 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   onChange={(e) => setIsActive(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                <div className="w-10 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
               </label>
             </div>
           </div>
         </form>
 
         {/* Footer actions */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50/70">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50/70">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-body font-semibold text-slate-700 hover:bg-slate-200/60 rounded-xl transition"
+            className="px-4 py-2 text-body font-semibold text-gray-700 hover:bg-gray-200/60 rounded-md transition"
           >
             {t("Cancel", "Zrušiť", "Mégse")}
           </button>
           <button
             type="button"
             onClick={handleSubmit}
-            className="px-5 py-2 text-body font-semibold text-white bg-[#c29b62] hover:bg-[#b58b4c] rounded-xl shadow-md shadow-[#c29b62]/30 transition"
+            className="px-5 py-2 text-body font-semibold text-white bg-[#c29b62] hover:bg-[#b58b4c] rounded-md shadow-md shadow-2xs transition"
           >
             {isEditing ? t("Save Changes", "Uložiť zmeny", "Módosítások mentése") : t("Create Employee", "Vytvoriť zamestnanca", "Alkalmazott létrehozása")}
           </button>

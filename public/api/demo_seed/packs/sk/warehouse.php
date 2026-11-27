@@ -1,0 +1,396 @@
+<?php
+/**
+ * Warehouse pack, Slovak edition: item details, supplier notes/contacts, batches and the ~6 months
+ * of stock documents that the module simulates (stock, batches and average cost are DERIVED from them).
+ * Data only (contract: demo_seed/index.php). Same keys, list lengths and numbers as the other two editions.
+ * Names, SKUs, units, prices and costs of items I1-I8, suppliers S1-S3 and warehouses W1-W2 live in
+ * packs/sk/company.php. Every price here is EUR before conversion (demo_money()): inward lines carry the
+ * purchase price, outward lines the selling price. 'user' is the login who filed the document.
+ */
+return [
+    'numbering' => ['inward' => 'PRI', 'outward' => 'VYD', 'transfer' => 'PRE'],
+    'items' => [
+        'I1' => [
+            'description' => 'Technický kremeň, leštený, 3200×1600 mm.',
+            'min' => 20,
+            'optimal' => 80,
+            'location' => 'A-01',
+            'location2' => 'S-01',
+            'expires' => 0,
+        ],
+        'I2' => [
+            'description' => 'Spekaný kameň odolný voči teplu a poškriabaniu, vzhľad tmavého mramoru.',
+            'min' => 15,
+            'optimal' => 50,
+            'location' => 'A-02',
+            'location2' => 'S-02',
+            'expires' => 0,
+        ],
+        'I3' => [
+            'description' => 'Tenký veľkoformátový porcelán na obklady a nábytok.',
+            'min' => 40,
+            'optimal' => 160,
+            'location' => 'B-01',
+            'location2' => 'S-03',
+            'expires' => 0,
+        ],
+        'I4' => [
+            'description' => 'Prírodná čierna žula, leštená, na intenzívne používané pracovné dosky.',
+            'min' => 10,
+            'optimal' => 40,
+            'location' => 'A-03',
+            'location2' => 'S-04',
+            'expires' => 0,
+        ],
+        'I5' => [
+            'description' => 'Dvojzložkové lepidlo na kameň, zrezané spoje a lepenie.',
+            'min' => 30,
+            'optimal' => 120,
+            'location' => 'C-01',
+            'location2' => 'S-05',
+            'expires' => 1,
+        ],
+        'I6' => [
+            'description' => 'Penetračná impregnácia pre leštený a matný kameň.',
+            'min' => 12,
+            'optimal' => 40,
+            'location' => 'C-02',
+            'location2' => 'S-06',
+            'expires' => 1,
+        ],
+        'I7' => [
+            'description' => 'Čistič a leštidlo na bežnú starostlivosť o dosku (produkt z e-shopu).',
+            'min' => 40,
+            'optimal' => 160,
+            'location' => 'D-01',
+            'location2' => 'S-07',
+            'expires' => 0,
+        ],
+        'I8' => [
+            'description' => 'Služba: laserové zameranie na mieste, bez skladových zásob.',
+            'min' => 0,
+            'optimal' => 0,
+            'location' => '',
+            'location2' => '',
+            'expires' => 0,
+        ],
+    ],
+    'suppliers' => [
+        'S1' => [
+            'position' => 'Obchodný riaditeľ',
+            'notes' => 'Taliansky výrobca kremenných, spekaných a porcelánových dosiek; dodáva po kamiónoch.',
+            'extra' => [
+                [
+                    '_foreign' => true,
+                    'name' => 'Marco Rossi',
+                    'position' => 'Logistika',
+                    'phone' => '+39 0536 555 0124',
+                    'email' => 'logistica@marmi-fiorano.example',
+                ],
+            ],
+        ],
+        'S2' => [
+            'position' => 'Obchodný zástupca',
+            'notes' => 'Miestny distribútor kameňa: žula, mramor a predaj odrezkov.',
+            'extra' => [
+                ['name' => 'Eva Kmeťová', 'position' => 'Fakturácia', 'phone' => '+421 2 5557 0232', 'email' => 'fakturacia@kamen-distribucia.example'],
+            ],
+        ],
+        'S3' => [
+            'position' => 'Technický predaj',
+            'notes' => 'Lepidlá, impregnácie a ošetrovacie prostriedky pre kameň.',
+            'extra' => [
+                ['name' => 'Pavol Šimon', 'position' => 'Technický poradca', 'phone' => '+421 41 555 0313', 'email' => 'poradca@chemstav.example'],
+            ],
+        ],
+    ],
+    'batches' => [
+        [
+            'key' => 'b1',
+            'item' => 'I5',
+            'warehouse' => 'W1',
+            'number' => 'SF-A-01',
+            'expDay' => 230,
+        ],
+        [
+            'key' => 'b2',
+            'item' => 'I5',
+            'warehouse' => 'W1',
+            'number' => 'SF-A-02',
+            'expDay' => 18,
+        ],
+        [
+            'key' => 'b3',
+            'item' => 'I6',
+            'warehouse' => 'W1',
+            'number' => 'SS-A-01',
+            'expDay' => 300,
+        ],
+    ],
+    'reserved' => [
+        ['warehouse' => 'W1', 'item' => 'I1', 'qty' => 15],
+        ['warehouse' => 'W1', 'item' => 'I3', 'qty' => 25],
+        ['warehouse' => 'W1', 'item' => 'I2', 'qty' => 8],
+    ],
+    'movements' => [
+        [
+            'day' => -190,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S1',
+            'user' => 'pm',
+            'note' => 'Úvodná dodávka kremenných a spekaných dosiek z Fiorana.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 80, 'priceEur' => 95.0],
+                ['item' => 'I2', 'qty' => 40, 'priceEur' => 110.0],
+            ],
+        ],
+        [
+            'day' => -184,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S1',
+            'user' => 'pm',
+            'note' => 'Porcelánové dosky na fasádne zákazky.',
+            'lines' => [
+                ['item' => 'I3', 'qty' => 120, 'priceEur' => 72.0],
+            ],
+        ],
+        [
+            'day' => -176,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S3',
+            'user' => 'sales',
+            'note' => 'Lepidlo, impregnácia a ošetrovacie sady.',
+            'lines' => [
+                ['item' => 'I5', 'qty' => 120, 'priceEur' => 14.2, 'batch' => 'b1'],
+                ['item' => 'I6', 'qty' => 36, 'priceEur' => 22.8, 'batch' => 'b3'],
+                ['item' => 'I7', 'qty' => 120, 'priceEur' => 12.4],
+            ],
+        ],
+        [
+            'day' => -162,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S2',
+            'user' => 'owner',
+            'note' => 'Žula od miestneho distribútora.',
+            'lines' => [
+                ['item' => 'I4', 'qty' => 30, 'priceEur' => 130.0],
+            ],
+        ],
+        [
+            'day' => -150,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C4',
+            'user' => 'sales',
+            'note' => 'Showroomové stoly pre {client:C4}.',
+            'lines' => [
+                ['item' => 'I2', 'qty' => 14, 'priceEur' => 210.0],
+            ],
+        ],
+        [
+            'day' => -128,
+            'type' => 'transfer',
+            'warehouse' => 'W1',
+            'to' => 'W2',
+            'user' => 'pm',
+            'note' => 'Dosky presunuté do druhého skladu.',
+            'lines' => [
+                ['item' => 'I3', 'qty' => 40, 'priceEur' => 0.0],
+                ['item' => 'I1', 'qty' => 12, 'priceEur' => 0.0],
+            ],
+        ],
+        [
+            'day' => -118,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S1',
+            'user' => 'pm',
+            'note' => 'Doplnenie kremenných a spekaných dosiek.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 60, 'priceEur' => 96.0],
+                ['item' => 'I2', 'qty' => 20, 'priceEur' => 112.0],
+            ],
+        ],
+        [
+            'day' => -104,
+            'type' => 'inward',
+            'warehouse' => 'W2',
+            'supplier' => 'S2',
+            'user' => 'owner',
+            'note' => 'Žula doručená priamo do druhého skladu.',
+            'lines' => [
+                ['item' => 'I4', 'qty' => 12, 'priceEur' => 132.0],
+            ],
+        ],
+        [
+            'day' => -92,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C3',
+            'user' => 'sales',
+            'note' => '{client:C3}: dávka pracovných dosiek.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 15, 'priceEur' => 185.0],
+                ['item' => 'I5', 'qty' => 6, 'priceEur' => 24.5, 'batch' => 'b1'],
+            ],
+        ],
+        [
+            'day' => -88,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S3',
+            'user' => 'owner',
+            'note' => 'Druhá dodávka lepidla, krátka expirácia.',
+            'lines' => [
+                ['item' => 'I5', 'qty' => 80, 'priceEur' => 14.6, 'batch' => 'b2'],
+                ['item' => 'I6', 'qty' => 24, 'priceEur' => 23.1, 'batch' => 'b3'],
+            ],
+        ],
+        [
+            'day' => -80,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C3',
+            'user' => 'sales',
+            'note' => '{client:C3}: žulové pracovné dosky na partnerskú zákazku.',
+            'lines' => [
+                ['item' => 'I4', 'qty' => 14, 'priceEur' => 240.0],
+            ],
+        ],
+        [
+            'day' => -64,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S1',
+            'user' => 'pm',
+            'note' => 'Ďalšie porcelánové a spekané dosky na fasádny projekt.',
+            'lines' => [
+                ['item' => 'I3', 'qty' => 100, 'priceEur' => 72.5],
+                ['item' => 'I2', 'qty' => 18, 'priceEur' => 111.0],
+            ],
+        ],
+        [
+            'day' => -56,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C2',
+            'user' => 'sales',
+            'note' => '{project:P2}: kremenná doska a lepidlo.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 10.6, 'priceEur' => 185.0],
+                ['item' => 'I5', 'qty' => 2, 'priceEur' => 24.5, 'batch' => 'b1'],
+            ],
+        ],
+        [
+            'day' => -48,
+            'type' => 'outward',
+            'warehouse' => 'W2',
+            'client' => 'C3',
+            'user' => 'sales',
+            'note' => '{client:C3}: dávka pracovných dosiek z druhého skladu.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 12, 'priceEur' => 185.0],
+            ],
+        ],
+        [
+            'day' => -40,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S2',
+            'user' => 'owner',
+            'note' => 'Doplnenie žuly.',
+            'lines' => [
+                ['item' => 'I4', 'qty' => 18, 'priceEur' => 131.0],
+            ],
+        ],
+        [
+            'day' => -33,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C1',
+            'user' => 'pm',
+            'note' => '{project:P1}: prvá paleta fasády a lepidlo.',
+            'lines' => [
+                ['item' => 'I3', 'qty' => 40, 'priceEur' => 140.0],
+                ['item' => 'I5', 'qty' => 16, 'priceEur' => 24.5, 'batch' => 'b2'],
+            ],
+        ],
+        [
+            'day' => -27,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S1',
+            'user' => 'pm',
+            'note' => 'Doplnenie kremeňa a porcelánu.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 40, 'priceEur' => 98.0],
+                ['item' => 'I3', 'qty' => 60, 'priceEur' => 73.0],
+            ],
+        ],
+        [
+            'day' => -22,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C3',
+            'user' => 'sales',
+            'note' => '{client:C3}: dávka pracovných dosiek.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 14, 'priceEur' => 185.0],
+                ['item' => 'I5', 'qty' => 5, 'priceEur' => 24.5, 'batch' => 'b2'],
+            ],
+        ],
+        [
+            'day' => -14,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C1',
+            'user' => 'pm',
+            'note' => '{project:P1}: druhá paleta fasády a podlaha lobby.',
+            'lines' => [
+                ['item' => 'I3', 'qty' => 38, 'priceEur' => 140.0],
+                ['item' => 'I2', 'qty' => 22, 'priceEur' => 210.0],
+                ['item' => 'I6', 'qty' => 6, 'priceEur' => 42.0, 'batch' => 'b3'],
+            ],
+        ],
+        [
+            'day' => -10,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C6',
+            'user' => 'sales',
+            'note' => '{project:P3}: vzorky dosiek na recepčný pult a stenu wellness.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 1.5, 'priceEur' => 185.0],
+                ['item' => 'I2', 'qty' => 1.5, 'priceEur' => 210.0],
+            ],
+        ],
+        [
+            'day' => -6,
+            'type' => 'transfer',
+            'warehouse' => 'W1',
+            'to' => 'W2',
+            'user' => 'pm',
+            'note' => 'Vzorky a dosky presunuté do druhého skladu.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 10, 'priceEur' => 0.0],
+                ['item' => 'I2', 'qty' => 6, 'priceEur' => 0.0],
+            ],
+        ],
+        [
+            'day' => -4,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S3',
+            'user' => 'owner',
+            'note' => 'Ošetrovacie sady a impregnácia pre e-shop.',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 60, 'priceEur' => 12.6],
+                ['item' => 'I6', 'qty' => 12, 'priceEur' => 23.0, 'batch' => 'b3'],
+            ],
+        ],
+    ],
+];

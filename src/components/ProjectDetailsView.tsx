@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { EntityHeader, Tabs } from "./layout";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { entityAccentStyle } from "../utils/entityAccent";
 import * as Icons from "lucide-react";
 import {
   Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone,
@@ -11,7 +13,8 @@ import {
 import type {
   Project, ProjectType, Lead, UserProfile,
   ProjectTimelineEvent, ProjectGanttRow, ProjectCustomFileField, ProjectUploadedFile,
-  FinancialRecord, FinancialCategory, FinancialStatus, FinancialType, CompanyBillingSettings
+  FinancialRecord, FinancialCategory, FinancialStatus, FinancialType, CompanyBillingSettings,
+  ClickUpProjectList
 } from "../types";
 import { getDefaultVatRate } from "../utils/vat";
 import { getTranslation, type Language } from "../utils/translations";
@@ -22,12 +25,18 @@ import {
   isMoneyValueEmpty,
   parseMoneyValue,
 } from "../utils/currency";
-import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
-import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
-import { splitRecordAmounts } from "../utils/financialOverviewTable";
+import { projectBilling, resolveProjectValueWithSource } from "../utils/projectBilling";
+import { mergeFinancialRecord, derivePaidDate } from "../utils/financialRecordMerge";
+import { ProjectFinancialModal } from "./projects/ProjectFinancialModal";
+import { isRealMovement, movementAmounts, recurringOwnRowCharge } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeStyle, projectStatusDotStyle, projectStatusOptions, projectTypeHasInvoiceDate } from "../utils/projects";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
+import { useTimeTracking } from "../hooks/useTimeTracking";
+import { ProjectTimeTab } from "./timeTracking/ProjectTimeTab";
+import { formatDuration } from "../utils/timeTracking.ts";
+import { LabourHiddenNote, ProjectTimeCostRows, ProjectTimeFinanceLines, useProjectTimeCosts } from "./timeTracking/ProjectTimeFinanceLines";
+import { isLabourCostWithheld } from "../utils/performance/profitability";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
@@ -37,6 +46,13 @@ import { ratingValue } from "../utils/rating";
 import { missingChecklistItems, readChecklistValue, writeChecklistValue } from "../utils/projectColumns";
 import { ProjectTasksPanel } from "./ProjectTasksPanel";
 import { ProjectTicketsPanel } from "./ProjectTicketsPanel";
+import { ProjectAcceptanceCriteria } from "./projects/ProjectAcceptanceCriteria";
+import { ProjectGithubFields } from "./projects/ProjectGithubFields";
+import { ProjectPushTimelineItem, ProjectPushesFailedNote } from "./projects/ProjectPushTimelineItem";
+import { useProjectPushes } from "../hooks/useProjectPushes";
+import { isPushItem, mergePushesIntoTimeline } from "../utils/projectPushTimeline";
+import { displayEmployeeName } from "../utils/nameOrder";
+import { projectManagerPickerNames } from "../utils/projectEmployees";
 import type { Task, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
 import { DEFAULT_TICKET_STATUSES, DEFAULT_TICKET_SETTINGS } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -50,11 +66,25 @@ import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { reinsertAt, removeByIds } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
+import { WhatsAppChip } from "./WhatsAppChip";
+import { findTimelineEventIssue, resolveTimelineEventTitle, timelineEventTypeOptions, type TimelineEventIssue } from "../utils/timelineEventForm";
+import { ProjectContactEmail } from "./projects/ProjectContactEmail";
+import { ProjectEmployeesField } from "./projects/ProjectEmployeesField";
+import { ProjectLeftColumn } from "./projects/ProjectLeftColumn";
+import { ProjectOrdersTab, type ProjectOrderLinks } from "./projects/ProjectOrdersTab";
+import { ordersOfProject } from "../utils/projectOrders";
+import { fillEmptyFromLead } from "../utils/leadToProject";
+import { ProjectNotesSection } from "./notes/ProjectNotesSection";
+import { isNoteActivity } from "../utils/noteActivity";
+import { NoteActivityRow } from "./notes/NoteActivityRow";
+import { isLeadHistoryItem, leadHistoryItems, mergeLeadHistory } from "../utils/leadHistoryTimeline";
+import { LeadHistoryTimelineItem, LeadHistoryToggle } from "./projects/LeadHistoryTimeline";
+import { ProjectClickUpListsBar } from "./projects/ProjectClickUpListsBar";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
-type RightTab = "timeline" | "tasks" | "gantt" | "finances" | "files" | "tickets";
+type RightTab = "timeline" | "notes" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets" | "orders";
 const isRightTab = (value: string | null): value is RightTab =>
-  value === "timeline" || value === "tasks" || value === "gantt" || value === "finances" || value === "files" || value === "tickets";
+  value === "timeline" || value === "notes" || value === "criteria" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets" || value === "orders";
 
 interface ProjectDetailsViewProps {
   project: Project | null;
@@ -116,6 +146,8 @@ interface ProjectDetailsViewProps {
   currentUser?: UserProfile;
   /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
   mailConfigured?: boolean;
+  /** The orders of the workspace, when the user may see them (Orders tab). Absent: no Orders tab. */
+  orderLinks?: ProjectOrderLinks;
   divisions?: string[];
   divisionColors?: Record<string, string>;
   /**
@@ -131,6 +163,7 @@ interface ProjectDetailsViewProps {
   ticketSettings?: TicketSettings;
   supportContracts?: SupportContract[];
   setSupportContracts?: React.Dispatch<React.SetStateAction<SupportContract[]>>;
+  clickupConnected?: boolean;
 }
 const DEFAULT_TASK_STATES = ["New", "In progress", "Blocked", "Done"];
 const FULL_TASK_ACCESS: TaskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true };
@@ -162,7 +195,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   taskAccess = FULL_TASK_ACCESS,
   currentUser,
   mailConfigured,
-  divisions = ["Cstudios", "Cstudios Budapest"],
+  orderLinks,
+  divisions = [],
   divisionColors = {},
   layoutMode = "full",
   onOpenFullView,
@@ -172,6 +206,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   ticketSettings = DEFAULT_TICKET_SETTINGS,
   supportContracts = [],
   setSupportContracts,
+  clickupConnected = false,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
@@ -335,12 +370,20 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [finishedAt, setFinishedAt] = useState("");
   const [status, setStatus] = useState("active");
   const [division, setDivision] = useState("");
+  /* Phone of the project's contact. WAAI pairs WhatsApp chats to the project by it. */
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  /* GitHub pairing: repository ("owner/name") and server branch; pushes to it are stored by the webhook. */
+  const [githubRepo, setGithubRepo] = useState("");
+  const [githubBranch, setGithubBranch] = useState("");
+  const [clickupLists, setClickupLists] = useState<ClickUpProjectList[]>([]);
   /* Star priority, 1-5, 0 while nobody has rated it. Like the status below it,
      a click saves on the spot. */
   const [rating, setRating] = useState(0);
   const [associatedLeadId, setAssociatedLeadId] = useState("");
   const [associatedClientId, setAssociatedClientId] = useState("");
   const [selectedManagers, setSelectedManagers] = useState<string[]>([]);
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   // The paired lead is shown as the same green client card the lead view has;
   // the picker only comes back while re-pairing.
   const [pickingClient, setPickingClient] = useState(false);
@@ -354,6 +397,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // anyone who may edit sees the inputs, and every change saves on its own.
   const isEditingAttrs = canEdit;
   const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
+  // The leads named by this project's contact attributes: their WhatsApp chats count as the project's.
+  const contactLeadIds = useMemo(
+    () => (projectType?.attributes || [])
+      .filter(a => a.type === "contact")
+      .map(a => dynamicData[a.id])
+      .filter((v): v is string => typeof v === "string" && v !== ""),
+    [projectType, dynamicData],
+  );
   // The label being typed for a checkbox this project adds, per checkbox attribute.
   const [newChecklistLabels, setNewChecklistLabels] = useState<Record<string, string>>({});
   const [timeline, setTimeline] = useState<ProjectTimelineEvent[]>([]);
@@ -376,6 +427,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     if (tab === "timeline") return projectType.hasTimeline;
     if (tab === "gantt") return projectType.hasGantt;
     if (tab === "tasks") return !!(setTasks && taskAccess.view);
+    if (tab === "orders") return !!orderLinks && !isNew;
     return true;
   };
 
@@ -394,6 +446,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const [activeRightTab, setActiveRightTab] = useState<RightTab>(getInitialRightTab);
+
+  // GitHub pushes of a paired project: read-only items woven into the timeline (not part of the saved project).
+  const showsTimeline = layoutMode === "sidebar" || activeRightTab === "timeline";
+  const projectPushes = useProjectPushes(project?.id ?? "", showsTimeline && !isNew && !!project?.githubRepo && !!projectType?.hasTimeline);
+  // The paired lead's history, read-only and live (never copied into the project); a switch hides it.
+  const [showLeadHistory, setShowLeadHistory] = useState(true);
+  const leadHistory = useMemo(() => leadHistoryItems(leads.find(l => l.id === associatedLeadId)?.timeline), [leads, associatedLeadId]);
+  const timelineEntries = useMemo(() => mergeLeadHistory(mergePushesIntoTimeline(timeline, projectPushes.pushes), showLeadHistory ? leadHistory : []), [timeline, projectPushes.pushes, showLeadHistory, leadHistory]);
 
   const handleRightTabChange = (tab: RightTab) => {
     setActiveRightTab(tab);
@@ -454,11 +514,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [finFormStatus, setFinFormStatus] = useState<FinancialStatus>("pending");
   const [finFormIssueDate, setFinFormIssueDate] = useState(todayLocal());
   const [finFormDueDate, setFinFormDueDate] = useState("");
+  const [finFormPaidDate, setFinFormPaidDate] = useState("");
   const [finFormDescription, setFinFormDescription] = useState("");
 
   // Timeline Event Form
   const [newTeTitle, setNewTeTitle] = useState("");
-  const [newTeType, setNewTeType] = useState("note");
+  const [newTeType, setNewTeType] = useState("phone");
+  /* Why "Add event" did nothing: shown under the field it concerns (id "title" or an attribute id). */
+  const [teIssue, setTeIssue] = useState<TimelineEventIssue | null>(null);
   const [newTeContent, setNewTeContent] = useState("");
   const [newTeTime, setNewTeTime] = useState("");
   const [timelineEventData, setTimelineEventData] = useState<Record<string, any>>({});
@@ -516,10 +579,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     finishedAt: p.finishedAt || "",
     status: p.status || "active",
     division: p.division || "",
+    contactPhone: p.contactPhone || "",
+    contactEmail: p.contactEmail || "",
+    githubRepo: p.githubRepo || "",
+    githubBranch: p.githubBranch || "",
+    clickupLists: Array.isArray(p.clickupLists) ? p.clickupLists : [],
     rating: ratingValue(p.rating),
     leadId: p.leadId || "",
     clientId: p.clientId || "",
     managers: p.managers || [],
+    employees: p.employees || [],
     data: p.data || {},
     customFileFields: Array.isArray(p.customFileFields) ? p.customFileFields : [],
     timeline: p.timeline || [],
@@ -546,16 +615,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       finishedAt: finishedAt || null,
       status,
       division: division || null,
+      contactPhone: contactPhone.trim() || null,
+      contactEmail: contactEmail.trim() || null,
+      githubRepo: githubRepo || null,
+      githubBranch: githubBranch || null,
+      clickupLists,
       rating,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
       managers: selectedManagers,
+      employees: selectedEmployees,
       data: dynamicData,
       customFileFields,
       timeline,
       gantt,
       ...overrides,
     };
+  };
+  const patchProject = (patch: Partial<Project>) => { // saves with `patch` applied: Tickets, Time and Acceptance criteria tabs
+    const next = buildProject(patch);
+    if (next) onSave(next, { close: false });
   };
 
   // Which project the state was last loaded from. Until the load effect has
@@ -627,10 +706,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setFinishedAt(s.finishedAt);
     setStatus(s.status);
     setDivision(s.division);
+    setContactPhone(s.contactPhone);
+    setContactEmail(s.contactEmail);
+    setGithubRepo(s.githubRepo);
+    setGithubBranch(s.githubBranch);
+    setClickupLists(s.clickupLists);
     setRating(s.rating);
     setAssociatedLeadId(s.leadId);
     setAssociatedClientId(s.clientId);
     setSelectedManagers(s.managers);
+    setSelectedEmployees(s.employees);
     setDynamicData(s.data);
     setCustomFileFields(s.customFileFields);
     setTimeline(s.timeline);
@@ -651,18 +736,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     finishedAt,
     status,
     division,
+    contactPhone,
+    contactEmail,
+    githubRepo,
+    githubBranch,
+    clickupLists,
     rating,
     leadId: associatedLeadId,
     clientId: associatedClientId,
     managers: selectedManagers,
+    employees: selectedEmployees,
     data: dynamicData,
     customFileFields,
     timeline,
     gantt,
   });
   // A finish before the start is the one value that is never written — the
-  // card says so under the dates, and the save resumes once it is fixed.
-  const finishBeforeStart = !!(finishedAt && startDate && finishedAt < startDate);
+  // card says so under the dates, and the save resumes once it is fixed. Only
+  // where the dates are shown: a type without them still gets its finish date
+  // stamped on completion, and a save must not stall on a field nobody can see.
+  const finishBeforeStart = !!(projectType?.hasDeadline && finishedAt && startDate && finishedAt < startDate);
 
   useEffect(() => {
     if (!project || !canEdit || loadedId !== project.id) return;
@@ -689,6 +782,19 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const projectExpenses = useMemo(() => {
     return projectFinancials.filter((r) => r.type === "expense");
   }, [projectFinancials]);
+  const timeTracking = useTimeTracking();
+  const { visibleItems: visibleCostItems, labourCost, unpricedSeconds, toggleExclusion: handleToggleLabourExclusion } = useProjectTimeCosts({
+    projectId: project?.id,
+    enabled: timeTracking.enabled,
+    canCosts: timeTracking.viewer.canCosts,
+    totalsCost: timeTracking.totals.byProject[project?.id ?? ""]?.cost ?? null,
+    totalsUnpricedSeconds: timeTracking.totals.byProject[project?.id ?? ""]?.unpricedSeconds ?? 0,
+    version: timeTracking.version,
+    language: userLanguage,
+    onChanged: timeTracking.bump,
+  });
+  // Labour is part of costs, profit and margin: without the permission to see it those are not shown at all.
+  const labourHidden = timeTracking.enabled && isLabourCostWithheld(timeTracking.totals.byProject[project?.id ?? ""]);
 
   const revenueAnalysis = useMemo(() => {
     let totalPlannedIncome = 0;
@@ -696,16 +802,23 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     let totalPlannedExpenses = 0;
     let totalRealExpenses = 0;
 
+    // A recurring rule is not one more movement next to the payments it has
+    // stored; its row counts only when it holds a legacy payment of its own.
+    const plannedOf = (r: FinancialRecord) => (isRealMovement(r) || recurringOwnRowCharge(r) ? r.amountPlanned || 0 : 0);
     projectFinancials.forEach((r) => {
-      const { real } = splitRecordAmounts(r);
+      const { real } = movementAmounts(r);
       if (r.type === "income") {
-        totalPlannedIncome += r.amountPlanned || 0;
+        totalPlannedIncome += plannedOf(r);
         totalRealIncome += real;
       } else {
-        totalPlannedExpenses += r.amountPlanned || 0;
+        totalPlannedExpenses += plannedOf(r);
         totalRealExpenses += real;
       }
     });
+
+    // Labour is computed from time entries. It is not a financial record, so
+    // company totals never see it. It counts in this project's real profit.
+    if (labourCost != null) totalRealExpenses += labourCost;
 
     const plannedProfit = totalPlannedIncome - totalPlannedExpenses;
     const realProfit = totalRealIncome - totalRealExpenses;
@@ -722,8 +835,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       if (!catMap[catId]) {
         catMap[catId] = { name, planned: 0, real: 0, color };
       }
-      catMap[catId].planned += e.amountPlanned || 0;
-      catMap[catId].real += splitRecordAmounts(e).real;
+      catMap[catId].planned += plannedOf(e);
+      catMap[catId].real += movementAmounts(e).real;
     });
 
     return {
@@ -737,9 +850,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       realMarginPct,
       invoicesCount: projectInvoices.length,
       expensesCount: projectExpenses.length,
-      expensesByCategory: Object.values(catMap).sort((a, b) => b.planned - a.planned)
+      expensesByCategory: Object.values(catMap).sort((a, b) => b.planned - a.planned),
+      labourCost,
     };
-  }, [projectFinancials, projectInvoices, projectExpenses, financialCategories, userLanguage]);
+  }, [projectFinancials, projectInvoices, projectExpenses, financialCategories, userLanguage, labourCost]);
 
   /* The budget is a cost ceiling — what the project may spend. The money
      already paid out and the costs planned so far are both measured against
@@ -778,10 +892,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const pairedLead = useMemo(() => leads.find((l) => l.id === associatedLeadId), [leads, associatedLeadId]);
   const firstMoneyAttr = useMemo(() => (projectType?.attributes || []).find((a) => a.type === "money"), [projectType]);
 
-  const projectTotalValue = useMemo(
-    () => resolveProjectValue({ value: project?.value, data: dynamicData, leadId: project?.leadId }, projectType ?? undefined, pairedLead, defaultCurrency).value,
-    [project?.value, project?.leadId, dynamicData, projectType, pairedLead, defaultCurrency],
+  const projectValueInfo = useMemo(
+    () => resolveProjectValueWithSource(
+      { id: project?.id, value: project?.value, data: dynamicData, leadId: project?.leadId, archived: project?.archived, projectTypeId: project?.projectTypeId, createdAt: project?.createdAt },
+      projectType ?? undefined,
+      pairedLead,
+      defaultCurrency,
+      { siblingProjects: projects, netMode: Boolean(companyBillingSettings?.financeNetMode) },
+    ),
+    [project?.id, project?.value, project?.leadId, project?.archived, project?.projectTypeId, project?.createdAt, dynamicData, projectType, pairedLead, defaultCurrency, projects, companyBillingSettings?.financeNetMode],
   );
+  const projectTotalValue = projectValueInfo.value;
 
   /* Value, money received, invoiced-but-unpaid and not-yet-invoiced, split by
      Finance's own rules (cancelled rows excluded, partly paid rows split). */
@@ -796,33 +917,37 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   /* Writes the project value everywhere it lives: the paired lead, the project's
      data (and its first money attribute) and the project row itself. */
-  const saveProjectValue = (amount: number) => {
+  const saveProjectValue = (amount: number, clearToNull = false) => {
     const rounded = Math.round(amount * 100) / 100;
 
-    // 1. Update paired lead if linked
-    if (associatedLeadId && setLeads) {
+    // 1. Update paired lead only when no other active project shares this lead
+    const hasSharedSibling = Boolean(
+      associatedLeadId && projects.some((p) => !p.archived && p.leadId === associatedLeadId && p.id !== project?.id)
+    );
+    if (associatedLeadId && setLeads && !clearToNull && !hasSharedSibling) {
       setLeads((prevLeads: Lead[]) =>
         prevLeads.map((l) => (l.id === associatedLeadId ? { ...l, value: rounded } : l))
       );
     }
 
     // 2. Update dynamicData (and money custom attribute if present)
-    const nextDynamic: Record<string, any> = { ...dynamicData, _projectValue: rounded };
+    const nextDynamic: Record<string, any> = { ...dynamicData, _projectValue: clearToNull ? null : rounded };
     if (firstMoneyAttr) {
-      nextDynamic[firstMoneyAttr.id] = { amount: rounded, currency: defaultCurrency };
+      nextDynamic[firstMoneyAttr.id] = clearToNull ? null : { amount: rounded, currency: defaultCurrency };
     }
     setDynamicData(nextDynamic);
-    // Lives on the project, written directly to the database
-    handleSave({ value: rounded > 0 ? rounded : null, data: nextDynamic });
+    // Explicit 0 is persisted so this project does not fall back to a shared lead's value.
+    handleSave({ value: clearToNull ? null : rounded, data: nextDynamic });
   };
 
   const handleSaveContractValue = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEdit || contractValueDraft === null) return;
     const raw = contractValueDraft.replace(/\s/g, "").replace(",", ".");
-    const value = raw === "" ? 0 : Number(raw);
+    const isBlank = raw === "";
+    const value = isBlank ? 0 : Number(raw);
     if (!Number.isFinite(value) || value < 0) return;
-    saveProjectValue(value);
+    saveProjectValue(value, isBlank);
     setContractValueDraft(null);
   };
 
@@ -916,6 +1041,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setFinFormStatus(record.status);
       setFinFormIssueDate(record.issueDate || todayLocal());
       setFinFormDueDate(record.dueDate || "");
+      setFinFormPaidDate(record.paidDate || "");
       setFinFormDescription(record.description || "");
     } else {
       setFinEditingRecord(null);
@@ -928,6 +1054,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setFinFormStatus(type === "income" ? "pending" : "planned");
       setFinFormIssueDate(todayLocal());
       setFinFormDueDate("");
+      setFinFormPaidDate("");
       setFinFormDescription("");
     }
     setIsFinModalOpen(true);
@@ -937,19 +1064,22 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     e.preventDefault();
     if (!canEditFinance || !finFormTitle.trim() || !project) return;
 
+    const planned = Number(finFormAmountPlanned) || 0;
+    const rawReal = Number(finFormAmountReal) || 0;
+    const isSettledStatus = finFormStatus === "paid" || finFormStatus === "partially_paid";
     const formValues: Partial<FinancialRecord> & Pick<FinancialRecord, "id"> = {
       id: finEditingRecord?.id || `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       title: finFormTitle.trim(),
       description: finFormDescription.trim() || null,
       categoryId: finFormCategoryId || null,
-      amountPlanned: Number(finFormAmountPlanned) || 0,
-      amountReal: Number(finFormAmountReal) || 0,
+      amountPlanned: planned,
+      amountReal: finFormStatus === "paid" && rawReal === 0 && planned > 0 ? planned : rawReal,
       currency: currencyCode || "EUR",
       status: finFormStatus,
       issueDate: finFormIssueDate,
       dueDate: finFormDueDate || null,
       invoiceNumber: finFormInvoiceNumber.trim() || null,
-      paidDate: derivePaidDate(finEditingRecord, finFormStatus)
+      paidDate: isSettledStatus ? (finFormPaidDate || derivePaidDate(finEditingRecord, finFormStatus)) : null
     };
 
     // Only recompute the category breadcrumb when the category actually
@@ -1460,23 +1590,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // Timeline Handlers
   const handleAddTimelineEvent = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit || !newTeTitle.trim()) return;
+    if (!canEdit) return;
 
-    // Validate required timeline attributes
+    // Nothing to log, or a required attribute left empty: say so under the field, never silently.
     const selectedTeType = projectType.timelineEventTypes?.find(t => t.id === newTeType);
     const activeTimelineAttributes = selectedTeType ? selectedTeType.attributes : [];
-    for (const attr of activeTimelineAttributes) {
-      if (attr.required) {
-        const val = timelineEventData[attr.id];
-        const missing = attr.type === "money"
+    const issue = findTimelineEventIssue({
+      title: newTeTitle,
+      content: newTeContent,
+      attributes: activeTimelineAttributes,
+      isEmpty: id => {
+        const val = timelineEventData[id];
+        return activeTimelineAttributes.find(a => a.id === id)?.type === "money"
           ? isMoneyValueEmpty(val, defaultCurrency)
           : (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0));
-        if (missing) {
-          alert(`"${attr.name}" ${t("is required.", "je povinné.", "megadása kötelező.")}`);
-          return;
-        }
-      }
-    }
+      },
+    }, t);
+    setTeIssue(issue);
+    if (issue) return;
+    // Details without a title are logged under the selected event type's name.
+    const teTypeLabel = timelineEventTypeOptions(projectType.timelineEventTypes, t).find(o => o.value === newTeType)?.label ?? "";
 
     const isCustom = projectType.timelineEventTypes && projectType.timelineEventTypes.length > 0;
     const newEvent: ProjectTimelineEvent = {
@@ -1484,7 +1617,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       type: isCustom ? "custom" : newTeType,
       eventType: isCustom ? newTeType : undefined,
       timestamp: newTeTime || nowLocalStamp(),
-      title: newTeTitle.trim(),
+      title: resolveTimelineEventTitle(newTeTitle, newTeContent, teTypeLabel),
       content: newTeContent.trim(),
       data: timelineEventData
     };
@@ -1879,17 +2012,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     if (!isSidebar) return content;
     const isCollapsed = collapsedSections[key] ?? false;
     return (
-      <div key={key} className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm text-left">
-        <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
+      <div key={key} className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-xs text-left">
+        <div className="flex items-center justify-between gap-2 pb-3 border-b border-gray-100">
           <button
             type="button"
             onClick={() => toggleSection(key)}
             className="flex items-center gap-2.5 min-w-0 text-left cursor-pointer group"
           >
-            <span className="p-1.5 rounded-xl bg-slate-100 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+            <span className="p-1.5 rounded-md bg-gray-100 text-gray-600 group-hover:bg-entity-subtle group-hover:text-entity-text transition-colors">
               {icon}
             </span>
-            <h4 className="text-ui font-heading font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+            <h4 className="text-ui font-heading font-semibold text-gray-900 group-hover:text-entity-text transition-colors">
               {title}
             </h4>
             {badge}
@@ -1897,7 +2030,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           <button
             type="button"
             onClick={() => toggleSection(key)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
             title={isCollapsed ? t("Expand", "Rozbaliť", "Kibontás") : t("Collapse", "Zbaliť", "Összecsukás")}
           >
             {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
@@ -1909,7 +2042,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const mainView = (
-    <div className={isSidebar ? "relative w-full max-w-2xl ws-lg:max-w-3xl bg-slate-100 flex flex-col h-full shadow-2xl border-l border-slate-200 transition-transform duration-200 ease-out transform " + (isClosing ? "translate-x-full" : "translate-x-0") : "w-full flex flex-col h-auto ws-lg:h-[calc(100vh-11rem)] animate-fade-in text-left"}>
+    <div className={isSidebar ? "relative w-full max-w-2xl ws-lg:max-w-3xl bg-gray-50 flex flex-col h-full shadow-2xl border-l border-gray-200 transition-transform duration-200 ease-out transform " + (isClosing ? "translate-x-full" : "translate-x-0") : "w-full flex flex-col animate-fade-in text-left"}>
 
       {/* Entity header / Sidebar header */}
       {isSidebar ? (
@@ -1940,7 +2073,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 autoFocus
                 maxLength={200}
                 placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
-                className="select-text min-w-0 flex-1 max-w-xl px-2 py-0.5 -my-1 rounded-xl border border-indigo-300 bg-white type-entity-title text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                className="select-text min-w-0 flex-1 max-w-xl px-2.5 py-1 -my-1 rounded-md border border-entity-solid bg-white type-entity-title text-gray-900 focus:outline-none focus:ring-2 focus:ring-entity-ring"
               />
             ) : (
               <>
@@ -1955,7 +2088,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => { nameCancelledRef.current = false; setNameDraft(projectName); setIsEditingName(true); }}
-                    className="shrink-0 p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
+                    className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-all cursor-pointer"
                     title={t("Rename project", "Premenovať projekt", "Projekt átnevezése")}
                   >
                     <Edit3 className="h-5 w-5" />
@@ -2088,19 +2221,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       )}
 
       {/* Workspace Body */}
-      <div className={isSidebar ? "flex-1 overflow-y-auto p-4 ws-sm:p-6 space-y-4 scrollbar-thin text-left" : "flex-1 ws-lg:overflow-hidden grid grid-cols-1 ws-lg:grid-cols-12 gap-6 pt-6 min-h-0"}>
+      <div className={isSidebar ? "flex-1 overflow-y-auto p-4 ws-sm:p-6 space-y-4 scrollbar-thin text-left" : "grid grid-cols-1 ws-lg:grid-cols-12 gap-6 pt-6 items-start"}>
         
         {/* LEFT COLUMN: the project's own card, its custom attributes, then
             the paired client at the bottom. The project card is edited in
             place and every change saves itself; the attributes card keeps an
             Edit mode of its own. */}
-        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-4 flex flex-col h-auto ws-lg:h-full min-h-0 ws-lg:overflow-y-auto gap-4 ws-lg:pr-1 scrollbar-thin text-left"}>
-
+        <ProjectLeftColumn isSidebar={isSidebar}>
 
           {/* PROJECT CARD DETAILS */}
-          <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+          <div className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-xs">
             <div className="flex items-center justify-between gap-2 pb-3">
-              <h4 className="text-ui font-heading font-bold text-slate-900">
+              <h4 className="text-ui font-heading font-semibold text-gray-900">
                 {t("Project Card Details", "Detaily karty projektu", "Projekt részletei")}
               </h4>
             </div>
@@ -2121,8 +2253,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   if (!canEdit) return;
                   setStatus(v);
                   // Completing stamps today as the real finish, reopening clears
-                  // it — see finishedAtForStatus. Only where the field is shown.
-                  const nextFinished = projectType.hasDeadline ? finishedAtForStatus(v, finishedAt, todayLocal(), projectStatuses) : finishedAt;
+                  // it — see finishedAtForStatus. Also for a type without the
+                  // deadline field: the date it was finished is a fact either way.
+                  const nextFinished = finishedAtForStatus(v, finishedAt, todayLocal(), projectStatuses);
                   setFinishedAt(nextFinished);
                 }}
                 className="!font-black"
@@ -2194,6 +2327,50 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 )}
               </div>
             </div>
+
+            {/* Contact phone: who the project talks to. WAAI pairs WhatsApp chats to
+                the project by this number, so the hint says so. */}
+            <div>
+              <label htmlFor="project-contact-phone" className="block type-overline text-slate-400 mb-1">
+                {t("Contact phone", "Telefón kontaktu", "Kapcsolattartó telefonszáma")}
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  id="project-contact-phone"
+                  type="tel"
+                  value={contactPhone}
+                  readOnly={!canEdit}
+                  onChange={e => setContactPhone(e.target.value)}
+                  placeholder={canEdit ? "+421 900 000 000" : "—"}
+                  className="w-full max-w-64 px-3 py-2 rounded-xl border-2 border-slate-200 bg-slate-50 text-body font-bold text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all read-only:bg-transparent read-only:border-transparent read-only:pl-0"
+                />
+                <WhatsAppChip project={{ id: project.id, leadId: associatedLeadId || null, clientId: associatedClientId || null, contactPhone: project.contactPhone }} contactLeadIds={contactLeadIds} leads={leads} userLanguage={userLanguage} />
+              </div>
+              {canEdit && (
+                <p className="mt-1 text-caption text-slate-400">
+                  {t("Used to pair WhatsApp chats with this project.", "Podľa neho sa k projektu priraďujú WhatsApp chaty.", "Ennek alapján rendeli a rendszer a WhatsApp-csevegéseket a projekthez.")}
+                </p>
+              )}
+            </div>
+
+            <ProjectContactEmail userLanguage={userLanguage} value={contactEmail} canEdit={canEdit} onChange={setContactEmail} />
+
+            <ProjectGithubFields userLanguage={userLanguage} repo={githubRepo} branch={githubBranch} canEdit={canEdit} onRepoChange={setGithubRepo} onBranchChange={setGithubBranch} />
+
+            {clickupConnected && (
+              <ProjectClickUpListsBar
+                compact
+                projectId={project.id}
+                isNew={isNew}
+                value={clickupLists}
+                canEdit={canEdit}
+                userLanguage={userLanguage}
+                onChange={(next) => {
+                  setClickupLists(next);
+                  if (!isNew) patchProject({ clickupLists: next });
+                }}
+              />
+            )}
 
             {/* Invoice date and deadline. Each has its own switch on the project
                 type (Projects -> Settings -> project type): the invoice date is
@@ -2425,73 +2602,55 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               );
             })()}
 
-            {/* Project Managers, edited in place. A project can carry several,
-                so the dropdown adds one at a time and the chosen ones sit above
-                it as the same coloured chips the lead view wears for its manager;
-                each chip's cross takes that manager off again. */}
+            {/* The one Project Manager, edited in place: only users with the Project Manager role are offered
+                (Settings -> Users), plus a name saved before that rule. Choosing someone who is among the
+                employees takes them off that list. */}
             <div>
-              <label className="block type-overline text-slate-400 mb-1">{t("Project Managers", "Projektoví manažéri", "Projektmenedzserek")}</label>
-              {selectedManagers.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {selectedManagers.map(name => {
+              <label className="block type-overline text-slate-400 mb-1">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</label>
+              {canEdit ? (() => {
+                const current = selectedManagers[0] || "";
+                const names = projectManagerPickerNames(users, current);
+                const colorOf = (name: string) => users.find(u => u.name === name)?.color || "#64748b";
+                return (
+                  <CustomSelect
+                    value={current}
+                    onChange={name => {
+                      setSelectedManagers(name ? [name] : []);
+                      if (name) setSelectedEmployees(prev => prev.filter(e => e !== name));
+                    }}
+                    placeholder={names.length === 0
+                      ? t("No user has the Project Manager role", "Žiadny používateľ nemá rolu projektového manažéra", "Egyik felhasználónak sincs projektmenedzser szerepköre")
+                      : t("Assign a manager...", "Priradiť manažéra...", "Menedzser kijelölése...")}
+                    options={[
+                      { value: "", label: t("Unassigned", "Nepriradený", "Nincs kijelölve") },
+                      ...names.map(name => ({
+                        value: name,
+                        label: displayEmployeeName(name),
+                        icon: <span className="h-2.5 w-2.5 rounded-full shrink-0 inline-block" style={{ backgroundColor: colorOf(name) }} />,
+                      })),
+                    ]}
+                  />
+                );
+              })() : selectedManagers.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedManagers.slice(0, 1).map(name => {
                     const color = users.find(u => u.name === name)?.color || "#64748b";
                     return (
-                      <span
-                        key={name}
-                        className={`inline-flex items-center gap-1 pl-2.5 py-1 rounded-full border type-overline shadow-sm ${canEdit ? "pr-1" : "pr-2.5"}`}
-                        style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}
-                      >
+                      <span key={name} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border type-overline shadow-sm" style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}>
                         <Icons.User className="h-3 w-3 shrink-0" />
-                        <span className="truncate max-w-[10rem]">{name}</span>
-                        {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedManagers(prev => prev.filter(m => m !== name))}
-                          className="ml-0.5 p-0.5 rounded-full hover:bg-black/10 transition-colors cursor-pointer"
-                          title={t("Remove", "Odobrať", "Eltávolítás")}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                        )}
+                        <span className="truncate max-w-[10rem]">{displayEmployeeName(name)}</span>
                       </span>
                     );
                   })}
                 </div>
-              )}
-              {canEdit && (() => {
-                const available = users.filter(u => !selectedManagers.includes(u.name));
-                return (
-                  <CustomSelect
-                    value=""
-                    onChange={name => {
-                      if (name && !selectedManagers.includes(name)) setSelectedManagers(prev => [...prev, name]);
-                    }}
-                    disabled={available.length === 0}
-                    placeholder={
-                      available.length === 0
-                        ? t("Everyone is assigned", "Priradení sú všetci", "Mindenki hozzá van rendelve")
-                        : selectedManagers.length > 0
-                          ? t("Add another manager...", "Pridať ďalšieho manažéra...", "További menedzser hozzáadása...")
-                          : t("Assign a manager...", "Priradiť manažéra...", "Menedzser kijelölése...")
-                    }
-                    options={available.map(u => ({
-                      value: u.name,
-                      label: u.name,
-                      icon: <span className="h-2.5 w-2.5 rounded-full shrink-0 inline-block" style={{ backgroundColor: u.color || "#64748b" }} />,
-                    }))}
-                  />
-                );
-              })()}
-              {!canEdit && selectedManagers.length === 0 && (
+              ) : (
                 <p className="text-ui font-semibold text-slate-300 italic">
-                  {t(
-                    "Nobody is on this project yet.",
-                    "Na projekte zatiaľ nikto nie je priradený.",
-                    "Még senki sincs hozzárendelve a projekthez.",
-                  )}
+                  {t("No project manager yet.", "Zatiaľ bez projektového manažéra.", "Még nincs projektmenedzser.")}
                 </p>
               )}
             </div>
+
+            <ProjectEmployeesField userLanguage={userLanguage} users={users} value={selectedEmployees} managers={selectedManagers} canEdit={canEdit} onChange={setSelectedEmployees} />
 
           </div>
           </div>
@@ -2503,9 +2662,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               file list, the money and contact pickers while editable) takes
               the whole row. */}
           {(projectType.attributes || []).length > 0 && (
-          <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-200">
-              <h4 className="text-ui font-heading font-bold text-slate-900">
+          <div className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-xs">
+            <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-gray-200">
+              <h4 className="text-ui font-heading font-semibold text-gray-900">
                 {t("Custom Attributes", "Vlastné atribúty", "Egyedi attribútumok")}
               </h4>
             </div>
@@ -2565,7 +2724,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="text"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                       />
                     )}
 
@@ -2575,7 +2734,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         value={val}
                         onChange={e => updateVal(e.target.value)}
                         rows={3}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800 resize-none"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring resize-none"
                       />
                     )}
 
@@ -2585,7 +2744,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="number"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                       />
                     )}
 
@@ -2598,7 +2757,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="date"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                       />
                     )}
 
@@ -2608,7 +2767,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="time"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                       />
                     )}
 
@@ -2618,7 +2777,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="datetime-local"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                       />
                     )}
 
@@ -2742,14 +2901,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     }
                                   }}
                                   placeholder={t("Add checkbox…", "Pridať políčko…", "Jelölőnégyzet hozzáadása…")}
-                                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid"
                                 />
                                 <button
                                   type="button"
                                   onClick={addExtra}
                                   disabled={!draft.trim()}
                                   aria-label={t("Add checkbox", "Pridať políčko", "Jelölőnégyzet hozzáadása")}
-                                  className="shrink-0 p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-95 cursor-pointer"
+                                  className="shrink-0 p-1.5 rounded-md bg-entity-solid text-white hover:bg-entity-solid-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 cursor-pointer"
                                 >
                                   <Plus className="h-3.5 w-3.5" />
                                 </button>
@@ -2825,6 +2984,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                 <div className="flex items-center gap-1.5 text-slate-500">
                                   <Phone className="h-3 w-3 text-slate-400 shrink-0" />
                                   <span>{contact.phone}</span>
+                                  <WhatsAppChip lead={contact} leads={leads} userLanguage={userLanguage} className="ml-1" />
                                 </div>
                               )}
                             </div>
@@ -2860,10 +3020,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               // Pairing a lead names the project after it, but only while it
               // has no name yet — re-pairing never overwrites what somebody
               // deliberately typed.
-              if (!projectName.trim()) {
-                const paired = leads.find(l => l.id === id);
-                if (paired?.name) setProjectName(paired.name);
-              }
+              const paired = leads.find(l => l.id === id);
+              if (!projectName.trim() && paired?.name) setProjectName(paired.name);
+              // Likewise the contact, division and rating: an empty one is filled from the lead, one already set stays.
+              const filled = fillEmptyFromLead({ contactPhone, contactEmail, division, rating }, paired);
+              setContactPhone(filled.contactPhone);
+              setContactEmail(filled.contactEmail);
+              setDivision(filled.division || "");
+              setRating(filled.rating || 0);
             };
 
             if (!pairedLead || pickingClient) {
@@ -2871,9 +3035,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               // nobody, and a way in. A read-only role only gets the note.
               if (!canEdit || !pickingClient) {
                 return (
-                  <div className="shrink-0 bg-white border border-dashed border-slate-300 rounded-3xl p-5 shadow-sm text-center">
-                    <Icons.Unlink className="h-5 w-5 text-slate-300 mx-auto mb-2" />
-                    <p className="text-caption font-bold text-slate-500 leading-snug">
+                  <div className="shrink-0 bg-white border border-dashed border-gray-300 rounded-lg p-5 shadow-xs text-center">
+                    <Icons.Unlink className="h-5 w-5 text-gray-300 mx-auto mb-2" />
+                    <p className="text-caption font-semibold text-gray-500 leading-snug">
                       {t(
                         "This project is not paired with any lead or client.",
                         "Tento projekt nie je spárovaný so žiadnym leadom ani klientom.",
@@ -2884,7 +3048,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setPickingClient(true)}
-                        className="mt-2.5 px-3 py-1.5 rounded-xl type-overline text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                        className="mt-2.5 px-3 py-1.5 rounded-md type-overline text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer"
                       >
                         {t("Pair now", "Spárovať", "Párosítať")}
                       </button>
@@ -2893,8 +3057,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 );
               }
               return (
-                <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-                  <label className="block type-overline text-slate-400 mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
+                <div className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-xs">
+                  <label className="block type-overline text-gray-500 mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
                   <ClientSelect
                     leads={leads}
                     value={associatedLeadId}
@@ -2942,70 +3106,77 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             const noneAdded = <span className="text-slate-300 italic">{getTranslation(userLanguage, "profile.none_added")}</span>;
 
             return (
-              <div className="shrink-0 rounded-3xl border-2 border-emerald-400 bg-emerald-50/70 shadow-md p-4 space-y-3 text-emerald-950">
-                <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2 flex-wrap">
-                  <span className="type-overline text-emerald-700 flex items-center gap-1.5 min-w-0">
-                    <Icons.Briefcase className="h-4 w-4 text-emerald-600 stroke-[2.5] shrink-0" />
+              <div
+                style={entityAccentStyle("clients")}
+                className="shrink-0 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white shadow-xs p-4 space-y-3 text-gray-900"
+              >
+                <div className="border-b border-gray-200 pb-2.5 flex items-center justify-between gap-2 flex-wrap">
+                  <span className="type-overline text-entity-text flex items-center gap-1.5 min-w-0">
+                    <Icons.Briefcase className="h-4 w-4 text-entity-text shrink-0" />
                     <span>{getTranslation(userLanguage, "common.client_relationship_card")}</span>
                   </span>
-                  <span className="px-2 py-0.5 rounded-full type-overline bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
-                    {getTranslation(userLanguage, "common.synced_profile")}
-                  </span>
+                  <EntityBadge
+                    entity="clients"
+                    label={getTranslation(userLanguage, "common.synced_profile")}
+                    href={`#client-${encodeURIComponent(pairedLead.name)}`}
+                    size="sm"
+                  />
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-bold text-body shadow shrink-0">
+                  <div className="h-10 w-10 rounded-md bg-entity-solid text-white flex items-center justify-center font-heading font-semibold text-body shadow-2xs shrink-0">
                     {initials}
                   </div>
                   <div className="min-w-0">
-                    <h4 className="text-body font-bold text-slate-800 line-clamp-1">{pairedLead.name}</h4>
-                    <span className="type-overline text-emerald-700">{clientTypeLabel}</span>
+                    <h4 className="text-body font-semibold text-gray-900 line-clamp-1">{pairedLead.name}</h4>
+                    <span className="type-overline text-entity-text">{clientTypeLabel}</span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-caption bg-white/70 p-3 rounded-xl border border-emerald-200/50">
+                <div className="grid grid-cols-2 gap-3 text-caption bg-gray-50 p-3 rounded-md border border-gray-200">
                   <div className="space-y-0.5 min-w-0">
-                    <span className="type-overline text-emerald-700/60 block">
+                    <span className="type-overline text-gray-500 block">
                       {getTranslation(userLanguage, "profile.phone_number")}
                     </span>
-                    <span className="font-extrabold text-slate-700 block truncate">
+                    <span className="font-semibold text-gray-800 block truncate">
                       {pairedLead.phone ? (
-                        <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-600 shrink-0" />{pairedLead.phone}</span>
+                        <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-entity-text shrink-0" />{pairedLead.phone}</span>
                       ) : noneAdded}
                     </span>
+                    <WhatsAppChip lead={pairedLead} leads={leads} userLanguage={userLanguage} className="mt-1" />
                   </div>
                   <div className="space-y-0.5 min-w-0">
-                    <span className="type-overline text-emerald-700/60 block">
+                    <span className="type-overline text-gray-500 block">
                       {getTranslation(userLanguage, "profile.email_address")}
                     </span>
-                    <span className="font-extrabold text-slate-700 block truncate">
+                    <span className="font-semibold text-gray-800 block truncate">
                       {pairedLead.email ? (
-                        <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-600 shrink-0" /><span className="truncate">{pairedLead.email}</span></span>
+                        <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-entity-text shrink-0" /><span className="truncate">{pairedLead.email}</span></span>
                       ) : noneAdded}
                     </span>
                   </div>
-                  <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                    <span className="type-overline text-emerald-700/60 block">
+                  <div className="space-y-0.5 col-span-2 border-t border-gray-200 pt-2 mt-1">
+                    <span className="type-overline text-gray-500 block">
                       {getTranslation(userLanguage, "profile.location_address")}
                     </span>
-                    <span className="font-extrabold text-slate-700 block">
+                    <span className="font-semibold text-gray-800 block">
                       {addressText ? (
-                        <span className="flex items-center gap-1"><Icons.MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" /><span className="line-clamp-1">{addressText}</span></span>
+                        <span className="flex items-center gap-1"><Icons.MapPin className="h-3.5 w-3.5 text-entity-text shrink-0" /><span className="line-clamp-1">{addressText}</span></span>
                       ) : noneAdded}
                     </span>
                   </div>
                   {pairedLead.website && (
-                    <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                      <span className="type-overline text-emerald-700/60 block">
+                    <div className="space-y-0.5 col-span-2 border-t border-gray-200 pt-2 mt-1">
+                      <span className="type-overline text-gray-500 block">
                         {getTranslation(userLanguage, "profile.website_link")}
                       </span>
                       <a
                         href={`https://${pairedLead.website.replace(/^https?:\/\//, "")}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="font-extrabold text-blue-600 hover:underline flex items-center gap-1"
+                        className="font-semibold text-entity-text hover:underline flex items-center gap-1"
                       >
-                        <Icons.Globe className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                        <Icons.Globe className="h-3.5 w-3.5 text-entity-text shrink-0" />
                         <span className="truncate">{pairedLead.website}</span>
                       </a>
                     </div>
@@ -3018,7 +3189,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setPickingClient(true)}
-                      className="px-2.5 py-1.5 rounded-lg type-overline text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
+                      className="px-2.5 py-1.5 rounded-md type-overline text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer flex items-center gap-1"
                       title={t("Pair with a different lead or client", "Spárovať s iným leadom alebo klientom", "Másik leaddel vagy ügyféllel párosítás")}
                     >
                       <Icons.Repeat className="h-3 w-3" />
@@ -3027,7 +3198,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => { setAssociatedLeadId(""); setAssociatedClientId(""); setPickingClient(false); }}
-                      className="px-2.5 py-1.5 rounded-lg type-overline text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
+                      className="px-2.5 py-1.5 rounded-md type-overline text-gray-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
                       title={t("Unpair this project", "Zrušiť spárovanie projektu", "Párosítás megszüntetése")}
                     >
                       <Icons.Unlink className="h-3 w-3" />
@@ -3038,7 +3209,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => { window.location.hash = `client-${encodeURIComponent(pairedLead.name)}`; }}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white type-overline shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700 cursor-pointer"
+                    className="px-3.5 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white type-overline shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     {getTranslation(userLanguage, "common.view_full_profile")}
                     <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
@@ -3046,7 +3217,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
 
                 {canEdit && (
-                <p className="text-micro font-semibold text-emerald-800/60 leading-snug">
+                <p className="text-micro font-medium text-gray-500 leading-snug">
                   {t(
                     "This project shows up on the lead's card too.",
                     "Tento projekt sa zobrazí aj na karte leadu.",
@@ -3057,10 +3228,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </div>
             );
           })()}
-        </div>
+        </ProjectLeftColumn>
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
-        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 ws-sm:p-5 shadow-sm text-left"}>
+        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-8 flex flex-col bg-white border border-gray-200 rounded-lg p-4 ws-sm:p-5 shadow-xs text-left"}>
           {/* Tab bar: icon, label, optional badge; scrolls sideways rather than wrapping. */}
           {!isSidebar && (
             <Tabs<RightTab>
@@ -3075,6 +3246,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               }}
               items={[
                 { key: "timeline", hidden: !projectType.hasTimeline, icon: <Icons.Clock />, label: t("Timeline", "Časová os", "Idővonal") },
+                { key: "notes", hidden: isNew, icon: <Icons.NotebookPen />, label: t("Notes", "Poznámky", "Jegyzetek") },
+                { key: "criteria", icon: <Icons.ClipboardCheck />, label: t("Acceptance criteria", "Akceptačné kritériá", "Elfogadási kritériumok") },
                 {
                   key: "tasks",
                   hidden: !(setTasks && taskAccess.view),
@@ -3083,6 +3256,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   // Open tasks, counted by the same visibility rule the tab lists them with.
                   count: openTasksCount || undefined,
                 },
+                { key: "time", hidden: !timeTracking.enabled, icon: <Icons.Timer />, label: t("Time", "Čas", "Idő"), badge: timeTracking.totals.byProject[project?.id ?? ""]?.seconds ? <span className="px-1.5 rounded-full text-micro font-semibold tabular-nums bg-teal-500/15 text-teal-700">{formatDuration(timeTracking.totals.byProject[project?.id ?? ""].seconds)}</span> : undefined },
                 { key: "gantt", hidden: !projectType.hasGantt, icon: <Icons.GanttChartSquare />, label: t("Gantt Chart", "Ganttov diagram", "Gantt diagram") },
                 {
                   key: "finances",
@@ -3090,7 +3264,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   label: t("Finances", "Financie", "Pénzügyek"),
                   badge: (
                     <span className={`px-1.5 rounded-full text-micro font-semibold tabular-nums ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-500/15 text-emerald-700" : "bg-rose-500/15 text-rose-700"}`}>
-                      {money(revenueAnalysis.realProfit)}
+                      {labourHidden ? "—" : money(revenueAnalysis.realProfit)}
                     </span>
                   ),
                 },
@@ -3102,6 +3276,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <span className="px-1.5 rounded-full text-micro font-semibold tabular-nums bg-rose-500/20 text-rose-600">{missingFileCount}</span>
                   ) : undefined,
                 },
+                { key: "orders", hidden: !orderLinks || isNew, icon: <Icons.ShoppingCart />, label: t("Orders", "Objednávky", "Rendelések"), count: orderLinks ? ordersOfProject(orderLinks.orders, project.id).length || undefined : undefined },
                 {
                   key: "tickets",
                   hidden: !(projectType.hasTickets || project.ticketWidgetEnabled),
@@ -3117,6 +3292,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 },
               ]}
             />
+          )}
+
+          {activeRightTab === "orders" && orderLinks && !isNew && (
+            <ProjectOrdersTab project={project} links={orderLinks} leads={leads} language={userLanguage} currency={currencyCode || "EUR"} />
           )}
 
           {/* TAB CONTENT: Tickets & Floating Widget */}
@@ -3136,12 +3315,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 currentUser={currentUser}
                 userLanguage={userLanguage}
                 canEdit={canEdit}
-                onUpdateProject={(patch) => {
-                  const next = buildProject(patch);
-                  if (next) {
-                    onSave(next, { close: false });
-                  }
-                }}
+                onUpdateProject={patchProject}
+              />
+            </div>
+          )}
+
+          {activeRightTab === "time" && timeTracking.enabled && project && (
+            <div className="flex-1 ws-lg:overflow-y-auto scrollbar-thin ws-lg:pr-1 animate-in fade-in duration-150">
+              <ProjectTimeTab
+                project={project} users={users} tasks={tasks}
+                language={userLanguage}
+                currency={currencyCode || "EUR"}
+                onPatch={patchProject}
               />
             </div>
           )}
@@ -3170,6 +3355,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               taskAccess={taskAccess}
               currentUser={currentUser}
               mailConfigured={mailConfigured}
+              clickupConnected={clickupConnected}
+              clickupLists={clickupLists}
+              canEditProject={canEdit}
+              onClickUpListsChange={(next) => {
+                setClickupLists(next);
+                if (!isNew) patchProject({ clickupLists: next });
+              }}
             />
           )}
 
@@ -3189,30 +3381,25 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 
                 <form onSubmit={handleAddTimelineEvent} className="space-y-3.5 text-ui font-semibold">
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Event Title", "Názov udalosti", "Esemény címe")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">
+                      {t("Event Title", "Názov udalosti", "Esemény címe")}
+                                          </label>
                     <input
                       value={newTeTitle}
-                      onChange={e => setNewTeTitle(e.target.value)}
+                      onChange={e => { setNewTeTitle(e.target.value); setTeIssue(null); }}
+                      aria-invalid={teIssue?.field === "title"}
                       placeholder={t("e.g. Site survey completed", "napr. Zameranie dokončené", "pl. Helyszíni felmérés kész")}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white aria-[invalid=true]:border-rose-400"
                     />
+                    {teIssue?.field === "title" && <p role="alert" className="mt-1 text-caption font-semibold text-rose-600">{teIssue.message}</p>}
                   </div>
 
                   <div>
                     <label className="block type-overline text-slate-400 mb-1">{t("Event Type", "Typ", "Típus")}</label>
                     <CustomSelect
                       value={newTeType}
-                      onChange={v => setNewTeType(v)}
-                      options={
-                        projectType.timelineEventTypes && projectType.timelineEventTypes.length > 0
-                          ? projectType.timelineEventTypes.map(et => ({ value: et.id, label: et.name }))
-                          : [
-                              { value: "note", label: t("Internal Note", "Interná poznámka", "Belső jegyzet") },
-                              { value: "phone", label: t("Phone Call", "Telefonát", "Telefonhívás") },
-                              { value: "email", label: t("Email Dispatch", "Odoslaný e-mail", "E-mail") },
-                              { value: "appointment", label: t("Meeting / Appointment", "Stretnutie", "Találkozó") },
-                            ]
-                      }
+                      onChange={v => { setNewTeType(v); setTeIssue(null); }}
+                      options={timelineEventTypeOptions(projectType.timelineEventTypes, t)}
                     />
                   </div>
 
@@ -3227,10 +3414,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Content details...", "Podrobnosti", "Részletek")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">
+                      {t("Content details...", "Podrobnosti", "Részletek")}
+                                          </label>
                     <textarea
                       value={newTeContent}
-                      onChange={e => setNewTeContent(e.target.value)}
+                      onChange={e => { setNewTeContent(e.target.value); setTeIssue(null); }}
                       rows={3}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white resize-none"
                     />
@@ -3244,6 +3433,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       const val = timelineEventData[attr.id] ?? "";
                       const updateVal = (newVal: any) => {
                         setTimelineEventData(prev => ({ ...prev, [attr.id]: newVal }));
+                        setTeIssue(null);
                       };
 
                       return (
@@ -3432,6 +3622,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               </div>
                             </div>
                           )}
+                          {teIssue?.field === attr.id && <p role="alert" className="mt-1 text-caption font-semibold text-rose-600">{teIssue.message}</p>}
                         </div>
                       );
                     });
@@ -3439,7 +3630,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <button
                     type="submit"
-                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold cursor-pointer mt-4"
+                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white font-semibold shadow-xs cursor-pointer mt-4"
                   >
                     <Plus className="h-4 w-4" />
                     <span>{t("Add Event", "Pridať udalosť", "Esemény hozzáadása")}</span>
@@ -3450,22 +3641,23 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
               {/* Timeline Events List */}
               <div className="flex-1 ws-lg:overflow-y-auto space-y-3.5 ws-lg:pr-1 scrollbar-thin">
-                {timeline.length === 0 ? (
-                  <div className="h-full min-h-50 flex items-center justify-center border-2 border-dashed border-slate-100 rounded-2xl p-6 text-slate-400 text-ui">
+                {leadHistory.length > 0 && <LeadHistoryToggle count={leadHistory.length} shown={showLeadHistory} onChange={setShowLeadHistory} language={userLanguage} />}
+                {timelineEntries.length === 0 ? (
+                  <div className="h-full min-h-50 flex items-center justify-center border border-dashed border-gray-200 rounded-lg p-6 text-gray-400 text-ui">
                     {t("No events logged for this project yet.", "Zatiaľ neboli zaznamenané žiadne udalosti.", "Még nincsenek események rögzítve.")}
                   </div>
                 ) : (
-                  timeline.map(event => (
-                    <div key={event.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm text-ui font-semibold relative group flex gap-3.5 animate-fade-in">
-                      <div className="p-2.5 rounded-xl bg-white border border-slate-200 shrink-0 self-start shadow-sm">
+                  timelineEntries.map(event => isLeadHistoryItem(event) ? <LeadHistoryTimelineItem key={event.id} item={event} leadName={pairedLead?.name} language={userLanguage} /> : isPushItem(event) ? <ProjectPushTimelineItem key={event.id} item={event} language={userLanguage} /> : isNoteActivity(event) ? <NoteActivityRow key={event.id} title={event.title} content={event.content} timestamp={event.timestamp} language={userLanguage} /> : (
+                    <div key={event.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-2xs text-ui font-medium relative group flex gap-3.5 animate-fade-in">
+                      <div className="p-2 rounded-md bg-white border border-gray-200 shrink-0 self-start shadow-2xs">
                         {getTimelineIcon(event.type, event.eventType)}
                       </div>
                       <div className="flex-1 text-left">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-800 text-ui font-bold">{event.title}</span>
+                            <span className="text-gray-900 text-ui font-semibold">{event.title}</span>
                             {event.eventType && (
-                              <span className="type-overline text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                              <span className="type-overline text-entity-text bg-entity-subtle border border-entity-border px-2 py-0.5 rounded-md">
                                 {projectType.timelineEventTypes?.find(t => t.id === event.eventType)?.name || event.eventType}
                               </span>
                             )}
@@ -3548,8 +3740,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </div>
                   ))
                 )}
+                {projectPushes.failed && <ProjectPushesFailedNote language={userLanguage} />}
               </div>
             </div>
+          )}
+
+          {(isSidebar || activeRightTab === "criteria") && wrapSection("criteria", <Icons.ClipboardCheck className="h-4 w-4 text-indigo-600" />, t("Acceptance criteria", "Akceptačné kritériá", "Elfogadási kritériumok"), undefined,
+            <ProjectAcceptanceCriteria project={project} canEdit={canEdit} isNew={isNew} userName={currentUser?.name ?? ""} language={userLanguage} onPatch={patchProject} />
           )}
 
           {/* TAB CONTENT: Gantt Chart */}
@@ -3609,7 +3806,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <button
                     type="submit"
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold cursor-pointer"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white font-semibold shadow-xs cursor-pointer"
                   >
                     <Plus className="h-4 w-4" />
                     <span>{t("Add Row", "Pridať", "Hozzáadás")}</span>
@@ -3618,7 +3815,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 )}
 
                 {/* THE GANTT CONTAINER: Left Table & Right Timeline Scrollable */}
-                <div className="flex-1 border border-slate-200 rounded-3xl overflow-hidden bg-white shadow-sm flex flex-col relative min-h-87.5">
+                <div className="flex-1 border border-gray-200 rounded-lg overflow-hidden bg-white shadow-xs flex flex-col relative min-h-87.5">
                   
                   {/* Zoom controls floating */}
                   <div className="absolute right-4 top-3.5 z-30 flex items-center gap-1 bg-white/90 backdrop-blur border border-slate-200 p-1.5 rounded-xl shadow-sm">
@@ -3871,23 +4068,23 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {/* GANTT EDIT MODAL */}
           {selectedGanttEdit && (
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-              <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-glass border border-slate-200/60 text-left space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                  <h4 className="font-heading font-bold text-body text-slate-800">
+              <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg border border-gray-200 text-left space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+                  <h4 className="font-heading font-semibold text-body text-gray-900">
                     {t("Edit Task Details", "Upraviť podrobnosti úlohy", "Feladat részleteinek szerkesztése")}
                   </h4>
                   <button
                     type="button"
                     onClick={() => setSelectedGanttEdit(null)}
-                    className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                    className="p-1 hover:bg-gray-100 rounded-md text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
                   >
                     <Icons.X className="h-4.5 w-4.5" />
                   </button>
                 </div>
 
-                <div className="space-y-3.5 text-ui font-semibold text-slate-700">
+                <div className="space-y-3.5 text-ui font-medium text-gray-700">
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
+                    <label className="block type-overline text-gray-500 mb-1">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
                     <input
                       type="text"
                       value={selectedGanttEdit.title}
@@ -3896,12 +4093,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         setSelectedGanttEdit(prev => prev ? { ...prev, title: val } : null);
                         setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, title: val } : r));
                       }}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800"
+                      className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white font-semibold text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                     />
                   </div>
 
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
+                    <label className="block type-overline text-gray-500 mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
                     <ClientSelect
                       leads={leads}
                       value={selectedGanttEdit.contactId}
@@ -3915,7 +4112,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Start Date", "Začiatok", "Kezdet")}</label>
+                      <label className="block type-overline text-gray-500 mb-1">{t("Start Date", "Začiatok", "Kezdet")}</label>
                       <input
                         type="date"
                         value={selectedGanttEdit.startDate || ""}
@@ -3924,12 +4121,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           setSelectedGanttEdit(prev => prev ? { ...prev, startDate: val || undefined } : null);
                           setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, startDate: val || undefined } : r));
                         }}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                       />
                     </div>
 
                     <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("End Date", "Koniec", "Vége")}</label>
+                      <label className="block type-overline text-gray-500 mb-1">{t("End Date", "Koniec", "Vége")}</label>
                       <input
                         type="date"
                         value={selectedGanttEdit.endDate || ""}
@@ -3938,13 +4135,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           setSelectedGanttEdit(prev => prev ? { ...prev, endDate: val || undefined } : null);
                           setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, endDate: val || undefined } : r));
                         }}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1.5">{t("Progress", "Postup", "Haladás")} ({selectedGanttEdit.progress}%)</label>
+                    <label className="block type-overline text-gray-500 mb-1.5">{t("Progress", "Postup", "Haladás")} ({selectedGanttEdit.progress}%)</label>
                     <div className="flex items-center gap-3">
                       <input
                         type="range"
@@ -3956,7 +4153,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           setSelectedGanttEdit(prev => prev ? { ...prev, progress: val } : null);
                           setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, progress: val } : r));
                         }}
-                        className="flex-1 accent-indigo-600"
+                        className="flex-1 accent-entity-solid"
                       />
                       <div className="flex gap-1">
                         <button
@@ -3965,7 +4162,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             setSelectedGanttEdit(prev => prev ? { ...prev, progress: 0 } : null);
                             setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, progress: 0 } : r));
                           }}
-                          className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-micro cursor-pointer"
+                          className="px-2 py-1 rounded-md bg-gray-100 hover:bg-gray-200 text-micro cursor-pointer"
                         >
                           0%
                         </button>
@@ -3975,7 +4172,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             setSelectedGanttEdit(prev => prev ? { ...prev, progress: 100 } : null);
                             setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, progress: 100 } : r));
                           }}
-                          className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-micro cursor-pointer"
+                          className="px-2 py-1 rounded-md bg-entity-subtle hover:bg-entity-muted text-entity-text text-micro cursor-pointer"
                         >
                           100%
                         </button>
@@ -3988,7 +4185,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedGanttEdit(null)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-ui transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white font-semibold rounded-md text-ui shadow-xs transition-colors cursor-pointer"
                   >
                     {t("Close", "Zatvoriť", "Bezárás")}
                   </button>
@@ -3996,6 +4193,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </div>
             </div>
           )}
+
+          {(isSidebar || activeRightTab === "notes") && !isNew && wrapSection("notes", <Icons.NotebookPen className="h-4 w-4 text-yellow-600" />, t("Notes", "Poznámky", "Jegyzetek"), null,
+            <ProjectNotesSection projectId={project.id} language={userLanguage} author={currentUser?.name} canEdit={canEdit} canDelete={canDelete} onActivity={trace => setTimeline(prev => [trace, ...prev])} />)}
 
           {/* TAB CONTENT: Files — the type's default files, then this project's own */}
           {(isSidebar || activeRightTab === "files") && wrapSection(
@@ -4065,7 +4265,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 )}
 
                 {canEdit && (
-                  <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <div className="flex flex-wrap items-center gap-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
                     <input
                       value={newCustomFileName}
                       onChange={e => setNewCustomFileName(e.target.value)}
@@ -4076,14 +4276,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         }
                       }}
                       placeholder={t("e.g. Building permit", "napr. Stavebné povolenie", "pl. Építési engedély")}
-                      className="flex-1 min-w-[8rem] px-3 py-2 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="flex-1 min-w-[8rem] px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid"
                     />
                     <button
                       type="button"
                       onClick={handleAddCustomFileField}
                       disabled={!canAddCustomFile}
-                      title={newCustomFileTaken ? t("A file with this name already exists.", "Súbor s týmto názvom už existuje.", "Ilyen nevű fájl már létezik.") : undefined}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-ui hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                      title={newCustomFileTaken ? t("A file with this name already exists.", "Súbor s týmto názvom už existuje.", "Ilyen nevű fájl már lézik.") : undefined}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white font-semibold text-ui shadow-xs transition-all duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                     >
                       <Plus className="h-4 w-4" />
                       <span>{t("Add custom file", "Pridať vlastný súbor", "Egyedi fájl hozzáadása")}</span>
@@ -4100,7 +4300,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             <Coins className="h-4 w-4 text-emerald-600" />,
             t("Finances", "Financie", "Pénzügyek"),
             <span className={`px-2 py-0.5 rounded-full text-micro font-semibold tabular-nums ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"}`}>
-              {money(revenueAnalysis.realProfit)}
+              {labourHidden ? "—" : money(revenueAnalysis.realProfit)}
             </span>,
             <div className={`flex-1 ${isSidebar ? "space-y-6" : "ws-lg:overflow-y-auto space-y-6 scrollbar-thin ws-lg:pr-1"} animate-in fade-in duration-150 text-left`}>
               {/* 0. Top Row: Project Value & Invoicable + Project Cost Budget */}
@@ -4114,7 +4314,22 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         {t("Project Value & Invoicable", "Hodnota projektu a fakturácia", "Projekt értéke és számlázható")}
                       </span>
                       {billing.value > 0 && contractValueDraft === null && (
-                        <span className="text-body font-bold text-slate-900">{money(billing.value)}</span>
+                        <>
+                          <span className="text-body font-bold text-slate-900">{money(billing.value)}</span>
+                          {projectValueInfo.inheritedFromLead && (
+                            <span
+                              data-testid="project-value-inherited-badge"
+                              title={t(
+                                "Inherited from the linked lead. Click Edit Value to set a project-specific amount.",
+                                "Zdedené z prepojeného leadu. Kliknutím na Upraviť hodnotu nastavíte sumu pre tento projekt.",
+                                "A kapcsolódó leadből örökölve. Kattintson az Érték módosítása gombra egyedi projektérték megadásához.",
+                              )}
+                              className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200/80 text-micro font-semibold text-amber-700"
+                            >
+                              {t("From lead", "Z leadu", "Leadből")}
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
 
@@ -4353,15 +4568,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
 
                 {/* 0B. PROJECT BUDGET — the ceiling the direct costs are measured against */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
-                      <Wallet className="h-4 w-4 text-indigo-600 shrink-0" />
-                      <span className="text-ui font-bold text-slate-900">
+                      <Wallet className="h-4 w-4 text-entity-text shrink-0" />
+                      <span className="text-ui font-semibold text-gray-900">
                         {t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
                       </span>
                       {budgetAnalysis && budgetDraft === null && (
-                        <span className="text-body font-bold text-slate-900">{money(budgetAnalysis.budget)}</span>
+                        <span className="text-body font-semibold text-gray-900">{money(budgetAnalysis.budget)}</span>
                       )}
                     </div>
 
@@ -4369,7 +4584,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setBudgetDraft(budgetAnalysis ? String(budgetAnalysis.budget) : "")}
-                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                        className="px-3 py-1.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
                       >
                         {budgetAnalysis ? <Edit3 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                         {budgetAnalysis
@@ -4388,12 +4603,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           onKeyDown={(e) => { if (e.key === "Escape") setBudgetDraft(null); }}
                           placeholder="0.00"
                           aria-label={t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
-                          className="w-28 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-ui font-bold focus:outline-none focus:border-indigo-500 transition-colors"
+                          className="w-28 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-ui font-semibold focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring transition-colors"
                         />
-                        <span className="text-caption font-bold text-slate-500">{currencyCode || defaultCurrency}</span>
+                        <span className="text-caption font-semibold text-gray-500">{currencyCode || defaultCurrency}</span>
                         <button
                           type="submit"
-                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                          className="px-3 py-1.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
                         >
                           <Check className="h-3.5 w-3.5" />
                           {t("Save", "Uložiť", "Mentés")}
@@ -4410,7 +4625,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     ))}
                   </div>
 
-                  {!budgetAnalysis ? (
+                  {budgetAnalysis && labourHidden ? (
+                    <LabourHiddenNote language={userLanguage} className="text-caption text-slate-500" />
+                  ) : !budgetAnalysis ? (
                     <p className="text-caption text-slate-500">
                       {t(
                         "No budget set yet. Set one to see how the project's costs compare with it. (The \"Planned\" figures below are the sums of the planned amounts on invoices and expenses.)",
@@ -4471,10 +4688,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <TrendingDown className="h-4 w-4 text-rose-500" />
                   </div>
                   <div className="text-title font-bold text-slate-900 mt-1">
-                    {money(revenueAnalysis.totalRealExpenses)}
+                    {labourHidden ? "—" : money(revenueAnalysis.totalRealExpenses)}
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
+                    <ProjectTimeFinanceLines language={userLanguage} money={money} labourCost={revenueAnalysis.labourCost} labourHidden={labourHidden} unpricedSeconds={unpricedSeconds} billableValue={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.billableValue : null} billableComplete={timeTracking.totals.byProject[project?.id ?? ""]?.billableComplete} />
                   </div>
                 </div>
 
@@ -4485,7 +4703,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <DollarSign className="h-4 w-4 text-indigo-500" />
                   </div>
                   <div className={`text-title font-bold mt-1 ${revenueAnalysis.realProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                    {money(revenueAnalysis.realProfit)}
+                    {labourHidden ? "—" : money(revenueAnalysis.realProfit)}
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.plannedProfit)}</strong>
@@ -4499,7 +4717,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <Coins className="h-4 w-4 text-amber-500" />
                   </div>
                   <div className={`text-title font-bold mt-1 ${revenueAnalysis.realMarginPct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                    {revenueAnalysis.realMarginPct.toFixed(1)}%
+                    {labourHidden ? "—" : `${revenueAnalysis.realMarginPct.toFixed(1)}%`}
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{revenueAnalysis.plannedMarginPct.toFixed(1)}%</strong>
@@ -4603,7 +4821,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <div className="flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-rose-600" />
                     <span className="text-ui font-bold text-slate-900">
-                      {t("Direct Project Costs & Materials", "Priame náklady a materiál projektu", "Közvetlen projektköltségek és anyagok")} ({projectExpenses.length})
+                      {t("Direct Project Costs & Materials", "Priame náklady a materiál projektu", "Közvetlen projektköltségek és anyagok")} ({projectExpenses.length + visibleCostItems.filter((i) => !i.excluded).length})
                     </span>
                   </div>
                   {canEditFinance && (
@@ -4618,7 +4836,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   )}
                 </div>
 
-                {projectExpenses.length === 0 ? (
+                {projectExpenses.length === 0 && visibleCostItems.length === 0 ? (
                   <div className="py-6 text-center text-ui text-slate-400 font-medium">
                     {t("No expenses logged for this project yet.", "K tomuto projektu zatiaľ neboli zaevidované žiadne výdavky.", "Még nincsenek kiadások rögzítve.")}
                   </div>
@@ -4680,6 +4898,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             </td>
                           </tr>
                         ))}
+                        <ProjectTimeCostRows
+                          items={visibleCostItems}
+                          language={userLanguage}
+                          money={money}
+                          canToggle={canEditFinance && timeTracking.viewer.canCosts}
+                          onToggle={(item) => void handleToggleLabourExclusion(item)}
+                        />
                       </tbody>
                     </table>
                   </div>
@@ -4721,157 +4946,32 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* PROJECT FINANCIAL MODAL */}
           {isFinModalOpen && (
-            <div className="fixed inset-0 z-[100005] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2">
-                    {finFormType === "income" ? <TrendingUp className="h-5 w-5 text-emerald-600" /> : <TrendingDown className="h-5 w-5 text-rose-600" />}
-                    <h3 className="text-body font-bold text-slate-900">
-                      {finEditingRecord
-                        ? (finFormType === "income" ? t("Edit Project Invoice", "Upraviť faktúru projektu", "Számla szerkesztése") : t("Edit Project Expense", "Upraviť výdavok projektu", "Kiadás szerkesztése"))
-                        : (finFormType === "income" ? t("Issue Project Invoice", "Vystaviť faktúru pre projekt", "Számla kiállítása projekthez") : t("Add Project Expense", "Pridať výdavok k projektu", "Új kiadás hozzáadása"))}
-                    </h3>
-                  </div>
-                  <button onClick={() => setIsFinModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleSaveProjectFinancial} className="space-y-3.5 text-ui font-semibold text-left">
-                  <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Title / Description *", "Názov / Popis *", "Megnevezés *")}</label>
-                    <input
-                      required
-                      value={finFormTitle}
-                      onChange={(e) => setFinFormTitle(e.target.value)}
-                      placeholder={finFormType === "income" ? t("e.g. Advance invoice 50%...", "napr. Zálohová faktúra 50%...", "pl. Előlegszámla 50%...") : t("e.g. Material purchase, rental...", "napr. Nákup materiálu, prenájom...", "pl. Anyagbeszerzés, bérlet...")}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:border-indigo-500 font-medium"
-                    />
-                  </div>
-
-                  {finFormType === "income" && (
-                    <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
-                      <input
-                        value={finFormInvoiceNumber}
-                        onChange={(e) => setFinFormInvoiceNumber(e.target.value)}
-                        placeholder="FA-2026-0001"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono"
-                      />
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={finFormAmountPlanned}
-                        onChange={(e) => setFinFormAmountPlanned(e.target.value ? parseFloat(e.target.value) : "")}
-                        placeholder="0.00"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={finFormAmountReal}
-                        onChange={(e) => setFinFormAmountReal(e.target.value ? parseFloat(e.target.value) : "")}
-                        placeholder="0.00"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-emerald-600"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Category", "Kategória", "Kategória")}</label>
-                      <select
-                        value={finFormCategoryId}
-                        onChange={(e) => setFinFormCategoryId(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
-                      >
-                        <option value="">{t("-- Select Category --", "-- Vyberte kategóriu --", "-- Válasszon --")}</option>
-                        {financialCategories
-                          .filter((c) => c.type === finFormType)
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.level === 1 ? `● ${c.name}` : `  ↳ ${c.name}`}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Status", "Stav", "Állapot")}</label>
-                      <select
-                        value={finFormStatus}
-                        onChange={(e) => setFinFormStatus(e.target.value as any)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
-                      >
-                        {FINANCIAL_STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>
-                            {s === "planned"
-                              ? t("Planned", "Plánované", "Tervezett")
-                              : s === "pending"
-                              ? t("Pending", "Čaká na úhradu", "Függő")
-                              : s === "partially_paid"
-                              ? t("Partially Paid", "Čiastočne uhradené", "Részben fizetve")
-                              : s === "paid"
-                              ? t("Paid", "Uhradené", "Fizetve")
-                              : s === "overdue"
-                              ? t("Overdue", "Po splatnosti", "Lejárt")
-                              : t("Cancelled", "Zrušené", "Törölve")}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
-                      <input
-                        type="date"
-                        required
-                        value={finFormIssueDate}
-                        onChange={(e) => setFinFormIssueDate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
-                      <input
-                        type="date"
-                        value={finFormDueDate}
-                        onChange={(e) => setFinFormDueDate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => setIsFinModalOpen(false)}
-                      className="px-4 py-2 rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer"
-                    >
-                      {t("Cancel", "Zrušiť", "Mégsem")}
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer shadow-sm"
-                    >
-                      {t("Save", "Uložiť", "Mentés")}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
+            <ProjectFinancialModal
+              finEditingRecord={finEditingRecord}
+              finFormType={finFormType}
+              finFormTitle={finFormTitle}
+              setFinFormTitle={setFinFormTitle}
+              finFormInvoiceNumber={finFormInvoiceNumber}
+              setFinFormInvoiceNumber={setFinFormInvoiceNumber}
+              finFormAmountPlanned={finFormAmountPlanned}
+              setFinFormAmountPlanned={setFinFormAmountPlanned}
+              finFormAmountReal={finFormAmountReal}
+              setFinFormAmountReal={setFinFormAmountReal}
+              finFormCategoryId={finFormCategoryId}
+              setFinFormCategoryId={setFinFormCategoryId}
+              finFormStatus={finFormStatus}
+              setFinFormStatus={setFinFormStatus}
+              finFormIssueDate={finFormIssueDate}
+              setFinFormIssueDate={setFinFormIssueDate}
+              finFormDueDate={finFormDueDate}
+              setFinFormDueDate={setFinFormDueDate}
+              finFormPaidDate={finFormPaidDate}
+              setFinFormPaidDate={setFinFormPaidDate}
+              financialCategories={financialCategories}
+              onClose={() => setIsFinModalOpen(false)}
+              onSubmit={handleSaveProjectFinancial}
+              t={t}
+            />
           )}
 
         </div>

@@ -73,6 +73,7 @@ Main table representing potential deals, customers, and client accounts.
 * `status` VARCHAR(50) (e.g. new, contacted, offer sent, accepted, rejected)
 * `source` VARCHAR(50) (e.g. showroom, website, referral)
 * `owner` VARCHAR(100) (assigned project manager)
+* `assigned_employees` TEXT [NULLable] (JSON array of user names working on the lead or client besides its project manager; one-time migration `ASSIGNED_EMPLOYEES_MIGRATION` moved non-PM owners here and extra project managers to `project_employees`)
 * `division` VARCHAR(100) (assigned business division, e.g. Cstudios, Cstudios Budapest)
 * `rating` INT (1-5 star score)
 * `value` DECIMAL(15, 2) (financial deal value)
@@ -98,18 +99,41 @@ Main table representing potential deals, customers, and client accounts.
 * `data_source` VARCHAR(100)
 * `ownership_type` VARCHAR(50)
 * `ticket_allowed_emails` TEXT [NULLable] (JSON array of whitelisted sender emails/domains for support tickets)
+* `custom_fields_json` LONGTEXT [NULLable] (JSON object mapping configured Lead custom attribute IDs from `LEAD_ATTRIBUTES` to values; absent `data` on sync leaves column unchanged)
 * `client_id` VARCHAR(50) [NULLable, indexed] (the client record - a `client-*` row of this table - the lead belongs to; not a foreign key. NULL = not linked, the app then falls back to matching by name)
 * `price_level_id` VARCHAR(50) [NULLable] (the price level - an `id` of the `PRICE_LEVELS` setting - this client buys on; NULL = the items' default sell prices)
+* `company_client_id` VARCHAR(50) [NULLable, indexed] (for person clients: optional parent Business/Partner company `leads.id` where they act as a client-side contact; rented agency employees never live in `leads`)
+* `contact_role` VARCHAR(120) [NULLable] (role/title of an attached person contact at their company, e.g. HR Manager)
+* `contact_tags` TEXT [NULLable] (JSON array of function tags for an attached person contact, e.g. ["CEO","Billing"])
 * `contact_person` VARCHAR(100)
+* `contact_first_name` VARCHAR(100) [NULLable] (the contact person's first name as typed; synced as `contactFirstName`. `{{first_name}}` of the newsletter reads this, never `contact_person`. Rule shared by `composeContactName()` and `ccrm_compose_contact_name()`: when either part is filled, `contact_person` = first + ' ' + last; both empty keeps `contact_person`. Rows that predate the column were split once by `ccrm_backfill_contact_names()`, flag `CONTACT_NAME_BACKFILL` in `system_settings`)
+* `contact_last_name` VARCHAR(100) [NULLable] (the contact person's last name as typed; synced as `contactLastName`)
+  * **For `client_type = 'person'` both columns are the person's OWN first and last name** ("Name for greetings", `{{first_name}}`); `name` is not recomposed and `contact_person` is not composed from them (normally empty). Existing person records with an empty `contact_person` were split from `name` once by `ccrm_backfill_person_names()`, flag `PERSON_NAME_BACKFILL` in `system_settings`
 
 ### `client_adjustment_migration`
-Written only by `php ccrm adjustment-clients --apply` (created on first use, not by the schema). One row per client row that command created from an adjustment-only client; `--undo` reads it to put the adjustment back.
+Written only by `php kprnq adjustment-clients --apply` (created on first use, not by the schema). One row per client row that command created from an adjustment-only client; `--undo` reads it to put the adjustment back.
 * `client_id` VARCHAR(50) [PK] (the `client-adj-*` row created in `leads`)
 * `name` VARCHAR(150)
 * `adjustment` DECIMAL(14,2) (the amount that was moved onto the client row)
 * `moved_from` TEXT (JSON: lead ids the adjustment was taken from)
 * `linked_ids` TEXT (JSON: lead ids given this `client_id`)
 * `migrated_at` DATETIME
+
+### `client_contacts`
+Separate table for company contact persons and standalone personal contacts (kept out of `leads` so contacts never pollute the Clients list or client pickers; ready for Newsletter datamining by `contact_tags`).
+* `id` VARCHAR(64) [PK]
+* `company_client_id` VARCHAR(50) [NULLable, indexed] (`leads.id` of parent company client; NULL = standalone personal contact)
+* `name` VARCHAR(150)
+* `first_name` VARCHAR(100) [NULLable]
+* `last_name` VARCHAR(100) [NULLable]
+* `email` VARCHAR(255) [NULLable, indexed]
+* `phone` VARCHAR(64) [NULLable]
+* `contact_role` VARCHAR(120) [NULLable] (summary function string, e.g. CEO, Billing)
+* `contact_tags` TEXT [NULLable] (JSON array of contact function tags)
+* `notes` TEXT [NULLable]
+* `archived` TINYINT(1) [DEFAULT 0]
+* `created_at` DATE
+* `updated_at` TIMESTAMP
 
 ### `lead_categories`
 Junction table mapping leads to business categories.
@@ -121,12 +145,27 @@ Junction table mapping leads to business categories.
 Interaction history logged against leads (emails, call logs, meetings).
 * `id` VARCHAR(50) [PK]
 * `lead_id` VARCHAR(50)
-* `type` VARCHAR(50) (e.g., note, phone, email, offer, appointment)
+* `type` ENUM (e.g., note, phone, email, offer, appointment, status_change, whatsapp, note_activity). Hand-written lead notes are no longer entries of this table: they live in `notes`, and each one left a `note_activity` entry behind (title "Note added / edited / deleted", content = a one-line snippet; written by the browser through the lead's normal save, read-only on the timeline). `note` is still used by system entries (public-form inquiries, WhatsApp, MCP).
 * `timestamp` DATETIME
 * `title` VARCHAR(255)
 * `content` TEXT
 * `author` VARCHAR(100) (CRM user whose action produced the entry; NULL for entries nobody triggered here — incoming mail, public-form inquiries, imports — and for rows written before the column existed)
+* `external_url` VARCHAR(255) [NULLable] (deep link path into the external system, e.g. /c/<id>?m=<id>)
+* `task_id` VARCHAR(50) [NULLable, indexed `idx_event_task`] (the task a "Comment on task: <title>" note belongs to; written by the MCP `add_task_comment` tool, NULL for every other entry. No foreign key: the note stays on the client timeline when the task goes. The app never sends it, so `sync.php` carries it over by event id when it rewrites a lead's timeline. Older comments are linked by title in `ccrm_migrate_timeline_task_link()`, only where one task of that client has the title.)
 * `created_at` TIMESTAMP
+
+### `notes`
+Free-text notes attached to one record of any module. Generic by design: a new module (orders, ...) only needs a line in `ccrm_notes_module()` in `api/notes.php`. Read and written by `api/notes.php` only (never by `sync.php`, so no column healing; the endpoint creates the table when it is missing). No foreign key: a deleted record's notes stay behind, and a restore brings them back.
+* `id` VARCHAR(64) [PK] (`note-<random>`; a migrated note is `note-<id of the timeline entry it came from>`)
+* `entity_type` VARCHAR(32) (`lead` or `project`; a client is a `lead` row)
+* `entity_id` VARCHAR(100)
+* `content` TEXT (plain text, line breaks kept)
+* `author` VARCHAR(100) [NULLable] (the session user; NULL for a migrated note nobody signed)
+* `audio_file` VARCHAR(255) [NULLable] (voice recording of a note migrated from the old lead timeline; no new note gets one)
+* `created_at`, `updated_at` DATETIME (the browser's local wall-clock time, like timeline timestamps)
+* Index `idx_note_entity` (`entity_type`, `entity_id`, `created_at`)
+
+Every note create, edit and delete leaves a `note_activity` entry on the record's timeline (lead: `timeline_events`, project: `proj_timeline_<typeId>` with `type = 'note_activity'`), added by the browser through the record's normal save. Migration (`api/notes_migration.php`, idempotent): lead entries of type `note` whose title is the log form's ("Internal Note Added" and translations, no `task_id`) and every project timeline entry of type `note` without a custom event type are copied into `notes` and converted to `note_activity` entries.
 
 ---
 
@@ -148,13 +187,60 @@ General system and operational tasks.
 * `start_date` DATE
 * `deadline` DATE
 * `deadline_time` VARCHAR(5) (HH:MM)
+* `original_deadline` DATE [NULLable] (the deadline the task was first given; set on creation, or pinned to the previous date at the first postponement of an older row; written only by the sync upsert, never by a client)
+* `deadline_moves` INT NOT NULL DEFAULT 0 (how many times the deadline was pushed to a later date; incremented by the sync upsert)
+* `first_started_at` DATETIME [NULLable] (first time the task moved out of its initial unstarted status or was completed; server-maintained)
+* `reopened_count` INT NOT NULL DEFAULT 0 (how many times the task was moved out of a done state back to an open status; server-maintained)
+* `category` VARCHAR(32) [NULLable] (task category slug: `NULL` = none, `'bug'` = Bug; a string so more categories need no migration. Written by the sync upsert for tasks and recurring templates (a client that omits the key leaves the stored value alone) and copied from a template to each occurrence; read by the dashboard's "Utilizácia · čas na bugoch" widget)
+* `reopens_json` TEXT [NULLable] (every reopening of a finished task as JSON `[{"at": "<UTC ISO 8601 with Z>", "by": "<user name or null>"}]`, oldest first; `NULL` = never reopened. Written only by the server through `ccrm_task_record_reopen()` in `api/task_done.php`, called from the sync upsert and MCP `update_task` when a finished task is saved with an open status; a client-sent value is ignored. Returned by the sync GET as `reopens`; series templates never carry one. Reopenings made before the column existed are not recorded)
 * `owner` VARCHAR(100) (primary assignee; empty when unassigned)
 * `created_by` VARCHAR(100) (immutable creator name; nullable for legacy rows)
 * `related_lead_id` VARCHAR(50)
+* `related_agency_worker_id` VARCHAR(64) [NULLable] (References `agency_workers.id`)
 * `is_locking` TINYINT(1)
 * `archived` TINYINT(1)
+* `external_source` VARCHAR(20) [NULLable] (integration client code that pushed or synced the task, e.g. `waai` or `clickup`; server-only, never written by a client save)
+* `external_url` VARCHAR(255) [NULLable] (path/URL of the task in the external system, e.g. `/c/<id>` or ClickUp task URL)
+* `external_meta_json` TEXT [NULLable] (external metadata: WAAI chat title / `due_inferred`, or ClickUp `clickupId`, `listId`, `listName`, `statusName`, `statusColor`, `due_inferred`)
+* `parent_task_id` VARCHAR(50) [NULLable] (parent `tasks.id` for synced external subtasks, e.g. ClickUp parent task -> subtask hierarchy; indexed as `idx_task_parent`)
+* `task_kind` VARCHAR(20) [NULLable] (`NULL` = normal task, `'recurring'` = series template; indexed as `idx_task_kind`)
+* `recurrence_json` TEXT [NULLable] (Template only: `{mode, frequency, interval, config, weekendRule, leadDays, startsOn, endsOn, paused, lastOccurrence, lastOccurrenceId}`)
+* `recurring_source_id` VARCHAR(50) [NULLable] (Occurrence only: template id; indexed as `idx_task_recurring_source`)
+* `recurring_occurrence_date` DATE [NULLable] (Occurrence only: the unshifted scheduled date; `(recurring_source_id, recurring_occurrence_date)` unique)
+* `comment_count` INT UNSIGNED NOT NULL DEFAULT 0 (denormalized active comment count maintained by `api/task_activity.php` so list/board queries need no JOIN; does not bump `updated_at`)
+* `file_count` INT UNSIGNED NOT NULL DEFAULT 0 (denormalized active file count maintained by `api/task_files.php` so list/board queries need no JOIN; does not bump `updated_at`)
+* `reactions_json` VARCHAR(1000) [NULLable] (map `{ "<emoji>": ["User A", ...] }` for task-level reactions maintained by `api/task_activity.php`; does not bump `updated_at`)
 * `created_at` TIMESTAMP
-* `updated_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) (indexed as `idx_task_updated`; the machine API's feed pages by it)
+
+### `task_files`
+Private task attachments (images, documents, archives, and source-code/development files) stored outside public web paths (`uploads/_task_files/tf_<hex>.bin`) and served through authenticated `api/task_files.php` with task visibility checks. Excluded from `sync.php` GET to keep 5-second sync zero-bloat.
+* `id` VARCHAR(64) [PK]
+* `task_id` VARCHAR(50) (references `tasks.id`; indexed with `(task_id, deleted_at, created_at)`)
+* `file_name` VARCHAR(255)
+* `mime_type` VARCHAR(120)
+* `size_bytes` INT UNSIGNED NOT NULL DEFAULT 0
+* `storage_name` VARCHAR(160)
+* `is_image` TINYINT(1) NOT NULL DEFAULT 0
+* `image_width` INT UNSIGNED [NULLable]
+* `image_height` INT UNSIGNED [NULLable]
+* `uploaded_by` VARCHAR(100)
+* `deleted_at` DATETIME [NULLable]
+* `created_at` DATETIME(3)
+
+### `task_activities`
+ClickUp-style chronological stream of chat messages (with optional WebP/image attachments) and structured field/state-change audit entries per task (`api/task_activity.php`). Excluded from `sync.php` GET and `CHECKSUM TABLE` to keep 5-second sync zero-bloat.
+* `id` BIGINT UNSIGNED [PK, AUTO_INCREMENT]
+* `task_id` VARCHAR(50) (references `tasks.id`; indexed with `(task_id, id)` and `(task_id, updated_at)`)
+* `kind` ENUM('comment', 'state_change')
+* `event_type` VARCHAR(32) [NULLable] (`created`, `status`, `priority`, `deadline`, `assignees`, `archived`, `conclusion`, or `NULL` for chat comments)
+* `author_name` VARCHAR(100)
+* `body` TEXT [NULLable] (plain/mention text for comments)
+* `meta_json` TEXT [NULLable] (compact structured diff for state changes, or `{ "images": [{ "url", "name", "w", "h", "size" }], "editedAt"? }` for comments)
+* `reactions_json` VARCHAR(1000) [NULLable] (per-message emoji reactions map `{ "<emoji>": ["User A", ...] }`)
+* `deleted_at` DATETIME [NULLable] (soft delete tombstone for delta polling removal)
+* `created_at` DATETIME(3)
+* `updated_at` DATETIME(3)
 
 ### `task_assignees`
 Junction table mapping users to tasks.
@@ -181,7 +267,7 @@ Agendas, records, and AI-summaries of voice calls or in-person meetings.
 * `attached_users_json` TEXT
 * `archived` TINYINT
 * `created_at` TIMESTAMP
-* `updated_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) (also moves when the meeting's action items (`meeting_tasks`) really change, see `api/sync_child_bumps.php`)
 
 ### `meeting_tasks`
 Action items generated from meetings.
@@ -195,6 +281,11 @@ Action items generated from meetings.
 * `assigned_user` VARCHAR(255)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
+
+Link to the real task: assigning a suggestion creates a `tasks` row with id `task-mt-<meeting_tasks.id>`
+(`src/utils/meetingSuggestions.ts`). The "Created" badge checks that this task exists; `assigned_user` alone
+does not mean a task was created. Suggestions converted before this convention (`task-ai-<timestamp>` ids) are
+matched on title and assignee.
 
 ---
 
@@ -228,6 +319,7 @@ Shared IMAP / SMTP mailboxes an admin defines (Settings → E-mail → Company m
 * `id` VARCHAR(50) [PK] (`cmb-…`)
 * `name` VARCHAR(150), `address` VARCHAR(255) [UNIQUE]
 * `settings_json` MEDIUMTEXT (the IMAP / SMTP profile in the shape of a user's `emailSettings`; `imapPassword` / `smtpPassword` encrypted `enc:v1:`; never sent to the browser)
+  * A Microsoft 365 mailbox (`provider` = `microsoft365`, read through Microsoft Graph) has no host or password: `graphAccount` (the address that signed in) and the secrets `graphRefreshToken` / `graphAccessToken`, encrypted the same way. An empty `graphRefreshToken` means the sign-in ran out and has to be renewed. A user's `emailSettings` holds the same fields.
 * `is_active` TINYINT(1), `owner_user_id` VARCHAR(50) [NULLable] (optional person it belongs to)
 * `backfill_since` DATE [NULLable] (mail older than this is not filed; NULL = everything)
 * `last_run_at`, `last_success_at` DATETIME [NULLable], `last_error` TEXT [NULLable] (what an admin sees when a mailbox cannot be read)
@@ -240,12 +332,25 @@ Where the filing job stopped, per mailbox and folder, so a run is incremental.
 * `last_uid` BIGINT (high-water mark: everything above it is new)
 * `backfill_upper_uid` BIGINT [NULLable], `backfill_done` TINYINT(1) (the newest-first catch-up of mail that was already there; the next chunk is everything below the first)
 * `filed_count` INT, `last_run_at` DATETIME, `last_error` TEXT [NULLable]
+* `delta_link` TEXT [NULLable] (Microsoft 365 mailboxes only: the Graph delta / next link of the new-mail track. Such a row has `uid_validity` = -1, `last_uid` = the unix time the track started at and `backfill_upper_uid` = the unix time of the oldest message caught up so far)
 
 ### `filed_mail_bodies`
 The readable plain-text body of a filed message, apart from `timeline_events` because the sync reads that whole table on every load. Read on demand through `mail_broker.php?action=get_filed_mail` by anyone who may see e-mail on a timeline.
 * `event_id` VARCHAR(50) [PK] (= `timeline_events.id`)
 * `body` MEDIUMTEXT, `attachments_json` TEXT (JSON list `[{ name, size, part, key? }]`; `key` is the random storage name of the file kept under `uploads/private/mail/` (behind a deny-all guard, streamed by `mail_broker.php?action=get_filed_mail_attachment` after the e-mail permission check). An entry without `key` was not kept: too big, a blocked type, an embedded image. The client never receives `key`)
 * `created_at` TIMESTAMP
+
+### `mail_envelopes`
+Cached email headers and previews per mailbox and folder, allowing `#email` to display already-received correspondences immediately from the database while live IMAP checks run in the background.
+* `mailbox_key` VARCHAR(100) + `folder` VARCHAR(120) + `uid` BIGINT [PK] (`c:<company mailbox id>` or `u:<user email>`)
+* `event_id` VARCHAR(64)
+* `subject` VARCHAR(500), `from_name` VARCHAR(255), `from_address` VARCHAR(255), `to_name` VARCHAR(255), `to_address` VARCHAR(255)
+* `email_date` DATETIME [NULLable]
+* `is_outgoing` TINYINT(1), `seen` TINYINT(1), `size` INT
+* `message_id` VARCHAR(255), `in_reply_to` VARCHAR(255), `references_hdr` TEXT [NULLable]
+* `preview` VARCHAR(500), `attachment_count` INT, `timeline_hidden` TINYINT(1)
+* `updated_at` TIMESTAMP
+* Index: `idx_mail_envelopes_lookup` (`mailbox_key`, `folder`, `email_date` DESC, `uid` DESC)
 
 ## 6. Projects & Lifecycles
 
@@ -268,7 +373,7 @@ Common blueprints / templates defining dynamic attributes and configurations.
 ### `projects`
 Individual instances of active project lifecycles.
 * `id` VARCHAR(50) [PK]
-* `project_type_id` VARCHAR(50)
+* `project_type_id` VARCHAR(50) (FK to `project_types.id`, **ON DELETE RESTRICT**: a type that still has projects, archived ones included, cannot be deleted. `sync.php` refuses such a delete and reports it in `deleteBlocked.project_types`; installs created with the old CASCADE rule are converted by `ccrm_migrate_project_type_fk_restrict()`)
 * `lead_id` VARCHAR(50)
 * `client_id` VARCHAR(50)
 * `division` VARCHAR(100) (assigned business division)
@@ -278,8 +383,16 @@ Individual instances of active project lifecycles.
 * `ticket_allowed_emails` TEXT [NULLable] (JSON array of whitelisted sender emails/domains)
 * `ticket_public_hash` VARCHAR(64) [UNIQUE] (Random token for public `#public-tickets/<hash>` status page)
 * `ticket_widget_config_json` TEXT [NULLable] (JSON config for floating widget color, position, greeting, language)
+* `contact_phone` VARCHAR(50) [NULLable] (phone of the project contact as typed; WAAI pairs WhatsApp chats to the project by it; written by the app's save only when the payload carries `contactPhone`)
+* `contact_email` VARCHAR(190) [NULLable] (e-mail of the project contact as typed; copied from the lead when the lead is converted to a project; written by the app's save only when the payload carries `contactEmail`, `""` clears it; returned by the sync GET as `contactEmail`)
+* `acceptance_criteria_json` TEXT [NULLable] (the project's acceptance criteria as JSON `[{"id","title","done","createdAt","createdBy","removedAt","removedBy"}]`, `createdAt` / `removedAt` UTC ISO 8601 with `Z`; a removed criterion stays in the array with `removedAt` set (soft removal); `NULL` = none. Written by the app's save only when the payload carries `acceptanceCriteria` (a client that omits the key leaves the stored list alone) and merged into the stored list by the server (`ccrm_scope_merge_criteria()` in `api/project_scope.php`): a new id gets the server's time and the session user as `createdAt` / `createdBy`, a stored criterion keeps its stamps, a removal is stamped by the server and cannot be undone, and a stored criterion missing from the client's list is kept. Returned by the sync GET as `acceptanceCriteria`. Criteria created after `scope_approved_at` are scope creep, read by the dashboard's "Scope creep" widget)
+* `scope_approved_at` DATETIME [NULLable] (when the scope was approved, stored in UTC; `NULL` = not approved. Never written by the sync upsert: a `scopeApprovedAt` / `scopeApprovedBy` in a project payload is ignored (a stale tab would clear or restore it). Written only by the one-shot action `POST /api/project_scope_action.php { projectId, action: "approve" | "withdraw" }` through `ccrm_scope_apply_action()` in `api/project_scope.php`: approve (only when not approved) stamps the server's time and the session user, withdraw clears both and is a reset (a later approval stamps a new instant, so criteria added in between become original scope); returned by the sync GET as `scopeApprovedAt`, a UTC ISO string with `Z`)
+* `scope_approved_by` VARCHAR(100) [NULLable] (name of the user who approved the scope, taken from the session by the approval action; written together with `scope_approved_at`, returned as `scopeApprovedBy`)
+* `github_repo` VARCHAR(200) [NULLable] (the paired GitHub repository as `owner/name`, case kept as typed; the server strips a pasted `https://github.com/` prefix, a trailing slash and `.git` and stores NULL for anything that is not `owner/name`; written by the app's save only when the payload carries `githubRepo`, `""` clears it; pushes to it arrive at `api/github_webhook.php`)
+* `github_branch` VARCHAR(200) [NULLable] (the server branch whose pushes count; NULL = the repository's default branch; at most 200 characters, no whitespace or control characters; written only when the payload carries `githubBranch`)
+* `clickup_lists_json` TEXT [NULLable] (JSON array of linked ClickUp lists `[{"id","name","folderName","spaceName"}]`; read-only mirror of tasks/subtasks from those lists runs via `api/clickup.php`, `api/clickup_webhook.php`, and cron fallback; written only when the payload carries `clickupLists`, clearing deletes synced `external_source = 'clickup'` tasks on that project)
 * `created_at` TIMESTAMP
-* `updated_at` TIMESTAMP
+* `updated_at` TIMESTAMP [INDEX `idx_project_updated`, for the machine API's directory paging] (also moves when the project's managers (`project_managers`) or Gantt rows (`proj_gantt_*`) really change, and when the MCP creates a milestone for it: `sync.php` snapshots the set before its delete + insert and bumps only when the stored set differs, `api/sync_child_bumps.php`. An unchanged re-save leaves it alone. Timeline entries do not move it)
 
 ### `project_managers`
 Junction table mapping project managers to projects.
@@ -287,9 +400,31 @@ Junction table mapping project managers to projects.
 * `user_id` VARCHAR(50)
 * Primary Key: (`project_id`, `user_id`)
 
+### `project_employees`
+Junction table mapping the employees assigned to a project (besides its managers; one PM, many employees). Same shape as `project_managers`; `user_id` is the same id kind as there. Rewritten per project by the app's save only when the payload carries `employees` (an omitted key means unchanged); a real change moves `projects.updated_at` (`api/sync_child_bumps.php`, kind `employees`). Healed in `sync.php` before the transaction. Returned by the sync GET as `employees`.
+* `project_id` VARCHAR(50) [FK `projects.id`, ON DELETE CASCADE]
+* `user_id` VARCHAR(50)
+* Primary Key: (`project_id`, `user_id`)
+
+### `project_pushes`
+GitHub pushes delivered to `api/github_webhook.php` (Settings → Integrations → GitHub): one row per (request body, paired project). Counts pushes to the project's server branch, not pull requests. No foreign key: readers (`api/project_pushes.php`) join to `projects`, so a push of a deleted project is not reported.
+* `body_hash` CHAR(64) (SHA-256 hex of the raw request body; part of the primary key, so a redelivery and a replay of a signed body under a new delivery id are both ignored by `INSERT IGNORE`)
+* `delivery_id` VARCHAR(64) [NULLable] (GitHub's `X-GitHub-Delivery`, for reference only: the signature does not cover it)
+* `project_id` VARCHAR(50)
+* `repo` VARCHAR(200) (full name as GitHub sent it)
+* `branch` VARCHAR(200)
+* `pushed_at` DATETIME (UTC; when this server received the push, never the commit's own date)
+* `pusher` VARCHAR(100) [NULLable]
+* `commit_count` INT (clamped to 0 to 100000)
+* `head_sha` VARCHAR(40) [NULLable]
+* `head_message` VARCHAR(300) [NULLable] (first line of the head commit message)
+* `compare_url` VARCHAR(500) [NULLable] (stored only when it is an `https://github.com/<owner>/<repo>/compare|commit/...` link, else NULL)
+* `created_at` TIMESTAMP
+* Primary Key: (`body_hash`, `project_id`); indexes (`project_id`, `pushed_at`) and (`pushed_at`)
+
 ### Dynamic Tables (Per Project Type)
 Each custom project type with ID `{safeId}` generates three tables:
-1. `proj_data_{safeId}`: Stores values for custom attributes (`attr_{attributeId}`).
+1. `proj_data_{safeId}`: Stores values for custom attributes (`attr_{attributeId}`). Columns are only ever added: removing an attribute or file slot from the type keeps its column and the values in it (they are just no longer shown), the same for timeline attribute columns in `proj_timeline_{safeId}`. The three tables are dropped only when their type is deleted, which requires the type to have no projects.
 2. `proj_timeline_{safeId}`: Chronological notes/events relating to the project.
 3. `proj_gantt_{safeId}`: Tasks and dates for Gantt rendering (`id`, `project_id`, `title`, `contact_id`, `start_date`, `end_date`, `progress`).
 
@@ -320,9 +455,11 @@ Saved AI-generated dashboard configurations.
 
 ### `system_settings`
 Global system configurations.
-* `key` VARCHAR(100) [PK] (e.g. INTEGRATIONS_CONFIG, SYSTEM_NAME, SYSTEM_LANGUAGE)
+* `key` VARCHAR(100) [PK] (e.g. INTEGRATIONS_CONFIG, SYSTEM_NAME, SYSTEM_LANGUAGE, NEWSLETTER_CONFIG, `LEAD_ATTRIBUTES`: see section 12, GITHUB_WEBHOOK_SECRET: the key GitHub signs webhook deliveries with, AES-256-GCM encrypted at rest (`enc:v1:`), written only by `api/github_integration.php` and never part of a `sync.php` payload)
 * `value` LONGTEXT
 * `updated_at` TIMESTAMP
+
+The `LIST_ICONS` setting is a JSON object of icon ids (Twemoji names from `public/list-icons.svg`) per list: `{"leadSources": {"web .sk - cp": "flag-slovakia"}, "offerCategories": {"oc-1": "hammer"}}`. Kinds: `leadSources`, `divisions`, `leadCategories` (keyed by the lower-cased name; a rename moves the entry) and `offerCategories`, `financialCategories` (keyed by category id). Written only by `api/list_icons.php`, one change per request under a row lock, and never by `sync.php`; read by the client through the same endpoint (`src/utils/listIconStore.ts`). The `icon` columns of `offer_categories` / `financial_categories` are unrelated: they hold the automatic level marker (`Layers` / `Folder` / `Tag`).
 
 ### `plugins`
 Installed feature extensions.
@@ -353,6 +490,77 @@ Security and privilege tracking log.
 * `action` VARCHAR(100)
 * `detail` TEXT
 * `created_at` TIMESTAMP
+
+### `deleted_records`
+Deletion tombstones: one row per business record `sync.php` really deleted, so "which records were deleted since X?" has an answer (MCP tool `list_deleted_records`). Written by `ccrm_delete_omitted()` (the generic delete) and the project delete in `sync.php` through `ccrm_record_deleted()` (`api/deleted_records.php`), only after the DELETE affected a row: a delete the mass-delete circuit breaker refused leaves nothing, and neither does a child rewrite (timeline entries, action items, line items, Gantt rows, managers). The write is fail-soft (a missing table or any error is logged, never a 500). Recorded from the version that added the table on; earlier deletions are not known. Recorded entities: `leads`, `tasks`, `meeting_notes`, `projects`, `invoices_offers`, `financial_records`, `employees`, `employee_salaries`, `employee_vacations`, `warehouse_items`, `warehouse_batches`, `warehouse_movements`, `suppliers`, `warehouses`.
+* `id` BIGINT AUTO_INCREMENT [PK]
+* `entity` VARCHAR(64) NOT NULL (table of the deleted record)
+* `entity_id` VARCHAR(191) NOT NULL
+* `deleted_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+* `deleted_by` VARCHAR(255) [NULLable] (name of the acting user)
+* `label` VARCHAR(255) [NULLable] (name or title the record had)
+* `extra` TEXT [NULLable] (JSON; for a `leads` row `{"client":true|false}`: a client record is a `client-*` id or adjustment > 0, so the leads/clients module split applies on read)
+* Indexes: `(deleted_at, id)`, `(entity, entity_id)`
+
+### `integration_clients`
+One external system allowed to use the machine API (`/api/v1`, today only `waai`). JSON-valued columns are TEXT holding JSON.
+* `id` VARCHAR(50) [PK]
+* `code` VARCHAR(50) [UNIQUE] (e.g. waai)
+* `name` VARCHAR(100)
+* `is_active` TINYINT(1)
+* `scopes` TEXT (JSON list: users:read, directory:read, tasks:push, tasks:pull, whatsapp:links, timeline:push)
+* `allowed_ips` TEXT (JSON list of addresses / CIDR blocks; empty = any)
+* `require_direct` TINYINT(1) (refuse requests that went through a proxy)
+* `owner_user_ids` TEXT (JSON list of user ids: who `owner_id` may name, and whose tasks the feed returns)
+* `feed_scope` ENUM('owners','all')
+* `embed_url` VARCHAR(255) [NULLable] (origin of the embedded WhatsApp view)
+* `sso_secret` VARCHAR(255) [NULLable] (encrypted)
+* `default_deadline_days` INT (deadline given to a pushed task whose chat stated none)
+* `settings_json` TEXT [NULLable]
+* `created_at`, `updated_at` TIMESTAMP
+
+### `integration_tokens`
+API tokens; only the sha256 is stored, the plaintext is shown once. Several per client so a rotation can overlap.
+* `id` VARCHAR(50) [PK]
+* `client_id` VARCHAR(50) (references `integration_clients.id`, cascading deletion)
+* `prefix` VARCHAR(12) [UNIQUE]
+* `token_hash` CHAR(64)
+* `expires_at`, `revoked_at`, `last_used_at` DATETIME [NULLable]
+* `last_used_ip` VARCHAR(45) [NULLable]
+* `created_at` TIMESTAMP
+
+### `integration_refs`
+External id ↔ local row, plus the values last applied from the external system (three-way merge).
+* `id` BIGINT AUTO_INCREMENT [PK]
+* `client_id` VARCHAR(50) (references `integration_clients.id`, cascading deletion)
+* `kind` ENUM('task','timeline')
+* `external_id` VARCHAR(64)
+* `local_id` VARCHAR(50) [NULLable] (the `tasks.id`; no foreign key: a ref whose row is gone means "deleted in CCRM")
+* `revision` BIGINT (the sender's revision; an older one is ignored)
+* `applied_snapshot` TEXT [NULLable] (JSON)
+* `created_at`, `updated_at` TIMESTAMP
+* Unique: (`client_id`, `kind`, `external_id`)
+
+### `integration_rate`
+Per-token request counter, one row per minute.
+* `token_prefix` VARCHAR(12), `window_start` INT [PK together]
+* `hits` INT
+
+### `whatsapp_links`
+Chats WAAI has paired with a client/lead or a project. Written only by `PUT/DELETE /api/v1/whatsapp/links/{ref}`, never by `sync.php`; returned by the sync GET to users with the `whatsapp` permission.
+* `id` BIGINT AUTO_INCREMENT [PK]
+* `client_id` VARCHAR(50) (references `integration_clients.id`, cascading deletion)
+* `conversation_ref` VARCHAR(64) (WAAI's conversation id)
+* `entity_type` ENUM('lead','project'), `entity_id` VARCHAR(50) (no foreign key: a deleted record must not be blocked by a link)
+* `link_source` ENUM('auto','manual')
+* `title` VARCHAR(255), `is_group` TINYINT(1), `phone_digits` VARCHAR(20) [NULLable], `owner_user_id` VARCHAR(50) [NULLable] (the CCRM user who owns the WhatsApp account)
+* `path` VARCHAR(255) (`/c/<id>`), `last_message_at` DATETIME [NULLable], `updated_at` TIMESTAMP(3)
+* Unique: (`conversation_ref`, `entity_type`, `entity_id`); index (`entity_type`, `entity_id`)
+
+### `whatsapp_numbers`
+WAAI's answers to "is this number on WhatsApp?" (checked on click only).
+* `phone_digits` VARCHAR(20) [PK]
+* `status` ENUM('registered','not_registered'), `checked_at` DATETIME, `updated_at` TIMESTAMP(3)
 
 ---
 
@@ -388,6 +596,7 @@ B2B material and goods suppliers with invoicing data.
 * `notes` TEXT
 * `contacts_json` TEXT (Array of contact persons: name, phone, email, position)
 * `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) NOT NULL (`ON UPDATE CURRENT_TIMESTAMP(3)`: moves on a real change of the row's own columns, not of its child rows; read by the MCP lists as `updated_at` / `updated_from`. Stamped with the migration time on rows that existed before it)
 
 ### `warehouse_items`
 Master catalog of goods, products, raw materials, and supplies.
@@ -412,6 +621,7 @@ Master catalog of goods, products, raw materials, and supplies.
 * `alt_codes_json` TEXT [NULLable] (JSON list of codes beside the SKU: supplier code, manufacturer code. Searched wherever items are searched: warehouse list, item pickers, universal search, MCP)
 * `weight_kg` DECIMAL(12,3) [NULLable]
 * `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) NOT NULL (`ON UPDATE CURRENT_TIMESTAMP(3)`: moves on a real change of the row's own columns, not of its child rows; read by the MCP lists as `updated_at` / `updated_from`. Stamped with the migration time on rows that existed before it)
 
 ### `warehouse_item_prices`
 One price per item and price level; `warehouse_items.default_sell_price` stays the base / fallback. A zero or missing price means "not set".
@@ -441,6 +651,7 @@ Lot and expiration date tracking for perishable or batch-controlled goods.
 * `current_quantity` DECIMAL(12,2)
 * `purchase_price` DECIMAL(12,2)
 * `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) NOT NULL (`ON UPDATE CURRENT_TIMESTAMP(3)`: moves on a real change of the row's own columns, not of its child rows; read by the MCP lists as `updated_at` / `updated_from`. Stamped with the migration time on rows that existed before it)
 
 ### `warehouse_movements`
 Stock transaction documents (Receipts, Issues, Transfers, Adjustments).
@@ -461,6 +672,7 @@ Stock transaction documents (Receipts, Issues, Transfers, Adjustments).
 * `file_path` VARCHAR(500)
 * `issued_at` DATETIME
 * `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) NOT NULL (`ON UPDATE CURRENT_TIMESTAMP(3)`: moves on a real change of the row's own columns or of its movement lines (`warehouse_movement_items`, bumped by `sync.php` only when the stored set really changed: `api/sync_child_bumps.php`); read by the MCP lists as `updated_at` / `updated_from`. Stamped with the migration time on rows that existed before it)
 
 ### `warehouse_movement_items`
 Individual line items attached to a movement document.
@@ -491,6 +703,18 @@ Individual line items attached to a movement document.
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
+### `offer_categories`
+3-level price-offer category tree: the same shape as the customer category tree (`client_categories`) without a type split, kept as its own list so offers are filed independently of the finance and customer trees. Synced as `offerCategories`, gated by the `invoices` permission. Edited in Settings → Offers & invoicing → Offer categories; an offer carries one in `invoices_offers.category_id`.
+* `id` VARCHAR(50) [PK] (e.g. `oc-1731000000000-ab3de`)
+* `name` VARCHAR(150)
+* `parent_id` VARCHAR(50) [NULLable, `offer_categories.id` of the parent; NULL = main category. Not a foreign key]
+* `level` INT (1 = Root/Main category, 2 = Subcategory, 3 = Sub-subcategory)
+* `sort_order` INT (Position among the siblings under the same parent, lowest first; set by drag & drop)
+* `color` VARCHAR(30) [NULLable] (Hex code; a subcategory without one inherits its parent's)
+* `icon` VARCHAR(50) [NULLable] (Lucide icon name)
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
 ### `financial_records`
 Core financial movement records representing current and planned/future incomes, invoices, and expenses (single and recurring).
 * `id` VARCHAR(50) [PK] (e.g. `fr-2026-0001`)
@@ -510,9 +734,15 @@ Core financial movement records representing current and planned/future incomes,
 * `payment_method` VARCHAR(50) (e.g. bank_transfer, card, cash, credit)
 * `is_recurring` TINYINT(1) (1 = Recurring rule active, 0 = Single transaction)
 * `recurring_frequency` ENUM('weekly', 'monthly', 'yearly')
-* `recurring_config_json` TEXT (Recurrence rule configuration: `dayOfWeek`, `dayOfMonth`, `weekOfMonth`, `month`)
+* `recurring_config_json` TEXT (Recurrence rule configuration: `dayOfWeek`, `dayOfMonth`, `weekOfMonth`, `month`, optional `interval` — every N weeks/months/years, counted from `recurring_start_date`)
 * `recurring_start_date` DATE
 * `recurring_end_date` DATE
+* `recurring_planned_end_date` DATE [NULLable] (The end date a paused rule really has, restored on resume; a pause stamps `recurring_end_date` with today)
+* `recurring_amount_history_json` TEXT [NULLable] (Superseded amounts of a recurring rule: `[{until, amountPlanned, amountReal}]`)
+* `recurring_skipped_dates_json` TEXT [NULLable] (Scheduled days a stored movement stands in for, as a JSON list of `YYYY-MM-DD` days)
+* `recurring_source_id` VARCHAR(50) [NULLable] (On a one-off movement: the recurring rule whose charge it replaces or stores; materialized charges have the id `fr-rec-<rule>-<day>`)
+* `recurring_occurrence_date` DATE [NULLable] (On a one-off movement: the scheduled day it stands in for)
+* `recurring_materialized_through` DATE [NULLable] (On a recurring rule: every charge on or before this day is a stored movement or deliberately absent (deleted, or a paused day). Advanced to today by the client materializer (`src/utils/recurringRuleDeletion.ts`) on every run; schedule readers (`recurringCharges`, `mcp_rec_charges`) draw only after it, so a schedule edit or a resume changes only the future. Never moves back: `sync.php` keeps the greater of the stored and incoming value. NULL until the first run.)
 * `project_id` VARCHAR(50) [NULLable, links to `projects.id`; NULL means Global company-wide record]
 * `client_id` VARCHAR(50) [NULLable, links to `leads.id` / client; NULL means Global company-wide record]
 * `invoice_number` VARCHAR(100) (e.g. `FA-2026-0001`)
@@ -525,12 +755,21 @@ Core financial movement records representing current and planned/future incomes,
 ### `invoices_offers`
 Price offers, proformas and invoices in one table (`type`), with their line items in `invoice_offer_items`. Only the columns that carry rules are listed here; see `api/schema.php` for the rest.
 * `id` VARCHAR(50) [PK]
+* `updated_at` TIMESTAMP (moves on a real change of the document's own columns or of its line items (`invoice_offer_items`, bumped by `sync.php` only when the stored set really changed: `api/sync_child_bumps.php`). A payment (the `fr-inv-<id>` ledger movement) does not move it; the MCP reads that as `last_activity_at`)
 * `document_number` VARCHAR(100) (e.g. `CP-2026-001` for an offer, `FA-2026-001` for an invoice)
 * `type` ENUM('price_offer', 'proforma', 'invoice')
 * `status` VARCHAR(50) (was an ENUM until 1.12.70). For a **price offer** it is a key of the configurable `OFFER_STATUSES` setting (Price offers → Settings → Offer statuses); code reasons about the status's *group* (`draft`, `open`, `won`, `lost`, `cancelled`), never the key. Proformas and invoices keep the fixed built-ins `draft`, `sent`, `approved`, `rejected`, `invoiced`, `cancelled`. An unknown key must still render (raw, neutral badge).
 * `status_changed_at` DATE [NULLable] (Day the status last changed, client-stamped)
+* `category_id` VARCHAR(50) [NULLable] (References `offer_categories.id`; the category a price offer is filed under, NULL = none. Not a foreign key: deleting a category (with its subtree) makes the app set `category_id` to NULL on its offers and push them alongside. A client that sends no `categoryId` leaves the stored value untouched)
 
 The `OFFER_STATUSES` setting (in `system_settings`) is a JSON list of `{key, label?, color, group, legacy?}`, normalized by `ccrm_normalize_offer_statuses()` (PHP) and `normalizeOfferStatusDefs()` (`src/utils/offerStatuses.ts`). Unset means the six built-ins; `invoiced` is built in as a `legacy` status (won, kept for offers that carry it, not offered in a picker).
+
+### `orders`
+Sales and purchase orders, with their lines in `order_items`. Only the columns that carry rules are listed here; see `api/schema.php` for the rest.
+* `id` VARCHAR(50) [PK]
+* `client_id` VARCHAR(50) [NULLable] (References `leads.id`; a client or a lead)
+* `supplier_id` VARCHAR(50) [NULLable] (References `suppliers.id` for purchase orders)
+* `project_id` VARCHAR(50) [NULLable, indexed `idx_orders_project`] (References `projects.id`: the project the order belongs to, NULL = none. Not a foreign key: a project's Orders tab lists every order with its id, newest `order_date` first, and no order is marked as current. Deleting a project leaves the id behind; the app treats an id with no project as unlinked)
 
 ---
 
@@ -542,8 +781,9 @@ Staff profiles, compensation baseline, Toggl Track integration mapping, and empl
 * `name` VARCHAR(150) (Display name every other module reads: `first_name` + `last_name` for a person, the single company / item name for a contractor or ledger item. Derived on save by `ccrm_compose_employee_name()`)
 * `first_name` VARCHAR(100) [NULLable] (Person's first name; titles such as `Ing.` may stay with it. NULL on a legacy record still named by a nickname. On a `contractor` it is the optional contact person, a sole trader's own name)
 * `last_name` VARCHAR(100) [NULLable] (Person's surname; the contact person's on a `contractor`)
-* `kind` VARCHAR(20) (Default `employee`: `employee` = a person on the payroll, `contractor` = an external supplier, a company or a sole trader (živnostník), `ledger` = a payroll-only accounting line such as commission. A `ledger` row has no first / last name)
-* `company_id` VARCHAR(32) [NULLable] (IČO of a `contractor`, filled from the Slovak / Czech business register; NULL for the other kinds)
+* `kind` VARCHAR(20) (Default `employee`: `employee` = a person on the payroll, `contractor` = an external supplier, `ledger` = a payroll-only accounting line such as commission. A `ledger` row has no first / last name)
+* `contractor_type` VARCHAR(20) [NULLable] (Subtype when `kind = 'contractor'`: `person` = Osoba (freelancer, uses first + last name without company name or IČO/DIČ/IČ DPH), `sole_trader` = Živnostník, `company` = Firma; NULL for other kinds)
+* `company_id` VARCHAR(32) [NULLable] (IČO of a business `contractor` (`sole_trader` or `company`), filled from the Slovak / Czech business register; NULL for `person` freelancers and other kinds)
 * `tax_id` VARCHAR(32) [NULLable] (DIČ of a `contractor`)
 * `vat_id` VARCHAR(32) [NULLable] (IČ DPH of a `contractor`)
 * `position` VARCHAR(100) [NULLable] (Job title, free text with suggestions: programmer, designer, PPC specialist... Not the app permission role, which lives on the linked `users.role`)
@@ -558,6 +798,7 @@ Staff profiles, compensation baseline, Toggl Track integration mapping, and empl
 * `salary_type` ENUM('monthly', 'daily', 'hourly') (Default `monthly`)
 * `salary_amount` DECIMAL(12, 2) (Base compensation rate)
 * `salary_due_day` INT [NULLable] (Individual payout day of month 1-31 or week 1-7; defaults to global setting if NULL)
+* `hours_per_day` DECIMAL(4,2) [NULLable] (Contracted hours per day, 0-24; NULL = company `hoursPerDay` time tracking setting)
 * `vacation_allowances_json` TEXT [NULLable] (JSON map of allowance days per vacation type, e.g. `{"annual":25,"sick":10,"doctor":7}`)
 * `time_tracking_provider` VARCHAR(50) (Default `toggl`)
 * `time_tracking_user_id` VARCHAR(100) [NULLable] (Toggl user ID)
@@ -575,18 +816,22 @@ Periodic payroll statements (monthly or weekly) tracking multi-category salary b
 * `id` VARCHAR(50) [PK] (e.g. `sal-1727650000000-efgh`)
 * `employee_id` VARCHAR(50) (References `employees.id`)
 * `period_type` ENUM('monthly', 'weekly') (Default `monthly`)
-* `period_key` VARCHAR(20) (Period key, e.g. `2026-09` or `2026-W39`)
+* `period_key` VARCHAR(20) (Period key, always built from `year` and `period_number`: `2026-09` or `2026-W39`. `UNIQUE (employee_id, period_key)`. Keys without a year (`M05`, written by the profile drawer before 1.13) are rekeyed by `ccrm_migrate_salary_period_keys()` and normalised by `sync.php` on write; when two records hold one month the one with more paid out (then the newer edit) is kept and the other is written to `audit_log` in full. Helpers: `api/payroll_lib.php`, `src/utils/salaryPeriod.ts`)
 * `year` INT
 * `period_number` INT (Month 1-12 or Week 1-53)
 * `items_json` TEXT (JSON array of category line items `[{ categoryId, categoryName, salary, paid }]`)
-* `total_salary` DECIMAL(12, 2) (Total gross/net compensation calculated for the period)
-* `total_paid` DECIMAL(12, 2) (Total amount paid out so far)
-* `status` ENUM('pending', 'partially_paid', 'paid') (Mapped to `financial_records.status`: pending = planned, paid = paid, partially_paid = partially_paid)
+* `total_salary` DECIMAL(12, 2) (Total gross compensation for the period; on an employee's record this is Hrubá mzda = Základná mzda (the `base` item) + Iné (every other item))
+* `total_paid` DECIMAL(12, 2) (Total amount paid out so far. Status and the auto-expense measure it against `labor_cost` when filled in, otherwise against `total_salary`; on an employee's record it is one amount for the month, the item rows carry no paid value)
+* `labor_cost` DECIMAL(12, 2) [NULLable] (Cena práce from the month's payslip, typed in by hand; employees only, NULL for contractors and ledger lines. When set, it is the auto-expense's planned amount instead of `total_salary`)
+* `net_pay` DECIMAL(12, 2) [NULLable] (Na výplatu from the payslip, typed in by hand; employees only. Not stored, computed in the UI: Odvody zamestnávateľa = `labor_cost − total_salary`, Odvody a daň zamestnanca = `total_salary − net_pay`)
+* `status` ENUM('pending', 'partially_paid', 'paid') (Mapped to `financial_records.status`: pending = planned, paid = paid, partially_paid = partially_paid. Re-derived on every save from `total_paid` vs `ccrm_salary_due()`, so it is the live state, not the close; the time-entry lock reads `closed_at`)
 * `due_date` DATE [NULLable] (Calculated salary due date based on period and salaryDueDay)
 * `payment_date` DATE [NULLable] (Date of actual payment settlement)
 * `payment_method` VARCHAR(50) (Default `bank_transfer`)
-* `financial_record_id` VARCHAR(50) [NULLable] (Linked `financial_records.id` for automatic expense tracking)
+* `financial_record_id` VARCHAR(50) [NULLable] (Linked `financial_records.id` for automatic expense tracking. The `fr-sal-*` expense takes its amounts, status and dates from this row on every save; its title, description and category are set when it is created only)
 * `note` TEXT [NULLable]
+* `closed_at` DATETIME [NULLable] (The month was closed: stamped server-side (`sync.php`, MCP `record_salary_payout`) the first time the status becomes `paid`; kept when a later edit makes it partially paid again. Locks the month's time entries (`time_entries.php` `ccrm_te_paid_keys`, `src/utils/timeLock.ts`). Cleared only by an admin's reopen: the client sends `reopenClosedAt` = the stamp being reopened, and the server clears it only while it still matches, with an `audit_log` row `salary.reopen`. Backfilled from `payment_date` for months already paid)
+* `closed_by` VARCHAR(255) [NULLable] (Email of the session whose save closed the month)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
@@ -600,7 +845,7 @@ Employee leave and absence logs (holidays, doctor visits, sick leave, unpaid tim
 * `days_count` DECIMAL(5, 1) (Calculated working days excluding weekends)
 * `status` ENUM('requested', 'approved', 'rejected', 'taken') (Approval status)
 * `note` TEXT [NULLable]
-* `approved_by` VARCHAR(100) [NULLable] (Name/ID of authorizer)
+* `approved_by` VARCHAR(100) [NULLable] (Email of the session that approved or rejected it, stamped by `sync.php` on the transition. Kept when approved leave moves to `taken`; NULL for any other status)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
@@ -642,6 +887,7 @@ Support tickets, bug reports, and client inquiries attached to projects and clie
 * `source` ENUM('email', 'widget', 'manual', 'phone')
 * `project_id` VARCHAR(50) [NULLable] (References `projects.id`)
 * `client_id` VARCHAR(50) [NULLable] (References `leads.id`)
+* `agency_worker_id` VARCHAR(64) [NULLable] (References `agency_workers.id`)
 * `reporter_name` VARCHAR(200) [NULLable]
 * `reporter_email` VARCHAR(255) [NULLable]
 * `reporter_phone` VARCHAR(50) [NULLable]
@@ -659,6 +905,7 @@ Support tickets, bug reports, and client inquiries attached to projects and clie
 * `sla_paused_seconds` INT
 * `resolved_at` DATETIME [NULLable]
 * `closed_at` DATETIME [NULLable]
+* `reopened_count` INT NOT NULL DEFAULT 0 (how many times the ticket was reopened from resolved/closed; server-maintained)
 * `satisfaction_score` TINYINT [NULLable]
 * `satisfaction_comment` TEXT [NULLable]
 * `archived` TINYINT(1)
@@ -698,3 +945,324 @@ Logged support hours (billable and non-billable) against a ticket.
 * `note` VARCHAR(500) [NULLable]
 * `logged_at` DATE
 * `created_at` TIMESTAMP
+
+### `time_entries`
+Time tracking: one row per stretch of work, owned by the login that did it. No foreign keys on purpose (an entry outlives its task, ticket, project and user). Not written by `sync.php`; written by `public/api/time_entries.php`. Vocabulary: **project time** = `duration_sec` (what the client is billed), **worked time** = `worked_ms` (the person's real clock time, shared between parallel timers). Bill project time; pay and measure worked time.
+* `id` VARCHAR(64) [PK]
+* `user_id` VARCHAR(50) (Owner: the login whose time this is)
+* `recorded_by_user_id` VARCHAR(50) (Who typed it in)
+* `employee_id` VARCHAR(50) [NULLable] (Resolved from `user_id`; supplies the salary for the cost rate)
+* `project_id` VARCHAR(50) [NULLable] (NULL = Assign project state)
+* `task_id` VARCHAR(50) [NULLable]
+* `ticket_id` VARCHAR(50) [NULLable]
+* `description` VARCHAR(500) [NULLable] (Title ONLY for entries with no task and no ticket)
+* `title_snapshot` VARCHAR(500) [NULLable]
+* `legacy_note` VARCHAR(500) [NULLable] (Read-only note migrated from `ticket_time_entries`)
+* `note` VARCHAR(1000) [NULLable] (The Description the person typed)
+* `entry_date` DATE (Company-timezone date)
+* `start_at` DATETIME [NULLable] (UTC; NULL for hours-only entries)
+* `end_at` DATETIME [NULLable] (UTC; NULL while running or hours-only)
+* `paused_at` DATETIME [NULLable] (TT2 D6: set = the item is paused and can be resumed; equals `end_at`. Cleared by resume, stop or expiry; `time_pause_migration.php`)
+* `pause_reason` VARCHAR(16) [NULLable] (`manual` | `status` | `presence`; kept after the marker is cleared, as history)
+* `resume_until` DATETIME [NULLable] (UTC; the pause expires after this. NULL = the pause day's `autoStopAt` in company time (C17); expired markers are cleared lazily on read)
+* `continues_id` VARCHAR(64) [NULLable] (On an entry created by a resume: the paused entry it continues (C8))
+* `end_reason` VARCHAR(16) [NULLable] (How the entry ended: `user` | `switch` | `status` | `presence` | `auto_stop`. NULL while running, while paused and after a resume; set by `ccrm_tt_end_entries()` in `time_pause_lib.php`)
+* `duration_sec` INT [NULLable] (Project time, billed)
+* `worked_ms` INT UNSIGNED [NULLable] (Worked time in ms; NULL while running; written only by `ccrm_tt_settle()`; backfilled `duration_sec * 1000` for closed entries)
+* `billable` TINYINT(1) (default 1)
+* `billable_rate` DECIMAL(10,2) [NULLable]
+* `cost_rate` DECIMAL(10,4) [NULLable] (Snapshot of the hourly cost rate)
+* `cost_rate_source` VARCHAR(32) (default `none`)
+* `cost_rate_basis_days` TINYINT [NULLable]
+* `cost` DECIMAL(14,4) [NULLable] (Widened from DECIMAL(12,2))
+* `tags` TEXT [NULLable] (JSON array of strings)
+* `source` VARCHAR(16) (default `manual`)
+* `origin_type` VARCHAR(16) [NULLable]
+* `origin_id` VARCHAR(64) [NULLable]
+* `device_id` VARCHAR(64) [NULLable]
+* `external_id` VARCHAR(100) [NULLable] (Toggl/Clockify id, or `tte:<id>` for migrated ticket time)
+* `approval_status` VARCHAR(16) [NULLable]
+* `running_guard` VARCHAR(50) (Generated: `user_id` while running and not deleted; plain index `idx_te_running` since TT2 phase 4: several entries of one user may run (parallel timers). The former UNIQUE `uq_te_running` is dropped by `time_parallel_migration.php`; serialisation is the per-user lock row in `time_presence`)
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+* `deleted_at` DATETIME [NULLable]
+
+### `time_presence`
+One row per user (TT2 D5.1, D7.1). Every timer mutation in `public/api/time_entries.php` locks the user's row first (`ccrm_tt_lock_user()` in `public/api/time_lock.php`: the row is created with `INSERT IGNORE` before the transaction, then `SELECT ... FOR UPDATE` inside it), so two clients never interleave a start, stop or undo. The presence columns are written from phase 6 (the presence engine). Not written by `sync.php` (no column healing).
+* `user_id` VARCHAR(50) [PK]
+* `anchor_at` DATETIME [NULLable] (UTC; the last answer of the presence cycle, NULL when nothing runs)
+* `last_push_at` DATETIME [NULLable] (UTC; the last presence push sent)
+* `auto_paused_at` DATETIME [NULLable] (UTC; when the presence engine paused everything)
+* `updated_at` TIMESTAMP
+
+### `time_rate_months`
+Time tracking rate card (docs/TIME-TRACKING-V2.md D4.3): the hourly cost rate of a person paid monthly, per employee and month, and the inputs it came from (leave-aware formula D4.1). Written only by `ccrm_tt_rate_for()` (`public/api/time_rate_card.php`), never by `sync.php`. While the month is open a changed `inputs_hash` re-prices the person's entries of the month; the row freezes when the month's `employee_salaries` record is closed, else from the first day of month + 2; after that only the admin "Re-price a period" recomputes it. Daily and hourly pay have no rows. Created by `time_rate_months_migration.php`.
+* `employee_id` VARCHAR(50) [PK part]
+* `month` CHAR(7) [PK part] (`YYYY-MM`)
+* `rate` DECIMAL(10,4) [NULLable] (Hourly cost rate)
+* `source` VARCHAR(32) (`monthly` | `contractor_monthly`)
+* `salary_type` VARCHAR(20) [NULLable]
+* `salary_amount` DECIMAL(12,2) [NULLable]
+* `working_days` INT [NULLable] (Working days of the month in the person's country)
+* `paid_leave_days` DECIMAL(4,1) (default 0; approved/taken leave of a paid type)
+* `unpaid_leave_days` DECIMAL(4,1) (default 0)
+* `hours_per_day` DECIMAL(4,2) [NULLable] (Effective: `employees.hours_per_day`, else the company's)
+* `multiplier` DECIMAL(6,4) [NULLable] (Employer multiplier; 1 for contractors)
+* `fallback` TINYINT(1) (1 = the whole month was leave; the no-leave basis was used)
+* `inputs_hash` CHAR(40) (sha1 of the inputs)
+* `frozen_at` DATETIME [NULLable] (UTC; set when the month froze)
+* `updated_at` TIMESTAMP
+
+### `project_labour_exclusions`
+Per-project, per-employee, per-month exclusion flags for time-tracking labour costs (e.g. fixed-agreement workers whose costs are tracked outside time tracking). Managed via `public/api/time_entries.php?action=setProjectCostExclusion`; subtracted from Project Finances, `#projects` Costs, Profitability, and Project Breakdown while leaving time-tracking hours and payroll untouched.
+* `project_id` VARCHAR(50) [PK part]
+* `user_id` VARCHAR(50) [PK part]
+* `month` CHAR(7) [PK part] (`YYYY-MM`)
+
+### `weekly_plan_cards`
+Standalone planning cards displayed on the Weekly Plan board (by day date and vertical position). Cards are independent of `tasks` (no automatic sync), while their `refs_json` can reference projects, leads, clients, employees, tickets, tasks, and `#tags`.
+* `id` VARCHAR(64) [PK]
+* `date` VARCHAR(10) (ISO date `YYYY-MM-DD`, indexed with `position`)
+* `content` TEXT
+* `position` INT
+* `completed` TINYINT(1)
+* `color` VARCHAR(32) (Card color key: `''`, `'indigo'`, `'emerald'`, `'amber'`, `'rose'`, `'sky'`, `'purple'`, `'orange'`)
+* `refs_json` LONGTEXT [NULLable] (JSON array of `{ kind, id, label }`)
+* `created_by` VARCHAR(64) [NULLable]
+* `deleted_at` DATETIME [NULLable] (Soft-delete / archive timestamp for MCP and reversible archival)
+* `created_at` DATETIME
+* `updated_at` DATETIME
+
+### `weekly_plan_day_notes`
+Per-day management notes displayed underneath each day header on the Weekly Plan board.
+* `date` VARCHAR(10) [PK] (ISO date `YYYY-MM-DD`)
+* `note` TEXT
+* `updated_by` VARCHAR(64) [NULLable]
+* `updated_at` DATETIME
+
+### `custom_calendars`
+Workspace-shared custom calendars under `#tasks` (e.g. Meeting Room, Company Van, Showroom). Written exclusively by `api/custom_calendars.php` (never by `sync.php`).
+* `id` VARCHAR(64) [PK] (`ccal_<hex>`)
+* `name` VARCHAR(150)
+* `color` VARCHAR(32) (hex color, default `#6366f1`)
+* `description` VARCHAR(500) [NULLable]
+* `created_by` VARCHAR(150) [NULLable]
+* `deleted_at` DATETIME [NULLable]
+* `created_at` DATETIME
+* `updated_at` DATETIME
+
+### `custom_calendar_events`
+Free-form events booked on a custom calendar (`custom_calendars.id`). Supports single-day, multi-day, all-day, and timed (`HH:MM`–`HH:MM`) slots with optional client/project links.
+* `id` VARCHAR(64) [PK] (`ccevt_<hex>`)
+* `calendar_id` VARCHAR(64) (references `custom_calendars.id`)
+* `title` VARCHAR(255)
+* `start_date` VARCHAR(10) (`YYYY-MM-DD`)
+* `end_date` VARCHAR(10) (`YYYY-MM-DD`)
+* `start_time` VARCHAR(5) [NULLable] (`HH:MM`; null = all-day)
+* `end_time` VARCHAR(5) [NULLable] (`HH:MM`)
+* `notes` TEXT [NULLable]
+* `color` VARCHAR(32) [NULLable] (optional per-event color override)
+* `owner` VARCHAR(150) [NULLable] (user who booked / owns the slot)
+* `related_lead_id` VARCHAR(64) [NULLable]
+* `related_project_id` VARCHAR(64) [NULLable]
+* `created_by` VARCHAR(150) [NULLable]
+* `deleted_at` DATETIME [NULLable]
+* `created_at` DATETIME
+* `updated_at` DATETIME
+
+---
+
+## 12. Newsletter
+
+Spec: `docs/NEWSLETTER.md`. These tables are written only by `api/newsletter*.php`, never by `sync.php` (so the `sync.php` column-healing rule does not apply) and they are not part of the sync blob. No foreign keys. Times are UTC `DATETIME`. A later `ALTER` goes into a `ccrm_migrate_newsletter()` migration.
+
+### `newsletter_campaigns`
+One e-mail campaign. Only a `draft` is editable. Deleted campaigns are soft-deleted (`deleted_at`).
+* `id` VARCHAR(64) [PK] (`nlc-<random hex>`)
+* `name` VARCHAR(200) (internal name)
+* `subject` VARCHAR(255)
+* `preheader` VARCHAR(255) [NULLable]
+* `from_name` VARCHAR(150) [NULLable] (NULL = `NEWSLETTER_CONFIG.sender.fromName`)
+* `reply_to` VARCHAR(190) [NULLable] (NULL = `NEWSLETTER_CONFIG.sender.replyTo`)
+* `audience_json` TEXT (the `Audience` of C5: clients required, leads / employees / extra optional)
+* `body_json` MEDIUMTEXT [NULLable] (the `EmailDoc` of C6)
+* `use_header` TINYINT(1) / `use_footer` TINYINT(1) (default 1: show the global header / footer)
+* `html_snapshot` MEDIUMTEXT [NULLable] / `text_snapshot` MEDIUMTEXT [NULLable] (rendered by the browser at `start_send`, merge tags unresolved)
+* `status` VARCHAR(16) (`draft` | `sending` | `paused` | `sent` | `cancelled`)
+* `last_error` VARCHAR(500) [NULLable]
+* `recipients_total` INT (queued rows at `start_send`)
+* `created_by` VARCHAR(50) [NULLable] / `updated_by` VARCHAR(50) [NULLable] (the user's display name)
+* `created_at`, `updated_at` DATETIME; `started_at`, `finished_at`, `deleted_at` DATETIME [NULLable]
+* Indexes: `idx_nlc_status` (`status`), `idx_nlc_list` (`deleted_at`, `updated_at`)
+
+### `newsletter_recipients`
+One row per address of one campaign, frozen when sending starts. Doubles as the send queue.
+* `id` BIGINT UNSIGNED [PK, AUTO_INCREMENT]
+* `campaign_id` VARCHAR(64) (References `newsletter_campaigns.id`, no foreign key)
+* `email` VARCHAR(190) (lower-cased, trimmed)
+* `name` VARCHAR(255) [NULLable]
+* `source` VARCHAR(16) (`client` | `lead` | `employee` | `extra`; on a duplicate address the first source wins: client > lead > employee > extra)
+* `lead_id` VARCHAR(50) [NULLable], `employee_id` VARCHAR(50) [NULLable]
+* `merge_json` TEXT [NULLable] (merge values `name`, `first_name`, `company`, `email` frozen at `start_send`)
+* `token` CHAR(32) (`bin2hex(random_bytes(16))`, used by the unsubscribe and view-online links)
+* `status` VARCHAR(16) (`queued` | `sent` | `failed` | `skipped` | `cancelled`)
+* `skip_reason` VARCHAR(32) [NULLable] (`unsubscribed` | `invalid`)
+* `attempts` TINYINT, `next_attempt_at` DATETIME [NULLable], `error` VARCHAR(500) [NULLable]
+* `sent_at` DATETIME [NULLable], `unsubscribed_at` DATETIME [NULLable] (set when the person used this campaign's unsubscribe link)
+* Unique: (`campaign_id`, `email`), `token`. Indexes: `idx_nlr_queue` (`campaign_id`, `status`, `next_attempt_at`), `idx_nlr_sent_at`, `idx_nlr_email`
+
+### `newsletter_suppressions`
+The one global opt-out list. Every send skips these addresses.
+* `email` VARCHAR(190) [PK] (lower-cased)
+* `reason` VARCHAR(16) (`unsubscribed` | `bounced` | `manual`)
+* `campaign_id` VARCHAR(64) [NULLable] (the campaign whose link was used)
+* `note` VARCHAR(255) [NULLable]
+* `created_by` VARCHAR(50) [NULLable] (NULL = the recipient via the unsubscribe link, or the worker)
+* `created_at` DATETIME
+
+### `system_settings` key `NEWSLETTER_CONFIG`
+JSON (C3), read and written only by `api/newsletter.php` (`settings_get` / `settings_save`); a missing key means the defaults.
+`{ version: 1, header: EmailDoc | null, footer: EmailDoc | null, theme: { contentWidth 520..800, pageBackground, contentBackground, fontFamily, textColor, linkColor, buttonBackground, buttonTextColor }, sender: { fromName, replyTo }, sending: { batchSize 10..200 (40), perHourLimit 10..10000 (400), testRecipients: string[] (max 5) } }`.
+`header` / `footer` `null` = the built-in default for the company and language. Uploaded images are plain files under `<uploads>/newsletter/YYYY/MM/<random hex>.<ext>` (no table).
+
+---
+
+## 13. Agency & Workforce Leasing
+
+### `agency_workers`
+Permanent candidate and rented-employee profiles (separate entity from `leads` contacts).
+* `id` VARCHAR(100) [PK]
+* `worker_code` VARCHAR(50) [NULLable] (Human-readable reference e.g. `AGW-001`)
+* `full_name` VARCHAR(200)
+* `preferred_name` VARCHAR(120) [NULLable]
+* `email` VARCHAR(255) [NULLable]
+* `phone` VARCHAR(60) [NULLable]
+* `stage_id` VARCHAR(80) (Customizable recruitment stage key from `AGENCY_SETTINGS`)
+* `worker_status` ENUM('candidate', 'rented', 'bench', 'archived')
+* `nationality` VARCHAR(100) [NULLable]
+* `date_of_birth` VARCHAR(20) [NULLable]
+* `profile_json` LONGTEXT [NULLable] (Structured applicant, passport, permit, stayWork, addresses, family, and custom fields)
+* `skills_json` TEXT [NULLable]
+* `notes` LONGTEXT [NULLable]
+* `default_pay_rate` DECIMAL(12, 2)
+* `default_bill_rate` DECIMAL(12, 2)
+* `currency` VARCHAR(10)
+* `assigned_recruiter` VARCHAR(100) [NULLable]
+* `created_by` VARCHAR(100) [NULLable]
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `agency_workplaces`
+External company worksites / shifts locations linked to Business/Partner clients in `leads`.
+* `id` VARCHAR(100) [PK]
+* `company_client_id` VARCHAR(100) (References company `leads.id`)
+* `name` VARCHAR(160)
+* `address` VARCHAR(255) [NULLable]
+* `contact_lead_id` VARCHAR(100) [NULLable] (Person contact in `leads` at that company)
+* `default_shift_code` VARCHAR(50) [NULLable]
+* `notes` TEXT [NULLable]
+* `active` TINYINT(1)
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `agency_placements`
+Historical and active workforce leasing placements assigning an `agency_workers` row to an external client company and workplace.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100) (References `agency_workers.id`)
+* `company_client_id` VARCHAR(100) (References company `leads.id`)
+* `workplace_id` VARCHAR(100) [NULLable] (References `agency_workplaces.id`)
+* `contact_lead_id` VARCHAR(100) [NULLable] (Client-side HR/site contact `leads.id`)
+* `job_role` VARCHAR(160)
+* `status` ENUM('planned', 'active', 'completed', 'terminated')
+* `start_date` DATE
+* `end_date` DATE [NULLable]
+* `pay_rate` DECIMAL(12, 2)
+* `pay_rate_type` ENUM('hourly', 'monthly')
+* `bill_rate` DECIMAL(12, 2)
+* `bill_rate_type` ENUM('hourly', 'monthly')
+* `currency` VARCHAR(10)
+* `notes` TEXT [NULLable]
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `agency_worker_checklists`
+Customizable compliance and onboarding checklist items per worker.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `item_key` VARCHAR(100)
+* `label` VARCHAR(200)
+* `status` ENUM('pending', 'submitted', 'verified', 'expired')
+* `expires_at` DATE [NULLable]
+* `note` TEXT [NULLable]
+* `file_id` VARCHAR(100) [NULLable]
+* `sort_order` INT
+* `updated_at` TIMESTAMP
+
+### `agency_worker_files`
+Private candidate/worker documents stored outside the web root under `uploads/private/agency/` and served through `api/agency_file.php`.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `category` VARCHAR(60)
+* `checklist_item_id` VARCHAR(100) [NULLable]
+* `file_name` VARCHAR(255)
+* `mime_type` VARCHAR(120) [NULLable]
+* `size_bytes` BIGINT
+* `storage_name` VARCHAR(255)
+* `uploaded_by` VARCHAR(100) [NULLable]
+* `created_at` TIMESTAMP
+
+### `agency_timeline_events`
+Lifecycle timeline per worker (`stage_change`, `contact`, `placement`, `sick_leave`, `compliance`, `note`, `work_log`).
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `event_type` ENUM('stage_change', 'contact', 'placement', 'sick_leave', 'compliance', 'note', 'work_log')
+* `title` VARCHAR(255)
+* `description` TEXT [NULLable]
+* `meta_json` TEXT [NULLable]
+* `occurred_at` DATETIME
+* `created_by` VARCHAR(100) [NULLable]
+* `created_at` TIMESTAMP
+
+### `agency_shifts`
+Daily scheduled shifts, worked shifts, and sick leave entries per rented worker, company, and workplace.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `placement_id` VARCHAR(100) [NULLable]
+* `company_client_id` VARCHAR(100)
+* `workplace_id` VARCHAR(100) [NULLable]
+* `work_date` DATE
+* `shift_template_id` VARCHAR(80) [NULLable]
+* `shift_label` VARCHAR(120) [NULLable]
+* `start_time` VARCHAR(10) [NULLable]
+* `end_time` VARCHAR(10) [NULLable]
+* `hours` DECIMAL(6, 2)
+* `overtime_hours` DECIMAL(6, 2)
+* `status` ENUM('scheduled', 'worked', 'sick', 'absent', 'holiday')
+* `sick_note` TEXT [NULLable]
+* `notes` TEXT [NULLable]
+* `created_by` VARCHAR(100) [NULLable]
+* `updated_at` TIMESTAMP
+
+### `agency_payments`
+Monthly worker payout and client billing calculation records linked to `financial_records`.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `placement_id` VARCHAR(100) [NULLable]
+* `company_client_id` VARCHAR(100) [NULLable]
+* `period_ym` VARCHAR(10)
+* `regular_hours` DECIMAL(8, 2)
+* `overtime_hours` DECIMAL(8, 2)
+* `sick_days` DECIMAL(6, 1)
+* `base_pay` DECIMAL(12, 2)
+* `items_json` LONGTEXT [NULLable]
+* `gross_pay` DECIMAL(12, 2)
+* `deductions_total` DECIMAL(12, 2)
+* `net_pay` DECIMAL(12, 2)
+* `paid_amount` DECIMAL(12, 2)
+* `billable_total` DECIMAL(12, 2)
+* `currency` VARCHAR(10)
+* `status` ENUM('draft', 'approved', 'paid')
+* `paid_at` DATE [NULLable]
+* `financial_record_id` VARCHAR(100) [NULLable]
+* `notes` TEXT [NULLable]
+* `updated_at` TIMESTAMP

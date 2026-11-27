@@ -87,11 +87,16 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: Number(process.env.QA_RETRIES ?? 0),
 
-  reporter: [
-    ['list'],
-    ['json', { outputFile: 'test-results/qa-results.json' }],
-    ['html', { outputFolder: 'playwright-report', open: 'never' }],
-  ],
+  /* QA_BLOB=1 (CI shards): each shard writes a blob; `playwright merge-reports` turns the
+     blobs of all shards into the one JSON + HTML report the known-failing register is
+     applied to. See .github/workflows/qa.yml. */
+  reporter: process.env.QA_BLOB === '1'
+    ? [['list'], ['blob', { outputDir: 'blob-report' }]]
+    : [
+        ['list'],
+        ['json', { outputFile: 'test-results/qa-results.json' }],
+        ['html', { outputFolder: 'playwright-report', open: 'never' }],
+      ],
 
   use: {
     baseURL: EXTERNAL_TARGET || QA_URL,

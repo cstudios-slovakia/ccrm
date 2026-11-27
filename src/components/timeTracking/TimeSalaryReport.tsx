@@ -1,0 +1,278 @@
+import { useMemo, useState } from "react";
+import { Download } from "lucide-react";
+import { Surface } from "../layout";
+import { useTimeEntries } from "../../hooks/useTimeEntries";
+import { useTimeTracking } from "../../hooks/useTimeTracking";
+import { formatMoney } from "../../utils/currency";
+import { resolveWorkCountry } from "../../utils/holidays.ts";
+import { costRateTooltip } from "../../utils/timeCost.ts";
+import {
+  buildSalaryReport,
+  lastClosedMonth,
+  monthRange,
+  salaryCsv,
+} from "../../utils/timeReports.ts";
+import { entrySeconds, formatDuration, todayIso } from "../../utils/timeTracking.ts";
+import { shiftMonthAnchor } from "../../utils/timeTeam.ts";
+import { MoneyText } from "./MoneyText";
+import { useMaskedMoney, useMoneyPresent } from "./MoneyShield";
+import { RangeNav } from "./RangeNav";
+import { WorkedTotal } from "./WorkedLine";
+import type { TimeDeps } from "./shared";
+
+/** Where each salary went in a month that has already closed. Admins with time_tracking_salary_report. */
+export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
+  const tt = useTimeTracking();
+  const { t, viewer, settings } = tt;
+  const [month, setMonth] = useState(() => lastClosedMonth(todayIso()));
+  const range = monthRange(month);
+  const { entries, loading } = useTimeEntries({ from: range.from, to: range.to, userId: viewer.canTeam ? "all" : undefined });
+  const clock = entries.some((e) => e.running) ? tt.nowMs : 0;
+  const closed = lastClosedMonth(todayIso());
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
+  const [y, m] = month.split("-").map(Number);
+  const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(locale, { month: "long", year: "numeric", timeZone: "UTC" });
+  const moneyStr = useMaskedMoney((n: number) => formatMoney(n, deps.currency, deps.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  useMoneyPresent(true);
+
+  const report = useMemo(() => {
+    const employeeByUser = new Map(deps.employees.filter((e) => e.userId).map((e) => [e.userId as string, e]));
+    const ids = new Set<string>([...deps.users.map((u) => u.id).filter(Boolean) as string[], ...employeeByUser.keys()]);
+    return buildSalaryReport({
+      nowMs: tt.nowMs,
+      entries: entries.map((e) => ({
+        id: e.id,
+        running: e.running,
+        startAt: e.startAt,
+        workedMs: e.workedMs,
+        userId: e.userId,
+        projectId: e.projectId,
+        clientId: e.clientId ?? null,
+        entryDate: e.entryDate,
+        durationSec: entrySeconds(e, clock),
+        cost: e.cost,
+        currency: deps.currency,
+        costRate: e.costRate,
+        costRateSource: e.costRateSource,
+        costRateBasisDays: e.costRateBasisDays,
+      })),
+      people: [...ids].map((id) => {
+        const user = deps.users.find((u) => u.id === id);
+        const employee = employeeByUser.get(id);
+        return {
+          userId: id,
+          name: user?.name || employee?.name || id,
+          employeeId: employee?.id ?? null,
+          active: !!employee && employee.isActive !== false,
+          kind: employee?.kind ?? null,
+          salaryType: employee?.salaryType ?? null,
+          salaryAmount: employee?.salaryAmount ?? null,
+          workCountry: resolveWorkCountry(employee?.workCountry, tt.defaultCountry),
+        };
+      }),
+      projects: deps.projects.map((p) => ({
+        id: p.id,
+        isInternal:
+          p.isInternal === true ||
+          deps.projectTypes.some((tp) => tp.id === p.projectTypeId && (tp as { isInternal?: boolean }).isInternal === true),
+      })),
+      from: range.from,
+      to: range.to,
+      viewerUserId: tt.userId || "",
+      canCosts: viewer.canCosts,
+      currency: deps.currency,
+      settings,
+      monthWorkingDays: (country, year, mo) => tt.calendarFor(country).workingDaysInMonth(year, mo),
+    });
+  }, [clock, deps, entries, range.from, range.to, settings, tt.calendarFor, tt.defaultCountry, tt.userId, viewer.canCosts]);
+
+  const bar = (client: number, internal: number, unallocated: number) => {
+    const total = client + internal + unallocated;
+    const w = (n: number) => (total > 0 ? (n / total) * 100 : 0);
+    return (
+      <span className="flex h-2 w-full overflow-hidden rounded-full bg-gray-100">
+        <span className="h-full bg-entity-solid transition-[width] duration-500" style={{ width: `${w(client)}%` }} />
+        <span className="h-full bg-gray-400 transition-[width] duration-500" style={{ width: `${w(internal)}%` }} />
+        <span className="h-full bg-amber-300 transition-[width] duration-500" style={{ width: `${w(unallocated)}%`, backgroundImage: HATCH }} />
+      </span>
+    );
+  };
+
+  const basisDays = tt.calendarFor(tt.defaultCountry).workingDaysInMonth(y, m);
+  const basisPerDay = settings.hoursPerDay;
+  const basisHours = settings.hoursBasis === "fixed" ? settings.fixedHoursPerMonth : basisDays * basisPerDay;
+  const mult = settings.employerMultiplier > 0 ? settings.employerMultiplier : 1;
+  const own = t(" (each person's own country and hours apply)", " (platí krajina a hodiny každej osoby)", " (mindenki saját országa és órái számítanak)");
+  const basisSentence =
+    settings.hoursBasis === "fixed"
+      ? t(`Fixed ${basisHours} h per month; × ${mult} employer multiplier`, `Pevných ${basisHours} h mesačne; × ${mult} zamestnávateľský násobok`, `Fix ${basisHours} óra havonta; × ${mult} munkáltatói szorzó`)
+      : t(`${basisDays} working days × ${basisPerDay} h = ${basisHours} h; × ${mult} employer multiplier`, `${basisDays} pracovných dní × ${basisPerDay} h = ${basisHours} h; × ${mult} zamestnávateľský násobok`, `${basisDays} munkanap × ${basisPerDay} óra = ${basisHours} óra; × ${mult} munkáltatói szorzó`);
+
+  return (
+    <div className="grid gap-4" data-testid="salary-report">
+      <Surface padding="none" className="overflow-x-auto">
+        <div className="grid gap-3 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="type-card-title flex flex-wrap items-center gap-2 text-gray-900">
+                <span>{t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás")} · <span className="capitalize">{monthLabel}</span></span>
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 type-overline text-gray-600">{t("Restricted access", "Obmedzený prístup", "Korlátozott hozzáférés")}</span>
+              </h3>
+              <p className="mt-1 type-meta text-gray-500" data-testid="salary-basis">{basisSentence}{own}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <RangeNav
+                label={<span className="capitalize">{monthLabel}</span>}
+                prevLabel={t("Previous month", "Predchádzajúci mesiac", "Előző hónap")}
+                nextLabel={t("Next month", "Nasledujúci mesiac", "Következő hónap")}
+                onPrev={() => setMonth(shiftMonthAnchor(month, -1, 1))}
+                onNext={() => setMonth(shiftMonthAnchor(month, 1, 1))}
+                nextDisabled={month >= closed}
+              />
+              <button
+                type="button"
+          onClick={() =>
+            downloadText(
+              `salary-${month}.csv`,
+              salaryCsv(report, {
+                person: t("Person", "Osoba", "Személy"),
+                salary: t("Salary", "Mzda", "Bér"),
+                rate: t("Rate", "Sadzba", "Díj"),
+                hours: t("Hours", "Hodiny", "Órák"),
+                client: t("Client", "Klient", "Ügyfél"),
+                internal: t("Internal", "Interné", "Belső"),
+                unallocated: t("Unallocated", "Nepriradené", "Nincs projekt"),
+                utilisation: t("Utilisation", "Využitie", "Kihasználtság"),
+                total: t("Totals", "Spolu", "Összesen"),
+                without: t("Time without salary data", "Čas bez údajov o mzde", "Idő béradat nélkül"),
+              }),
+            )
+          }
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 transition-all hover:bg-gray-50 active:scale-95 cursor-pointer"
+              >
+                <Download className="size-4" />
+                CSV
+              </button>
+            </div>
+          </div>
+          <p className="type-meta text-gray-500">
+            {t(
+              "Salary is the employee's base pay for the month. Bonuses are not included.",
+              "Mzda je základná mesačná mzda zamestnanca. Prémie sa nezapočítavajú.",
+              "A bér a munkatárs havi alapbére. A prémium nincs benne.",
+            )}
+          </p>
+          <div className="flex flex-wrap gap-3 type-meta text-gray-500">
+            <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-entity-solid" />{t("Client projects", "Klientske projekty", "Ügyfélprojektek")}</span>
+            <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-gray-400" />{t("Internal", "Interné", "Belső")}</span>
+            <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-300" style={{ backgroundImage: HATCH }} />{t("Unallocated", "Nepriradené", "Nincs projekt")}</span>
+          </div>
+        </div>
+        {loading && report.rows.length === 0 ? (
+          <p className="p-4 text-body text-gray-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
+        ) : (
+          <table className="w-full border-collapse text-ui">
+            <thead>
+              <tr className="border-b border-gray-100 text-left">
+                {[
+                  t("Person", "Osoba", "Személy"),
+                  t("Loaded salary", "Mzda s odvodmi", "Teljes bérköltség"),
+                  t("Rate", "Sadzba", "Díj"),
+                  t("Tracked", "Sledované", "Rögzített"),
+                  t("Split", "Rozdelenie", "Megoszlás"),
+                  t("Client projects", "Klientske projekty", "Ügyfélprojektek"),
+                  t("Internal", "Interné", "Belső"),
+                  t("Unallocated", "Nepriradené", "Nincs projekt"),
+                  t("Utilisation", "Využitie", "Kihasználtság"),
+                ].map((h) => (
+                  <th key={h} className="px-3 py-3 type-overline text-gray-500">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {report.rows.map((row) => {
+                const employee = deps.employees.find((e) => e.id === row.employeeId);
+                const country = resolveWorkCountry(employee?.workCountry, tt.defaultCountry);
+                const util = row.utilisation == null ? null : Math.round(row.utilisation * 100);
+                return (
+                  <tr key={row.userId} className="border-b border-gray-100">
+                    <td className="px-3 py-3">
+                      <span className="block font-semibold text-gray-900">{row.name}</span>
+                      {employee?.position && <span className="block type-meta text-gray-500">{employee.position}</span>}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums">
+                      {row.loadedSalary == null ? "—" : moneyStr(row.loadedSalary)}
+                      {row.rateBasis === "contract" && row.loadedSalary != null && (
+                        <span
+                          className="block type-meta text-gray-400"
+                          title={t(
+                            "No priced time entry this month, so this is today's contract salary, not necessarily the one valid that month.",
+                            "Tento mesiac nie je žiadny ocenený záznam času, preto ide o dnešnú zmluvnú mzdu, nie nutne o tú, ktorá platila v danom mesiaci.",
+                            "Ebben a hónapban nincs beárazott időbejegyzés, ezért ez a mai szerződéses bér, nem feltétlenül az akkor érvényes.",
+                          )}
+                        >
+                          {t("current contract", "aktuálna zmluva", "jelenlegi szerződés")}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums text-gray-900" title={costRateTooltip(row.rate, { t, money: moneyStr, monthLabel, country })}>
+                      {row.rate.rate == null ? "—" : `${moneyStr(row.rate.rate)}/h`}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums text-gray-900"><WorkedTotal workedSec={row.trackedSeconds} projectSec={row.deliveredSeconds} compact plain /></td>
+                    <td className="min-w-28 px-3 py-3">{bar(row.clientSeconds, row.internalSeconds, row.unallocatedSeconds)}</td>
+                    <td className="px-3 py-3"><MoneyText bag={row.clientCost} language={deps.language} /></td>
+                    <td className="px-3 py-3"><MoneyText bag={row.internalCost} language={deps.language} /></td>
+                    <td className="px-3 py-3"><MoneyText bag={row.unallocatedCost} language={deps.language} /></td>
+                    <td className={`px-3 py-3 tabular-nums ${util != null && row.employeeId != null && employee?.kind !== "contractor" && util < 75 ? "text-amber-700" : "text-gray-800"}`}>{util == null ? "—" : `${util} %`}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-gray-50 font-semibold">
+                <td className="px-3 py-3">{t("Totals", "Spolu", "Összesen")}</td>
+                <td className="px-3 py-3"><MoneyText bag={report.totals.loadedSalary} language={deps.language} /></td>
+                <td />
+                <td className="px-3 py-3 tabular-nums text-gray-900"><WorkedTotal workedSec={report.totals.trackedSeconds} projectSec={report.totals.deliveredSeconds} compact plain /></td>
+                <td />
+                <td className="px-3 py-3"><MoneyText bag={report.totals.clientCost} language={deps.language} /></td>
+                <td className="px-3 py-3"><MoneyText bag={report.totals.internalCost} language={deps.language} /></td>
+                <td className="px-3 py-3"><MoneyText bag={report.totals.unallocatedCost} language={deps.language} /></td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </Surface>
+
+      <Surface>
+        <h3 className="type-card-title text-gray-900">{t("Time without salary data", "Čas bez údajov o mzde", "Idő béradat nélkül")}</h3>
+        <p className="mt-1 type-meta text-gray-500">{t("These people tracked time and have no employee record, so there is no salary to split.", "Títo ľudia zaznamenali čas a nemajú kartu zamestnanca, takže mzdu nie je podľa čoho rozdeliť.", "Ezek az emberek rögzítettek időt, de nincs munkatársi lapjuk, ezért a bért nincs miből felosztani.")}</p>
+        {report.withoutSalary.length === 0 ? (
+          <p className="mt-3 text-ui text-gray-400" data-testid="salary-without">{t("None this month.", "Tento mesiac nikto.", "Ebben a hónapban senki.")}</p>
+        ) : (
+          <ul className="mt-3 grid gap-2" data-testid="salary-without">
+            {report.withoutSalary.map((row) => (
+              <li key={row.userId} className="flex flex-wrap items-baseline justify-between gap-2 text-ui">
+                <span className="font-semibold text-gray-900">{row.name}</span>
+                <span className="tabular-nums text-gray-900">{formatDuration(row.seconds)}</span>
+                <MoneyText bag={row.cost} language={deps.language} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Surface>
+    </div>
+  );
+}
+
+const HATCH = "repeating-linear-gradient(45deg, rgb(255 255 255 / 0.55) 0 2px, transparent 2px 5px)";
+
+const downloadText = (filename: string, text: string) => {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};

@@ -10,12 +10,13 @@ Start here. Two kinds of test live in this repo, and both run from `npm`.
 | Covers | pure logic in `src/**/*.test.ts` | the real app in a real browser |
 | Needs | nothing | `npm run test:qa:setup` once per machine |
 
-`npm test` runs both.
+`npm test` runs both, **plus the demo-data dry runs** (section 5i), which need plain `php` on the
+PATH (no extension beyond mbstring/json, no database).
 
-> **You do not need Docker, PHP or MySQL to run any test.** The QA suite mocks
+> **You do not need Docker or MySQL to run any test.** The QA suite mocks
 > `/sync.php`, `/api/*` and `/upload.php` and seeds its own dataset, so it runs
 > against the Vite dev server alone. That is also why it is safe: it never
-> touches a real database.
+> touches a real database. Only the three `test:demo-*` dry runs need `php`.
 
 ---
 
@@ -85,13 +86,19 @@ the suite-wide `crawler.spec.ts` / `darkmode.spec.ts` / `navigation.spec.ts` —
 scopes to that spec's own tests, so `--files tests/e2e/navigation.spec.ts`
 re-runs its 2 tests, not all 87.
 
+**The crawler is a separate tier.** `--files`, `--since`, `--pending` and the default diff
+leave out `crawler.spec.ts` ("Deep UI audit": slow, autonomous). Add `--with-audit`
+(or `QA_AUDIT=1`) to include it; `--full`, `--module`, a harness change and an edit to
+`crawler.spec.ts` include it on their own. `--plan-json` prints the test count and shard
+count as JSON without starting a browser.
+
 **A full run is never started by accident.** When the selection would be the
 full suite and neither `--full`, `QA_ALLOW_FULL=1` nor `CI` is set, the runner
 prints why (the forcing files and the base) and exits with code 3 without
 starting a browser. This covers `npm test` too. Agents pass `--files`.
 
 **Exit codes:** `0` passed or nothing to test, `1` defects or failed tests,
-`2` not admitted (lock, RAM or port wait timed out), `3` refused a full run.
+`2` not admitted (lock held, low RAM or port busy; skipped at once by default), `3` refused a full run.
 
 **`QA: pending`.** A session that cannot get a verdict (exit 2, a cut-off call,
 or "skip QA") commits with a `QA: pending` line in the message body.
@@ -122,20 +129,23 @@ vanished on a quiet machine. So `scripts/qa/run-qa.mjs` now admits one run at a
 time:
 
 - It takes a **machine-wide lock** (`%TEMP%\ccrm-qa-run.lock`, shared by every
-  worktree and every session). A second run prints `Waiting: another QA run is
-  live: PID …` and starts when the first one ends - usually within minutes.
-- It waits until at least **1.5 GB of RAM is free** (`QA_MIN_FREE_MB`), and until
-  its port is not held by a server it did not start.
+  worktree and every session). A second run is **skipped at once** (exit 2,
+  `QA run skipped: another QA run is live: PID …`) instead of queueing.
+- It needs at least **1.5 GB of RAM free** (`QA_MIN_FREE_MB`) and its port not
+  held by a server it did not start; otherwise it is skipped the same way.
 - It runs **1 worker** unless at least 4 GB is free, then 2. `QA_WORKERS`
   overrides.
 - The whole run is capped: **15 minutes scoped, 45 full** (or when the scope
   includes the per-module crawler or dark-mode sweep)
   (`QA_GLOBAL_TIMEOUT_MS`). A run that needs longer is starved, not thorough.
-- It gives up after `QA_WAIT_MIN` minutes (default 30) with exit code 2 and
-  runs nothing, rather than start a run whose findings would be noise. Agents
-  set `QA_WAIT_MIN=10` and commit with `QA: pending` instead of waiting longer.
+- It checks once and never waits by default (`QA_WAIT_MIN=0`): with several
+  agent sessions on the machine, queueing only meant each of them idled for the
+  whole wait and then usually gave up anyway. A skipped run is committed with
+  `QA: pending` and covered later by `npm run test:qa:pending`. A human who wants
+  to queue sets `QA_WAIT_MIN=n`, and the runner then prints `Waiting: …` and
+  retries for up to n minutes.
 
-When you see `Waiting:`, wait. Do not kill the other run, do not sweep
+When a run is skipped, do not retry in a loop, kill the other run, sweep
 processes by port, and do not take a different `QA_PORT` to squeeze in beside
 it - that is the overload the lock exists to prevent. On exit or Ctrl+C the
 runner kills its own process tree, so nothing is left behind to sweep.
@@ -146,8 +156,8 @@ runner kills its own process tree, so nothing is left behind to sweep.
 |---|---|---|
 | `QA_FAIL_ON` | `HIGH` | Severity that fails the run. `CRITICAL`/`HIGH`/`MEDIUM`/`LOW`/`NEVER`. |
 | `QA_WORKERS` | `1`, or `2` when ≥ 4 GB RAM is free | Parallel workers; one is one Chromium. Never more than 2 by default. |
-| `QA_MIN_FREE_MB` | `1536` (`0` in CI) | Free RAM a run waits for before starting. |
-| `QA_WAIT_MIN` | `30` | How long to queue behind another run, low memory or a busy port before giving up. |
+| `QA_MIN_FREE_MB` | `1536` (`0` in CI) | Free RAM a run needs to start; below it the run is skipped (exit 2). |
+| `QA_WAIT_MIN` | `0` | Minutes to queue behind another run, low memory or a busy port. `0` skips at once. |
 | `QA_GLOBAL_TIMEOUT_MS` | 15 min scoped, 45 min full | Ceiling on the whole run. |
 | `QA_MAX_CORES` | half the machine | Hard CPU ceiling; browsers are pinned to that many cores. `0` disables. |
 | `QA_VIDEO` | off | `QA_VIDEO=1` records video (one `ffmpeg` per worker). Traces already show failures. |
@@ -195,6 +205,10 @@ The whole `test-results/` and `playwright-report/` trees are git-ignored.
 `--grep`) overwrites `qa-audit-report.md` but **not**
 `qa-audit-report-latest-full.md`. So a quick scoped check can never erase your
 last complete audit.
+
+**`-g` after `--` replaces the scope.** `node scripts/qa/run-qa.mjs --files <f> -- -g "Digest"` does not narrow the
+files' own tests; it selects every test titled "Digest" in every spec (one such run started 51). Name the spec as well:
+`-- tests/e2e/whatsappDemo.spec.ts -g "Digest"`. `run-qa` prints a note when you pass `-g` without a spec path.
 
 ### Reading the result
 
@@ -406,6 +420,21 @@ outside `npm test` because it needs Docker + MySQL. A new permission is not
 done until it has a read check and a write check here (see
 `docs/db_integration_notes/RBAC_SYSTEM.md`, "Adding a permission").
 
+### 5e-2. Time tracking probe and cost parity (`npm run test:time-tracking`, `npm run test:time-cost`)
+
+`npm run test:time-tracking` runs the real `api/time_entries.php` and `api/holidays.php` in the dev web
+container against a scratch database (`ccrm_tt_probe`, own directory `ttprobe/`; needs `docker compose up`)
+and asserts what the database stores and what the raw bodies return: the cost rate per employment status
+and per month (employee monthly in two months and in the Hungarian calendar, freelancer hourly, no employee),
+that cost fields are stripped for people without `time_tracking_costs`, ownership, the one-running-timer
+rule (including the UNIQUE index itself), Undo of a start, the title rule (a linked entry stores no
+description, the title follows the task, unlink/link, deleted task), validation, soft delete, settings and
+overrides, re-pricing and the holiday endpoint. The mocked browser suite cannot see any of that.
+
+`npm run test:time-cost` runs `scripts/fixtures/time-cost-cases.json` through the PHP port
+(`api/time_cost.php`, `api/holidays_lib.php`); the same file is run against `src/utils/timeCost.ts` by
+`npm run test:unit`, so the two cannot drift.
+
 ### 5f. Passkeys / WebAuthn ceremony tests (`npm run test:passkeys`)
 
 Runs headless verification of WebAuthn options generation, serialization/deserialization, challenge expiration and single-use lifecycle, and AAGUID lookup without requiring a database or browser:
@@ -433,9 +462,46 @@ docker exec -e CCRM_API_DIR=/var/www/html/api \
 
 The Dovecot config is the minimum (`protocols = imap`, `ssl = no`, a passwd-file `passdb`, a static `userdb` for `vmail`, `mail_location = maildir:/var/mail/%n/Maildir`, a `Sent` mailbox with `special_use = \Sent`). The script drops every table of the scratch database, so never point it at real data.
 
+### 5f-3. Microsoft 365 mailboxes (`npm run test:graph-mail`, `npm run test:graph-oauth`)
+
+An Exchange Online mailbox is read and sent from through Microsoft Graph after a "Sign in with Microsoft" (`api/graph_client.php`, `graph_mail.php`, `graph_filing.php`, `graph_oauth.php`; admin guide: [`MICROSOFT-365-MAIL.md`](MICROSOFT-365-MAIL.md)). Neither script ever contacts Microsoft: a fake of Graph and of the token endpoint replaces the network through `$GLOBALS['ccrm_graph_transport']`, and the real code runs against it.
+
+- `scripts/test-graph-mail.php` without a database (SQLite in memory): folder and id mapping, the app registration, the token store (encrypted, masked to the browser, kept across a sync), renewing an access token, a revoked sign-in, and every mailbox action in the shapes the mail screen expects. With `CCRM_TEST_DSN` it also runs the whole filing job in a scratch MySQL database: chunked backlog newest first, new mail through the delta query and ahead of a backlog, Sent Items, one message in two mailboxes, the removed-entry tombstone, attachments, a forgotten delta link, a mailbox switched from IMAP, and one mailbox that has to sign in again while the others are still read.
+- `scripts/test-graph-oauth.php` needs the scratch database. It builds a throw-away web root, starts PHP's built-in server on it and drives `graph_oauth.php` and `company_mailboxes.php` over HTTP with cookies: state and PKCE, a replayed or foreign answer, another user trying to complete a sign-in, a tenant that needs admin consent, cross-site requests, admin-only actions, and a shared mailbox the signed-in account cannot open.
+
+Both need PHP, so without a local install run them in the dev container. Both DROP every table of the database they are given and refuse a database whose name does not contain `scratch`:
+
+```bash
+docker exec ccrm-db-1 sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS graph_scratch"'
+docker exec crm mkdir -p /tmp/graphtest && docker cp public/api crm:/tmp/graphtest/api
+docker exec crm sh -c 'echo "<?php" > /tmp/graphtest/config.php'
+docker cp scripts/test-graph-mail.php crm:/tmp/graphtest/t.php && docker cp scripts/test-graph-oauth.php crm:/tmp/graphtest/o.php
+docker exec -e CCRM_API_DIR=/tmp/graphtest/api \
+  -e "CCRM_TEST_DSN=mysql:host=db;dbname=graph_scratch;charset=utf8mb4" -e CCRM_TEST_USER=root -e CCRM_TEST_PASS=<root password> \
+  crm sh -c 'php /tmp/graphtest/t.php && php /tmp/graphtest/o.php'
+```
+
+(In Git Bash prefix the `docker exec` lines with `MSYS_NO_PATHCONV=1`, or the `/tmp/...` paths are rewritten to Windows ones.) The settings screens are covered in the browser by `tests/e2e/microsoftMail.spec.ts`, with the endpoints mocked and a stand-in for Microsoft's sign-in window. What no test covers is Microsoft itself: the first connection of a real tenant is a manual check (see the guide).
+
 ### 5h. AI price-offer template generator (`npm run test:pdf-template`)
 
 `api/generate_pdf_template.php` turns a sample offer PDF into a template. `scripts/test-pdf-template.php` checks, with no database and no OpenAI, the part that makes model output safe to store (enums, hex colours, heading length, the guaranteed block set) and that a client-supplied `pdfUrl` can only ever reach a `custom-template-pdf_*.pdf` inside the uploads directory. It needs PHP, so without a local install run it in the dev container: `docker cp scripts/test-pdf-template.php crm:/tmp/t.php && docker exec -e CCRM_API_DIR=/var/www/html/api crm php /tmp/t.php`. The call to OpenAI itself is only exercised live (needs a key in Settings → AI integration); the browser flow around it (error toast, no template added, rename dialog) is mocked in `tests/e2e/priceOfferInlineEditor.spec.ts`, and the `layout_json` round trip through `sync.php` is in `npm run test:rbac` (checks `T1`–`T6`).
+
+### 5i. Demo data dry runs (`npm run test:demo-packs`, `test:demo-seed`, `test:demo-wipe`)
+
+The demo dataset (`public/api/demo_seed/`, rebuilt in `docs/DEMO-MODE.md`) is tested against a **recording
+fake PDO** (`scripts/lib/demo-fake-pdo.php`, built on the real schema, strict like MySQL), so it needs no
+database. All three run in `npm test`.
+
+| Command | What it proves |
+|---|---|
+| `npm run test:demo-packs` | the sk/hu/en packs have identical shape, no cross-language leakage, valid company IDs and IBANs, every placeholder and ref resolves |
+| `npm run test:demo-seed` | every module seeds in sk/EUR, hu/HUF, hu/EUR, en/USD; ids, currencies, totals, links; per-module assertions in `scripts/demo-assert/<module>.php`; a second run leaves the same rows |
+| `npm run test:demo-wipe` | the re-seed wipe removes demo rows and nothing else; `demo_reseed_run()` / `php kprnq demo:seed`; `demo_leave_demo_mode()` (Settings › Wipe demo data) |
+| `npm run test:demo-seed:db` | **optional**, needs `CCRM_TEST_DSN` pointing at an EMPTY MySQL database: the same on a real server (`--combo=hu/EUR`, one edition per run) |
+
+The fake cannot run `ON DELETE CASCADE`, `GET_LOCK` or `DROP TABLE` the way MySQL does. A change to the
+wipe, the re-seed or a module's SQL should also be run once with `test:demo-seed:db` where a MySQL exists.
 
 ### 5g. Module screenshots (`npm run shots:modules`)
 
@@ -456,7 +522,7 @@ It takes the same machine-wide lock as a QA run, so it queues behind one.
 
 It asserts nothing. **Look at every image** it writes - an empty state, a
 spinner, a toast or an open popover means re-shooting - and commit the result.
-The files ship because Vite copies `public/` into `dist/` and `php ccrm update`
+The files ship because Vite copies `public/` into `dist/` and `php kprnq update`
 publishes `public/*` to the docroot (`scripts/sync-backend.mjs` only mirrors
 files that already have a root counterpart, so these are untouched by it).
 
@@ -478,13 +544,13 @@ icon card for any module whose image is missing.
 | Touched how `sync.php`/`api/*.php` stores or reads back a field | `npm run test:persistence` — GET-after-POST against the local Docker backend (see 5c) |
 | Touched the MCP gateway (`public/api/mcp*.php`) or a formula it ports | `npm run test:mcp` — roles, field stripping, TS↔PHP parity and write paths on a scratch database (see 5d) |
 | Touched permissions, `read_scope.php`, or who may read or write what on the server | `npm run test:rbac` - per-role read and write checks against a scratch database (see 5e) |
-| **Finished a feature or a fix** | **`QA_WAIT_MIN=10 node scripts/qa/run-qa.mjs --files <your files>`** — agents always pass `--files`; the automatic diff scopes to everyone's changes |
+| **Finished a feature or a fix** | **`node scripts/qa/run-qa.mjs --files <your files>`** — agents always pass `--files`; the automatic diff scopes to everyone's changes |
 | QA could not run (exit 2, cut off, told to skip) | commit with a `QA: pending` line; the batch is `npm run test:qa:pending` |
-| Another run is live (`Waiting:` printed) | nothing — it queues and starts when the other run ends |
+| Another run is live, or RAM is low (`QA run skipped:`) | exit 2: commit with `QA: pending`; do not retry in a loop |
 | Changed only pure logic in `src/utils` | `npm run test:unit` is enough; the scoped run adds only the shell tests |
 | You want everything run, on purpose | `npm run test:qa:full` — **ask the user first; don't default to this** |
 | About to deploy | automatic — `npm run deploy` gates on it (may run the full suite) |
-| Opened a PR / pushed to `main` | automatic — GitHub Actions runs it |
+| Opened a PR / pushed to `main` | automatic — GitHub Actions runs it (no crawler; the nightly has it) |
 
 ---
 
@@ -508,27 +574,51 @@ icon card for any module whose image is missing.
 
 ## 8. CI
 
-`.github/workflows/qa.yml` runs `npm run test:unit` and the QA audit on pull
-requests and on pushes to `main` (and by hand). It checks out full history and
-scopes the audit by event: a PR against `origin/<base branch>`, a push against
-the commit before it, and the full suite for a manual run or a push whose
-previous commit is unknown (first push, force-push). The full-run guard is off
-in CI, so a PR that touches the harness gets the full suite there. It needs no
-secrets and no database — the backend is mocked.
+`.github/workflows/qa.yml` runs on pull requests, pushes to `main`, by hand and
+nightly. Shape: **plan -> qa (matrix of shards) -> report**, with a parallel
+**checks** job (`npm audit`, `tsc -b`, QA type-check, `npm run test:unit`; once per
+ref, not once per shard).
 
-CI runs **the same npm scripts you run locally**, so a red build reproduces with
-one command on your machine. The workflow also uploads `test-results/runs/` and
-`playwright-report/` as downloadable artifacts, so you can read the report and
-its screenshots without cloning anything.
+- **plan** (`scripts/qa/ci-plan.mjs`) picks the scope by event - a PR against
+  `origin/<base>`, a push against the commit before it, the full suite for a manual
+  run with no files, a push with unknown history or the nightly - and asks
+  `run-qa.mjs --plan-json` how many tests that is. **More than 80 tests run as 4
+  parallel shards** (`--shard=i/4`); a smaller run stays one job. 0 tests skips the
+  browser jobs. `QA_SHARDS` / `QA_SHARD_THRESHOLD` change the 4 and the 80.
+- **qa** runs one shard per job (3 workers, no CPU cap, 2.5 min per test, 50 min run
+  limit, one retry). Shards write Playwright *blob* reports (`QA_BLOB=1`); a shard
+  fails only if the run could not happen (exit 2/3), not on failing tests.
+- **report** merges the blobs (`playwright merge-reports`) into one
+  `test-results/qa-results.json` and applies the known-failing register **once**, on
+  the merged result. New failures, or tests that never ran, fail the workflow. It also
+  prints every shard's verdict table on the run summary.
 
-**Running chosen specs on a runner.** *Actions → QA → Run workflow* takes a
-space-separated list of spec files (`tests/e2e/projectFiles.spec.ts …`); empty
-runs everything. Use it to confirm a fix without a free 1.5 GB of RAM locally.
+A full run is about 250 worker-minutes: 80+ min as one job, about 25 min as four shards.
+Per-shard reports (`test-results/runs/`, `qa-audit-report.md`) are the artifacts
+`qa-report-<label>-shard-<n>`; the merged HTML report is `playwright-report-*`.
 
-**Limits in CI.** A runner is dedicated, so the job runs 3 workers with no CPU
-cap, 2.5 min per test (`QA_TEST_TIMEOUT_MS`; the module crawls set their own
-4 min) and a 70 min run limit. A hung test used to cost 4 min, and a handful of
-them used up the 45 min limit before most of the suite had started.
+**Two tiers.** The autonomous crawler (`crawler.spec.ts`, "Deep UI audit": 15 modules,
+1-4 min each, about 15% of a full run) is left out of scoped runs, CI PR runs included.
+Everything else - the deterministic journey specs, `Dark mode`, `Shell navigation`,
+recordings - still runs for the module you changed. The crawler runs for `--full`, the
+nightly, a harness change (which forces the full suite), an edit to `crawler.spec.ts`,
+`--module <name>`, and `--with-audit` (or `QA_AUDIT=1`) on any scoped run. If a scope
+would run nothing without the crawler, the shell smoke tests run instead.
+
+**Nightly.** A `schedule` (02:00 UTC) runs the full suite with the crawler, sharded, on
+`main` and `1.13-nectarine` (`NIGHTLY_REFS` in `ci-plan.mjs`; the job checks them out
+explicitly). GitHub fires schedules only from the default branch's copy of the workflow,
+so **the nightly starts once this workflow is on `main`**, and each listed branch must
+already contain the sharding changes (`QA_BLOB` in `playwright.config.ts`). Its
+concurrency group is per event, so pushes never cancel it. A red nightly is the signal
+that a change broke something only the crawler sees.
+
+**Running chosen specs on a runner.** *Actions -> QA -> Run workflow* takes a
+space-separated list of spec files (`tests/e2e/projectFiles.spec.ts ...`); empty
+runs everything (sharded). Use it to confirm a fix without a free 1.5 GB of RAM locally.
+
+The scripts are the ones you run locally, so a red build reproduces with
+`node scripts/qa/run-qa.mjs --files <files>` (add `--with-audit` to include the crawler).
 
 **Known failures.** `scripts/qa/known-failing.json` lists tests that fail on
 `main` today, each with a reason. After the audit, `apply-known-failing.mjs`

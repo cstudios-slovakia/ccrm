@@ -1,7 +1,9 @@
 <?php
+require_once __DIR__ . '/api/brand.php';
 require_once __DIR__ . '/api/auth.php';
 require_once __DIR__ . '/api/read_scope.php';
 require_once __DIR__ . '/api/employee_files.php';
+require_once __DIR__ . '/api/agency_lib.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -19,7 +21,7 @@ if (php_sapi_name() !== 'cli') {
     $configFile = __DIR__ . '/config.php';
     if (!file_exists($configFile)) {
         http_response_code(503);
-        echo json_encode(['success' => false, 'error' => 'CRM is not installed.']);
+        echo json_encode(['success' => false, 'error' => (KOPERNIQ_PRODUCT_NAME . ' is not installed.')]);
         exit;
     }
     require_once $configFile;
@@ -37,9 +39,13 @@ if (php_sapi_name() !== 'cli') {
     // `employees` module is deliberately NOT in the generic list, or any HR role could
     // use this endpoint to drop a file into the public uploads directory.
     $isEmployeeDoc = (isset($_POST['module']) && (string)$_POST['module'] === 'employees');
+    $isAgencyDoc = (isset($_POST['module']) && (string)$_POST['module'] === 'agency');
     if ($isEmployeeDoc) {
         $uploadScope = ccrm_read_scope($pdo, $sessionUser);
         $uploadOk = ccrm_can_edit($uploadScope, 'employees') && ccrm_can($uploadScope, 'employees.files');
+    } elseif ($isAgencyDoc) {
+        $uploadScope = ccrm_read_scope($pdo, $sessionUser);
+        $uploadOk = ccrm_can_edit($uploadScope, 'agency');
     } else {
         foreach (['files', 'leads', 'clients', 'projects', 'meetings', 'invoices', 'warehouse', 'unified_entries', 'tasks', 'email'] as $mod) {
             if (ccrm_perm_can_edit($perms, $mod)) {
@@ -92,6 +98,9 @@ if (php_sapi_name() !== 'cli') {
     if ($isEmployeeDoc) {
         $privateName = ccrm_employee_private_new_name($fileName);
         $targetPath = ccrm_employee_private_dir() . $privateName;
+    } elseif ($isAgencyDoc) {
+        $privateName = ccrm_agency_private_new_name($fileName);
+        $targetPath = ccrm_agency_private_dir() . $privateName;
     } else {
         $uploadDir = ccrm_uploads_dir();
         $targetPath = $uploadDir . $eventId . '_' . $fileName;
@@ -124,6 +133,49 @@ if (php_sapi_name() !== 'cli') {
                 'filePath' => ccrm_employee_private_prefix() . $privateName,
                 'private' => true,
                 'extractedText' => ''
+            ], JSON_INVALID_UTF8_SUBSTITUTE);
+            exit;
+        }
+
+        if ($isAgencyDoc) {
+            $workerId = trim((string)($_POST['workerId'] ?? ''));
+            $category = trim((string)($_POST['category'] ?? 'other')) ?: 'other';
+            $checklistItemId = !empty($_POST['checklistItemId']) ? trim((string)$_POST['checklistItemId']) : null;
+            $fileId = ccrm_agency_uid('agf');
+            $storageName = ccrm_agency_private_prefix() . $privateName;
+            $sizeBytes = intval($file['size'] ?? @filesize($targetPath) ?: 0);
+            $mimeType = (string)($file['type'] ?? 'application/octet-stream');
+            $uploader = (string)($sessionUser['name'] ?? $sessionUser['email'] ?? '');
+
+            if ($workerId !== '') {
+                $pdo->prepare(
+                    "INSERT INTO `agency_worker_files` (`id`, `worker_id`, `category`, `checklist_item_id`, `file_name`, `mime_type`, `size_bytes`, `storage_name`, `uploaded_by`)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                )->execute([$fileId, $workerId, $category, $checklistItemId, $fileName, $mimeType, $sizeBytes, $storageName, $uploader]);
+                if ($checklistItemId !== null) {
+                    $pdo->prepare("UPDATE `agency_worker_checklists` SET `file_id` = ?, `status` = CASE WHEN `status` IN ('pending', 'missing') THEN 'submitted' ELSE `status` END WHERE `id` = ?")
+                        ->execute([$fileId, $checklistItemId]);
+                }
+                ccrm_agency_log_timeline($pdo, $workerId, 'compliance', "Document uploaded: {$fileName}", '', ['fileId' => $fileId, 'category' => $category], null, $uploader);
+            }
+
+            echo json_encode([
+                'success' => true,
+                'file' => [
+                    'id' => $fileId,
+                    'workerId' => $workerId,
+                    'category' => $category,
+                    'checklistItemId' => $checklistItemId,
+                    'fileName' => $fileName,
+                    'mimeType' => $mimeType,
+                    'sizeBytes' => $sizeBytes,
+                    'uploadedBy' => $uploader,
+                    'createdAt' => date('Y-m-d H:i:s'),
+                ],
+                'fileName' => $fileName,
+                'filePath' => $storageName,
+                'private' => true,
+                'extractedText' => '',
             ], JSON_INVALID_UTF8_SUBSTITUTE);
             exit;
         }

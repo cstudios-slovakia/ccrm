@@ -88,12 +88,18 @@ for (const lang of shotLangs) {
       cache[key] = { assetId: ++fakeId, url: `(dry-run) ${file}` };
       continue;
     }
-    const form = new FormData();
-    form.append('version', article.version);
-    form.append('filename', `${versionSlug}-${name}-${lang}.png`);
-    form.append('title', title);
-    form.append('file', new Blob([fs.readFileSync(file)], { type: 'image/png' }), `${name}.png`);
-    const res = await call('ccrm-news/asset', { method: 'POST', body: form });
+    // JSON + base64, not multipart: Websupport's firewall answers HTTP 466 to any
+    // multipart request that carries a file, before it reaches Craft.
+    const res = await call('ccrm-news/asset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        version: article.version,
+        filename: `${versionSlug}-${name}-${lang}.png`,
+        title,
+        data: fs.readFileSync(file).toString('base64'),
+      }),
+    });
     cache[key] = { assetId: res.assetId, url: res.url };
     writeJson(cacheFile, cache); // a retry after a failure re-uses what already went up
     console.log(`[release-notes] uploaded ${key} → asset #${res.assetId}`);

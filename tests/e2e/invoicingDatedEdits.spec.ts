@@ -50,7 +50,7 @@ function recordSyncedOffers(page: Page) {
 /** The date in the document's own header — the only input that carries the issue date. */
 const issuedOnInput = (page: Page) => page.getByLabel(/^(Issued on|Dátum vystavenia)$/);
 
-/** Opens the inline editor on the Standard template from the "New price offer" menu. */
+/** Opens the editor on the Standard template from the "New price offer" menu. */
 async function openNewOfferEditor(page: Page) {
   await gotoView(page, '#invoices');
   await page.getByRole('button', { name: /New price offer|Nová cenová ponuka/ }).click();
@@ -76,7 +76,7 @@ async function fillAndIssue(page: Page, title: string, issuedOn?: string) {
   await page.getByPlaceholder(/Item name|Názov položky/).fill('Konzultácia');
   await page.getByRole('spinbutton', { name: /Unit price|Jedn\. cena/ }).fill('100');
 
-  await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
+  await page.getByRole('button', { name: /Issue & log in Koperniq|Vystaviť a zaevidovať/ }).click();
 }
 
 test.describe('Price offers — dated edits (audit F11/F12)', () => {

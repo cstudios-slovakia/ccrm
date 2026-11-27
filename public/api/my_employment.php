@@ -202,6 +202,9 @@ if ($action === 'overview' && $method === 'GET') {
                 'items' => !empty($row['items_json']) ? json_decode($row['items_json'], true) : [],
                 'totalSalary' => (float)($row['total_salary'] ?? 0),
                 'totalPaid' => (float)($row['total_paid'] ?? 0),
+                // Na výplatu from the payslip. On an employee's record totalPaid is measured against
+                // Cena práce (the company's cost), so the person's own view shows this instead.
+                'netPay' => isset($row['net_pay']) ? (float)$row['net_pay'] : null,
                 'status' => $row['status'] ?? 'pending',
                 'dueDate' => $row['due_date'],
                 'paymentDate' => $row['payment_date'],

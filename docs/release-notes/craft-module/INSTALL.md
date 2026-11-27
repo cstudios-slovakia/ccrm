@@ -84,6 +84,19 @@ Invoke-RestMethod https://ccrm.softwaresolutions.sk/ccrm-news/ping -Headers @{ '
 | `{"success":false,"error":"unauthorized"}` | Token missing, shorter than 32, or different from the server's |
 | HTML 404 page | Module not bootstrapped — check `config/app.php` and the module id |
 | HTML 500 / "Class not found" | Files not in `modules/ccrmnews/`, or autoload — `composer dump-autoload` |
+| HTML "Access Denied … blocked by our web application firewall" (HTTP 466) | Websupport's firewall; it blocks any multipart request with a file. The publisher sends screenshots as base64 JSON, so this means an old `publish.mjs` or module |
+
+## 5b. Block title formats
+
+A block entry type without a Title field gets its title from **Title Format**.
+`{text}` renders the whole HTML text, and Craft refuses it once it passes 255
+characters ("Element N could not be duplicated because it doesn't validate",
+with `contentMatrix[…].title` / `.slug` errors) while copying blocks to the
+other sites. Use a short plain-text excerpt for `textblock` and `imageWithText`:
+
+```
+{{ object.text|striptags|slice(0, 120) }}
+```
 
 ## 6. First publish
 

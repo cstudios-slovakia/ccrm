@@ -3,21 +3,21 @@ import { gotoView, startSession } from './helpers/appDriver';
 import { TEST_USER, buildSyncPayload } from './helpers/fixture';
 
 /**
- * The "Combined Pipeline & Projects Invoicable Breakdown" panel in the
- * Performance Dashboard (#overview) renders as a clean dashboard-style card
- * (WidgetCard) with multi-group structure (Sales & Pipeline and Projects & Deliverables).
+ * The "Na fakturovanie" block of the performance overview (#overview, tab "Výkonnostný prehľad"):
+ * the two group cards "Obchody a Pipeline" and "Projekty a Realizácie" with one tickable row per
+ * status, and the "Spolu na fakturovanie" card that adds them up.
  *
- * Its preferences — Detail / Summary, record counts, and the excluded statuses —
- * are per-user preferences in users.metadata_json.preferences (dashboardEquationView,
- * dashboardEquationCounts, dashboardEquationExcluded), persisted over /sync.php.
+ * The statuses the user unticks are a per-user preference in users.metadata_json.preferences
+ * (dashboardEquationExcluded, a list of "<group>:<status>" keys), persisted over /sync.php.
+ *
+ * The old card had a Detail / Prehľad switch, a "Počty" toggle and an info drawer. They are
+ * intentionally not part of the new design, so the tests that covered them are gone; the prefs
+ * dashboardEquationView and dashboardEquationCounts are no longer read by the dashboard.
  *
  * The fixture runs in Slovak.
  */
 
-const DETAIL = 'Detail';
-const SUMMARY = 'Prehľad';
-const COUNTS = 'Počty';
-const SELECT_ALL = 'Vybrať všetko';
+const CLEAR_SELECTION = 'Zrušiť výber stavov';
 
 type MetaStore = { meta: Map<string, unknown> };
 
@@ -54,109 +54,115 @@ function storedPrefs(store: MetaStore): Record<string, unknown> {
   return ((meta as { preferences?: Record<string, unknown> }).preferences ?? {}) as Record<string, unknown>;
 }
 
-const panel = (page: Page): Locator => page.locator('[data-status-equation]');
-const pills = (page: Page): Locator => panel(page).locator('[data-status-key]');
-const toggle = (page: Page, name: string): Locator => panel(page).getByRole('button', { name, exact: true });
+const section = (page: Page): Locator => page.locator('[data-status-equation]');
+const rows = (scope: Locator): Locator => scope.locator('[data-status-key]');
 
-test.describe('Combined Pipeline & Projects Invoicable Breakdown panel', () => {
-  test('renders as a dashboard-style card with Sales & Pipeline and Projects groups, and no gradients', async ({ page }) => {
+/**
+ * The card that carries the heading `name`: the closest ancestor that is a direct child of the
+ * card grid. Not matched by a radius class, which changes with the card style (it was rounded-3xl
+ * until the Tremor restyle, then rounded-lg, and broke this helper once).
+ */
+const card = (page: Page, name: string): Locator =>
+  section(page)
+    .getByRole('heading', { level: 3, name, exact: true })
+    .locator('xpath=ancestor::div[parent::div[contains(@class, "grid")]][1]');
+const pipeline = (page: Page): Locator => card(page, 'Obchody a Pipeline');
+const projects = (page: Page): Locator => card(page, 'Projekty a Realizácie');
+const grand = (page: Page): Locator => card(page, 'Spolu na fakturovanie');
+
+/** The big figure of a card ("1 234,00 €") as a number. */
+async function figure(scope: Locator): Promise<number> {
+  const text = await scope.locator('.type-metric').last().innerText();
+  return Number(text.replace(/[^\d,-]/g, '').replace(',', '.'));
+}
+
+/** The money printed at the end of a status row, as a number. */
+async function rowValue(row: Locator): Promise<number> {
+  const text = await row.locator('span').last().innerText();
+  return Number(text.replace(/[^\d,-]/g, '').replace(',', '.'));
+}
+
+/** The first status row of the group that carries money, so unticking it must change the totals. */
+async function firstRowWithValue(group: Locator): Promise<Locator> {
+  const count = await rows(group).count();
+  for (let i = 0; i < count; i++) {
+    if ((await rowValue(rows(group).nth(i))) > 0) return rows(group).nth(i);
+  }
+  throw new Error('no status row with a value in the fixture');
+}
+
+test.describe('Na fakturovanie block of the performance overview', () => {
+  test('renders the two group cards and the total card with every status ticked', async ({ page }) => {
     await startSession(page);
     await installUserBackend(page, { meta: new Map() });
     await gotoView(page, '#overview');
 
-    await expect(panel(page)).toBeVisible();
-    await expect(panel(page).getByRole('heading', { level: 2 })).toContainText(/Kombinovaný prehľad hodnôt na fakturovanie/i);
+    await expect(section(page)).toBeVisible();
+    await expect(pipeline(page)).toBeVisible();
+    await expect(projects(page)).toBeVisible();
+    await expect(grand(page)).toBeVisible();
 
-    // Groups are rendered
-    await expect(panel(page).getByText('Obchody a Pipeline', { exact: true })).toBeVisible();
-    await expect(panel(page).getByText('Projekty a Realizácie', { exact: true })).toBeVisible();
-
-    // Detail is default: the pills are there and every status counts.
-    await expect(toggle(page, DETAIL)).toHaveAttribute('aria-pressed', 'true');
-    const count = await pills(page).count();
+    const count = await rows(section(page)).count();
     expect(count).toBeGreaterThan(0);
-    for (let i = 0; i < count; i++) await expect(pills(page).nth(i)).toHaveAttribute('aria-pressed', 'true');
+    for (let i = 0; i < count; i++) await expect(rows(section(page)).nth(i).getByRole('checkbox')).toBeChecked();
 
     // Dashboard chrome: shared card surface, hairline dividers, and NO gradients anywhere
-    const gradients = await panel(page).evaluate((el) =>
+    const gradients = await section(page).evaluate((el) =>
       [el, ...Array.from(el.querySelectorAll('*'))].filter((n) => getComputedStyle(n).backgroundImage.includes('gradient')).length
     );
     expect(gradients).toBe(0);
+
+    // The grand total is the two group totals together.
+    expect(await figure(grand(page))).toBeCloseTo((await figure(pipeline(page))) + (await figure(projects(page))), 1);
   });
 
-  test('leaving a status out updates the total, shows Select all, and persists to user preferences', async ({ page }) => {
+  test('unticking a status updates the group and grand totals and is stored in the user preferences', async ({ page }) => {
     const store: MetaStore = { meta: new Map() };
     await startSession(page);
     await installUserBackend(page, store);
     await gotoView(page, '#overview');
-    await expect(pills(page).first()).toBeVisible();
+    await expect(pipeline(page)).toBeVisible();
 
-    const total = await pills(page).count();
-    const key = (await pills(page).first().getAttribute('data-status-key'))!;
+    const group = pipeline(page);
+    const total = await rows(group).count();
+    const row = await firstRowWithValue(group);
+    const key = (await row.getAttribute('data-status-key'))!;
+    const groupBefore = await figure(group);
+    const grandBefore = await figure(grand(page));
+    const value = await rowValue(row);
 
-    await pills(page).first().click();
-    await expect(pills(page).first()).toHaveAttribute('aria-pressed', 'false');
-    await expect(panel(page)).toContainText(`${total - 1} zo ${total} stavov`);
-    await expect(toggle(page, SELECT_ALL)).toBeVisible();
+    await row.getByRole('checkbox').uncheck();
+    await expect(row.getByRole('checkbox')).not.toBeChecked();
+    await expect(group).toContainText(new RegExp(`${total - 1} zo? ${total} stav`));
+    expect(await figure(group)).toBeCloseTo(groupBefore - value, 1);
+    expect(await figure(grand(page))).toBeCloseTo(grandBefore - value, 1);
 
     // Kept in the user's preferences, not in localStorage
     await expect.poll(() => storedPrefs(store).dashboardEquationExcluded, { timeout: 10_000 }).toEqual([key]);
     expect(await page.evaluate(() => localStorage.getItem('ccrm_overview_equation_stats_disabled'))).toBeNull();
 
-    await toggle(page, SELECT_ALL).click();
-    await expect(pills(page).first()).toHaveAttribute('aria-pressed', 'true');
-    await expect(toggle(page, SELECT_ALL)).toHaveCount(0);
-    await expect.poll(() => storedPrefs(store).dashboardEquationExcluded, { timeout: 10_000 }).toEqual([]);
+    // ...and it survives a reload
+    await gotoView(page, '#overview');
+    await expect(pipeline(page)).toBeVisible();
+    await expect(section(page).locator(`[data-status-key="${key}"]`).getByRole('checkbox')).not.toBeChecked();
+    await expect(pipeline(page)).toContainText(new RegExp(`${total - 1} zo? ${total} stav`));
   });
 
-  test('Detail / Summary and the counts switch survive a reload', async ({ page }) => {
+  test('"Zrušiť výber stavov" ticks every status again and stores an empty list', async ({ page }) => {
     const store: MetaStore = { meta: new Map() };
     await startSession(page);
     await installUserBackend(page, store);
     await gotoView(page, '#overview');
-    await expect(pills(page).first()).toBeVisible();
+    await expect(pipeline(page)).toBeVisible();
 
-    // Switch to Summary
-    await toggle(page, SUMMARY).click();
-    await expect(toggle(page, SUMMARY)).toHaveAttribute('aria-pressed', 'true');
-    await expect(pills(page)).toHaveCount(0);
-    await expect.poll(() => storedPrefs(store).dashboardEquationView, { timeout: 10_000 }).toBe('summary');
+    const first = rows(section(page)).first();
+    const key = (await first.getAttribute('data-status-key'))!;
+    await first.getByRole('checkbox').uncheck();
+    await expect.poll(() => storedPrefs(store).dashboardEquationExcluded, { timeout: 10_000 }).toEqual([key]);
 
-    await gotoView(page, '#overview');
-    await expect(panel(page)).toBeVisible();
-    await expect(toggle(page, SUMMARY)).toHaveAttribute('aria-pressed', 'true');
-    await expect(pills(page)).toHaveCount(0);
-
-    // Switch back to Detail, and toggle counts off — both survive reload
-    await toggle(page, DETAIL).click();
-    await expect(pills(page).first()).toBeVisible();
-    await expect(toggle(page, COUNTS)).toHaveAttribute('aria-pressed', 'true');
-    await toggle(page, COUNTS).click();
-    await expect(toggle(page, COUNTS)).toHaveAttribute('aria-pressed', 'false');
-    await expect.poll(() => storedPrefs(store).dashboardEquationCounts, { timeout: 10_000 }).toBe(false);
-    await expect.poll(() => storedPrefs(store).dashboardEquationView, { timeout: 10_000 }).toBe('detail');
-
-    await gotoView(page, '#overview');
-    await expect(pills(page).first()).toBeVisible();
-    await expect(toggle(page, DETAIL)).toHaveAttribute('aria-pressed', 'true');
-    await expect(toggle(page, COUNTS)).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  test('the info button opens the drawer on the page itself, and Escape closes it', async ({ page }) => {
-    await startSession(page);
-    await installUserBackend(page, { meta: new Map() });
-    await gotoView(page, '#overview');
-    await expect(pills(page).first()).toBeVisible();
-
-    await pills(page).first().getByRole('button').click();
-    const drawer = page.getByRole('heading', { name: 'Prehľad kalkulovaných položiek' });
-    await expect(drawer).toBeVisible();
-    // Portalled: it is not inside the card
-    expect(await panel(page).getByRole('heading', { name: 'Prehľad kalkulovaných položiek' }).count()).toBe(0);
-    // Opening it left the pill as it was
-    await expect(pills(page).first()).toHaveAttribute('aria-pressed', 'true');
-
-    await page.keyboard.press('Escape');
-    await expect(drawer).toHaveCount(0);
+    await section(page).getByRole('button', { name: CLEAR_SELECTION, exact: true }).click();
+    const count = await rows(section(page)).count();
+    for (let i = 0; i < count; i++) await expect(rows(section(page)).nth(i).getByRole('checkbox')).toBeChecked();
+    await expect.poll(() => storedPrefs(store).dashboardEquationExcluded, { timeout: 10_000 }).toEqual([]);
   });
 });

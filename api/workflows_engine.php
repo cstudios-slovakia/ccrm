@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 // Safe DSN loader
 $configFile = dirname(__DIR__) . '/config.php';
@@ -9,6 +10,30 @@ if (file_exists($configFile)) {
 }
 
 // Helpers
+if (!function_exists('ccrm_timer_workflow_due')) {
+    /**
+     * Should a timer workflow fire now? It last fired at the later of its last
+     * queued timer run and its last logged run (MySQL DATETIME strings, either may
+     * be null); it is due once `$intervalMinutes` have passed since then, or when
+     * it has never fired. cron.php reads the queue, not just the log, so a run that
+     * failed before logging or is still waiting in a backlog is not fired again.
+     */
+    function ccrm_timer_workflow_due(?string $lastQueued, ?string $lastLogged, string $now, int $intervalMinutes): bool {
+        $last = null;
+        foreach ([$lastQueued, $lastLogged] as $stamp) {
+            $ts = ($stamp !== null && $stamp !== '') ? strtotime($stamp) : false;
+            if ($ts !== false && ($last === null || $ts > $last)) {
+                $last = $ts;
+            }
+        }
+        if ($last === null) {
+            return true;
+        }
+        $nowTs = strtotime($now);
+        return $nowTs !== false && ($nowTs - $last) >= max(1, $intervalMinutes) * 60;
+    }
+}
+
 if (!function_exists('ccrm_resolve_json_path')) {
     /**
      * Resolve one {{$namespace.field}} path.
@@ -273,18 +298,15 @@ if (!function_exists('ccrm_workflow_open_task_exists')) {
         if ($workflowId === null || $workflowId === '') {
             return false;
         }
-        $states = ccrm_workflow_task_states($pdo);
-        $lastState = $states ? (string)end($states) : null;
+        require_once __DIR__ . '/task_done.php';
+        [$notDoneSql, $notDoneParams] = ccrm_sql_task_not_done(ccrm_workflow_task_states($pdo));
 
         $sql = "SELECT COUNT(*) FROM `tasks`
-                 WHERE `workflow_id` = ?
+                 WHERE " . ccrm_sql_real_tasks() . "
+                   AND `workflow_id` = ?
                    AND `archived` = 0
-                   AND LOWER(`status`) <> 'done'";
-        $params = [$workflowId];
-        if ($lastState !== null && strtolower($lastState) !== 'done') {
-            $sql .= " AND `status` <> ?";
-            $params[] = $lastState;
-        }
+                   AND {$notDoneSql}";
+        $params = array_merge([$workflowId], $notDoneParams);
         // Scope to the record the workflow fired for. Tasks that could not be
         // linked (the trigger payload carried no record id) are matched on the
         // rendered title alone, which already carries the client name.
@@ -554,12 +576,14 @@ if (!function_exists('ccrm_workflow_resolve_assignee')) {
 
 if (!function_exists('ccrm_call_llm')) {
     function ccrm_call_llm($provider, $key, $prompt, $options = []) {
+        $model = '';
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         
         if ($provider === 'gemini') {
-            $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $key;
+            $model = 'gemini-3.8-flash';
+            $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=' . $key;
             $payload = [
                 'contents' => [
                     ['parts' => [['text' => $prompt]]]
@@ -571,7 +595,7 @@ if (!function_exists('ccrm_call_llm')) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
         } elseif ($provider === 'openai') {
             $url = 'https://api.openai.com/v1/chat/completions';
-            $model = $options['model'] ?? 'gpt-5.6-luna';
+            $model = ccrm_ai_upgrade_model($options['model'] ?? '', 'gpt-6-luna');
             $payload = [
                 'model' => $model,
                 'messages' => [['role' => 'user', 'content' => $prompt]]
@@ -585,7 +609,7 @@ if (!function_exists('ccrm_call_llm')) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
         } elseif ($provider === 'anthropic') {
             $url = 'https://api.anthropic.com/v1/messages';
-            $model = $options['model'] ?? 'claude-3-5-sonnet-20241022';
+            $model = ccrm_ai_upgrade_model($options['model'] ?? '', 'claude-sonnet-5-5');
             $payload = [
                 'model' => $model,
                 'max_tokens' => 1024,
@@ -612,6 +636,9 @@ if (!function_exists('ccrm_call_llm')) {
         }
         
         $data = json_decode($response, true);
+        if (!empty($options['pdo']) && $options['pdo'] instanceof PDO && function_exists('ccrm_ai_capture_usage')) {
+            ccrm_ai_capture_usage($options['pdo'], (string)($options['feature'] ?? 'workflow'), $data, $model);
+        }
         if ($provider === 'gemini') {
             return $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
         } elseif ($provider === 'openai') {
@@ -689,6 +716,16 @@ if (!function_exists('ccrm_trigger_workflow')) {
 
             if (!empty($hasEnqueued) && !$pdo->inTransaction()) {
                 ccrm_process_workflow_queue($pdo);
+            }
+
+            if ($pdo instanceof PDO && !$pdo->inTransaction()) {
+                $marveenLib = __DIR__ . '/marveen/marveen_lib.php';
+                if (is_file($marveenLib)) {
+                    require_once $marveenLib;
+                    if (function_exists('ccrm_marveen_process_crm_event_triggers')) {
+                        ccrm_marveen_process_crm_event_triggers($pdo, (string)$eventType, is_array($payload) ? $payload : []);
+                    }
+                }
             }
         } catch (\Throwable $e) {
             if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
@@ -788,14 +825,30 @@ if (!function_exists('ccrm_execute_workflow')) {
                     $provider = $nodeData['provider'] ?? 'gemini';
                     $key = ccrm_ai_provider_key($pdo, $provider);
 
-                    if (empty($key)) {
-                        throw new Exception("AI Provider API key is not configured for $provider. Set it in Settings -> AI Settings & Embeddings.");
-                    }
-                    
                     $promptTemplate = $nodeData['prompt'] ?? '';
                     $prompt = ccrm_interpolate_variables($promptTemplate, $incomingPayload, $context);
-                    
-                    $response = ccrm_call_llm($provider, $key, $prompt);
+
+                    if (!empty($key)) {
+                        $response = ccrm_call_llm($provider, $key, $prompt, [
+                            'model' => $nodeData['model'] ?? '',
+                            'pdo' => $pdo,
+                            'feature' => 'workflow',
+                        ]);
+                    } elseif (ccrm_ai_is_configured($pdo)) {
+                        $gwRes = ccrm_ai_chat_completion($pdo, [
+                            'model' => (string)($nodeData['model'] ?? ''),
+                            'messages' => [['role' => 'user', 'content' => $prompt]],
+                        ], [
+                            'feature' => 'workflow',
+                            'timeout' => 45,
+                        ]);
+                        if (empty($gwRes['ok'])) {
+                            throw new Exception("AI connector call failed: " . ($gwRes['error'] ?: 'Unknown AI error'));
+                        }
+                        $response = (string)($gwRes['content'] ?? '');
+                    } else {
+                        throw new Exception("AI Provider API key is not configured for $provider. Set an API key or select an LLM connector in Settings -> AI & OpenAI Integration.");
+                    }
                     
                     // Attempt to decode as JSON if next node expects object, or just keep as text
                     $jsonDecoded = json_decode($response, true);
@@ -850,6 +903,7 @@ if (!function_exists('ccrm_execute_workflow')) {
                           $leadId, $name, $city, $clientType, $recordStatus, $owner, $value, $phone, $email,
                           $street, $postalCode, $country, $companyId, $taxId, $vatId, $contactPerson, $website
                         ]);
+                        ccrm_set_contact_parts_from_person($pdo, $leadId);
                         // A lead an automation created is still a new lead, so it
                         // gets the same paired projects as one typed in by hand or
                         // captured by the web form (Projects → Settings). It carries
@@ -918,16 +972,28 @@ if (!function_exists('ccrm_execute_workflow')) {
                                 'title' => $title
                             ];
                         } else {
+                            // Optional category chosen on the action ("bug"), by the one rule of
+                            // tasks.category. A workflow saved before the field existed, an invalid
+                            // value, or a database without the column yet creates a task with none;
+                            // the statement only names the column when it is both wanted and there.
+                            require_once __DIR__ . '/recurring_tasks.php';
+                            $category = ccrm_task_category_write($nodeData)[0];
+                            $withCategory = $category !== null && ccrm_tasks_have_category($pdo);
                             $stmt = $pdo->prepare("
-                                INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `workflow_id`, `created_at`)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automation', ?, ?, CURRENT_TIMESTAMP())
-                            ");
-                            $stmt->execute([$taskId, $title, $desc, $priority, $deadline, $deadlineTime, $taskStatus, $owner, $relatedLeadId, $workflowId]);
+                                INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `workflow_id`, `created_at`"
+                                . ($withCategory ? ', `category`' : '') . ")
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automation', ?, ?, CURRENT_TIMESTAMP()" . ($withCategory ? ', ?' : '') . ")
+                            "); /* recurring-template: workflows create normal tasks */
+                            $stmt->execute(array_merge([$taskId, $title, $desc, $priority, $deadline, $deadlineTime, $taskStatus, $owner, $relatedLeadId, $workflowId], $withCategory ? [$category] : []));
 
                             if (!empty($owner)) {
                                 $insAss = $pdo->prepare("INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
                                 $insAss->execute([$taskId, $owner]);
                             }
+
+                            // The owner hears about it as if a colleague had assigned it.
+                            require_once __DIR__ . '/task_reminders.php';
+                            ccrm_notify_new_task_assignees($pdo, $taskId);
 
                             $outputPayload = [
                                 'id' => $taskId,
@@ -936,7 +1002,8 @@ if (!function_exists('ccrm_execute_workflow')) {
                                 'owner' => $owner,
                                 'status' => $taskStatus,
                                 'deadline' => $deadline,
-                                'deadline_time' => $deadlineTime
+                                'deadline_time' => $deadlineTime,
+                                'category' => $withCategory ? $category : null
                             ];
                         }
                     } elseif ($actionType === 'send_email') {
@@ -978,7 +1045,11 @@ if (!function_exists('ccrm_execute_workflow')) {
                                 'status' => $newStatus
                             ];
                         } else {
-                            $upd = $pdo->prepare("UPDATE `projects` SET `status` = ? WHERE `id` = ?");
+                            // The finish date follows the status the same way it
+                            // does in the app, so an automation-completed project
+                            // is not left "closed" with no date it finished.
+                            $finishedSql = ccrm_finished_at_sql_for_status($newStatus, $pdo);
+                            $upd = $pdo->prepare("UPDATE `projects` SET `status` = ?" . ($finishedSql ? ", {$finishedSql}" : "") . " WHERE `id` = ?");
                             foreach ($projectIds as $pid) {
                                 $upd->execute([$newStatus, $pid]);
                             }
@@ -1100,6 +1171,15 @@ if (!function_exists('ccrm_execute_workflow')) {
                             if ($manager !== '') {
                                 $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)")
                                     ->execute([$projectId, $manager]);
+                            }
+                            // The lead's assigned employees become the project's employees.
+                            $leadEmployees = json_decode((string)($leadRow['assigned_employees'] ?? ''), true);
+                            if (is_array($leadEmployees) && $leadEmployees && ccrm_table_exists($pdo, 'project_employees')) {
+                                $insEmp = $pdo->prepare("INSERT IGNORE INTO `project_employees` (`project_id`, `user_id`) VALUES (?, ?)");
+                                foreach ($leadEmployees as $emp) {
+                                    $emp = trim((string)$emp);
+                                    if ($emp !== '' && $emp !== $manager) $insEmp->execute([$projectId, $emp]);
+                                }
                             }
 
                             // The per-type attribute row. Optional — sync.php's

@@ -1,10 +1,21 @@
 <?php
 /**
  * AI Meeting Transcription & Synthesis Endpoint.
- * Transcribes audio via Whisper and generates automated meeting minutes via GPT.
+ *
+ * Step 1, the transcript, works with either key:
+ *   - Soniox key set: Soniox async (stt-async-v6, soniox_async.php). Meetings get speaker
+ *     diarization as "[mm:ss] Participant N: text" lines; voice notes get plain text.
+ *     If Soniox fails and an AI source exists, that takes over (without speakers).
+ *   - otherwise: the AI source (ai_gateway.php: OpenAI gpt-transcribe or a Gemini
+ *     connector), plain text.
+ * Step 2, the minutes/summary, needs the AI source (a manual OpenAI key or an LLM
+ * connector, with the configured text model). Without
+ * it, or when it fails, the answer still carries the transcript, with `minutes: false`.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -23,7 +34,7 @@ ccrm_gate_any($sessionUser, ['meetings', 'leads', 'clients']);
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -105,15 +116,22 @@ $stmt->execute();
 $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
 $integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
+// The AI source: a manual OpenAI key or a selected LLM connector (ai_gateway.php).
+$aiReady = ccrm_ai_is_configured($pdo, $integrationsConfig);
+$sonioxKey = trim((string)($integrationsConfig['sonioxApiKey'] ?? ''));
 
-if (empty($openAiKey)) {
+// Either one transcribes. Soniox (when set) also tells speakers apart; the AI source writes
+// plain text. The minutes step further down needs the AI source and is skipped without it.
+if (!$aiReady && $sonioxKey === '') {
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'OpenAI API Key is not configured.']);
+    echo json_encode(['success' => false, 'code' => 'no_transcription_key', 'message' => 'No transcription key is configured. Add an OpenAI or Soniox API key, or an AI connector, in Settings > AI.']);
     exit;
 }
 
-// --- STEP 1: Whisper Transcription ---
+// The recording may be long and Soniox is a job we wait for; never let PHP's default limit
+// cut it off halfway (the browser waits up to 5 minutes).
+@set_time_limit(330);
+
 $mimeType = 'audio/webm';
 $ext = strtolower(pathinfo($localPath, PATHINFO_EXTENSION));
 if ($ext === 'mp3') $mimeType = 'audio/mp3';
@@ -122,44 +140,83 @@ elseif ($ext === 'm4a') $mimeType = 'audio/m4a';
 elseif ($ext === 'mp4') $mimeType = 'audio/mp4';
 elseif ($ext === 'ogg') $mimeType = 'audio/ogg';
 
-$cFile = new CURLFile($localPath, $mimeType, basename($localPath));
+$usageFeature = $transcribeOnly ? 'voice_note' : 'meeting_transcription';
+$transcription = '';
+$speakers = false;
+$sonioxError = '';
 
-$whisperPayload = [
-    'file' => $cFile,
-    'model' => 'whisper-1'
-];
-
-$ch = curl_init('https://api.openai.com/v1/audio/transcriptions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 90); // Audio files can take longer to process
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Authorization: Bearer ' . $openAiKey
-]);
-curl_setopt($ch, CURLOPT_POSTFIELDS, $whisperPayload);
-
-$whisperResponse = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
-
-if ($httpCode !== 200 || !$whisperResponse) {
-    $errData = json_decode($whisperResponse, true);
-    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI Whisper API request failed');
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Whisper Transcription Error: ' . $errMsg]);
-    exit;
+// --- STEP 1a: Soniox (speaker diarization for meetings) ---
+if ($sonioxKey !== '') {
+    require_once __DIR__ . '/soniox_async.php';
+    $lang = strtolower(trim((string)($data['language'] ?? '')));
+    if (!in_array($lang, ['sk', 'en', 'hu'], true)) {
+        $lang = 'sk';
+    }
+    $hints = $lang === 'en' ? ['en'] : [$lang, 'en'];
+    $participantLabel = ['en' => 'Participant', 'sk' => 'Účastník', 'hu' => 'Résztvevő'][$lang];
+    $refId = 'ccrm-' . ($transcribeOnly ? 'voice-note' : 'meeting') . '-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string)($transcribeOnly ? basename($audioFile) : $meetingId));
+    // A voice note is one person speaking; diarization would only add "Participant 1:".
+    $diarize = !$transcribeOnly;
+    // Names given to speakers in the live Focus helper carry over (matched by time).
+    $liveTimeline = $diarize ? ccrm_soniox_clean_timeline($data['speakerTimeline'] ?? null) : null;
+    $result = ccrm_soniox_transcribe_file($sonioxKey, $localPath, $mimeType, $hints, $diarize, $participantLabel, $refId, $liveTimeline);
+    if ($result['ok'] && $result['text'] !== '') {
+        $transcription = $result['text'];
+        $speakers = $diarize;
+        $audioSeconds = (float)$result['seconds'] > 0
+            ? (float)$result['seconds']
+            : ccrm_ai_resolve_audio_seconds([], $localPath, $data['durationSeconds'] ?? null);
+        if ($audioSeconds > 0) {
+            ccrm_ai_record_usage($pdo, $usageFeature, $result['model'], 0, 0, 0, 0, 0, $audioSeconds);
+        }
+    } else {
+        $sonioxError = $result['ok'] ? 'Soniox returned an empty transcript.' : (string)$result['message'];
+        if (!$aiReady) {
+            http_response_code(502);
+            echo json_encode(['success' => false, 'message' => 'Transcription error: ' . $sonioxError]);
+            exit;
+        }
+        // An AI source is there too: the recording still gets a transcript, without speakers.
+    }
 }
 
-$whisperJson = json_decode($whisperResponse, true);
-$transcription = $whisperJson['text'] ?? '';
+// --- STEP 1b: the AI source (OpenAI Whisper or a Gemini connector; no Soniox key, or Soniox failed) ---
+if ($transcription === '') {
+    $tRes = ccrm_ai_transcribe_audio($pdo, $localPath, $mimeType, [
+        'filename' => basename($localPath),
+        'timeout' => 90,
+        'integrationsConfig' => $integrationsConfig,
+    ]);
 
-if (empty($transcription)) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Whisper returned empty transcription text.']);
-    exit;
+    if (empty($tRes['ok'])) {
+        $status = (($tRes['code'] ?? '') === 'ai_key_missing') ? 400 : 500;
+        http_response_code($status);
+        echo json_encode([
+            'success' => false,
+            'code' => $tRes['code'] ?: 'ai_error',
+            'message' => 'Transcription Error: ' . ($tRes['error'] ?: 'Audio transcription failed') . ($sonioxError !== '' ? ' (Soniox: ' . $sonioxError . ')' : ''),
+        ]);
+        exit;
+    }
+
+    $transcription = trim((string)($tRes['text'] ?? ''));
+    if (($tRes['provider'] ?? '') === 'openai') {
+        $whisperJson = is_array($tRes['raw'] ?? null) ? $tRes['raw'] : [];
+        $audioSeconds = ccrm_ai_resolve_audio_seconds($whisperJson, $localPath, $data['durationSeconds'] ?? null);
+        if ($audioSeconds > 0) {
+            ccrm_ai_record_usage($pdo, $usageFeature, 'gpt-transcribe', 0, 0, 0, 0, 0, $audioSeconds);
+        } else {
+            ccrm_ai_capture_usage($pdo, $usageFeature, $whisperJson, 'gpt-transcribe');
+        }
+    } elseif (!empty($tRes['raw']) && is_array($tRes['raw'])) {
+        ccrm_ai_capture_usage($pdo, $usageFeature, $tRes['raw'], (string)$tRes['model']);
+    }
+
+    if (empty($transcription)) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'code' => 'ai_empty', 'message' => 'Transcription returned empty text.']);
+        exit;
+    }
 }
 
 // A timeline voice note only needs the text; the minutes/summary step below is
@@ -169,8 +226,20 @@ if ($transcribeOnly) {
     exit;
 }
 
-// --- STEP 2: GPT Synthesis ---
-$prompt = "You are an expert CRM assistant. You are given a raw audio transcription and the user's manual notes from a meeting.
+// Without an AI source there is no text model for the minutes: the meeting still gets its
+// transcript, and the summary can be generated later once a key or connector is added.
+if (!$aiReady) {
+    echo json_encode([
+        'success' => true,
+        'transcription' => $transcription,
+        'speakers' => $speakers,
+        'minutes' => false,
+    ]);
+    exit;
+}
+
+// --- STEP 2: AI Synthesis ---
+$prompt = ("You are an expert " . KOPERNIQ_PRODUCT_NAME . " assistant. You are given a raw audio transcription and the user's manual notes from a meeting.
 Your task is to compile a highly professional, detailed, and structured meeting minutes document in Markdown format, plus a concise summary, sentiment analysis, key topics, and action items.
 
 You MUST detect the language in which the transcription and manual notes are written. Output the automatedNotes (detailed minutes in Markdown), summary, and action items in that SAME language (e.g., Slovak if notes are in Slovak, Hungarian if in Hungarian, English if in English).
@@ -185,65 +254,61 @@ You MUST respond ONLY with a valid JSON object matching the following structure:
 }
 
 Do not wrap the JSON output in markdown code blocks or add any text outside of the JSON object.
-
+") . ($speakers ? "
+Transcription lines start with a timestamp and a speaker label: a person's name or a label such as \"Participant 1:\" (or its translation). Keep who said what where it matters (decisions, commitments, owners of action items), using those labels.
+" : "") . "
 Transcription:
 " . $transcription . "
 
 Manual Notes:
 " . $manualNotes;
 
-$transcribeModel = ccrm_ai_model();
-$gptPayload = [
-    'model' => $transcribeModel,
-    'messages' => [
-        [
-            'role' => 'user',
-            'content' => $prompt
-        ]
+$transcribeModel = ccrm_ai_model($integrationsConfig);
+$aiRes = ccrm_ai_chat_completion(
+    $pdo,
+    [
+        'model' => $transcribeModel,
+        'messages' => [
+            [
+                'role' => 'user',
+                'content' => $prompt
+            ]
+        ],
+        'temperature' => 0.4,
     ],
-];
-if (ccrm_ai_model_supports_temperature($transcribeModel)) {
-    $gptPayload['temperature'] = 0.4;
-}
+    [
+        'feature' => 'meeting_minutes',
+        'timeout' => 45,
+        'integrationsConfig' => $integrationsConfig,
+    ]
+);
 
-$ch = curl_init('https://api.openai.com/v1/chat/completions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    'Authorization: Bearer ' . $openAiKey
-]);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($gptPayload, JSON_INVALID_UTF8_SUBSTITUTE));
-
-$gptResponse = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
-
-if ($httpCode !== 200 || !$gptResponse) {
-    $errData = json_decode($gptResponse, true);
-    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI Chat Completion API request failed');
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'AI Synthesis Error: ' . $errMsg]);
+// From here on the transcript exists and is paid for: a failed summary returns it anyway,
+// with `minutes: false`, instead of throwing it away.
+if (empty($aiRes['ok'])) {
+    echo json_encode([
+        'success' => true,
+        'transcription' => $transcription,
+        'speakers' => $speakers,
+        'minutes' => false,
+        'minutesError' => 'AI Synthesis Error: ' . ($aiRes['error'] ?: 'AI Chat Completion request failed'),
+    ]);
     exit;
 }
 
-$gptJson = json_decode($gptResponse, true);
-$aiReply = $gptJson['choices'][0]['message']['content'] ?? '';
+$aiReply = (string)($aiRes['content'] ?? '');
 
 // Try parsing AI reply to verify it's valid JSON
 $cleanedReply = trim(preg_replace('/^```json|```$/i', '', trim($aiReply)));
 $aiJson = json_decode($cleanedReply, true);
 
 if (!$aiJson || empty($aiJson['summary'])) {
-    http_response_code(500);
     echo json_encode([
-        'success' => false,
-        'message' => 'Failed to parse AI response as valid JSON.',
-        'raw_reply' => $aiReply
+        'success' => true,
+        'transcription' => $transcription,
+        'speakers' => $speakers,
+        'minutes' => false,
+        'minutesError' => 'Failed to parse AI response as valid JSON.',
     ]);
     exit;
 }
@@ -252,6 +317,8 @@ if (!$aiJson || empty($aiJson['summary'])) {
 echo json_encode([
     'success' => true,
     'transcription' => $transcription,
+    'speakers' => $speakers,
+    'minutes' => true,
     'automatedNotes' => $aiJson['automatedNotes'] ?? '',
     'summary' => $aiJson['summary'],
     'sentiment' => $aiJson['sentiment'] ?? 'neutral',

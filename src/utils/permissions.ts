@@ -1,4 +1,5 @@
 import type { RolePermission, UserProfile } from "../types";
+import { LEGACY_WIDGET_DASHBOARD } from "./dashboardSection.ts";
 
 /**
  * Role-based access control — the single registry of every permission the app
@@ -63,11 +64,13 @@ const access = (
   legacyDefault: PermissionValue = "edit",
   newRoleDefault: PermissionValue = "nothing",
   legacy?: { keys: string[]; edit: string[] },
+  requires?: { key: string; level: AccessLevel },
 ): PermissionDef => ({
   key,
   kind: "access",
   legacyDefault,
   newRoleDefault,
+  requires,
   legacyKeys: legacy?.keys,
   legacyEdit: legacy?.edit,
 });
@@ -103,6 +106,14 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
       deleteToggle("tasks", "nothing"),
       // On for every role until revoked — see resolveTaskViewAll in taskSelectors.
       toggle("tasks.view_all", "edit", "edit", { key: "tasks", level: "view" }),
+      // Standalone Weekly Plan board view inside Tasks.
+      access(
+        "tasks.weekly_plan",
+        "edit",
+        "nothing",
+        { keys: ["tasks.view", "tasks.create", "tasks.edit"], edit: ["tasks.create", "tasks.edit"] },
+        { key: "tasks", level: "view" },
+      ),
     ],
   },
   {
@@ -122,7 +133,13 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
   },
   {
     id: "tickets",
-    permissions: [access("tickets"), deleteToggle("tickets")],
+    permissions: [
+      access("tickets"),
+      deleteToggle("tickets"),
+      // Who may see time logged on a ticket. Off until granted; Project Manager is
+      // turned on by the schema migration, Admin by the admin role itself.
+      toggle("tickets.time", "nothing", "nothing", { key: "tickets", level: "view" }),
+    ],
   },
   {
     id: "invoices",
@@ -152,6 +169,16 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     ],
   },
   {
+    id: "agency",
+    permissions: [
+      // Added after roles existed: a stored role without these keys gets nothing until an admin grants it.
+      access("agency", "nothing", "nothing"),
+      deleteToggle("agency", "nothing"),
+      toggle("agency.personal", "nothing", "nothing", { key: "agency", level: "view" }),
+      toggle("agency.payments", "nothing", "nothing", { key: "agency", level: "view" }),
+    ],
+  },
+  {
     id: "self_service",
     permissions: [
       access("self.profile", "nothing", "nothing"),
@@ -165,6 +192,33 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
   {
     id: "meetings",
     permissions: [access("meetings"), deleteToggle("meetings")],
+  },
+  {
+    // Everyone who may use the module tracks their own time, in parallel too (C4: on by default);
+    // team, costs and the salary report are what a manager adds.
+    id: "time_tracking",
+    permissions: [
+      access("time_tracking", "edit", "nothing"),
+      toggle("time_tracking_team", "nothing", "nothing", { key: "time_tracking", level: "view" }),
+      toggle("time_tracking_costs", "nothing", "nothing", { key: "time_tracking", level: "view" }),
+      toggle("time_tracking_salary_report", "nothing", "nothing", { key: "time_tracking", level: "view" }),
+      toggle("time_tracking_parallel", "edit", "edit", { key: "time_tracking", level: "edit" }),
+      toggle("time_tracking_create_projects", "edit", "edit", { key: "time_tracking", level: "edit" }),
+    ],
+  },
+  {
+    // WAAI (WhatsApp) shown inside the CRM. Nobody has it until an administrator grants it; admins always do.
+    id: "whatsapp",
+    permissions: [access("whatsapp", "nothing", "nothing")],
+  },
+  {
+    // Newsletter: nobody until an administrator grants it (same intent as whatsapp); admins always do.
+    id: "newsletter",
+    permissions: [
+      access("newsletter", "nothing", "nothing"),
+      toggle("newsletter_send", "nothing", "nothing", { key: "newsletter", level: "edit" }),
+      toggle("newsletter_settings", "nothing", "nothing", { key: "newsletter", level: "edit" }),
+    ],
   },
   {
     id: "files",
@@ -215,8 +269,14 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
   },
 ];
 
-/** Keys of the settings section — any of them at `view` or better opens Settings. */
-export const SETTINGS_PERMISSION_KEYS = PERMISSION_SECTIONS.find((s) => s.id === "settings")!.permissions.map((p) => p.key);
+/**
+ * Keys of the settings section — any of them at `view` or better opens Settings.
+ * `newsletter_settings` lives in the newsletter section but its only screen is Settings > Newsletter.
+ */
+export const SETTINGS_PERMISSION_KEYS = [
+  ...PERMISSION_SECTIONS.find((s) => s.id === "settings")!.permissions.map((p) => p.key),
+  "newsletter_settings",
+];
 
 export const PERMISSION_DEFS: Record<string, PermissionDef> = Object.fromEntries(
   PERMISSION_SECTIONS.flatMap((s) => s.permissions.map((p) => [p.key, p])),
@@ -300,6 +360,7 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   tasks: "edit",
   "tasks.delete": "nothing",
   "tasks.view_all": "nothing",
+  "tasks.weekly_plan": "view",
   leads: "nothing",
   "leads.delete": "nothing",
   clients: "nothing",
@@ -312,6 +373,7 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   "orders.delete": "nothing",
   tickets: "nothing",
   "tickets.delete": "nothing",
+  "tickets.time": "nothing",
   warehouse: "nothing",
   "warehouse.delete": "nothing",
   financial: "nothing",
@@ -322,8 +384,22 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   "employees.vacations": "nothing",
   "employees.files": "nothing",
   "employees.personal": "nothing",
+  agency: "nothing",
+  "agency.delete": "nothing",
+  "agency.personal": "nothing",
+  "agency.payments": "nothing",
   meetings: "nothing",
   "meetings.delete": "nothing",
+  time_tracking: "edit",
+  time_tracking_team: "nothing",
+  time_tracking_costs: "nothing",
+  time_tracking_salary_report: "nothing",
+  time_tracking_parallel: "edit",
+  time_tracking_create_projects: "edit",
+  whatsapp: "nothing",
+  newsletter: "nothing",
+  newsletter_send: "nothing",
+  newsletter_settings: "nothing",
   files: "nothing",
   "files.delete": "nothing",
   email: "nothing",
@@ -360,6 +436,37 @@ export const withPermission = (role: RolePermission, key: string, value: Permiss
 });
 
 /** True when every permission of the section is at its maximum (`edit` / on). */
+/**
+ * The sections as the role matrix shows them. While the Performance Dashboard holds the first menu
+ * slot as "Overview" (utils/dashboardSection.ts), the `dashboard` key guards only the hidden widget
+ * board, so its row is left out. The Overview section (`overview`, which opens that slot) moves to
+ * the top, and the rest of the old Dashboard section becomes "Custom dashboards". Each role keeps
+ * its stored `dashboard` value untouched for a revert.
+ */
+export const ROLE_MATRIX_SECTIONS: PermissionSection[] = LEGACY_WIDGET_DASHBOARD
+  ? PERMISSION_SECTIONS
+  : [
+      ...PERMISSION_SECTIONS.filter((section) => section.id === "overview"),
+      ...PERMISSION_SECTIONS.filter((section) => section.id !== "overview").map((section) =>
+        section.id === "dashboard"
+          ? { ...section, permissions: section.permissions.filter((p) => p.key !== "dashboard") }
+          : section,
+      ),
+    ];
+
+const ROLE_MATRIX_PERM_TEXT: Record<string, string> = LEGACY_WIDGET_DASHBOARD
+  ? {}
+  : { overview: "overview_statistics", "dashboard.custom": "custom_widget_dashboards" };
+const ROLE_MATRIX_SECTION_TEXT: Record<string, string> = LEGACY_WIDGET_DASHBOARD
+  ? {}
+  : { overview: "overview_statistics", dashboard: "custom_dashboards" };
+
+/** Translation key stem of a matrix row (`settings.rbac.perm.<stem>.label` / `.desc`). */
+export const roleMatrixTextKey = (key: string): string => ROLE_MATRIX_PERM_TEXT[key] ?? key;
+
+/** Translation key stem of a matrix section heading (`settings.rbac.section.<stem>`). */
+export const roleMatrixSectionTextKey = (id: string): string => ROLE_MATRIX_SECTION_TEXT[id] ?? id;
+
 export const isSectionFullyGranted = (resolved: Record<string, PermissionValue>, section: PermissionSection): boolean =>
   section.permissions.every((p) => resolved[p.key] === "edit");
 
@@ -427,17 +534,23 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   // the My employment tab needs a self.* key. Either opens the section; `my-employment` is the
   // old address of that tab.
   if (base === "employees" || base === "my-employment") return "people";
+  if (base === "agency") return "agency";
+  if (base === "time-tracking") return "time_tracking";
+  if (base === "whatsapp") return "whatsapp";
+  if (base === "newsletter") return "newsletter";
   // SAI rehearses sales conversations against the lead / client base. It has no permission key of
   // its own; it follows leads so a role with no sales access (Employee) is not offered it.
   if (base === "sai") return "leads";
   if (base.startsWith("user-")) return "pm_managers";
   if (base.startsWith("dash_")) return "dashboard.custom";
+  // The Dashboard section shows the Performance Dashboard, so it keeps that screen's permission.
+  if (base === "dashboard" && !LEGACY_WIDGET_DASHBOARD) return "overview";
   if (base.startsWith("ue_")) return "unified_entries";
   if (base.startsWith("lead-")) return "leads";
   if (base.startsWith("client-")) return "clients";
   if (base.startsWith("project-")) return "projects";
   if (base.startsWith("ticket-")) return "tickets";
-  if (base === "" || base === "tasks") return "tasks";
+  if (base.startsWith("task-") || base === "" || base === "tasks") return "tasks";
   if (PERMISSION_DEFS[base]) return base;
   return "tasks";
 };

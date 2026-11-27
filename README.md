@@ -1,7 +1,14 @@
-# CCRM
+# Koperniq
 
-CCRM is a React + TypeScript + Vite single-page CRM with a small PHP/MySQL
-backend.
+> **Names.** The product is **Koperniq**. The command line is `php kprnq` (it used to be
+> `php ccrm`). `php ccrm …` still works: that file only forwards to `kprnq`, so a server that
+> has not updated yet runs `php ccrm update` once and every later update uses `php kprnq update`.
+> Visible names come from two variables, never from hardcoded text: the product name
+> (`PRODUCT_NAME` in `src/utils/brand.ts`, `KOPERNIQ_PRODUCT_NAME` in `public/api/brand.php`) and the
+> company's own system title (Settings → System title). See `docs/BRANDING.md`.
+
+Koperniq is a React + TypeScript + Vite single-page app for sales, projects and operations,
+with a small PHP/MySQL backend.
 
 There are two different setups depending on what you're doing — don't mix
 them up:
@@ -10,7 +17,7 @@ them up:
   backend. No git deploy involved.
 - **Production deployment**: the app is deployed by cloning this repo
   directly into the server's web document root and pulling updates with
-  `git`/`php ccrm update` — there is no build step on the server.
+  `git`/`php kprnq update` — there is no build step on the server.
 
 **New here?** Read [Local Development Setup](#local-development-setup), then
 **[docs/TESTING.md](docs/TESTING.md)** — how to run the tests, what they cover
@@ -45,9 +52,64 @@ and where the results go.
    `vite.config.ts` proxies `/sync.php`, `/upload.php` and `/api/*` from the
    dev server to the Docker container on `:8080`, so the app behaves like
    production while the frontend still gets full HMR.
+
+   It also proxies `/waai-api/*` to WAAI's module API (`/api/ccrm/v1/*` on the
+   WAAI web app, `http://localhost:3000` unless `WAAI_DEV_URL` says otherwise)
+   for the native WhatsApp module. The module's design is
+   `docs/WAAI-NATIVE-MODULE.md`; `npm run sync:waai-contract` copies WAAI's API
+   contract (`WAAI_REPO` names the WAAI checkout when it is not next to this one).
 5. Open the printed `localhost` URL. Since `config.php` already points at a
    real (empty) database, the setup wizard skips straight to **Seed with
    Demo Data** / **Start Fresh** and admin-account creation.
+
+## Demo mode
+
+Choosing **Demo** in the setup wizard installs a fictional company, **Lapidea** (a stone, quartz and
+sintered-stone worktop studio), with every module filled: leads, clients, projects, offers, invoices,
+orders, warehouse, finance, employees, time tracking, service tickets, e-mail, WhatsApp, AI meeting room,
+automations (with run history), SAI, social posts and newsletter campaigns (two sent, one draft). The story, cast and numbers are one file:
+[`docs/DEMO-MODE.md`](docs/DEMO-MODE.md). The WhatsApp module shows demo chats on a demo instance without WAAI
+(an in-browser fake; nothing is sent anywhere): [`docs/WHATSAPP-DEMO-MODULE.md`](docs/WHATSAPP-DEMO-MODULE.md).
+
+**You choose two things in the wizard** (step 2, when *Demo* is selected):
+
+- **Demo data language** - Slovenčina, Magyar or English. It becomes the system language, so names,
+  addresses, company IDs, VAT rate, phone formats and every text are those of that country
+  (Lapidea s.r.o. in Slovakia, Lapidea Kft. in Hungary, Lapidea Stone Inc. in the USA).
+- **Currency** - EUR, HUF, CZK, PLN, USD or GBP, independent of the language (a Hungarian company invoicing in
+  EUR still charges 27 % VAT). Defaults: Slovak EUR, Hungarian HUF, English USD. Amounts are converted from
+  one set of EUR figures with fixed demo rates, and every document total is recomputed from its items.
+
+Both can be changed later in **Settings › Company › Language & currency** (this changes the setting, not the
+demo rows - use *Re-seed* below for that).
+
+**Logins** - the password is `password` for all of them. The login screen in demo mode lists the users, so
+nobody has to remember the addresses.
+
+| Role | Slovak edition | Hungarian edition | English edition |
+|---|---|---|---|
+| Owner (admin) | `andrej.kollar@lapidea.example` | `kollar.andras@lapidea.example` | `alex.morgan@lapidea.example` |
+| Production & projects | `simona.hudecova@lapidea.example` | `szabo.szilvia@lapidea.example` | `samantha.reed@lapidea.example` |
+| Showroom sales | `juraj.benko@lapidea.example` | `juhasz.janos@lapidea.example` | `jordan.hayes@lapidea.example` |
+
+**Re-seed** replaces the demo rows (and only those: a lead, offer or user you created by hand is kept, with a
+dangling link if it pointed at a demo row) and the three demo logins, in the language and currency you pick.
+Use it to bring an older demo up to date (a new module's data appears) or to switch edition:
+
+- in the app: **Settings › System › Re-seed demo data** (visible in demo mode only; pick language and
+  currency, hold the button; the result lists every module's row count or error, then the app returns to the
+  demo login picker);
+- from the command line: `php kprnq demo:seed --lang=hu --currency=EUR` (`--keep-company` keeps the company
+  profile, divisions and pipeline lists; `--only=time,sai` seeds some modules; `--force` runs it on an
+  instance that is not in demo mode and switches demo mode on).
+
+**Wipe demo data** (Settings › System) is the other way out: it leaves demo mode and empties the CRM for real
+use (every lead, project, task, document, ticket, time entry and automation log, not only the demo ones).
+Choosing to keep the configuration keeps the settings and every login; otherwise everything is replaced by a
+fresh install with one admin and a random password shown once.
+
+Demo data is written only by the installer, the re-seed and the CLI - never by a database migration, so an
+update never adds demo rows to a real installation.
 
 ## Production Deployment
 
@@ -55,7 +117,7 @@ The two live instances (laminam.sk, strechyokoc.sk) are both deployed by
 cloning this repo straight into the server's document root — **not** by
 requiring it as a Composer dependency of a separate host project. There is no
 Node/Vite build step on the server; the compiled frontend is built locally
-and committed to `dist/`, then published to the docroot by `php ccrm update`.
+and committed to `dist/`, then published to the docroot by `php kprnq update`.
 
 ### First-time install on a new server
 
@@ -82,7 +144,7 @@ and committed to `dist/`, then published to the docroot by `php ccrm update`.
    it refreshes `dist/` from `public/` and copies `dist/` over the docroot
    root:
    ```bash
-   php ccrm update
+   php kprnq update
    ```
    (`git pull` will just report "already up to date" on a fresh clone —
    that's fine, the publish + migrate steps are what you need here.)
@@ -112,7 +174,7 @@ branch, then advances `main` (the branch the server pulls).
 
 On the server:
 ```bash
-php ccrm update
+php kprnq update
 ```
 Checks the licence, pulls `origin/main`, runs `composer install`, publishes
 `dist/` over the docroot, and runs DB migrations — see the `ccrm` script at the
@@ -126,7 +188,7 @@ risks and a staged implementation plan — is written up in
 #### Tracking a different branch on a non-production box
 
 An install updates from **the branch it has checked out**, so a box put on a
-feature branch keeps following that branch with a plain `php ccrm update` — no
+feature branch keeps following that branch with a plain `php kprnq update` — no
 configuration needed. Production sits on `main`, so nothing changes there.
 
 Every run echoes where the choice came from:
@@ -140,12 +202,12 @@ checkout's own git config:
 
 ```bash
 git config ccrm.deployBranch 1.6-grapefruit-fix
-php ccrm update      # -> Deploy branch: 1.6-grapefruit-fix (git config ccrm.deployBranch)
+php kprnq update      # -> Deploy branch: 1.6-grapefruit-fix (git config ccrm.deployBranch)
 ```
 
 Prefer this over `export CCRM_DEPLOY_BRANCH=...` in `~/.bashrc`: an environment
 variable is invisible to cron and to the shell you exported it in, so the next
-plain `php ccrm update` silently reverts to the old branch. `git config` lives
+plain `php kprnq update` silently reverts to the old branch. `git config` lives
 with the checkout and holds for every invocation. Undo it with
 `git config --unset ccrm.deployBranch`.
 
@@ -153,7 +215,7 @@ with the checkout and holds for every invocation. Undo it with
 for a single run:
 
 ```bash
-CCRM_DEPLOY_BRANCH=main php ccrm update
+CCRM_DEPLOY_BRANCH=main php kprnq update
 ```
 
 That precedence is also the one way `git config ccrm.deployBranch` appears not to
@@ -174,7 +236,7 @@ sets it again at the next login. Find that line, delete it, then unset:
 grep -n CCRM_DEPLOY_BRANCH ~/.bashrc ~/.bash_profile ~/.profile ~/.zshrc
 sed -i '/CCRM_DEPLOY_BRANCH/d' ~/.bashrc   # the file(s) the grep listed
 unset CCRM_DEPLOY_BRANCH                   # clear the current shell too
-php ccrm update      # -> Deploy branch: main (git config ccrm.deployBranch)
+php kprnq update      # -> Deploy branch: main (git config ccrm.deployBranch)
 ```
 
 The pull is **fast-forward only**. A deployment checkout has no history of its
@@ -191,9 +253,9 @@ working app. Ahead of expiry the app shows a dismissible banner, and Settings �
 Licence is where a key is entered.
 
 ```bash
-php ccrm license status              # what is installed, and does it allow updates
-php ccrm license set <key-or-token>  # activate
-php ccrm license check               # force a re-check with the licence server
+php kprnq license status              # what is installed, and does it allow updates
+php kprnq license set <key-or-token>  # activate
+php kprnq license check               # force a re-check with the licence server
 ```
 
 The licence server is a Craft CMS channel plus a small module, and its answers

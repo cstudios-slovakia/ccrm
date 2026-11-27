@@ -6,7 +6,9 @@ import {
   leadAssignmentPanel,
   normalizeLeadAssignment,
   resolveAssignmentPool,
+  leadAssignableUserNames,
 } from "./leadAssignment.ts";
+import type { UserProfile } from "../types";
 
 const TEAM = ["Sam", "Ada", "Alex"];
 
@@ -85,4 +87,11 @@ test("a pool whose every member has left counts as inactive, not as configured",
 test("a renamed-case user still matches the pool entry", () => {
   const cfg = normalizeLeadAssignment({ mode: "selected", users: ["sam"] });
   assert.deepEqual(resolveAssignmentPool(cfg, TEAM), ["Sam"]);
+});
+
+test("new leads go to Project Managers only, or to everyone when nobody has the role", () => {
+  const u = (name: string, role: string) => ({ name, role, email: `${name}@example.test` }) as UserProfile;
+  assert.deepEqual(leadAssignableUserNames([u("Tomi", "Project Manager"), u("Eva", "Employee"), u("Zoli", "project manager")]), ["Tomi", "Zoli"]);
+  assert.deepEqual(leadAssignableUserNames([u("Eva", "Employee"), u("Adam", "Admin")]), ["Eva", "Adam"]);
+  assert.deepEqual(leadAssignableUserNames([]), []);
 });

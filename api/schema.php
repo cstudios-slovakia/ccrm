@@ -13,6 +13,11 @@
  */
 
 require_once __DIR__ . '/employee_name.php';
+require_once __DIR__ . '/contact_name.php';
+require_once __DIR__ . '/payroll_lib.php';
+require_once __DIR__ . '/task_activity_lib.php';
+require_once __DIR__ . '/task_files_lib.php';
+require_once __DIR__ . '/clickup_lib.php';
 
 if (!function_exists('ccrm_schema_statements')) {
 
@@ -29,6 +34,10 @@ if (!function_exists('ccrm_schema_statements')) {
               `avatar` VARCHAR(255) NULL,
               `color` VARCHAR(20) NULL,
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
+              `task_kind` VARCHAR(20) NULL COMMENT 'NULL = normal task, recurring = series template',
+              `recurrence_json` TEXT NULL COMMENT 'Template only: recurrence schedule config and cursor',
+              `recurring_source_id` VARCHAR(50) NULL COMMENT 'Occurrence only: template id',
+              `recurring_occurrence_date` DATE NULL COMMENT 'Occurrence only: the unshifted scheduled date',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -61,7 +70,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `traffic_origin` VARCHAR(50) NULL COMMENT 'Channel that first brought the visitor to the site (facebook, instagram, google, direct, ...) - reported by the web form, not chosen in the CRM',
               `traffic_origin_detail` VARCHAR(255) NULL COMMENT 'Free-text detail for traffic_origin: medium, campaign, referring host, landing page',
               `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
-              `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Cstudios, Cstudios Budapest)',
+              `assigned_employees` TEXT NULL COMMENT 'JSON array of user names working on the lead besides its owner',
+              `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Head office, Branch Budapest)',
               `value` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Estimated Opportunity Worth',
               `adjustment` DECIMAL(14,2) NOT NULL DEFAULT 0.00 COMMENT 'Client Value Adjustment',
               `rating` INT NOT NULL DEFAULT 3 COMMENT 'Star Rating 1-5',
@@ -71,6 +81,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `tax_id` VARCHAR(50) NULL COMMENT 'DIC',
               `vat_id` VARCHAR(50) NULL COMMENT 'IC DPH',
               `contact_person` VARCHAR(100) NULL,
+              `contact_first_name` VARCHAR(100) NULL,
+              `contact_last_name` VARCHAR(100) NULL,
               `website` VARCHAR(255) NULL,
               `street` VARCHAR(255) NULL,
               `postal_code` VARCHAR(20) NULL,
@@ -81,17 +93,26 @@ if (!function_exists('ccrm_schema_statements')) {
               `referral_lead_id` VARCHAR(50) NULL COMMENT 'Lead/client who referred this one. Deliberately NOT a foreign key: a sync payload can carry the referring lead after this one, and deleting the referrer must not delete or block this lead',
               `client_id` VARCHAR(50) NULL COMMENT 'The client record (a client-* row) this lead belongs to. Not a foreign key, for the same reason as referral_lead_id; the app falls back to matching by name when it is empty or points at a deleted row',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
+              `task_kind` VARCHAR(20) NULL COMMENT 'NULL = normal task, recurring = series template',
+              `recurrence_json` TEXT NULL COMMENT 'Template only: recurrence schedule config and cursor',
+              `recurring_source_id` VARCHAR(50) NULL COMMENT 'Occurrence only: template id',
+              `recurring_occurrence_date` DATE NULL COMMENT 'Occurrence only: the unshifted scheduled date',
               `vat_validation_result` TEXT NULL,
               `follow_ups` TEXT NULL COMMENT 'JSON map: {stateKey: YYYY-MM-DD} of completed follow-ups',
               `client_category_id` VARCHAR(50) NULL COMMENT 'client_categories.id - not a foreign key, the app clears it when a category is deleted',
+              `company_client_id` VARCHAR(50) NULL COMMENT 'leads.id of parent company for person client-side contacts (never rented workers)',
+              `contact_role` VARCHAR(120) NULL COMMENT 'Role at company for attached person contacts (e.g. HR, Site Manager)',
+              `contact_tags` TEXT NULL COMMENT 'JSON array of contact function tags',
               `ticket_allowed_emails` TEXT NULL COMMENT 'JSON array of whitelisted sender emails/domains for support tickets',
+              `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id',
               `archived` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Archived from the client register',
               `created_at` DATE NOT NULL,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
               INDEX idx_lead_status (`status`),
               INDEX idx_lead_owner (`owner`),
-              INDEX idx_lead_created (`created_at`)
+              INDEX idx_lead_created (`created_at`),
+              INDEX idx_lead_company_client (`company_client_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Lead Categories Link
@@ -106,7 +127,7 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `timeline_events` (
               `id` VARCHAR(50) NOT NULL,
               `lead_id` VARCHAR(50) NOT NULL,
-              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change') NOT NULL DEFAULT 'note',
+              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp', 'note_activity') NOT NULL DEFAULT 'note',
               `timestamp` DATETIME NOT NULL,
               `title` VARCHAR(255) NOT NULL,
               `content` TEXT NULL,
@@ -121,10 +142,29 @@ if (!function_exists('ccrm_schema_statements')) {
               `audio_file` VARCHAR(255) NULL COMMENT 'Voice note recorded onto the timeline: the path api/upload_audio.php stored the recording at',
               `transcription` TEXT NULL COMMENT 'Speech-to-text transcript of `audio_file`, produced by api/transcribe_meeting.php',
               `hidden` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'mail entries only: removed from the lead timeline by the user; kept so the mailbox importer does not file it again',
+              `external_url` VARCHAR(255) NULL COMMENT 'Deep link path into the external system (e.g. /c/xyz?m=abc)',
+              `task_id` VARCHAR(50) NULL COMMENT 'The task a note comments on (written by the MCP add_task_comment tool); NULL for every other entry. No foreign key: the note stays on the client timeline when the task goes',
               PRIMARY KEY (`id`),
               FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE,
               INDEX idx_event_timestamp (`timestamp`),
-              INDEX idx_event_type (`type`)
+              INDEX idx_event_type (`type`),
+              INDEX idx_event_task (`task_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Notes: free-text notes attached to one record of any module (leads, projects, later orders).
+            // No foreign key on purpose: `entity_type` + `entity_id` name the record, and a deleted record's
+            // notes stay behind so a restore brings them back. Written by api/notes.php, never by sync.php.
+            "CREATE TABLE IF NOT EXISTS `notes` (
+              `id` VARCHAR(64) NOT NULL,
+              `entity_type` VARCHAR(32) NOT NULL COMMENT 'lead | project (more modules later)',
+              `entity_id` VARCHAR(100) NOT NULL,
+              `content` TEXT NOT NULL,
+              `author` VARCHAR(100) NULL COMMENT 'CRM user who wrote the note; NULL for a note migrated from an entry nobody signed',
+              `audio_file` VARCHAR(255) NULL COMMENT 'Voice recording of a note migrated from the old lead timeline; no new note gets one',
+              `created_at` DATETIME NOT NULL COMMENT 'Local wall-clock time, like timeline timestamps',
+              `updated_at` DATETIME NOT NULL,
+              PRIMARY KEY (`id`),
+              INDEX idx_note_entity (`entity_type`, `entity_id`, `created_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Tasks
@@ -141,6 +181,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `created_by` VARCHAR(100) NULL COMMENT 'Immutable task creator name; NULL for legacy rows',
               `related_lead_id` VARCHAR(50) NULL,
               `related_project_id` VARCHAR(50) NULL COMMENT 'Project the task belongs to; NULL when it has none',
+              `related_agency_worker_id` VARCHAR(64) NULL COMMENT 'Points to agency_workers.id (no foreign key)',
               `workflow_id` VARCHAR(50) NULL COMMENT 'Automation that created this task; NULL for hand-made ones',
               `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
@@ -149,14 +190,36 @@ if (!function_exists('ccrm_schema_statements')) {
               `email_reminders_json` TEXT NULL COMMENT 'Per-user e-mail reminder choice, JSON: user name to morning, 1h or 1d',
               `requires_conclusion` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = the task cannot be completed until conclusion is written',
               `conclusion` TEXT NULL COMMENT 'How the task was finished; written when it is completed',
+              `external_source` VARCHAR(20) NULL COMMENT 'Integration client code that pushed this task (waai)',
+              `external_url` VARCHAR(255) NULL COMMENT 'Path of the source chat in the external system',
+              `external_meta_json` TEXT NULL COMMENT 'Chat title, assignee label, due_inferred flag',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
+              `task_kind` VARCHAR(20) NULL COMMENT 'NULL = normal task, recurring = series template',
+              `recurrence_json` TEXT NULL COMMENT 'Template only: recurrence schedule config and cursor',
+              `recurring_source_id` VARCHAR(50) NULL COMMENT 'Occurrence only: template id',
+              `recurring_occurrence_date` DATE NULL COMMENT 'Occurrence only: the unshifted scheduled date',
+              `original_deadline` DATE NULL COMMENT 'Deadline the task was first given; set when it is created or first postponed',
+              `deadline_moves` INT NOT NULL DEFAULT 0 COMMENT 'How many times the deadline was pushed to a later date',
+              `first_started_at` DATETIME NULL COMMENT 'First time task left initial unstarted state or was completed',
+              `reopened_count` INT NOT NULL DEFAULT 0 COMMENT 'How many times task was reopened from a done state',
+              `comment_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Denormalized active comment count in task_activities',
+              `file_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Denormalized active file count in task_files',
+              `reactions_json` VARCHAR(1000) NULL COMMENT 'Task emoji reactions map {emoji: [userName]}',
+              `category` VARCHAR(32) NULL COMMENT 'Task category; NULL = none, bug = Bug (a string so more categories need no migration)',
+              `reopens_json` TEXT NULL COMMENT 'Every reopening of a finished task, JSON [{at: UTC ISO, by: name|null}] oldest first; NULL = never reopened; written only by the server',
+              `parent_task_id` VARCHAR(50) NULL COMMENT 'Parent task id for external subtasks (e.g. ClickUp)',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
               FOREIGN KEY (`related_lead_id`) REFERENCES `leads` (`id`) ON DELETE SET NULL,
               INDEX idx_task_status (`status`),
               INDEX idx_task_deadline (`deadline`),
-              INDEX idx_task_project (`related_project_id`)
+              INDEX idx_task_project (`related_project_id`),
+              INDEX idx_task_parent (`parent_task_id`),
+              INDEX idx_task_agency_worker (`related_agency_worker_id`),
+              INDEX idx_task_kind (`task_kind`),
+              INDEX idx_task_recurring_source (`recurring_source_id`),
+              UNIQUE KEY uq_recurring_occurrence (`recurring_source_id`, `recurring_occurrence_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Task Assignees
@@ -380,7 +443,10 @@ if (!function_exists('ccrm_schema_statements')) {
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
-            // Projects (Base common table)
+            // Projects (Base common table). The project type FK is RESTRICT, not
+            // CASCADE: a type is a template, and deleting a template must never
+            // take the projects made from it along with it. Existing installs are
+            // converted by ccrm_migrate_project_type_fk_restrict().
             "CREATE TABLE IF NOT EXISTS `projects` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
               `project_type_id` VARCHAR(50) NOT NULL,
@@ -388,7 +454,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `lead_id` VARCHAR(50) NULL,
               `client_id` VARCHAR(50) NULL,
               `status` VARCHAR(50) NOT NULL DEFAULT 'active',
-              `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Cstudios, Cstudios Budapest)',
+              `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Head office, Branch Budapest)',
               `rating` TINYINT NULL COMMENT 'Star Rating 1-5, 0 = not rated, NULL = never set',
               `invoice_date` DATE NULL COMMENT 'Invoice date (shown as Invoice date in the UI)',
               `completion_deadline` DATE NULL COMMENT 'Date the project has to be completed by (shown as Deadline in the UI)',
@@ -404,9 +470,20 @@ if (!function_exists('ccrm_schema_statements')) {
               `ticket_public_hash` VARCHAR(64) NULL UNIQUE COMMENT 'Cryptographically random unguessable token for public ticket status URL',
               `ticket_widget_config_json` TEXT NULL COMMENT 'JSON config for floating widget color, position, greeting, language',
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
+              `hours_budget` DECIMAL(8,2) NULL COMMENT 'Hours the project is expected to take',
+              `billable_rate` DECIMAL(10,2) NULL COMMENT 'Default billable hourly rate for time entries',
+              `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Internal work: excluded from client billing',
+              `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it',
+              `contact_email` VARCHAR(190) NULL COMMENT 'E-mail of the project contact; copied from the lead on conversion',
+              `acceptance_criteria_json` TEXT NULL COMMENT 'Acceptance criteria, JSON [{id,title,done,createdAt,createdBy,removedAt,removedBy}]; a removed one stays (soft removal); NULL = none',
+              `scope_approved_at` DATETIME NULL COMMENT 'When the scope was approved (UTC); criteria created after it are scope creep; NULL = not approved',
+              `scope_approved_by` VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope',
+              `github_repo` VARCHAR(200) NULL COMMENT 'Paired GitHub repository, owner/name; pushes to it are stored in project_pushes',
+              `github_branch` VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch',
+              `clickup_lists_json` TEXT NULL COMMENT 'JSON array of linked ClickUp lists [{id,name,folderName,spaceName}]',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-              FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
+              FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE RESTRICT
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Project Managers (Junction table)
@@ -415,6 +492,34 @@ if (!function_exists('ccrm_schema_statements')) {
               `user_id` VARCHAR(50) NOT NULL,
               PRIMARY KEY (`project_id`, `user_id`),
               FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Project employees (Junction table): the people working on a project besides its managers.
+            "CREATE TABLE IF NOT EXISTS `project_employees` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              PRIMARY KEY (`project_id`, `user_id`),
+              FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // GitHub pushes delivered to api/github_webhook.php, one row per (request body, paired project).
+            // No foreign key on purpose: a row outlives a hiccup in `projects`; readers join to it.
+            "CREATE TABLE IF NOT EXISTS `project_pushes` (
+              `body_hash` CHAR(64) NOT NULL COMMENT 'SHA-256 hex of the raw body; a redelivery or a replay of it is ignored',
+              `delivery_id` VARCHAR(64) NULL COMMENT 'X-GitHub-Delivery, for reference only (the signature does not cover it)',
+              `project_id` VARCHAR(50) NOT NULL,
+              `repo` VARCHAR(200) NOT NULL COMMENT 'Full name as GitHub sent it',
+              `branch` VARCHAR(200) NOT NULL,
+              `pushed_at` DATETIME NOT NULL COMMENT 'UTC; when this server received the push',
+              `pusher` VARCHAR(100) NULL,
+              `commit_count` INT NOT NULL DEFAULT 0,
+              `head_sha` VARCHAR(40) NULL,
+              `head_message` VARCHAR(300) NULL COMMENT 'First line of the head commit message',
+              `compare_url` VARCHAR(500) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`body_hash`, `project_id`),
+              INDEX `idx_pp_project_time` (`project_id`, `pushed_at`),
+              INDEX `idx_pp_time` (`pushed_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Audit trail for privileged / financial actions (see ccrm_audit_log).
@@ -428,6 +533,20 @@ if (!function_exists('ccrm_schema_statements')) {
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               INDEX `idx_audit_time` (`created_at`),
               INDEX `idx_audit_action` (`action`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Deletion tombstones: one row per business record sync.php really deleted, read by the
+            // MCP tool list_deleted_records. Written by api/deleted_records.php (fail-soft).
+            "CREATE TABLE IF NOT EXISTS `deleted_records` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `entity` VARCHAR(64) NOT NULL COMMENT 'Table of the deleted record: leads, projects, invoices_offers, ...',
+              `entity_id` VARCHAR(191) NOT NULL,
+              `deleted_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+              `deleted_by` VARCHAR(255) NULL COMMENT 'Name of the acting user',
+              `label` VARCHAR(255) NULL COMMENT 'Name or title the record had when it was deleted',
+              `extra` TEXT NULL COMMENT 'JSON; for a leads row {\"client\":true|false}, so the leads/clients split applies on read',
+              INDEX `idx_deleted_time` (`deleted_at`, `id`),
+              INDEX `idx_deleted_entity` (`entity`, `entity_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Rate-limit ledger for password-reset requests (per IP/email).
@@ -559,6 +678,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `notes` TEXT NULL,
               `contacts_json` TEXT NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
               INDEX `idx_supplier_name` (`name`),
               INDEX `idx_supplier_ico` (`company_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
@@ -581,6 +701,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `avg_purchase_price` DECIMAL(12,4) NOT NULL DEFAULT 0.0000,
               `last_purchase_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
               INDEX `idx_item_sku` (`sku`),
               INDEX `idx_item_category` (`category`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
@@ -608,6 +729,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `current_quantity` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `purchase_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
               FOREIGN KEY (`item_id`) REFERENCES `warehouse_items` (`id`) ON DELETE CASCADE,
               FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses` (`id`) ON DELETE CASCADE,
               INDEX `idx_batch_exp` (`expiration_date`)
@@ -632,6 +754,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `file_path` VARCHAR(500) NULL,
               `issued_at` DATETIME NOT NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
               FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses` (`id`) ON DELETE RESTRICT,
               INDEX `idx_mov_doc` (`document_number`),
               INDEX `idx_mov_type` (`type`),
@@ -687,6 +810,40 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_cc_level (`level`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Client Contacts (separate table for company contact persons and standalone personal contacts; never mixes into leads/clients)
+            "CREATE TABLE IF NOT EXISTS `client_contacts` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `company_client_id` VARCHAR(50) NULL COMMENT 'leads.id of parent company client (NULL = standalone personal contact)',
+              `name` VARCHAR(150) NOT NULL,
+              `first_name` VARCHAR(100) NULL,
+              `last_name` VARCHAR(100) NULL,
+              `email` VARCHAR(255) NULL,
+              `phone` VARCHAR(64) NULL,
+              `contact_role` VARCHAR(120) NULL COMMENT 'Summary function string (e.g. CEO, Billing)',
+              `contact_tags` TEXT NULL COMMENT 'JSON array of contact function tags',
+              `notes` TEXT NULL,
+              `archived` TINYINT(1) NOT NULL DEFAULT 0,
+              `created_at` DATE NOT NULL,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_cc_company` (`company_client_id`),
+              INDEX `idx_cc_email` (`email`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Offer Categories (3-level price-offer category tree, the customer tree's shape; offers carry one in invoices_offers.category_id)
+            "CREATE TABLE IF NOT EXISTS `offer_categories` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(150) NOT NULL,
+              `parent_id` VARCHAR(50) NULL,
+              `level` INT NOT NULL DEFAULT 1,
+              `sort_order` INT NOT NULL DEFAULT 0,
+              `color` VARCHAR(30) NULL,
+              `icon` VARCHAR(50) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_oc_parent (`parent_id`),
+              INDEX idx_oc_level (`level`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Financial Records (Incomes, Invoices, Expenses, Recurring and Single movements)
             "CREATE TABLE IF NOT EXISTS `financial_records` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -714,6 +871,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `recurring_skipped_dates_json` TEXT NULL COMMENT 'Scheduled days a stored movement stands in for, as a JSON list of YYYY-MM-DD days',
               `recurring_source_id` VARCHAR(50) NULL COMMENT 'On a one-off movement: the recurring rule whose charge it replaces',
               `recurring_occurrence_date` DATE NULL COMMENT 'On a one-off movement: the scheduled day it stands in for',
+              `recurring_materialized_through` DATE NULL COMMENT 'Recurring rule: every charge on or before this day is stored or deliberately absent; the schedule only draws after it',
               `project_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked project ID',
               `client_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked client ID',
               `invoice_number` VARCHAR(100) NULL,
@@ -758,6 +916,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `greeting_note` TEXT NULL,
               `intro_note` TEXT NULL,
               `usp_cards_json` TEXT NULL,
+              `custom_fields_json` TEXT NULL,
               `reassurance_note` TEXT NULL,
               `subtotal` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
               `vat_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
@@ -773,6 +932,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `sign_off_team` VARCHAR(150) NULL,
               `custom_template_id` VARCHAR(50) NULL,
               `custom_template_style_json` TEXT NULL,
+              `category_id` VARCHAR(50) NULL COMMENT 'offer_categories.id - not a foreign key, the app clears it when a category is deleted',
               `status` VARCHAR(50) NOT NULL DEFAULT 'draft' COMMENT 'Price offers: a key of OFFER_STATUSES. Proformas and invoices: a key of INVOICE_STATUSES (built-ins: draft, sent, invoiced, approved, rejected, cancelled)',
               `status_changed_at` DATE NULL COMMENT 'Day the status last changed (client-stamped)',
               `issued_at` DATE NOT NULL,
@@ -837,6 +997,100 @@ if (!function_exists('ccrm_schema_statements')) {
               FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Machine API (/api/v1, docs/WAAI-INTEGRATION.md §4.1): one row per external
+            // system (today only 'waai'). The JSON-valued columns are TEXT holding JSON,
+            // which MySQL and MariaDB both accept.
+            "CREATE TABLE IF NOT EXISTS `integration_clients` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `code` VARCHAR(50) NOT NULL UNIQUE,
+              `name` VARCHAR(100) NOT NULL,
+              `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+              `scopes` TEXT NOT NULL,
+              `allowed_ips` TEXT NOT NULL,
+              `require_direct` TINYINT(1) NOT NULL DEFAULT 0,
+              `owner_user_ids` TEXT NOT NULL,
+              `feed_scope` ENUM('owners','all') NOT NULL DEFAULT 'owners',
+              `embed_url` VARCHAR(255) NULL,
+              `sso_secret` VARCHAR(255) NULL COMMENT 'enc:v1: (ccrm_encrypt_secret)',
+              `default_deadline_days` INT NOT NULL DEFAULT 7,
+              `settings_json` TEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Several tokens per client so a rotation can overlap. Only sha256 is stored.
+            "CREATE TABLE IF NOT EXISTS `integration_tokens` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `client_id` VARCHAR(50) NOT NULL,
+              `prefix` VARCHAR(12) NOT NULL UNIQUE,
+              `token_hash` CHAR(64) NOT NULL,
+              `expires_at` DATETIME NULL,
+              `revoked_at` DATETIME NULL,
+              `last_used_at` DATETIME NULL,
+              `last_used_ip` VARCHAR(45) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_int_token_client (`client_id`),
+              FOREIGN KEY (`client_id`) REFERENCES `integration_clients` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // External id <-> local row, plus the last values applied from the external
+            // side (three-way merge). No FK on local_id: tasks are hard-deleted by sync.php,
+            // and a ref whose row is gone is how "deleted in CCRM" is recognised.
+            "CREATE TABLE IF NOT EXISTS `integration_refs` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `client_id` VARCHAR(50) NOT NULL,
+              `kind` ENUM('task','timeline') NOT NULL,
+              `external_id` VARCHAR(64) NOT NULL,
+              `local_id` VARCHAR(50) NULL,
+              `revision` BIGINT NOT NULL DEFAULT 0,
+              `applied_snapshot` TEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY uq_int_ref (`client_id`, `kind`, `external_id`),
+              INDEX idx_int_ref_local (`local_id`),
+              FOREIGN KEY (`client_id`) REFERENCES `integration_clients` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Per-token request counter, one row per minute window.
+            "CREATE TABLE IF NOT EXISTS `integration_rate` (
+              `token_prefix` VARCHAR(12) NOT NULL,
+              `window_start` INT NOT NULL,
+              `hits` INT NOT NULL DEFAULT 0,
+              PRIMARY KEY (`token_prefix`, `window_start`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Chats WAAI has paired with a lead/client or a project (docs/WAAI-INTEGRATION.md §4.2, §4.4).
+            // One row per (conversation, entity); the chat's title, phone and path repeat on each row so
+            // the table reads without a join. Written only by PUT/DELETE /api/v1/whatsapp/links, never by
+            // sync.php. No FK on entity_id: a deleted lead or project must not be blocked by a link, and
+            // WAAI replaces the whole set on its next push.
+            "CREATE TABLE IF NOT EXISTS `whatsapp_links` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `client_id` VARCHAR(50) NOT NULL,
+              `conversation_ref` VARCHAR(64) NOT NULL,
+              `entity_type` ENUM('lead','project') NOT NULL,
+              `entity_id` VARCHAR(50) NOT NULL,
+              `link_source` ENUM('auto','manual') NOT NULL DEFAULT 'auto',
+              `title` VARCHAR(255) NOT NULL DEFAULT '',
+              `is_group` TINYINT(1) NOT NULL DEFAULT 0,
+              `phone_digits` VARCHAR(20) NULL,
+              `owner_user_id` VARCHAR(50) NULL COMMENT 'CCRM user who owns the WhatsApp account',
+              `path` VARCHAR(255) NOT NULL,
+              `last_message_at` DATETIME NULL,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+              UNIQUE KEY uq_wa_link (`conversation_ref`, `entity_type`, `entity_id`),
+              INDEX idx_wa_link_entity (`entity_type`, `entity_id`),
+              FOREIGN KEY (`client_id`) REFERENCES `integration_clients` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Result of WAAI's on-demand "is this number on WhatsApp?" check (decision D6).
+            "CREATE TABLE IF NOT EXISTS `whatsapp_numbers` (
+              `phone_digits` VARCHAR(20) NOT NULL PRIMARY KEY,
+              `status` ENUM('registered','not_registered') NOT NULL,
+              `checked_at` DATETIME NOT NULL,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Web Push Subscriptions (Browser & Mobile PWA push endpoints)
             "CREATE TABLE IF NOT EXISTS `push_subscriptions` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -863,6 +1117,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `first_name` VARCHAR(100) NULL,
               `last_name` VARCHAR(100) NULL,
               `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' COMMENT 'employee | contractor | ledger',
+              `contractor_type` VARCHAR(20) NULL COMMENT 'person | sole_trader | company (for kind = contractor)',
               `company_id` VARCHAR(32) NULL COMMENT 'IČO of an external supplier',
               `tax_id` VARCHAR(32) NULL COMMENT 'DIČ of an external supplier',
               `vat_id` VARCHAR(32) NULL COMMENT 'IČ DPH of an external supplier',
@@ -879,6 +1134,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `salary_type` ENUM('monthly', 'daily', 'hourly') NOT NULL DEFAULT 'monthly',
               `salary_amount` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
               `salary_due_day` INT NULL COMMENT 'Payout day of month (1-31) or week (1-7)',
+              `hours_per_day` DECIMAL(4,2) NULL COMMENT 'Contracted hours per day; NULL = company hoursPerDay (time tracking settings)',
               `vacation_allowances_json` TEXT NULL,
               `time_tracking_provider` VARCHAR(50) NOT NULL DEFAULT 'toggl',
               `time_tracking_user_id` VARCHAR(100) NULL,
@@ -906,12 +1162,16 @@ if (!function_exists('ccrm_schema_statements')) {
               `items_json` TEXT NOT NULL COMMENT 'Array of { categoryId, categoryName, salary, paid }',
               `total_salary` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
               `total_paid` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `labor_cost` DECIMAL(12, 2) NULL COMMENT 'Cena práce from the payslip, typed by hand; employees only',
+              `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only',
               `status` ENUM('pending', 'partially_paid', 'paid') NOT NULL DEFAULT 'pending',
               `due_date` DATE NULL,
               `payment_date` DATE NULL,
               `payment_method` VARCHAR(50) NULL DEFAULT 'bank_transfer',
               `financial_record_id` VARCHAR(50) NULL,
               `note` TEXT NULL,
+              `closed_at` DATETIME NULL COMMENT 'Month closed: stamped when first paid in full; locks its time entries; cleared only by an admin reopen',
+              `closed_by` VARCHAR(255) NULL COMMENT 'Who saved the record that closed the month',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX idx_sal_emp (`employee_id`),
@@ -946,6 +1206,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `customer_type` ENUM('client', 'guest') NOT NULL DEFAULT 'client' COMMENT 'client = registrovaný lead/klient, guest = nákup bez registrácie',
               `client_id` VARCHAR(50) NULL COMMENT 'References leads.id for registered sales clients',
               `supplier_id` VARCHAR(50) NULL COMMENT 'References suppliers.id for purchase orders',
+              `project_id` VARCHAR(50) NULL COMMENT 'References projects.id: the project this order belongs to',
               `guest_name` VARCHAR(255) NULL,
               `guest_email` VARCHAR(255) NULL,
               `guest_phone` VARCHAR(50) NULL,
@@ -997,6 +1258,7 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_orders_customer_type (`customer_type`),
               INDEX idx_orders_client (`client_id`),
               INDEX idx_orders_supplier (`supplier_id`),
+              INDEX idx_orders_project (`project_id`),
               INDEX idx_orders_date (`order_date`),
               INDEX idx_orders_payment_status (`payment_status`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
@@ -1065,6 +1327,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `source` VARCHAR(50) NOT NULL DEFAULT 'manual',
               `project_id` VARCHAR(50) NULL COMMENT 'References projects.id',
               `client_id` VARCHAR(50) NULL COMMENT 'References leads.id (auto-inherited from project if project has lead_id/client_id)',
+              `agency_worker_id` VARCHAR(64) NULL COMMENT 'Points to agency_workers.id (no foreign key)',
               `reporter_name` VARCHAR(200) NULL,
               `reporter_email` VARCHAR(255) NULL,
               `reporter_phone` VARCHAR(50) NULL,
@@ -1082,6 +1345,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `sla_paused_seconds` INT NOT NULL DEFAULT 0,
               `resolved_at` DATETIME NULL,
               `closed_at` DATETIME NULL,
+              `reopened_count` INT NOT NULL DEFAULT 0 COMMENT 'How many times ticket was reopened from resolved/closed',
               `satisfaction_score` TINYINT NULL COMMENT '1-5 CSAT score',
               `satisfaction_comment` TEXT NULL,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
@@ -1089,6 +1353,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX `idx_tickets_project` (`project_id`),
               INDEX `idx_tickets_client` (`client_id`),
+              INDEX `idx_tickets_agency_worker` (`agency_worker_id`),
               INDEX `idx_tickets_status_prio` (`status`, `priority`),
               INDEX `idx_tickets_assignee` (`assignee_id`),
               INDEX `idx_tickets_email_msgid` (`email_message_id`)
@@ -1138,6 +1403,447 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX `idx_tte_ticket` (`ticket_id`),
               INDEX `idx_tte_logged` (`logged_at`),
               CONSTRAINT `fk_tte_ticket` FOREIGN KEY (`ticket_id`) REFERENCES `tickets` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Time tracking: one row per stretch of work, owned by the login that did it.
+            // No foreign keys on purpose: an entry must outlive its task, ticket, project
+            // and even its user (shown greyed out, `title_snapshot` keeps a readable title).
+            "CREATE TABLE IF NOT EXISTS `time_entries` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `user_id` VARCHAR(50) NOT NULL COMMENT 'Owner: the login whose time this is',
+              `recorded_by_user_id` VARCHAR(50) NOT NULL COMMENT 'Who typed it in; differs from user_id when a manager logs time for someone',
+              `employee_id` VARCHAR(50) NULL COMMENT 'Resolved from user_id when saved; supplies the salary for the cost rate',
+              `project_id` VARCHAR(50) NULL COMMENT 'NULL = Assign project state',
+              `task_id` VARCHAR(50) NULL,
+              `ticket_id` VARCHAR(50) NULL,
+              `description` VARCHAR(500) NULL COMMENT 'The title ONLY for entries with no task and no ticket; NULL when linked',
+              `title_snapshot` VARCHAR(500) NULL COMMENT 'Written on every save; never shown while the task/ticket exists, never editable',
+              `legacy_note` VARCHAR(500) NULL COMMENT 'Read-only note migrated from ticket_time_entries',
+              `note` VARCHAR(1000) NULL COMMENT 'The Description the person typed; allowed on linked entries too',
+              `entry_date` DATE NOT NULL COMMENT 'Company-timezone date the time counts for',
+              `start_at` DATETIME NULL COMMENT 'UTC; NULL for hours-only entries',
+              `end_at` DATETIME NULL COMMENT 'UTC; NULL while running or hours-only',
+              `paused_at` DATETIME NULL COMMENT 'UTC; set = paused and resumable (D6)', `pause_reason` VARCHAR(16) NULL COMMENT 'manual | status | presence', `resume_until` DATETIME NULL COMMENT 'UTC; the pause expires after this, NULL = the day''s autoStopAt', `continues_id` VARCHAR(64) NULL COMMENT 'The entry this one resumed', `end_reason` VARCHAR(16) NULL COMMENT 'user | switch | status | presence | auto_stop',
+              `duration_sec` INT NULL,
+              `worked_ms` INT UNSIGNED NULL COMMENT 'Share of the person''s real clock time (ms); NULL while running. Written only by ccrm_tt_settle()',
+              `billable` TINYINT(1) NOT NULL DEFAULT 1,
+              `billable_rate` DECIMAL(10,2) NULL,
+              `cost_rate` DECIMAL(10,4) NULL COMMENT 'Snapshot of the hourly cost rate',
+              `cost_rate_source` VARCHAR(32) NOT NULL DEFAULT 'none' COMMENT 'monthly | daily | hourly | contractor_hourly | contractor_daily | contractor_monthly | none',
+              `cost_rate_basis_days` TINYINT NULL COMMENT 'Working days of the month the rate was divided by',
+              `cost` DECIMAL(14,4) NULL,
+              `tags` TEXT NULL COMMENT 'JSON array of strings',
+              `source` VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT 'timer | manual | day | calendar | timesheet | extension | activity | toggl | clockify | ticket_legacy',
+              `origin_type` VARCHAR(16) NULL COMMENT 'task | ticket | project | calendar | activity',
+              `origin_id` VARCHAR(64) NULL,
+              `device_id` VARCHAR(64) NULL,
+              `external_id` VARCHAR(100) NULL COMMENT 'Toggl/Clockify id, or tte:<id> for migrated ticket time',
+              `approval_status` VARCHAR(16) NULL,
+              `running_guard` VARCHAR(50) GENERATED ALWAYS AS (IF(`start_at` IS NOT NULL AND `end_at` IS NULL AND `deleted_at` IS NULL, `user_id`, NULL)) STORED COMMENT 'user_id while running; indexed, several may run (per-user lock in time_presence)',
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `deleted_at` DATETIME NULL,
+              INDEX `idx_te_running` (`running_guard`),
+              UNIQUE KEY `uq_te_external` (`source`, `external_id`),
+              INDEX `idx_te_user_date` (`user_id`, `entry_date`),
+              INDEX `idx_te_project_date` (`project_id`, `entry_date`),
+              INDEX `idx_te_task` (`task_id`),
+              INDEX `idx_te_ticket` (`ticket_id`),
+              INDEX `idx_te_employee_date` (`employee_id`, `entry_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+            // TT2 D5.1/D7.1: the per-user timer lock row (time_lock.php) and the presence state of phase 6.
+            "CREATE TABLE IF NOT EXISTS `time_presence` (`user_id` VARCHAR(50) NOT NULL PRIMARY KEY, `anchor_at` DATETIME NULL, `last_push_at` DATETIME NULL, `auto_paused_at` DATETIME NULL,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Newsletter module (docs/NEWSLETTER.md C2). Written only by api/newsletter*.php, never by
+            // sync.php, so there is no column healing. No foreign keys, like the rest of the schema.
+            "CREATE TABLE IF NOT EXISTS `newsletter_campaigns` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY COMMENT 'nlc-<random>',
+              `name` VARCHAR(200) NOT NULL,
+              `subject` VARCHAR(255) NOT NULL DEFAULT '',
+              `preheader` VARCHAR(255) NULL,
+              `from_name` VARCHAR(150) NULL COMMENT 'NULL = settings default',
+              `reply_to` VARCHAR(190) NULL COMMENT 'NULL = settings default',
+              `audience_json` TEXT NOT NULL COMMENT 'C5 Audience',
+              `body_json` MEDIUMTEXT NULL COMMENT 'C6 EmailDoc',
+              `use_header` TINYINT(1) NOT NULL DEFAULT 1,
+              `use_footer` TINYINT(1) NOT NULL DEFAULT 1,
+              `html_snapshot` MEDIUMTEXT NULL COMMENT 'Rendered e-mail at start_send, merge tags unresolved',
+              `text_snapshot` MEDIUMTEXT NULL,
+              `status` VARCHAR(16) NOT NULL DEFAULT 'draft' COMMENT 'draft | sending | paused | sent | cancelled',
+              `last_error` VARCHAR(500) NULL,
+              `recipients_total` INT NOT NULL DEFAULT 0 COMMENT 'Queued rows at start_send',
+              `created_by` VARCHAR(50) NULL,
+              `updated_by` VARCHAR(50) NULL,
+              `created_at` DATETIME NOT NULL,
+              `updated_at` DATETIME NOT NULL,
+              `started_at` DATETIME NULL,
+              `finished_at` DATETIME NULL,
+              `deleted_at` DATETIME NULL,
+              KEY `idx_nlc_status` (`status`),
+              KEY `idx_nlc_list` (`deleted_at`, `updated_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `newsletter_recipients` (
+              `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+              `campaign_id` VARCHAR(64) NOT NULL,
+              `email` VARCHAR(190) NOT NULL COMMENT 'Lower-cased, trimmed',
+              `name` VARCHAR(255) NULL,
+              `source` VARCHAR(16) NOT NULL COMMENT 'client | lead | employee | extra',
+              `lead_id` VARCHAR(50) NULL,
+              `employee_id` VARCHAR(50) NULL,
+              `merge_json` TEXT NULL COMMENT 'Merge values frozen at start_send (C9)',
+              `token` CHAR(32) NOT NULL COMMENT 'bin2hex(random_bytes(16)); unsubscribe and view-online links',
+              `status` VARCHAR(16) NOT NULL DEFAULT 'queued' COMMENT 'queued | sent | failed | skipped | cancelled',
+              `skip_reason` VARCHAR(32) NULL COMMENT 'unsubscribed | invalid',
+              `attempts` TINYINT NOT NULL DEFAULT 0,
+              `next_attempt_at` DATETIME NULL,
+              `error` VARCHAR(500) NULL,
+              `sent_at` DATETIME NULL,
+              `unsubscribed_at` DATETIME NULL,
+              UNIQUE KEY `uq_nlr_campaign_email` (`campaign_id`, `email`),
+              UNIQUE KEY `uq_nlr_token` (`token`),
+              KEY `idx_nlr_queue` (`campaign_id`, `status`, `next_attempt_at`),
+              KEY `idx_nlr_sent_at` (`sent_at`),
+              KEY `idx_nlr_email` (`email`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `newsletter_suppressions` (
+              `email` VARCHAR(190) NOT NULL PRIMARY KEY COMMENT 'Lower-cased',
+              `reason` VARCHAR(16) NOT NULL COMMENT 'unsubscribed | bounced | manual',
+              `campaign_id` VARCHAR(64) NULL,
+              `note` VARCHAR(255) NULL,
+              `created_by` VARCHAR(50) NULL COMMENT 'NULL = the recipient (unsubscribe link) or the worker (bounce)',
+              `created_at` DATETIME NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            /* PHASE5-SCHEMA-START */
+            "CREATE TABLE IF NOT EXISTS `time_tracker_pairing_codes` (
+              `code_hash` CHAR(64) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `expires_at` DATETIME NOT NULL,
+              `used_at` DATETIME NULL,
+              `created_at` DATETIME NOT NULL,
+              PRIMARY KEY (`code_hash`),
+              INDEX `idx_ttpc_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `time_tracker_devices` (
+              `id` VARCHAR(64) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `key_hash` CHAR(64) NOT NULL,
+              `key_prefix` VARCHAR(12) NOT NULL,
+              `name` VARCHAR(120) NOT NULL,
+              `browser` VARCHAR(80) NULL,
+              `os` VARCHAR(80) NULL,
+              `extension_version` VARCHAR(32) NULL,
+              `created_at` DATETIME NOT NULL,
+              `last_used_at` DATETIME NULL,
+              `revoked_at` DATETIME NULL,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uq_ttd_key` (`key_hash`),
+              INDEX `idx_ttd_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `time_activity` (
+              `id` VARCHAR(64) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `device_id` VARCHAR(64) NOT NULL,
+              `domain` VARCHAR(253) NOT NULL,
+              `page_title` VARCHAR(300) NOT NULL,
+              `started_at` DATETIME NOT NULL,
+              `ended_at` DATETIME NOT NULL,
+              `duration_sec` INT NOT NULL,
+              `suggested_project_id` VARCHAR(50) NULL,
+              `status` ENUM('unsorted','assigned','dismissed') NOT NULL DEFAULT 'unsorted',
+              `entry_id` VARCHAR(64) NULL,
+              `created_at` DATETIME NOT NULL,
+              PRIMARY KEY (`id`),
+              INDEX `idx_tta_user_status` (`user_id`, `status`),
+              INDEX `idx_tta_started` (`started_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+            /* PHASE5-SCHEMA-END */
+
+            // Public holidays of Slovakia and Hungary, cached from Nager.Date (api/holidays.php).
+            // Only days of work rest are stored. `manual` rows are reserved; overrides live in the settings blob.
+            "CREATE TABLE IF NOT EXISTS `public_holidays` (
+              `country` CHAR(2) NOT NULL,
+              `date` DATE NOT NULL,
+              `local_name` VARCHAR(200) NOT NULL,
+              `name_en` VARCHAR(200) NOT NULL,
+              `source` ENUM('api', 'builtin', 'manual') NOT NULL DEFAULT 'api',
+              `fetched_at` DATETIME NOT NULL,
+              PRIMARY KEY (`country`, `date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Tokens and transcription minutes each AI feature consumed. Priced in the app
+            // from the model list (src/utils/aiModels.ts); this table stores the counts.
+            "CREATE TABLE IF NOT EXISTS `ai_usage` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `feature` VARCHAR(64) NOT NULL,
+              `model` VARCHAR(80) NOT NULL,
+              `input_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `cached_input_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `output_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `input_audio_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `output_audio_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `audio_seconds` DECIMAL(10,2) NOT NULL DEFAULT 0,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_ai_usage_created` (`created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Cached email envelopes per mailbox and folder for instant mailbox rendering.
+            "CREATE TABLE IF NOT EXISTS `mail_envelopes` (
+              `mailbox_key` VARCHAR(100) NOT NULL COMMENT 'c:<company mailbox id> or u:<user email>',
+              `folder` VARCHAR(120) NOT NULL COMMENT 'Canonical UI folder key (INBOX, Sent, or custom folder)',
+              `uid` BIGINT NOT NULL,
+              `event_id` VARCHAR(64) NOT NULL,
+              `subject` VARCHAR(500) NOT NULL DEFAULT '',
+              `from_name` VARCHAR(255) NOT NULL DEFAULT '',
+              `from_address` VARCHAR(255) NOT NULL DEFAULT '',
+              `to_name` VARCHAR(255) NOT NULL DEFAULT '',
+              `to_address` VARCHAR(255) NOT NULL DEFAULT '',
+              `email_date` DATETIME NULL,
+              `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0,
+              `seen` TINYINT(1) NOT NULL DEFAULT 0,
+              `size` INT NOT NULL DEFAULT 0,
+              `message_id` VARCHAR(255) NOT NULL DEFAULT '',
+              `in_reply_to` VARCHAR(255) NOT NULL DEFAULT '',
+              `references_hdr` TEXT NULL,
+              `preview` VARCHAR(500) NOT NULL DEFAULT '',
+              `attachment_count` INT NOT NULL DEFAULT 0,
+              `timeline_hidden` TINYINT(1) NOT NULL DEFAULT 0,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`mailbox_key`, `folder`, `uid`),
+              INDEX `idx_mail_envelopes_lookup` (`mailbox_key`, `folder`, `email_date` DESC, `uid` DESC)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Weekly Plan board cards (standalone planning cards, no task sync)
+            "CREATE TABLE IF NOT EXISTS `weekly_plan_cards` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `date` VARCHAR(10) NOT NULL,
+              `content` TEXT NOT NULL,
+              `position` INT NOT NULL DEFAULT 0,
+              `completed` TINYINT(1) NOT NULL DEFAULT 0,
+              `color` VARCHAR(32) NOT NULL DEFAULT '',
+              `refs_json` LONGTEXT NULL,
+              `created_by` VARCHAR(64) NULL,
+              `deleted_at` DATETIME NULL,
+              `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_weekly_plan_cards_date` (`date`, `position`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Weekly Plan per-day notes displayed under the column date
+            "CREATE TABLE IF NOT EXISTS `weekly_plan_day_notes` (
+              `date` VARCHAR(10) NOT NULL PRIMARY KEY,
+              `note` TEXT NOT NULL,
+              `updated_by` VARCHAR(64) NULL,
+              `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Custom shared calendars under #tasks (e.g. Meeting Room, Company Van)
+            "CREATE TABLE IF NOT EXISTS `custom_calendars` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(150) NOT NULL,
+              `color` VARCHAR(32) NOT NULL DEFAULT '#6366f1',
+              `description` VARCHAR(500) NULL,
+              `created_by` VARCHAR(150) NULL,
+              `deleted_at` DATETIME NULL,
+              `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_ccal_deleted` (`deleted_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Events booked on custom calendars
+            "CREATE TABLE IF NOT EXISTS `custom_calendar_events` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `calendar_id` VARCHAR(64) NOT NULL,
+              `title` VARCHAR(255) NOT NULL,
+              `start_date` VARCHAR(10) NOT NULL,
+              `end_date` VARCHAR(10) NOT NULL,
+              `start_time` VARCHAR(5) NULL,
+              `end_time` VARCHAR(5) NULL,
+              `notes` TEXT NULL,
+              `color` VARCHAR(32) NULL,
+              `owner` VARCHAR(150) NULL,
+              `related_lead_id` VARCHAR(64) NULL,
+              `related_project_id` VARCHAR(64) NULL,
+              `created_by` VARCHAR(150) NULL,
+              `deleted_at` DATETIME NULL,
+              `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_ccevt_cal_dates` (`calendar_id`, `deleted_at`, `start_date`, `end_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // ClickUp-style task activity, chat messages, and state-change timeline
+            "CREATE TABLE IF NOT EXISTS `task_activities` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `task_id` VARCHAR(50) NOT NULL, `kind` ENUM('comment', 'state_change') NOT NULL DEFAULT 'comment', `event_type` VARCHAR(32) NULL, `author_name` VARCHAR(100) NOT NULL DEFAULT '', `body` TEXT NULL, `meta_json` TEXT NULL, `reactions_json` VARCHAR(1000) NULL, `deleted_at` DATETIME NULL, `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), INDEX `idx_ta_task_id` (`task_id`, `id`), INDEX `idx_ta_task_updated` (`task_id`, `updated_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Private task attachments (images, docs, archives, and source code)
+            "CREATE TABLE IF NOT EXISTS `task_files` (`id` VARCHAR(64) NOT NULL PRIMARY KEY, `task_id` VARCHAR(50) NOT NULL, `file_name` VARCHAR(255) NOT NULL, `mime_type` VARCHAR(120) NOT NULL DEFAULT 'application/octet-stream', `size_bytes` INT UNSIGNED NOT NULL DEFAULT 0, `storage_name` VARCHAR(160) NOT NULL, `is_image` TINYINT(1) NOT NULL DEFAULT 0, `image_width` INT UNSIGNED NULL, `image_height` INT UNSIGNED NULL, `uploaded_by` VARCHAR(100) NOT NULL DEFAULT '', `deleted_at` DATETIME NULL, `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), INDEX `idx_tf_task_active` (`task_id`, `deleted_at`, `created_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Agency & Workforce Leasing module tables (opt-in module; separate from `leads`)
+            "CREATE TABLE IF NOT EXISTS `agency_workers` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_code` VARCHAR(50) NULL,
+              `full_name` VARCHAR(200) NOT NULL,
+              `preferred_name` VARCHAR(120) NULL,
+              `email` VARCHAR(255) NULL,
+              `phone` VARCHAR(60) NULL,
+              `stage_id` VARCHAR(80) NOT NULL DEFAULT 'sourced',
+              `worker_status` ENUM('candidate', 'rented', 'bench', 'archived') NOT NULL DEFAULT 'candidate',
+              `nationality` VARCHAR(100) NULL,
+              `date_of_birth` VARCHAR(20) NULL,
+              `profile_json` LONGTEXT NULL,
+              `skills_json` TEXT NULL,
+              `notes` LONGTEXT NULL,
+              `default_pay_rate` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `default_bill_rate` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `currency` VARCHAR(10) NOT NULL DEFAULT 'EUR',
+              `assigned_recruiter` VARCHAR(100) NULL,
+              `created_by` VARCHAR(100) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_agency_worker_stage` (`stage_id`),
+              INDEX `idx_agency_worker_status` (`worker_status`),
+              INDEX `idx_agency_worker_name` (`full_name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_workplaces` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `company_client_id` VARCHAR(100) NOT NULL,
+              `name` VARCHAR(160) NOT NULL,
+              `address` VARCHAR(255) NULL,
+              `contact_lead_id` VARCHAR(100) NULL,
+              `default_shift_code` VARCHAR(50) NULL,
+              `notes` TEXT NULL,
+              `active` TINYINT(1) NOT NULL DEFAULT 1,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_agency_wp_company` (`company_client_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_placements` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `company_client_id` VARCHAR(100) NOT NULL,
+              `workplace_id` VARCHAR(100) NULL,
+              `contact_lead_id` VARCHAR(100) NULL,
+              `job_role` VARCHAR(160) NOT NULL DEFAULT '',
+              `status` ENUM('planned', 'active', 'completed', 'terminated') NOT NULL DEFAULT 'active',
+              `start_date` DATE NOT NULL,
+              `end_date` DATE NULL,
+              `pay_rate` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `pay_rate_type` ENUM('hourly', 'monthly') NOT NULL DEFAULT 'hourly',
+              `bill_rate` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `bill_rate_type` ENUM('hourly', 'monthly') NOT NULL DEFAULT 'hourly',
+              `currency` VARCHAR(10) NOT NULL DEFAULT 'EUR',
+              `notes` TEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_agency_pl_worker` (`worker_id`),
+              INDEX `idx_agency_pl_company` (`company_client_id`),
+              INDEX `idx_agency_pl_status` (`status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_worker_checklists` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `item_key` VARCHAR(100) NOT NULL,
+              `label` VARCHAR(200) NOT NULL,
+              `status` ENUM('pending', 'submitted', 'verified', 'expired') NOT NULL DEFAULT 'pending',
+              `expires_at` DATE NULL,
+              `note` TEXT NULL,
+              `file_id` VARCHAR(100) NULL,
+              `sort_order` INT NOT NULL DEFAULT 0,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_agency_chk_worker` (`worker_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_worker_files` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `category` VARCHAR(60) NOT NULL DEFAULT 'other',
+              `checklist_item_id` VARCHAR(100) NULL,
+              `file_name` VARCHAR(255) NOT NULL,
+              `mime_type` VARCHAR(120) NULL,
+              `size_bytes` BIGINT NOT NULL DEFAULT 0,
+              `storage_name` VARCHAR(255) NOT NULL,
+              `uploaded_by` VARCHAR(100) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_agency_files_worker` (`worker_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_timeline_events` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `event_type` ENUM('stage_change', 'contact', 'placement', 'sick_leave', 'compliance', 'note', 'work_log') NOT NULL DEFAULT 'note',
+              `title` VARCHAR(255) NOT NULL,
+              `description` TEXT NULL,
+              `meta_json` TEXT NULL,
+              `occurred_at` DATETIME NOT NULL,
+              `created_by` VARCHAR(100) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_agency_tl_worker` (`worker_id`, `occurred_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_shifts` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `placement_id` VARCHAR(100) NULL,
+              `company_client_id` VARCHAR(100) NOT NULL,
+              `workplace_id` VARCHAR(100) NULL,
+              `work_date` DATE NOT NULL,
+              `shift_template_id` VARCHAR(80) NULL,
+              `shift_label` VARCHAR(120) NULL,
+              `start_time` VARCHAR(10) NULL,
+              `end_time` VARCHAR(10) NULL,
+              `hours` DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
+              `overtime_hours` DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
+              `status` ENUM('scheduled', 'worked', 'sick', 'absent', 'holiday') NOT NULL DEFAULT 'scheduled',
+              `sick_note` TEXT NULL,
+              `notes` TEXT NULL,
+              `created_by` VARCHAR(100) NULL,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY `uq_agency_shift_worker_date_tpl` (`worker_id`, `work_date`, `company_client_id`),
+              INDEX `idx_agency_shift_company_date` (`company_client_id`, `work_date`),
+              INDEX `idx_agency_shift_date` (`work_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_payments` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `placement_id` VARCHAR(100) NULL,
+              `company_client_id` VARCHAR(100) NULL,
+              `period_ym` VARCHAR(10) NOT NULL,
+              `regular_hours` DECIMAL(8, 2) NOT NULL DEFAULT 0.00,
+              `overtime_hours` DECIMAL(8, 2) NOT NULL DEFAULT 0.00,
+              `sick_days` DECIMAL(6, 1) NOT NULL DEFAULT 0.0,
+              `base_pay` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `items_json` LONGTEXT NULL,
+              `gross_pay` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `deductions_total` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `net_pay` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `paid_amount` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `billable_total` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `currency` VARCHAR(10) NOT NULL DEFAULT 'EUR',
+              `status` ENUM('draft', 'approved', 'paid') NOT NULL DEFAULT 'draft',
+              `paid_at` DATE NULL,
+              `financial_record_id` VARCHAR(100) NULL,
+              `notes` TEXT NULL,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY `uq_agency_pay_worker_period` (`worker_id`, `period_ym`),
+              INDEX `idx_agency_pay_period` (`period_ym`),
+              INDEX `idx_agency_pay_company` (`company_client_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Per-(project, user, month) exclusions for time-tracking labour costs
+            "CREATE TABLE IF NOT EXISTS `project_labour_exclusions` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `month` CHAR(7) NOT NULL COMMENT 'YYYY-MM',
+              PRIMARY KEY (`project_id`, `user_id`, `month`),
+              INDEX `idx_ple_project` (`project_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -1151,6 +1857,27 @@ if (!function_exists('ccrm_schema_statements')) {
         return (int)$stmt->fetchColumn() > 0;
     }
 
+    // Also defined (guarded) in recurring_tasks.php, which read_scope.php loads before this file.
+    if (!function_exists('ccrm_sql_real_tasks')) {
+        function ccrm_sql_real_tasks(string $alias = ''): string {
+            $alias = trim($alias);
+            if ($alias !== '') {
+                $a = trim($alias, '`.');
+                return "(`{$a}`.`task_kind` IS NULL)";
+            }
+            return "(`task_kind` IS NULL)";
+        }
+    }
+
+    function ccrm_index_exists(PDO $pdo, string $table, string $index): bool {
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?"
+        );
+        $stmt->execute([$table, $index]);
+        return (int)$stmt->fetchColumn() > 0;
+    }
+
     function ccrm_column_exists(PDO $pdo, string $table, string $column): bool {
         $stmt = $pdo->prepare(
             "SELECT COUNT(*) FROM information_schema.COLUMNS
@@ -1161,10 +1888,137 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
+     * Turns the `projects.project_type_id` foreign key from ON DELETE CASCADE
+     * into ON DELETE RESTRICT, so deleting a project type can never delete the
+     * projects made from it. sync.php refuses such a delete before it gets
+     * here; this is the database-level backstop for every other writer.
+     *
+     * Idempotent: does nothing once no CASCADE rule remains. Two statements,
+     * not one: MySQL only drops and adds a foreign key in one ALTER with
+     * ALGORITHM=INPLACE, which it refuses while foreign_key_checks is on. If
+     * the ADD fails (orphaned rows on an install that somehow lost the FK),
+     * the table is left without the key, which still cascades nothing.
+     */
+    function ccrm_migrate_project_type_fk_restrict(PDO $pdo): void {
+        if (!ccrm_table_exists($pdo, 'projects') || !ccrm_table_exists($pdo, 'project_types')) {
+            return;
+        }
+        $stmt = $pdo->query(
+            "SELECT `CONSTRAINT_NAME` FROM information_schema.REFERENTIAL_CONSTRAINTS
+             WHERE `CONSTRAINT_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'projects'
+               AND `REFERENCED_TABLE_NAME` = 'project_types' AND `DELETE_RULE` = 'CASCADE'"
+        );
+        $names = $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+        foreach ($names as $name) {
+            $safe = preg_replace('/[^A-Za-z0-9_]/', '', (string)$name);
+            if ($safe === '') continue;
+            $pdo->exec("ALTER TABLE `projects` DROP FOREIGN KEY `{$safe}`");
+            try {
+                $pdo->exec("ALTER TABLE `projects` ADD CONSTRAINT `{$safe}` FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE RESTRICT");
+            } catch (\Throwable $e) {
+                error_log('[ccrm] projects.project_type_id FK not re-added as RESTRICT: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
      * Idempotent migrations for databases created by older CCRM versions.
      * Each step checks the live schema before mutating it, so it is safe to
      * run on every install/update without relying on try/catch swallowing.
      */
+    /**
+     * Point stored AI model ids at the current same-tier models. Idempotent:
+     * a row that already holds a current id is left alone, and a second run
+     * finds nothing to rewrite. Runs on the next schema apply after deploy, which
+     * sync.php does on the first request, so existing installs pick this up
+     * without a manual step.
+     */
+    function ccrm_migrate_recurring_tasks(PDO $pdo): void {
+        if (!ccrm_table_exists($pdo, 'tasks')) {
+            return;
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'task_kind')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `task_kind` VARCHAR(20) NULL COMMENT 'NULL = normal task, recurring = series template'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'recurrence_json')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurrence_json` TEXT NULL COMMENT 'Template only: recurrence schedule config and cursor'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'recurring_source_id')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurring_source_id` VARCHAR(50) NULL COMMENT 'Occurrence only: template id'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'recurring_occurrence_date')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurring_occurrence_date` DATE NULL COMMENT 'Occurrence only: the unshifted scheduled date'");
+        }
+        if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_kind')) {
+            try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_kind` (`task_kind`)"); } catch (\Throwable $e) {}
+        }
+        if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_recurring_source')) {
+            try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_recurring_source` (`recurring_source_id`)"); } catch (\Throwable $e) {}
+        }
+        if (!ccrm_index_exists($pdo, 'tasks', 'uq_recurring_occurrence')) {
+            try { $pdo->exec("ALTER TABLE `tasks` ADD UNIQUE KEY `uq_recurring_occurrence` (`recurring_source_id`, `recurring_occurrence_date`)"); } catch (\Throwable $e) {}
+        }
+    }
+
+    function ccrm_migrate_ai_models(PDO $pdo): void {
+        if (!function_exists('ccrm_ai_model_upgrades')) {
+            require_once __DIR__ . '/auth.php';
+        }
+        $map = ccrm_ai_model_upgrades();
+        try {
+            if (ccrm_table_exists($pdo, 'custom_dashboards')) {
+                $dash = $pdo->prepare("UPDATE `custom_dashboards` SET `active_model` = ? WHERE `active_model` = ?");
+                foreach ($map as $from => $to) {
+                    if (strpos($from, 'gpt-') === 0 || strpos($from, 'claude-') === 0) {
+                        $dash->execute([$to, $from]);
+                    }
+                }
+                // Demo dashboards were saved with a Gemini id this picker never sent to OpenAI.
+                $dash->execute(['gpt-6.1-terra', 'gemini-2.5-flash']);
+            }
+            if (ccrm_table_exists($pdo, 'swarm_simulations')) {
+                $rows = $pdo->query("SELECT `id`, `checkpoint_state` FROM `swarm_simulations` WHERE `checkpoint_state` IS NOT NULL AND `checkpoint_state` <> ''");
+                $upd = $pdo->prepare("UPDATE `swarm_simulations` SET `checkpoint_state` = ? WHERE `id` = ?");
+                foreach ($rows as $row) {
+                    $state = json_decode((string)$row['checkpoint_state'], true);
+                    if (!is_array($state) || !isset($state['model_name']) || !is_string($state['model_name'])) {
+                        continue;
+                    }
+                    $next = $map[$state['model_name']] ?? null;
+                    if ($next === null || $next === $state['model_name']) {
+                        continue;
+                    }
+                    $state['model_name'] = $next;
+                    $encoded = json_encode($state, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                    if ($encoded !== false) {
+                        $upd->execute([$encoded, $row['id']]);
+                    }
+                }
+            }
+            $raw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'")->fetchColumn();
+            if (is_string($raw) && $raw !== '') {
+                $cfg = json_decode($raw, true);
+                if (is_array($cfg)) {
+                    $changed = false;
+                    foreach (['aiModel', 'openAiModel'] as $key) {
+                        if (isset($cfg[$key]) && is_string($cfg[$key]) && isset($map[$cfg[$key]])) {
+                            $cfg[$key] = $map[$cfg[$key]];
+                            $changed = true;
+                        }
+                    }
+                    if ($changed) {
+                        $encoded = json_encode($cfg, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                        if ($encoded !== false) {
+                            $pdo->prepare("UPDATE `system_settings` SET `value` = ? WHERE `key` = 'INTEGRATIONS_CONFIG'")->execute([$encoded]);
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] ai model migration skipped: ' . $e->getMessage());
+        }
+    }
+
     function ccrm_apply_migrations(PDO $pdo): void {
         // Several steps below ALTER `orders`; a database that predates the table
         // would otherwise fatal on the first one.
@@ -1178,6 +2032,19 @@ if (!function_exists('ccrm_schema_statements')) {
         // generated before the variants existed, which keeps its original look.
         if (ccrm_table_exists($pdo, 'ai_custom_templates') && !ccrm_column_exists($pdo, 'ai_custom_templates', 'layout_json')) {
             $pdo->exec("ALTER TABLE `ai_custom_templates` ADD COLUMN `layout_json` TEXT NULL AFTER `badge_style`");
+        }
+        // The reconstructed block document. NULL on a template that is still a
+        // colour skin of the Signum document (see src/utils/offerDocument.ts).
+        if (ccrm_table_exists($pdo, 'ai_custom_templates') && !ccrm_column_exists($pdo, 'ai_custom_templates', 'document_json')) {
+            $pdo->exec("ALTER TABLE `ai_custom_templates` ADD COLUMN `document_json` LONGTEXT NULL AFTER `layout_json`");
+        }
+        if (ccrm_table_exists($pdo, 'invoices_offers') && !ccrm_column_exists($pdo, 'invoices_offers', 'custom_fields_json')) {
+            $pdo->exec("ALTER TABLE `invoices_offers` ADD COLUMN `custom_fields_json` TEXT NULL AFTER `usp_cards_json`");
+        }
+        // The price-offer category an offer is filed under (offer_categories.id). The
+        // table itself comes from the CREATE TABLE list above; NULL = no category.
+        if (ccrm_table_exists($pdo, 'invoices_offers') && !ccrm_column_exists($pdo, 'invoices_offers', 'category_id')) {
+            $pdo->exec("ALTER TABLE `invoices_offers` ADD COLUMN `category_id` VARCHAR(50) NULL COMMENT 'offer_categories.id - not a foreign key, the app clears it when a category is deleted' AFTER `custom_template_style_json`");
         }
         // Sessions established before this timestamp are rejected, so a password
         // change can retire every session the old password could reach. NULL means
@@ -1228,6 +2095,12 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'leads', 'ai_summary')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `ai_summary` TEXT NULL AFTER `country`");
+        }
+        if (!ccrm_column_exists($pdo, 'orders', 'project_id')) {
+            $pdo->exec("ALTER TABLE `orders` ADD COLUMN `project_id` VARCHAR(50) NULL COMMENT 'References projects.id: the project this order belongs to' AFTER `supplier_id`");
+        }
+        if (!ccrm_index_exists($pdo, 'orders', 'idx_orders_project')) {
+            try { $pdo->exec("ALTER TABLE `orders` ADD INDEX `idx_orders_project` (`project_id`)"); } catch (\Throwable $e) {}
         }
         if (!ccrm_column_exists($pdo, 'orders', 'invoice_id')) {
             $pdo->exec("ALTER TABLE `orders` ADD COLUMN `invoice_id` VARCHAR(50) NULL AFTER `payment_reference`");
@@ -1329,6 +2202,10 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'project_types', 'list_columns_json')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `list_columns_json` LONGTEXT NULL AFTER `file_fields_json`");
         }
+        // Deleting a project type used to CASCADE to every project of that type
+        // (and from there to its managers, data, timeline and Gantt rows). The
+        // type is a template; its projects are history and must survive it.
+        ccrm_migrate_project_type_fk_restrict($pdo);
         // Projects had no name of their own — they borrowed the paired lead's,
         // which left an unpaired project unnameable. NULL on every existing row,
         // and projectDisplayName() keeps showing the lead's name for those.
@@ -1414,6 +2291,17 @@ if (!function_exists('ccrm_schema_statements')) {
                 count($backfill['ambiguous_groups'])
             ));
         }
+        // The contact person as typed first and last name (docs/NEWSLETTER.md C18). The full
+        // `contact_person` stays; the parts feed {{first_name}}. Existing rows are split once
+        // (contact_name.php), after the columns exist.
+        if (!ccrm_column_exists($pdo, 'leads', 'contact_first_name')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_first_name` VARCHAR(100) NULL AFTER `contact_person`");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'contact_last_name')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_last_name` VARCHAR(100) NULL AFTER `contact_first_name`");
+        }
+        ccrm_backfill_contact_names($pdo);
+        ccrm_backfill_person_names($pdo);
         // 1.9.26: where the visitor came from before they filled in the form
         // (facebook, instagram, google, direct...). Written by api/pipeline.php
         // only; the app shows it and never edits it.
@@ -1493,7 +2381,7 @@ if (!function_exists('ccrm_schema_statements')) {
             // reliable creator history.
             $pdo->exec(
                 "INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`)
-                 SELECT `id`, `owner` FROM `tasks` WHERE `owner` <> ''"
+                 SELECT `id`, `owner` FROM `tasks` WHERE `owner` <> ''" /* recurring-template: schema and migrations */
             );
         }
         // Completion attribution. Both fields used to live only in client memory, so
@@ -1546,6 +2434,13 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_occurrence_date')) {
             $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_occurrence_date` DATE NULL AFTER `recurring_source_id`");
         }
+        // How far a recurring rule's payments are stored (recurringRuleDeletion.ts).
+        // Existing rules migrate as NULL on purpose: no rule has been materialized
+        // yet, and a watermark set from a hand-edited stand-in's day would hide the
+        // un-stored charges before it. The first client run sets it.
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_materialized_through')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_materialized_through` DATE NULL COMMENT 'Recurring rule: every charge on or before this day is stored or deliberately absent; the schedule only draws after it' AFTER `recurring_occurrence_date`");
+        }
         if (!ccrm_column_exists($pdo, 'leads', 'division')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `division` VARCHAR(100) NULL AFTER `owner`");
         }
@@ -1562,9 +2457,29 @@ if (!function_exists('ccrm_schema_statements')) {
                 $pdo->exec("ALTER TABLE `employees` ADD COLUMN `user_id` VARCHAR(50) NULL AFTER `name`, ADD UNIQUE INDEX `uq_employees_user_id` (`user_id`), ADD CONSTRAINT `fk_employees_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL");
             }
         }
+        // Payroll records: the payslip's labour cost and net pay, typed in each month
+        if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'labor_cost')) {
+            $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `labor_cost` DECIMAL(12, 2) NULL COMMENT 'Cena práce from the payslip, typed by hand; employees only' AFTER `total_paid`");
+        }
+        if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'net_pay')) {
+            $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only' AFTER `labor_cost`");
+        }
+        // Payroll records: the month's close is a recorded fact, not re-derived from the live status
+        if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'closed_at')) {
+            $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `closed_at` DATETIME NULL COMMENT 'Month closed: stamped when first paid in full; locks its time entries; cleared only by an admin reopen' AFTER `note`");
+        }
+        if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'closed_by')) {
+            $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `closed_by` VARCHAR(255) NULL COMMENT 'Who saved the record that closed the month' AFTER `closed_at`");
+        }
+        // Period keys without a year (`M05`) collided across years on uk_emp_period: rekey and merge.
+        // Before the closed_at backfill, so the merged survivor is the row that gets stamped.
+        ccrm_migrate_salary_period_keys($pdo);
+        ccrm_backfill_salary_closed_at($pdo);
         ccrm_migrate_employee_identity($pdo);
         ccrm_migrate_employee_company_ids($pdo);
         ccrm_migrate_updated_at_precision($pdo);
+        ccrm_migrate_stock_updated_at($pdo);
+        ccrm_migrate_deleted_records($pdo);
         ccrm_migrate_task_states($pdo);
         ccrm_migrate_list_ids($pdo);
         ccrm_migrate_invoice_status_changed_at($pdo);
@@ -1573,16 +2488,10 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_mail_filing($pdo);
         ccrm_migrate_quantity_precision($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
-        ccrm_seed_default_financial_categories($pdo);
         // The ENUM must be widened before anything inserts a 'pending' vacation.
         ccrm_migrate_vacation_status_pending($pdo);
-        ccrm_seed_default_employees($pdo);
-        ccrm_repair_demo_employee_vacations($pdo);
         ccrm_migrate_user_role_varchar($pdo);
         ccrm_migrate_orders($pdo);
-        ccrm_seed_default_warehouses_and_items($pdo);
-        ccrm_seed_default_orders($pdo);
-        ccrm_seed_default_invoices_and_projects($pdo);
         ccrm_migrate_employee_role_rbac($pdo);
         // Employee documents used to sit in the public uploads directory.
         try {
@@ -1592,9 +2501,331 @@ if (!function_exists('ccrm_schema_statements')) {
             error_log('[ccrm schema] employee document migration skipped: ' . $e->getMessage());
         }
         ccrm_migrate_tickets($pdo);
-        ccrm_seed_default_tickets($pdo);
+        ccrm_backfill_ticket_resolve_due($pdo);
+        ccrm_migrate_time_tracking($pdo);
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'category')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `category` VARCHAR(32) NULL COMMENT 'Task category; NULL = none, bug = Bug (a string so more categories need no migration)'");
+        }
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'reopens_json')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `reopens_json` TEXT NULL COMMENT 'Every reopening of a finished task, JSON [{at: UTC ISO, by: name|null}] oldest first; NULL = never reopened; written only by the server'");
+        }
+        foreach ([
+            'acceptance_criteria_json' => "TEXT NULL COMMENT 'Acceptance criteria, JSON [{id,title,done,createdAt,createdBy,removedAt,removedBy}]; a removed one stays (soft removal); NULL = none'",
+            'scope_approved_at' => "DATETIME NULL COMMENT 'When the scope was approved (UTC); criteria created after it are scope creep; NULL = not approved'",
+            'scope_approved_by' => "VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope'",
+            'github_repo' => "VARCHAR(200) NULL COMMENT 'Paired GitHub repository, owner/name; pushes to it are stored in project_pushes'",
+            'github_branch' => "VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch'",
+            'contact_email' => "VARCHAR(190) NULL COMMENT 'E-mail of the project contact; copied from the lead on conversion'",
+        ] as $scopeCol => $scopeDef) {
+            if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', $scopeCol)) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `{$scopeCol}` {$scopeDef}");
+            }
+        }
+        ccrm_migrate_integration_tasks($pdo);
+        ccrm_migrate_integration_directory($pdo);
+        ccrm_migrate_integration_timeline($pdo);
+        require_once __DIR__ . '/timeline_task_link.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_timeline_task_link($pdo);
         // Exact copies only. A distinct note, offer, time, amount or file is kept.
         ccrm_dedupe_exact_timeline_events($pdo);
+        ccrm_migrate_ai_models($pdo);
+        ccrm_migrate_recurring_tasks($pdo);
+        ccrm_migrate_weekly_plan($pdo);
+        ccrm_migrate_custom_calendars($pdo);
+        ccrm_migrate_task_activities($pdo);
+        ccrm_migrate_task_files($pdo);
+        ccrm_migrate_agency($pdo);
+        require_once __DIR__ . '/client_contacts_lib.php';
+        ccrm_migrate_client_contacts($pdo);
+        ccrm_migrate_clickup($pdo);
+        require_once __DIR__ . '/project_breakdown_migrations.php';
+        ccrm_heal_project_breakdown_columns($pdo);
+        ccrm_backfill_project_breakdown_metrics($pdo);
+        if (ccrm_table_exists($pdo, 'leads') && !ccrm_column_exists($pdo, 'leads', 'custom_fields_json')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id' AFTER `ticket_allowed_emails`");
+        }
+    }
+
+    /**
+     * Ensure Contacts-to-Companies columns and Agency & Workforce Leasing tables exist,
+     * and disable the opt-in `agency` module by default once on existing installs.
+     */
+    function ccrm_migrate_agency(PDO $pdo): void {
+        try {
+            if (ccrm_table_exists($pdo, 'leads')) {
+                if (!ccrm_column_exists($pdo, 'leads', 'company_client_id')) {
+                    $pdo->exec("ALTER TABLE `leads` ADD COLUMN `company_client_id` VARCHAR(50) NULL AFTER `client_category_id`");
+                }
+                if (!ccrm_column_exists($pdo, 'leads', 'contact_role')) {
+                    $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_role` VARCHAR(120) NULL AFTER `company_client_id`");
+                }
+                if (!ccrm_column_exists($pdo, 'leads', 'contact_tags')) {
+                    $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_tags` TEXT NULL AFTER `contact_role`");
+                }
+                if (!ccrm_index_exists($pdo, 'leads', 'idx_lead_company_client')) {
+                    try { $pdo->exec("ALTER TABLE `leads` ADD INDEX `idx_lead_company_client` (`company_client_id`)"); } catch (\Throwable $e) {}
+                }
+            }
+            if (ccrm_table_exists($pdo, 'tasks')) {
+                if (!ccrm_column_exists($pdo, 'tasks', 'related_agency_worker_id')) {
+                    $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_agency_worker_id` VARCHAR(64) NULL AFTER `related_ticket_id`");
+                }
+                if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_agency_worker')) {
+                    try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_agency_worker` (`related_agency_worker_id`)"); } catch (\Throwable $e) {}
+                }
+            }
+            if (ccrm_table_exists($pdo, 'tickets')) {
+                if (!ccrm_column_exists($pdo, 'tickets', 'agency_worker_id')) {
+                    $pdo->exec("ALTER TABLE `tickets` ADD COLUMN `agency_worker_id` VARCHAR(64) NULL AFTER `client_id`");
+                }
+                if (!ccrm_index_exists($pdo, 'tickets', 'idx_tickets_agency_worker')) {
+                    try { $pdo->exec("ALTER TABLE `tickets` ADD INDEX `idx_tickets_agency_worker` (`agency_worker_id`)"); } catch (\Throwable $e) {}
+                }
+            }
+            if (ccrm_table_exists($pdo, 'system_settings')) {
+                $flag = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'AGENCY_DEFAULT_DISABLED_V1'")->fetchColumn();
+                if ($flag === false) {
+                    $raw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'")->fetchColumn();
+                    $cfg = (is_string($raw) && $raw !== '') ? json_decode($raw, true) : [];
+                    if (!is_array($cfg)) {
+                        $cfg = [];
+                    }
+                    $disabled = isset($cfg['disabledModules']) && is_array($cfg['disabledModules']) ? $cfg['disabledModules'] : [];
+                    if (!in_array('agency', $disabled, true)) {
+                        $disabled[] = 'agency';
+                    }
+                    $cfg['disabledModules'] = array_values(array_unique(array_map('strval', $disabled)));
+                    $encoded = json_encode($cfg, JSON_UNESCAPED_UNICODE);
+                    if ($encoded !== false) {
+                        $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('INTEGRATIONS_CONFIG', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+                            ->execute([$encoded]);
+                    }
+                    $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('AGENCY_DEFAULT_DISABLED_V1', '1') ON DUPLICATE KEY UPDATE `value` = '1'")
+                        ->execute();
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] agency migration skipped: ' . $e->getMessage());
+        }
+    }
+
+    /** Ensure Custom Calendar tables exist on upgrades (idempotent, pre-transaction safe). */
+    function ccrm_migrate_custom_calendars(PDO $pdo): void {
+        try {
+            if (!ccrm_table_exists($pdo, 'custom_calendars')) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `custom_calendars` (`id` VARCHAR(64) NOT NULL PRIMARY KEY, `name` VARCHAR(150) NOT NULL, `color` VARCHAR(32) NOT NULL DEFAULT '#6366f1', `description` VARCHAR(500) NULL, `created_by` VARCHAR(150) NULL, `deleted_at` DATETIME NULL, `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP, `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_ccal_deleted` (`deleted_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
+            if (!ccrm_table_exists($pdo, 'custom_calendar_events')) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `custom_calendar_events` (`id` VARCHAR(64) NOT NULL PRIMARY KEY, `calendar_id` VARCHAR(64) NOT NULL, `title` VARCHAR(255) NOT NULL, `start_date` VARCHAR(10) NOT NULL, `end_date` VARCHAR(10) NOT NULL, `start_time` VARCHAR(5) NULL, `end_time` VARCHAR(5) NULL, `notes` TEXT NULL, `color` VARCHAR(32) NULL, `owner` VARCHAR(150) NULL, `related_lead_id` VARCHAR(64) NULL, `related_project_id` VARCHAR(64) NULL, `created_by` VARCHAR(150) NULL, `deleted_at` DATETIME NULL, `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP, `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_ccevt_cal_dates` (`calendar_id`, `deleted_at`, `start_date`, `end_date`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] custom_calendars migration skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Ensure Weekly Plan tables and columns exist on upgrades (idempotent).
+     */
+    function ccrm_migrate_weekly_plan(PDO $pdo): void {
+        try {
+            if (!ccrm_table_exists($pdo, 'weekly_plan_cards')) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `weekly_plan_cards` (
+                  `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+                  `date` VARCHAR(10) NOT NULL,
+                  `content` TEXT NOT NULL,
+                  `position` INT NOT NULL DEFAULT 0,
+                  `completed` TINYINT(1) NOT NULL DEFAULT 0,
+                  `color` VARCHAR(32) NOT NULL DEFAULT '',
+                  `refs_json` LONGTEXT NULL,
+                  `created_by` VARCHAR(64) NULL,
+                  `deleted_at` DATETIME NULL,
+                  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX `idx_weekly_plan_cards_date` (`date`, `position`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            } else {
+                $cardCols = [
+                    'position'   => "INT NOT NULL DEFAULT 0 AFTER `content`",
+                    'completed'  => "TINYINT(1) NOT NULL DEFAULT 0 AFTER `position`",
+                    'color'      => "VARCHAR(32) NOT NULL DEFAULT '' AFTER `completed`",
+                    'refs_json'  => "LONGTEXT NULL AFTER `color`",
+                    'created_by' => "VARCHAR(64) NULL AFTER `refs_json`",
+                    'deleted_at' => "DATETIME NULL AFTER `created_by`",
+                ];
+                foreach ($cardCols as $col => $def) {
+                    if (!ccrm_column_exists($pdo, 'weekly_plan_cards', $col)) {
+                        $pdo->exec("ALTER TABLE `weekly_plan_cards` ADD COLUMN `{$col}` {$def}");
+                    }
+                }
+            }
+
+            if (!ccrm_table_exists($pdo, 'weekly_plan_day_notes')) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `weekly_plan_day_notes` (
+                  `date` VARCHAR(10) NOT NULL PRIMARY KEY,
+                  `note` TEXT NOT NULL,
+                  `updated_by` VARCHAR(64) NULL,
+                  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            } else {
+                $noteCols = [
+                    'note'       => "TEXT NOT NULL AFTER `date`",
+                    'updated_by' => "VARCHAR(64) NULL AFTER `note`",
+                ];
+                foreach ($noteCols as $col => $def) {
+                    if (!ccrm_column_exists($pdo, 'weekly_plan_day_notes', $col)) {
+                        $pdo->exec("ALTER TABLE `weekly_plan_day_notes` ADD COLUMN `{$col}` {$def}");
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] weekly_plan migration skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Time tracking additions to existing tables. The `time_entries` and
+     * `public_holidays` tables themselves are in ccrm_schema_statements().
+     *
+     * `employees.work_country` (SK | HU | NULL): whose public-holiday calendar a
+     * person works by. NULL means the company default. It decides which days are
+     * working days for the monthly cost rate; it is never derived from the UI language.
+     */
+    /**
+     * Columns for tasks pushed in by an external system over the machine API (docs/WAAI-INTEGRATION.md
+     * §4.2). Server-only: sync.php's task upsert names its columns, so they survive any client save.
+     *
+     * `external_source` = integration client code ('waai'), `external_url` = the path of the source chat
+     * in that system, `external_meta_json` = chat title and whether the deadline was inferred.
+     */
+    function ccrm_migrate_integration_tasks(PDO $pdo): void {
+        if (!ccrm_table_exists($pdo, 'tasks')) {
+            return;
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'external_source')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `external_source` VARCHAR(20) NULL COMMENT 'Integration client code that pushed this task (waai)'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'external_url')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `external_url` VARCHAR(255) NULL COMMENT 'Path of the source chat in the external system'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'external_meta_json')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `external_meta_json` TEXT NULL COMMENT 'Chat title, assignee label, due_inferred'");
+        }
+        // The machine API's feed pages by updated_at.
+        $idx = $pdo->prepare("SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND INDEX_NAME = 'idx_task_updated' LIMIT 1");
+        $idx->execute();
+        if (!$idx->fetchColumn()) {
+            $pdo->exec("ALTER TABLE `tasks` ADD INDEX idx_task_updated (`updated_at`)");
+        }
+    }
+
+    /**
+     * Directory additions for the machine API (docs/WAAI-INTEGRATION.md §4.2): the phone a project's
+     * WhatsApp chat is paired by, and the indexes `GET /directory` pages by (`updated_at`, id).
+     */
+    function ccrm_migrate_integration_directory(PDO $pdo): void {
+        if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', 'contact_phone')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it'");
+        }
+        foreach (['leads' => 'idx_lead_updated', 'projects' => 'idx_project_updated'] as $table => $name) {
+            if (!ccrm_table_exists($pdo, $table)) {
+                continue;
+            }
+            $idx = $pdo->prepare("SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1");
+            $idx->execute([$table, $name]);
+            if (!$idx->fetchColumn()) {
+                $pdo->exec("ALTER TABLE `{$table}` ADD INDEX {$name} (`updated_at`)");
+            }
+        }
+    }
+
+    /**
+     * Timeline additions for the machine API (docs/WAAI-INTEGRATION.md §4.2, §4.6):
+     * deep-link path back into the external system (WAAI chat).
+     */
+    function ccrm_migrate_integration_timeline(PDO $pdo): void {
+        if (ccrm_table_exists($pdo, 'timeline_events') && !ccrm_column_exists($pdo, 'timeline_events', 'external_url')) {
+            $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `external_url` VARCHAR(255) NULL COMMENT 'Deep link path into the external system'");
+        }
+    }
+
+    function ccrm_migrate_time_tracking(PDO $pdo): void {
+        if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'work_country')) {
+            $pdo->exec("ALTER TABLE `employees` ADD COLUMN `work_country` CHAR(2) NULL COMMENT 'SK | HU; NULL = company default' AFTER `address_country`");
+        }
+        if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'hours_per_day')) {
+            $pdo->exec("ALTER TABLE `employees` ADD COLUMN `hours_per_day` DECIMAL(4,2) NULL COMMENT 'Contracted hours per day; NULL = company hoursPerDay (time tracking settings)' AFTER `salary_due_day`");
+        }
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'estimate_minutes')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `estimate_minutes` INT NULL COMMENT 'Expected minutes; the task drawer compares it with tracked time'");
+        }
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'original_deadline')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `original_deadline` DATE NULL COMMENT 'Deadline the task was first given; set when it is created or first postponed'");
+        }
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'deadline_moves')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_moves` INT NOT NULL DEFAULT 0 COMMENT 'How many times the deadline was pushed to a later date'");
+        }
+        if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', 'hours_budget')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `hours_budget` DECIMAL(8,2) NULL COMMENT 'Hours the project is expected to take'");
+        }
+        if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', 'billable_rate')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `billable_rate` DECIMAL(10,2) NULL COMMENT 'Default billable hourly rate for time entries'");
+        }
+        if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', 'is_internal')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Internal work: excluded from client billing'");
+        }
+        // Ticket time is visible to Admin always, and to Project Manager unless someone turned it off.
+        try {
+            $raw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'ROLES_RBAC' LIMIT 1")->fetchColumn();
+            $roles = is_string($raw) ? json_decode($raw, true) : null;
+            if (is_array($roles)) {
+                $changed = false;
+                foreach ($roles as &$role) {
+                    if (!is_array($role) || strtolower(trim((string)($role['name'] ?? ''))) !== 'project manager') {
+                        continue;
+                    }
+                    if (!isset($role['permissions']) || !is_array($role['permissions'])) {
+                        $role['permissions'] = [];
+                    }
+                    if (!array_key_exists('tickets.time', $role['permissions'])) {
+                        $role['permissions']['tickets.time'] = 'edit';
+                        $changed = true;
+                    }
+                }
+                unset($role);
+                if ($changed) {
+                    $upd = $pdo->prepare("UPDATE `system_settings` SET `value` = ? WHERE `key` = 'ROLES_RBAC'");
+                    $upd->execute([json_encode($roles, JSON_UNESCAPED_UNICODE)]);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] tickets.time grant skipped: ' . $e->getMessage());
+        }
+        if (ccrm_table_exists($pdo, 'time_entries') && !ccrm_column_exists($pdo, 'time_entries', 'note')) {
+            $pdo->exec("ALTER TABLE `time_entries` ADD COLUMN `note` VARCHAR(1000) NULL COMMENT 'The Description the person typed; allowed on linked entries too' AFTER `legacy_note`");
+        }
+        require_once __DIR__ . '/time_worked_ms_migration.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_time_worked_ms($pdo);
+        require_once __DIR__ . '/time_parallel_migration.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_time_parallel($pdo);
+        require_once __DIR__ . '/time_rate_months_migration.php'; // listed in ccrm_schema_fingerprint(); before anything that prices
+        ccrm_migrate_time_rate_months($pdo);
+        require_once __DIR__ . '/time_pause_migration.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_time_pause($pdo);
+        require_once __DIR__ . '/notes_migration.php'; // listed in ccrm_schema_fingerprint(); after the timeline ENUM was widened
+        ccrm_migrate_notes($pdo);
+        require_once __DIR__ . '/ticket_time_migration.php';
+        ccrm_migrate_ticket_time_entries($pdo);
+        require_once __DIR__ . '/assigned_employees_migration.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_assigned_employees($pdo);
+        if (!ccrm_table_exists($pdo, 'project_labour_exclusions')) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `project_labour_exclusions` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `month` CHAR(7) NOT NULL COMMENT 'YYYY-MM',
+              PRIMARY KEY (`project_id`, `user_id`, `month`),
+              INDEX `idx_ple_project` (`project_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        }
     }
 
     /**
@@ -1677,18 +2908,24 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
-     * Employees: IČO / DIČ / IČ DPH of an external supplier (a company or a sole trader). Only
-     * `contractor` rows use them; they are filled from the business register in the employee form.
+     * Employees: IČO / DIČ / IČ DPH and subtype (`contractor_type`: person | sole_trader | company)
+     * of an external supplier. Only `contractor` rows use them.
      */
     function ccrm_migrate_employee_company_ids(PDO $pdo): void {
         try {
             $hasEmp = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
-            if ($hasEmp === 0 || ccrm_column_exists($pdo, 'employees', 'company_id')) return;
+            if ($hasEmp === 0) return;
 
-            $pdo->exec("ALTER TABLE `employees`
-                ADD COLUMN `company_id` VARCHAR(32) NULL AFTER `kind`,
-                ADD COLUMN `tax_id` VARCHAR(32) NULL AFTER `company_id`,
-                ADD COLUMN `vat_id` VARCHAR(32) NULL AFTER `tax_id`");
+            if (!ccrm_column_exists($pdo, 'employees', 'company_id')) {
+                $pdo->exec("ALTER TABLE `employees`
+                    ADD COLUMN `company_id` VARCHAR(32) NULL AFTER `kind`,
+                    ADD COLUMN `tax_id` VARCHAR(32) NULL AFTER `company_id`,
+                    ADD COLUMN `vat_id` VARCHAR(32) NULL AFTER `tax_id`");
+            }
+            if (!ccrm_column_exists($pdo, 'employees', 'contractor_type')) {
+                $pdo->exec("ALTER TABLE `employees`
+                    ADD COLUMN `contractor_type` VARCHAR(20) NULL COMMENT 'person | sole_trader | company (for kind = contractor)' AFTER `kind`");
+            }
         } catch (\Throwable $e) {
             error_log('[ccrm schema] employee company ids migration skipped: ' . $e->getMessage());
         }
@@ -1733,10 +2970,9 @@ if (!function_exists('ccrm_schema_statements')) {
 
     /**
      * `employee_vacations`.`status` never accepted 'pending', yet the client
-     * (VacationRequestModal, EmployeeDetailView, mockEmployees.ts) uses it for a
-     * request waiting for approval. Saving one failed with "Data truncated for
-     * column 'status'", and the demo vacation seed died at its first pending row,
-     * leaving most employees without any leave. Widen the ENUM; idempotent.
+     * (VacationRequestModal, EmployeeDetailView) uses it for a request waiting for
+     * approval. Saving one failed with "Data truncated for column 'status'" (and the
+     * demo leave seed died at its first pending row). Widen the ENUM; idempotent.
      */
     function ccrm_migrate_vacation_status_pending(PDO $pdo): void {
         try {
@@ -1826,112 +3062,7 @@ if (!function_exists('ccrm_schema_statements')) {
         }
     }
 
-    /**
-     * Drop timeline rows that are exact copies of another row on the same lead.
-     *
-     * The duplicate-key handler in sync.php used to mint a new id and insert
-     * again, so one imported note became thousands of identical rows. The row
-     * that is kept is the original id when one is present (anything that is
-     * not the `ev-<uniqid>-<nnnn>` shape that handler minted). A blank amount
-     * and a numeric zero compare equal, because the import stored NULL and the
-     * cloned row stored 0 for the same offer. Different text, time, amount or
-     * attachment stays.
-     *
-     * Idempotent: a second run finds nothing to delete. Runs on every schema
-     * apply so a copy that appears later is still collapsed on the next deploy.
-     */
-    function ccrm_dedupe_exact_timeline_events(PDO $pdo): void {
-        if (!ccrm_table_exists($pdo, 'timeline_events')) {
-            return;
-        }
-        try {
-            $optional = [];
-            foreach (['mail_account', 'mail_owner', 'mail_has_body', 'mail_message_id'] as $col) {
-                if (ccrm_column_exists($pdo, 'timeline_events', $col)) {
-                    $optional[] = $col;
-                }
-            }
-            $fields = array_merge(
-                ['lead_id', 'type', 'timestamp', 'title', 'content', 'amount', 'file_name', 'file_size', 'file_type', 'attachments_json', 'extra_time', 'is_outgoing', 'author', 'audio_file', 'transcription', 'hidden'],
-                $optional
-            );
-            $present = [];
-            foreach ($fields as $field) {
-                if (ccrm_column_exists($pdo, 'timeline_events', $field)) {
-                    $present[] = $field;
-                }
-            }
-            $sql = 'SELECT `id`, `' . implode('`, `', $present) . '` FROM `timeline_events`';
-            $rows = $pdo->query($sql);
-            if ($rows === false) {
-                return;
-            }
-            $groups = [];
-            while ($row = $rows->fetch(PDO::FETCH_ASSOC)) {
-                $id = (string)$row['id'];
-                unset($row['id']);
-                $norm = [];
-                foreach ($row as $field => $value) {
-                    if ($value === null) {
-                        $norm[$field] = null;
-                    } elseif (is_string($value) && trim($value) === '') {
-                        $norm[$field] = null;
-                    } elseif ($field === 'amount') {
-                        $norm[$field] = is_numeric($value) && (float)$value == 0.0 ? null : (is_numeric($value) ? (string)(0 + $value) : (string)$value);
-                    } elseif ($field === 'hidden' || $field === 'is_outgoing' || $field === 'mail_has_body') {
-                        $norm[$field] = (string)(int)$value;
-                    } else {
-                        $norm[$field] = (string)$value;
-                    }
-                }
-                $encoded = json_encode($norm, JSON_UNESCAPED_UNICODE);
-                if ($encoded === false) {
-                    $encoded = serialize($norm);
-                }
-                $groups[$row['lead_id'] . "\n" . hash('sha256', $encoded)][] = $id;
-            }
-            $drop = [];
-            foreach ($groups as $ids) {
-                if (count($ids) < 2) {
-                    continue;
-                }
-                usort($ids, 'ccrm_timeline_dedupe_prefer');
-                for ($i = 1, $n = count($ids); $i < $n; $i++) {
-                    $drop[] = $ids[$i];
-                }
-            }
-            if (!$drop) {
-                return;
-            }
-            $del = $pdo->prepare('DELETE FROM `timeline_events` WHERE `id` = ?');
-            $pdo->beginTransaction();
-            try {
-                foreach ($drop as $id) {
-                    $del->execute([$id]);
-                }
-                $pdo->commit();
-            } catch (\Throwable $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                throw $e;
-            }
-            error_log('[ccrm schema] removed ' . count($drop) . ' exact duplicate timeline event(s); one copy of each distinct event was kept.');
-        } catch (\Throwable $e) {
-            error_log('[ccrm schema] timeline dedupe failed: ' . $e->getMessage());
-            throw $e;
-        }
-    }
-
-    /** Prefer the original event id over a clone minted by the old duplicate-key retry. */
-    function ccrm_timeline_dedupe_prefer(string $a, string $b): int {
-        $rank = static function (string $id): int {
-            return preg_match('/^ev-[0-9a-f]{13}-\d{4}$/i', $id) ? 1 : 0;
-        };
-        $byRank = $rank($a) <=> $rank($b);
-        return $byRank !== 0 ? $byRank : strcmp($a, $b);
-    }
-
+    require_once __DIR__ . '/schema_defaults.php';
     /**
      * Widen `timeline_events`.`type` so it accepts the event types added after
      * the initial release: the business documents, and `status_change` — the
@@ -1947,12 +3078,12 @@ if (!function_exists('ccrm_schema_statements')) {
         if ($columnType === false || $columnType === null) {
             return; // timeline_events not provisioned yet — CREATE TABLE covers it.
         }
-        $required = ['order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change'];
+        $required = ['order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp', 'note_activity'];
         foreach ($required as $value) {
             if (strpos($columnType, "'" . $value . "'") === false) {
                 $pdo->exec(
                     "ALTER TABLE `timeline_events` MODIFY COLUMN `type`
-                     ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change')
+                     ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp', 'note_activity')
                      NOT NULL DEFAULT 'note'"
                 );
                 return;
@@ -1995,6 +3126,37 @@ if (!function_exists('ccrm_schema_statements')) {
                 // same-second window. Never block the sync over this.
                 if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
             }
+        }
+    }
+
+    /**
+     * `updated_at` on the stock tables (suppliers, warehouse_items / _batches / _movements): the MCP
+     * lists answer "what changed since X?" with it. TIMESTAMP(3), like the other versioned tables.
+     * Adding it stamps every existing row with the migration time, so the first poll after deploy
+     * reports all of them as changed. Idempotent; sync.php heals the same columns before its writes.
+     */
+    function ccrm_migrate_stock_updated_at(PDO $pdo): void {
+        foreach (['suppliers', 'warehouse_items', 'warehouse_batches', 'warehouse_movements'] as $table) {
+            if (ccrm_table_exists($pdo, $table) && !ccrm_column_exists($pdo, $table, 'updated_at')) {
+                $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)");
+            }
+        }
+    }
+
+    /**
+     * `deleted_records`, the deletion tombstones. The CREATE TABLE lives in ccrm_schema_statements();
+     * this runs that statement alone, so a database whose schema marker an older schema.php already
+     * stamped still gets the table. sync.php calls it before its transaction when the table is
+     * missing. Idempotent; an error is logged, never thrown (the tombstone write is fail-soft too).
+     */
+    function ccrm_migrate_deleted_records(PDO $pdo): void {
+        try {
+            if (ccrm_table_exists($pdo, 'deleted_records')) return;
+            foreach (ccrm_schema_statements() as $stmt) {
+                if (strpos($stmt, 'CREATE TABLE IF NOT EXISTS `deleted_records`') !== false) $pdo->exec($stmt);
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] schema: deleted_records migration skipped: ' . $e->getMessage());
         }
     }
 
@@ -2159,15 +3321,46 @@ if (!function_exists('ccrm_schema_statements')) {
                   `filed_count` INT NOT NULL DEFAULT 0,
                   `last_run_at` DATETIME NULL,
                   `last_error` TEXT NULL,
+                  `delta_link` TEXT NULL COMMENT 'Microsoft Graph delta / next link of the new-mail track',
                   PRIMARY KEY (`mailbox_key`, `folder`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
+            // Microsoft 365 mailboxes (graph_filing.php) keep their delta link beside the IMAP marks.
+            if (!ccrm_column_exists($pdo, 'mail_sync_state', 'delta_link')) {
+                $pdo->exec("ALTER TABLE `mail_sync_state` ADD COLUMN `delta_link` TEXT NULL COMMENT 'Microsoft Graph delta / next link of the new-mail track'");
+            }
             $pdo->exec(
                 "CREATE TABLE IF NOT EXISTS `filed_mail_bodies` (
                   `event_id` VARCHAR(50) NOT NULL PRIMARY KEY,
                   `body` MEDIUMTEXT NULL,
                   `attachments_json` TEXT NULL COMMENT 'JSON array of {name,size,part,key?}; key names the file kept under uploads/private/mail/ (api/mail_attachments.php)',
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS `mail_envelopes` (
+                  `mailbox_key` VARCHAR(100) NOT NULL COMMENT 'c:<company mailbox id> or u:<user email>',
+                  `folder` VARCHAR(120) NOT NULL COMMENT 'Canonical UI folder key (INBOX, Sent, or custom folder)',
+                  `uid` BIGINT NOT NULL,
+                  `event_id` VARCHAR(64) NOT NULL,
+                  `subject` VARCHAR(500) NOT NULL DEFAULT '',
+                  `from_name` VARCHAR(255) NOT NULL DEFAULT '',
+                  `from_address` VARCHAR(255) NOT NULL DEFAULT '',
+                  `to_name` VARCHAR(255) NOT NULL DEFAULT '',
+                  `to_address` VARCHAR(255) NOT NULL DEFAULT '',
+                  `email_date` DATETIME NULL,
+                  `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0,
+                  `seen` TINYINT(1) NOT NULL DEFAULT 0,
+                  `size` INT NOT NULL DEFAULT 0,
+                  `message_id` VARCHAR(255) NOT NULL DEFAULT '',
+                  `in_reply_to` VARCHAR(255) NOT NULL DEFAULT '',
+                  `references_hdr` TEXT NULL,
+                  `preview` VARCHAR(500) NOT NULL DEFAULT '',
+                  `attachment_count` INT NOT NULL DEFAULT 0,
+                  `timeline_hidden` TINYINT(1) NOT NULL DEFAULT 0,
+                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`mailbox_key`, `folder`, `uid`),
+                  INDEX `idx_mail_envelopes_lookup` (`mailbox_key`, `folder`, `email_date` DESC, `uid` DESC)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
             if (ccrm_table_exists($pdo, 'timeline_events')) {
@@ -2268,6 +3461,7 @@ if (!function_exists('ccrm_schema_statements')) {
                   `first_name` VARCHAR(100) NULL,
                   `last_name` VARCHAR(100) NULL,
                   `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' COMMENT 'employee | contractor | ledger',
+                  `contractor_type` VARCHAR(20) NULL COMMENT 'person | sole_trader | company (for kind = contractor)',
                   `company_id` VARCHAR(32) NULL COMMENT 'IČO of an external supplier',
                   `tax_id` VARCHAR(32) NULL COMMENT 'DIČ of an external supplier',
                   `vat_id` VARCHAR(32) NULL COMMENT 'IČ DPH of an external supplier',
@@ -2284,6 +3478,7 @@ if (!function_exists('ccrm_schema_statements')) {
                   `salary_type` ENUM('monthly', 'daily', 'hourly') NOT NULL DEFAULT 'monthly',
                   `salary_amount` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
                   `salary_due_day` INT NULL COMMENT 'Payout day of month (1-31) or week (1-7)',
+                  `hours_per_day` DECIMAL(4,2) NULL COMMENT 'Contracted hours per day; NULL = company hoursPerDay (time tracking settings)',
                   `vacation_allowances_json` TEXT NULL,
                   `time_tracking_provider` VARCHAR(50) NOT NULL DEFAULT 'toggl',
                   `time_tracking_user_id` VARCHAR(100) NULL,
@@ -2312,12 +3507,16 @@ if (!function_exists('ccrm_schema_statements')) {
                   `items_json` TEXT NOT NULL COMMENT 'Array of { categoryId, categoryName, salary, paid }',
                   `total_salary` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
                   `total_paid` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+                  `labor_cost` DECIMAL(12, 2) NULL COMMENT 'Cena práce from the payslip, typed by hand; employees only',
+                  `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only',
                   `status` ENUM('pending', 'partially_paid', 'paid') NOT NULL DEFAULT 'pending',
                   `due_date` DATE NULL,
                   `payment_date` DATE NULL,
                   `payment_method` VARCHAR(50) NULL DEFAULT 'bank_transfer',
                   `financial_record_id` VARCHAR(50) NULL,
                   `note` TEXT NULL,
+                  `closed_at` DATETIME NULL COMMENT 'Month closed: stamped when first paid in full; locks its time entries; cleared only by an admin reopen',
+                  `closed_by` VARCHAR(255) NULL COMMENT 'Who saved the record that closed the month',
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                   INDEX idx_sal_emp (`employee_id`),
@@ -2385,92 +3584,6 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
-     * Freeze the numeric ids that /api/pipeline.php resolves `source_id` and
-     * `category_id` against.
-     *
-     * Until 1.9.19 there was no id to store: the number WAS the item's position
-     * in LEAD_SOURCES / LEAD_CATEGORIES, so reordering either list in Settings
-     * silently re-pointed every form already live on the customer's website.
-     * Seeding from the current order — which is exactly what the positional
-     * scheme was handing out right up to this upgrade — makes today's numbers
-     * permanent rather than incidental, so no existing integration changes
-     * meaning on the way in.
-     *
-     * Runs once per list: a map that already exists is the operator's, and
-     * re-deriving it from the order is the very bug this removes.
-     */
-    function ccrm_migrate_list_ids(PDO $pdo): void {
-        $pairs = [
-            'LEAD_SOURCES' => 'LEAD_SOURCE_IDS',
-            'LEAD_CATEGORIES' => 'LEAD_CATEGORY_IDS',
-        ];
-        try {
-            $read = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = ?");
-            $write = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
-            foreach ($pairs as $listKey => $idsKey) {
-                $read->execute([$idsKey]);
-                $existing = json_decode((string)$read->fetchColumn(), true);
-                if (is_array($existing) && $existing) continue; // already seeded
-
-                $read->execute([$listKey]);
-                $names = json_decode((string)$read->fetchColumn(), true);
-                if (!is_array($names) || !$names) continue; // list not configured yet
-
-                $write->execute([$idsKey, json_encode(ccrm_normalize_list_ids($names, []), JSON_UNESCAPED_UNICODE)]);
-            }
-        } catch (\Throwable $e) {
-            // Never block a sync over this. pipeline.php normalises on the fly
-            // from the same list, so an unseeded install still resolves ids —
-            // this only makes the answer durable.
-            if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
-        }
-    }
-
-    /**
-     * Task states used to exist only as hardcoded English defaults in the
-     * frontend — they were never seeded, so an installation in Slovak/Hungarian
-     * still showed "New / In progress / Blocked / Done" in grey. Seed them once,
-     * in the language the CRM was installed in, and carry existing task records
-     * over to the localised labels so nothing loses its column on the board.
-     */
-    function ccrm_migrate_task_states(PDO $pdo): void {
-        try {
-            $existing = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn();
-        } catch (\Throwable $e) {
-            return; // system_settings not provisioned yet — nothing to migrate.
-        }
-        $decoded = is_string($existing) ? json_decode($existing, true) : null;
-        if (is_array($decoded) && $decoded) {
-            return; // Already configured by the operator; never touch their labels.
-        }
-
-        $language = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'")->fetchColumn();
-        $lists = ccrm_default_lists(is_string($language) ? $language : 'sk');
-        $taskStates = $lists['taskStates'];
-
-        $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
-        $insSet->execute(['TASK_STATES', json_encode($taskStates, JSON_UNESCAPED_UNICODE)]);
-        $insSet->execute(['TASK_STATE_COLORS', json_encode(ccrm_default_task_state_colors($taskStates), JSON_UNESCAPED_UNICODE)]);
-
-        // Every label a task could be carrying before this migration: the English
-        // defaults the frontend shipped with, plus the legacy pre-1.0 slugs.
-        $legacyByPosition = [
-            0 => ['New', 'todo'],
-            1 => ['In progress', 'in_progress'],
-            2 => ['Blocked', 'blocked'],
-            3 => ['Done', 'done'],
-        ];
-        $rename = $pdo->prepare("UPDATE `tasks` SET `status` = ? WHERE `status` = ?");
-        foreach ($legacyByPosition as $index => $legacyLabels) {
-            if (!isset($taskStates[$index])) continue;
-            foreach ($legacyLabels as $legacy) {
-                if ($legacy === $taskStates[$index]) continue;
-                $rename->execute([$taskStates[$index], $legacy]);
-            }
-        }
-    }
-
-    /**
      * One-time, best-effort attribution for tasks completed before `completed_by`
      * was persisted (everything archived up to 1.6.41 shows "Unknown").
      *
@@ -2506,7 +3619,7 @@ if (!function_exists('ccrm_schema_statements')) {
             // from winning over a populated lower-priority column.
             $candidate = "COALESCE(NULLIF(t.`created_by`, ''), NULLIF(t.`owner`, ''), NULLIF(a.`user_name`, ''))";
             $sql =
-                "UPDATE `tasks` t
+                "UPDATE `tasks` t /* recurring-template: schema and migrations */
                  LEFT JOIN (
                      SELECT `task_id`, MIN(`user_name`) AS `user_name`
                      FROM `task_assignees` GROUP BY `task_id`
@@ -2544,21 +3657,21 @@ if (!function_exists('ccrm_schema_statements')) {
                 'leadStates' => ['new', 'contacted', 'offer sent', 'accepted', 'rejected'],
                 'leadSources' => ['showroom', 'facebook', 'instagram', 'website'],
                 'leadCategories' => ['Products', 'Services'],
-                'divisions' => ['Cstudios', 'Cstudios Budapest'],
+                'divisions' => [],
                 'taskStates' => ['New', 'In progress', 'Blocked', 'Done'],
             ],
             'sk' => [
                 'leadStates' => ['nový', 'kontaktovaný', 'ponuka odoslaná', 'prijatý', 'zamietnutý'],
                 'leadSources' => ['showroom', 'facebook', 'instagram', 'web'],
                 'leadCategories' => ['Produkty', 'Služby'],
-                'divisions' => ['Cstudios', 'Cstudios Budapest'],
+                'divisions' => [],
                 'taskStates' => ['Nový', 'Prebieha', 'Blokovaný', 'Hotovo'],
             ],
             'hu' => [
                 'leadStates' => ['új', 'kapcsolatfelvétel', 'ajánlat elküldve', 'elfogadva', 'elutasítva'],
                 'leadSources' => ['bemutatóterem', 'facebook', 'instagram', 'weboldal'],
                 'leadCategories' => ['Termékek', 'Szolgáltatások'],
-                'divisions' => ['Cstudios', 'Cstudios Budapest'],
+                'divisions' => [],
                 'taskStates' => ['Új', 'Folyamatban', 'Blokkolva', 'Kész'],
             ],
         ];
@@ -2566,1572 +3679,6 @@ if (!function_exists('ccrm_schema_statements')) {
         return $byLanguage[$language];
     }
 
-    /**
-     * Permanent numeric ids for the two operator-editable lists a website form
-     * can address by number: LEAD_SOURCES (`source_id`) and LEAD_CATEGORIES
-     * (`category_id`) in the /api/pipeline.php payload.
-     *
-     * Mirror of normalizeListIds in src/utils/listIds.ts — the rules, and why an
-     * id may never be derived from a list position, are written out there. Both
-     * ends must build the same map from the same inputs, or the settings sync
-     * would push the difference back and forth forever.
-     */
-    function ccrm_normalize_list_ids($names, $saved): array {
-        $out = [];
-        // A JSON list ([...]) is not a name -> id map; only an object is.
-        $isMap = is_array($saved) && (!$saved || array_keys($saved) !== range(0, count($saved) - 1));
-        if ($isMap) {
-            foreach ($saved as $key => $value) {
-                $id = (int)$value;
-                if ((string)$key !== '' && $id > 0) {
-                    $out[(string)$key] = $id;
-                }
-            }
-        }
-
-        $list = [];
-        foreach ((is_array($names) ? $names : []) as $name) {
-            if (is_string($name) && $name !== '') $list[] = $name;
-        }
-
-        $missing = [];
-        foreach ($list as $name) {
-            if (!isset($out[$name])) $missing[$name] = true;
-        }
-        if (!$missing) return $out;
-
-        // Nothing usable stored: reproduce the old positional numbering one last
-        // time, so the ids frozen here are the ones live forms already send.
-        if (!$out) {
-            foreach (array_values($list) as $idx => $name) {
-                if (!isset($out[$name])) $out[$name] = $idx + 1;
-            }
-            return $out;
-        }
-
-        $next = max($out) + 1;
-        foreach (array_keys($missing) as $name) {
-            $out[(string)$name] = $next++;
-        }
-        return $out;
-    }
-
-    /**
-     * The list entry an incoming `source_id` / `category_id` names, or null when
-     * nothing answers to it.
-     *
-     * Deliberately walks the live list rather than the id map: an id retired by
-     * a deletion stays in the map as a tombstone precisely so it can never be
-     * re-issued, and it must not resolve to anything either.
-     */
-    function ccrm_resolve_list_id(int $id, $names, $savedIds): ?string {
-        if ($id <= 0 || !is_array($names)) return null;
-        $ids = ccrm_normalize_list_ids($names, $savedIds);
-        foreach ($names as $name) {
-            if (!is_string($name) || $name === '') continue;
-            if (isset($ids[$name]) && (int)$ids[$name] === $id) return $name;
-        }
-        return null;
-    }
-
-    /**
-     * Colour map for task states. Blue → amber → red → green reads as a natural
-     * workflow; states beyond the fourth cycle through the same palette.
-     */
-    function ccrm_default_task_state_colors(array $taskStates): array {
-        $palette = ['#3b82f6', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6', '#0ea5e9', '#ec4899', '#14b8a6'];
-        $colors = [];
-        foreach (array_values($taskStates) as $i => $state) {
-            $colors[(string)$state] = $palette[$i % count($palette)];
-        }
-        return $colors;
-    }
-
-    /**
-     * The full set of `system_settings` rows a fresh installation starts with,
-     * seeded in the installation language. Shared by the setup wizard and the
-     * "wipe demo data + reset configuration" reset so the two can never drift.
-     */
-    function ccrm_default_settings_for_language(string $language): array {
-        if (!in_array($language, ['en', 'sk', 'hu'], true)) {
-            $language = 'sk';
-        }
-        $lists = ccrm_default_lists($language);
-
-        $leadStates = $lists['leadStates'];
-        $leadSources = $lists['leadSources'];
-        $leadCategories = $lists['leadCategories'];
-        $divisions = $lists['divisions'] ?? ['Cstudios', 'Cstudios Budapest'];
-        $taskStates = $lists['taskStates'];
-
-        $enc = static function ($value): string {
-            return json_encode($value, JSON_UNESCAPED_UNICODE);
-        };
-
-        return [
-            'SYSTEM_NAME' => 'CCRM',
-            'SYSTEM_LANGUAGE' => $language,
-            'LEAD_STATES' => $enc($leadStates),
-            'LEAD_SOURCES' => $enc($leadSources),
-            'LEAD_CATEGORIES' => $enc($leadCategories),
-            'DIVISIONS' => $enc($divisions),
-            // Permanent ids for the two lists /api/pipeline.php addresses by
-            // number. See ccrm_normalize_list_ids: these must never be derived
-            // from list order, or reordering re-points live web forms.
-            'LEAD_SOURCE_IDS' => $enc(ccrm_normalize_list_ids($leadSources, [])),
-            'LEAD_CATEGORY_IDS' => $enc(ccrm_normalize_list_ids($leadCategories, [])),
-            'LEAD_STATE_COLORS' => $enc(array_combine($leadStates, ['#3b82f6', '#0ea5e9', '#6366f1', '#10b981', '#ef4444'])),
-            'LEAD_SOURCE_COLORS' => $enc(array_combine($leadSources, ['#10b981', '#3b82f6', '#ec4899', '#8b5cf6'])),
-            'LEAD_CATEGORY_COLORS' => $enc(array_combine($leadCategories, ['#f59e0b', '#10b981'])),
-            'DIVISION_COLORS' => $enc(['Cstudios' => '#3b82f6', 'Cstudios Budapest' => '#8b5cf6']),
-            'LEAD_STAGE_GROUPS' => $enc(array_combine($leadStates, ['new', 'in_progress', 'in_progress', 'closed', 'closed'])),
-            'LEAD_STATE_PARENTS' => $enc((object)[]),
-            'TASK_STATES' => $enc($taskStates),
-            'TASK_STATE_COLORS' => $enc(ccrm_default_task_state_colors($taskStates)),
-        ];
-    }
-
-    /**
-     * The sample 3-level financial category tree seeded into a demo installation
-     * (see ccrm_seed_default_financial_categories). Deliberately generic — any
-     * small business selling products or services should recognise it — with
-     * each name given once per supported language.
-     */
-    function ccrm_default_financial_categories(string $language): array {
-        if (!in_array($language, ['en', 'sk', 'hu'], true)) {
-            $language = 'sk';
-        }
-
-        // [id, type, parent_id, level, color, icon, [en, sk, hu]]
-        $tree = [
-            // Incomes
-            ['fc-inc-sales', 'income', null, 1, '#10b981', 'Package', ['Sales', 'Predaj', 'Értékesítés']],
-            ['fc-inc-sales-products', 'income', 'fc-inc-sales', 2, '#059669', 'Box', ['Products & goods', 'Produkty a tovar', 'Termékek és áruk']],
-            ['fc-inc-sales-online', 'income', 'fc-inc-sales', 2, '#34d399', 'Globe', ['E-shop & online sales', 'E-shop a online predaj', 'Webshop és online értékesítés']],
-            ['fc-inc-services', 'income', null, 1, '#3b82f6', 'Wrench', ['Services', 'Služby', 'Szolgáltatások']],
-            ['fc-inc-svc-projects', 'income', 'fc-inc-services', 2, '#2563eb', 'Briefcase', ['Project work', 'Projektové práce', 'Projektmunkák']],
-            ['fc-inc-svc-consulting', 'income', 'fc-inc-services', 2, '#60a5fa', 'UserCheck', ['Consulting', 'Poradenstvo', 'Tanácsadás']],
-            ['fc-inc-svc-support', 'income', 'fc-inc-services', 2, '#93c5fd', 'Shield', ['Support & maintenance', 'Podpora a údržba', 'Támogatás és karbantartás']],
-            ['fc-inc-recurring', 'income', null, 1, '#0891b2', 'TrendingUp', ['Recurring revenue', 'Opakované príjmy', 'Ismétlődő bevételek']],
-            ['fc-inc-rec-subscriptions', 'income', 'fc-inc-recurring', 2, '#06b6d4', 'Circle', ['Subscriptions & retainers', 'Predplatné a paušály', 'Előfizetések és átalánydíjak']],
-            ['fc-inc-other', 'income', null, 1, '#8b5cf6', 'Coins', ['Other income', 'Ostatné príjmy', 'Egyéb bevételek']],
-
-            // Expenses
-            ['fc-exp-cogs', 'expense', null, 1, '#ef4444', 'Package', ['Goods & materials', 'Nákup tovaru a materiálu', 'Áru- és anyagbeszerzés']],
-            ['fc-exp-cogs-goods', 'expense', 'fc-exp-cogs', 2, '#dc2626', 'Box', ['Goods for resale', 'Tovar na predaj', 'Továbbértékesítési áru']],
-            ['fc-exp-cogs-materials', 'expense', 'fc-exp-cogs', 2, '#f87171', 'Layers', ['Materials & supplies', 'Materiál a spotrebný tovar', 'Anyagok és fogyóeszközök']],
-            ['fc-exp-cogs-shipping', 'expense', 'fc-exp-cogs', 2, '#ea580c', 'Truck', ['Shipping & delivery', 'Doprava a doručenie', 'Szállítás és kiszállítás']],
-            ['fc-exp-marketing', 'expense', null, 1, '#f59e0b', 'Megaphone', ['Marketing & advertising', 'Marketing a reklama', 'Marketing és hirdetés']],
-            ['fc-exp-mkt-online', 'expense', 'fc-exp-marketing', 2, '#d97706', 'Globe', ['Online advertising', 'Online reklama', 'Online hirdetések']],
-            ['fc-exp-mkt-meta', 'expense', 'fc-exp-mkt-online', 3, '#fbbf24', 'Share2', ['Meta (Facebook / Instagram)', 'Meta (Facebook / Instagram)', 'Meta (Facebook / Instagram)']],
-            ['fc-exp-mkt-google', 'expense', 'fc-exp-mkt-online', 3, '#f59e0b', 'Search', ['Google Ads', 'Google Ads', 'Google Ads']],
-            ['fc-exp-mkt-seo', 'expense', 'fc-exp-mkt-online', 3, '#b45309', 'TrendingUp', ['SEO', 'SEO', 'SEO']],
-            ['fc-exp-mkt-creative', 'expense', 'fc-exp-marketing', 2, '#fb923c', 'PenTool', ['Agency, design & content', 'Agentúra, grafika a obsah', 'Ügynökség, grafika és tartalom']],
-            ['fc-exp-payroll', 'expense', null, 1, '#8b5cf6', 'Users', ['Payroll & contractors', 'Mzdy a externisti', 'Bérek és alvállalkozók']],
-            ['fc-exp-pay-salaries', 'expense', 'fc-exp-payroll', 2, '#7c3aed', 'Briefcase', ['Salaries & contributions', 'Mzdy a odvody', 'Bérek és járulékok']],
-            ['fc-exp-pay-contractors', 'expense', 'fc-exp-payroll', 2, '#6d28d9', 'UserCheck', ['Contractors & freelancers', 'Externisti a živnostníci', 'Alvállalkozók és szabadúszók']],
-            ['fc-exp-pay-comm', 'expense', 'fc-exp-payroll', 2, '#a78bfa', 'Percent', ['Commissions', 'Provízie', 'Jutalékok']],
-            ['fc-exp-overhead', 'expense', null, 1, '#0891b2', 'Building', ['Operations & overhead', 'Prevádzka a réžia', 'Működés és rezsi']],
-            ['fc-exp-ovh-rent', 'expense', 'fc-exp-overhead', 2, '#0e7490', 'Home', ['Rent', 'Nájom priestorov', 'Bérleti díj']],
-            ['fc-exp-ovh-util', 'expense', 'fc-exp-overhead', 2, '#06b6d4', 'FileText', ['Utilities & telecom', 'Energie a telekomunikácie', 'Rezsi és telekommunikáció']],
-            ['fc-exp-ovh-software', 'expense', 'fc-exp-overhead', 2, '#22d3ee', 'Layers', ['Software & subscriptions', 'Softvér a predplatné', 'Szoftverek és előfizetések']],
-            ['fc-exp-ovh-travel', 'expense', 'fc-exp-overhead', 2, '#67e8f9', 'Truck', ['Travel', 'Cestovné', 'Utazás']],
-            ['fc-exp-admin', 'expense', null, 1, '#64748b', 'FileText', ['Admin & professional services', 'Administratíva a služby', 'Adminisztráció és szakmai szolgáltatások']],
-            ['fc-exp-adm-accounting', 'expense', 'fc-exp-admin', 2, '#475569', 'FileText', ['Accounting & legal', 'Účtovníctvo a právne služby', 'Könyvelés és jogi szolgáltatások']],
-            ['fc-exp-adm-insurance', 'expense', 'fc-exp-admin', 2, '#94a3b8', 'Shield', ['Insurance', 'Poistenie', 'Biztosítás']],
-            ['fc-exp-adm-bank', 'expense', 'fc-exp-admin', 2, '#cbd5e1', 'Coins', ['Bank fees', 'Bankové poplatky', 'Banki díjak']],
-            ['fc-exp-adm-taxes', 'expense', 'fc-exp-admin', 2, '#334155', 'Percent', ['Taxes & fees', 'Dane a poplatky', 'Adók és illetékek']],
-        ];
-
-        $nameIndex = ['en' => 0, 'sk' => 1, 'hu' => 2][$language];
-        return array_map(static function (array $c) use ($nameIndex): array {
-            return [
-                'id' => $c[0],
-                'type' => $c[1],
-                'name' => $c[6][$nameIndex],
-                'parent_id' => $c[2],
-                'level' => $c[3],
-                'color' => $c[4],
-                'icon' => $c[5],
-            ];
-        }, $tree);
-    }
-
-    /**
-     * Seeds the sample financial categories into an empty financial_categories
-     * table — demo installations only. They are sample data like the demo leads,
-     * so a real installation starts empty and builds its own.
-     */
-    function ccrm_seed_default_financial_categories(PDO $pdo): void {
-        try {
-            $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'financial_categories'")->fetchColumn();
-            if ($hasTable === 0) return;
-
-            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
-            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
-
-            $count = (int)$pdo->query("SELECT COUNT(*) FROM `financial_categories`")->fetchColumn();
-            if ($count > 0) return;
-
-            $systemLanguage = 'sk';
-            $stmtLang = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'");
-            if ($stmtLang && ($val = $stmtLang->fetchColumn()) !== false) {
-                if (in_array($val, ['en', 'sk', 'hu'], true)) {
-                    $systemLanguage = $val;
-                }
-            }
-
-            $categories = ccrm_default_financial_categories($systemLanguage);
-            $ins = $pdo->prepare("INSERT INTO `financial_categories` (`id`, `type`, `name`, `parent_id`, `level`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            foreach ($categories as $c) {
-                $ins->execute([$c['id'], $c['type'], $c['name'], $c['parent_id'], $c['level'], $c['color'], $c['icon']]);
-            }
-        } catch (\Throwable $e) {
-            error_log('[ccrm schema] financial categories seed skipped: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Demo leave records positioned around $now (the install / seed date), so every
-     * employee's vacation calendar has entries in the month that opens by default.
-     * Mirrors generateDefaultMockVacations() in src/utils/mockEmployees.ts — keep the two in step.
-     *
-     * @return array<int, array{0:string,1:string,2:string,3:string,4:string,5:int,6:string,7:string,8:?string}>
-     *         rows ready for `employee_vacations`: id, employee_id, type, start, end, days, status, note, approved_by
-     */
-    function ccrm_demo_employee_vacations(\DateTimeImmutable $now): array {
-        $today = $now->setTime(0, 0, 0);
-        $todayStr = $today->format('Y-m-d');
-        $isWeekend = static fn(\DateTimeImmutable $d): bool => (int)$d->format('N') >= 6;
-        $spanEnd = static function (\DateTimeImmutable $start, int $workdays) use ($isWeekend): \DateTimeImmutable {
-            $out = $start;
-            $counted = 1;
-            while ($counted < $workdays) {
-                $out = $out->modify('+1 day');
-                if (!$isWeekend($out)) $counted++;
-            }
-            return $out;
-        };
-
-        // [employee, type, monthOffset, startDay, workdays, note, pending]
-        $templates = [
-            ['emp-1', 'annual', -4, 12, 4, 'Predĺžený víkend v Tatrách', false],
-            ['emp-1', 'doctor', -2, 9, 1, 'Preventívna prehliadka u lekára', false],
-            ['emp-1', 'sick', -1, 20, 3, 'Chrípka', false],
-            ['emp-1', 'annual', 0, 20, 3, 'Rodinný výlet', false],
-            ['emp-1', 'doctor', 0, 6, 1, 'Návšteva zubára', false],
-            ['emp-1', 'annual', 2, 22, 5, 'Plánovaná dovolenka', true],
-            ['emp-2', 'annual', -3, 6, 5, 'Letná dovolenka', false],
-            ['emp-2', 'doctor', -1, 14, 1, 'Kontrola u špecialistu', false],
-            ['emp-2', 'sick', 0, 8, 2, 'Nachladnutie', false],
-            ['emp-2', 'annual', 0, 27, 2, 'Predĺžený víkend', false],
-            ['emp-2', 'annual', 1, 10, 4, 'Rodinná udalosť', false],
-            ['emp-2', 'annual', 3, 15, 5, 'Plánovaná dovolenka', true],
-            ['emp-3', 'sick', -4, 3, 2, 'Bolesť chrbta', false],
-            ['emp-3', 'unpaid', -3, 2, 1, 'Súkromné vybavovanie', false],
-            ['emp-3', 'annual', -2, 16, 5, 'Turistika', false],
-            ['emp-3', 'annual', -1, 28, 2, 'Predĺžený víkend', false],
-            ['emp-3', 'annual', 0, 12, 4, 'Oddych a regenerácia', false],
-            ['emp-3', 'doctor', 0, 26, 1, 'Kontrola u lekára', false],
-            ['emp-3', 'doctor', 2, 11, 1, 'Očné vyšetrenie', true],
-            ['emp-4', 'annual', -3, 20, 5, 'Jesenný oddych', false],
-            ['emp-4', 'doctor', -1, 5, 1, 'Preventívna prehliadka', false],
-            ['emp-4', 'doctor', 0, 22, 1, 'Návšteva lekára s dieťaťom', false],
-            ['emp-4', 'annual', 1, 17, 5, 'Predĺžený víkend a oddych', false],
-            ['emp-4', 'annual', 2, 8, 3, 'Plánovaná dovolenka', true],
-        ];
-
-        // Anchored first: leave that covers today (on a weekend: the Friday before, so the range spans it).
-        $anchor = $today;
-        while ($isWeekend($anchor)) $anchor = $anchor->modify('-1 day');
-        $drafts = [[
-            'emp-4', 'annual', $anchor->format('Y-m-d'), $spanEnd($anchor, 3)->format('Y-m-d'), 3,
-            'approved', 'Krátke voľno — dnes mimo kancelárie', 'Vedenie',
-        ]];
-
-        $monthFirst = $today->modify('first day of this month');
-        foreach ($templates as [$empId, $type, $offset, $startDay, $workdays, $note, $pending]) {
-            $first = $monthFirst->modify(sprintf('%+d months', $offset));
-            $start = $first->setDate((int)$first->format('Y'), (int)$first->format('n'), $startDay);
-            while ($isWeekend($start)) $start = $start->modify('+1 day');
-            $startDate = $start->format('Y-m-d');
-            $waiting = $pending && $startDate > $todayStr;
-            $drafts[] = [
-                $empId, $type, $startDate, $spanEnd($start, $workdays)->format('Y-m-d'), $workdays,
-                $waiting ? 'pending' : 'approved', $note, $waiting ? null : 'Vedenie',
-            ];
-        }
-
-        // The calendar paints the first matching record per day, so one employee's leave must not overlap.
-        $accepted = [];
-        foreach ($drafts as $d) {
-            $clash = false;
-            foreach ($accepted as $a) {
-                if ($a[0] === $d[0] && $d[2] <= $a[3] && $d[3] >= $a[2]) { $clash = true; break; }
-            }
-            if (!$clash) $accepted[] = $d;
-        }
-
-        $rows = [];
-        foreach ($accepted as $i => $d) {
-            $rows[] = ['vac-demo-' . ($i + 1), $d[0], $d[1], $d[2], $d[3], $d[4], $d[5], $d[6], $d[7]];
-        }
-        return $rows;
-    }
-
-    /**
-     * One demo salary row per employee, for the month of $now (the install).
-     * Past and future months are not seeded: each row is posted to Finance as a
-     * payroll movement and would stay in the history after the sample staff is gone.
-     * The month is paid once its payday has arrived.
-     * Mirrors generateDefaultMockSalaries() in src/utils/mockEmployees.ts.
-     *
-     * @param array<int, array> $emps rows in the order used by ccrm_seed_default_employees()
-     * @return array<int, array> rows ready for `employee_salaries`
-     */
-    function ccrm_demo_employee_salaries(array $emps, \DateTimeImmutable $now): array {
-        $year = (int)$now->format('Y');
-        $m = (int)$now->format('n');
-        $nowDay = (int)$now->format('j');
-        $rows = [];
-
-        foreach ($emps as $empIdx => $e) {
-            $empId = $e[0];
-            $base = (float)$e[10];
-            $dueDay = (int)($e[11] ?: 15);
-            $mStr = str_pad((string)$m, 2, '0', STR_PAD_LEFT);
-            $periodKey = "{$year}-{$mStr}";
-            $isPaid = $nowDay >= $dueDay - 1;
-
-            $bonus = $m === 6 ? 500.0 : ($m === 12 ? 800.0 : 0.0);
-            $overtime = (($empId === 'emp-3' || $empId === 'emp-2') && ($m + $empIdx) % 3 === 0)
-                ? (float)(90 + (($m * 37 + $empIdx * 53) % 5) * 30) : 0.0;
-            $reimbursement = (($empId === 'emp-1' || $empId === 'emp-4') && ($m + $empIdx) % 4 === 1)
-                ? (float)(45 + (($m * 29 + $empIdx * 17) % 4) * 20) : 0.0;
-
-            $lines = [['base', 'Základná mzda', $base]];
-            if ($bonus > 0) $lines[] = ['bonus', $m === 6 ? 'Polročné prémie' : 'Ročné prémie', $bonus];
-            if ($overtime > 0) $lines[] = ['overtime', 'Nadčasy', $overtime];
-            if ($reimbursement > 0) $lines[] = ['reimbursement', 'Cestovné / Diéty', $reimbursement];
-
-            $items = [];
-            $total = 0.0;
-            foreach ($lines as [$catId, $catName, $amount]) {
-                $items[] = ['categoryId' => $catId, 'categoryName' => $catName, 'salary' => $amount, 'paid' => $isPaid ? $amount : 0.0];
-                $total += $amount;
-            }
-
-            $rows[] = [
-                "sal-{$empId}-{$periodKey}",
-                $empId,
-                'monthly',
-                $periodKey,
-                $year,
-                $m,
-                json_encode($items),
-                $total,
-                $isPaid ? $total : 0.0,
-                $isPaid ? 'paid' : 'pending',
-                "{$year}-{$mStr}-" . str_pad((string)$dueDay, 2, '0', STR_PAD_LEFT),
-                $isPaid ? "{$year}-{$mStr}-" . str_pad((string)($dueDay - 1), 2, '0', STR_PAD_LEFT) : null,
-                'bank_transfer',
-                $isPaid ? 'Úhrada cez SEPA prevod' : 'Plánovaný náklad mzdy',
-            ];
-        }
-        return $rows;
-    }
-
-    /**
-     * Seeds sample employees, salaries, and vacation records into empty employee tables
-     * — demo installations only. A real installation starts with no staff.
-     */
-    function ccrm_seed_default_employees(PDO $pdo): void {
-        // All-or-nothing: the seed only runs while `employees` is empty, so a
-        // half-written seed (employees in, vacations failed) would never be retried.
-        // Pure DML, so a transaction is safe here; skip it if the caller opened one.
-        $ownTransaction = false;
-        try {
-            $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
-            if ($hasTable === 0) return;
-
-            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
-            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
-
-            $count = (int)$pdo->query("SELECT COUNT(*) FROM `employees`")->fetchColumn();
-            if ($count > 0) return;
-
-            if (!$pdo->inTransaction()) {
-                $pdo->beginTransaction();
-                $ownTransaction = true;
-            }
-
-            // 1. Insert employees
-            $insEmp = $pdo->prepare("INSERT INTO `employees` (`id`, `name`, `pin`, `email`, `phone`, `address_street`, `address_city`, `address_zip`, `address_country`, `salary_type`, `salary_amount`, `salary_due_day`, `vacation_allowances_json`, `time_tracking_provider`, `time_tracking_user_id`, `time_tracking_user_name`, `auto_expense`, `expense_category_id`, `is_active`, `notes`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-
-            $emps = [
-                ['emp-1', 'Ing. Michal Kováč', '880415/7231', 'michal.kovac@cstudios.sk', '+421 905 442 811', 'Dunajská 24', 'Bratislava', '811 08', 'Slovakia', 'monthly', 3600.00, 15, json_encode(['annual' => 25, 'sick' => 10, 'doctor' => 7, 'unpaid' => 0]), 'toggl', null, null, 1, 'fc-exp-pay-salaries', 1, 'Lead architectural director for enterprise contracts. Authorised chamber architect.'],
-                ['emp-2', 'Mgr. Zuzana Horváthová', '925708/6519', 'zuzana.horvath@cstudios.sk', '+421 918 631 904', 'Hlavná 48', 'Trnava', '917 01', 'Slovakia', 'monthly', 2850.00, 15, json_encode(['annual' => 25, 'sick' => 10, 'doctor' => 7, 'unpaid' => 0]), 'toggl', null, null, 1, 'fc-exp-pay-salaries', 1, 'Product design lead for CRM, design systems, and client brand identities.'],
-                ['emp-3', 'Bc. Peter Varga', '950122/8104', 'peter.varga@cstudios.sk', '+421 944 205 789', 'Štefánikova 12', 'Nitra', '949 01', 'Slovakia', 'monthly', 3100.00, 15, json_encode(['annual' => 20, 'sick' => 10, 'doctor' => 7, 'unpaid' => 0]), 'toggl', null, null, 1, 'fc-exp-pay-salaries', 1, 'Core platform architect. Maintains API services, container pipelines and MariaDB cluster.'],
-                ['emp-4', 'Kristína Balážová', '975319/7820', 'kristina.balaz@cstudios.sk', '+421 907 334 112', 'Záhradnícka 62', 'Bratislava', '821 08', 'Slovakia', 'monthly', 2200.00, 15, json_encode(['annual' => 22, 'sick' => 10, 'doctor' => 7, 'unpaid' => 0]), 'toggl', null, null, 1, 'fc-exp-pay-salaries', 1, 'Manages client contracts, monthly invoicing schedules, office operations and procurement.']
-            ];
-
-            foreach ($emps as $e) {
-                $insEmp->execute($e);
-            }
-            $idUpd = $pdo->prepare("UPDATE `employees` SET `first_name` = ?, `last_name` = ?, `position` = ?, `department` = ? WHERE `id` = ?");
-            foreach ([
-                ['emp-1', 'Ing. Michal', 'Kováč', 'Chief Architect & Project Lead', 'Management'],
-                ['emp-2', 'Mgr. Zuzana', 'Horváthová', 'Senior UX/UI & Brand Strategist', 'Marketing'],
-                ['emp-3', 'Bc. Peter', 'Varga', 'Full-Stack Engineer & DevOps', 'Development'],
-                ['emp-4', 'Kristína', 'Balážová', 'Operations & Account Specialist', 'Sales'],
-            ] as $idRow) {
-                $idUpd->execute([$idRow[1], $idRow[2], $idRow[3], $idRow[4], $idRow[0]]);
-            }
-
-            // 2. Insert salaries for the install month only (paid once payday has arrived)
-            $now = new \DateTimeImmutable('now');
-            $insSal = $pdo->prepare("INSERT INTO `employee_salaries` (`id`, `employee_id`, `period_type`, `period_key`, `year`, `period_number`, `items_json`, `total_salary`, `total_paid`, `status`, `due_date`, `payment_date`, `payment_method`, `note`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            foreach (ccrm_demo_employee_salaries($emps, $now) as $row) {
-                $insSal->execute($row);
-            }
-
-            // 3. Insert vacations positioned around today, so the calendar is populated for the install month
-            $insVac = $pdo->prepare("INSERT INTO `employee_vacations` (`id`, `employee_id`, `vacation_type_id`, `start_date`, `end_date`, `days_count`, `status`, `note`, `approved_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            foreach (ccrm_demo_employee_vacations($now) as $row) {
-                $insVac->execute($row);
-            }
-
-            if ($ownTransaction) $pdo->commit();
-        } catch (\Throwable $e) {
-            if ($ownTransaction && $pdo->inTransaction()) $pdo->rollBack();
-            error_log('[ccrm schema] employees seed skipped: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Seeds demo warehouses, suppliers, warehouse items, initial stock, batches, and movements.
-     */
-    function ccrm_seed_default_warehouses_and_items(PDO $pdo, string $systemLanguage = 'sk'): void {
-        try {
-            $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses'")->fetchColumn();
-            if ($hasTable === 0) return;
-
-            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
-            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
-
-            $count = (int)$pdo->query("SELECT COUNT(*) FROM `warehouses`")->fetchColumn();
-            if ($count > 0) return;
-
-            if (!in_array($systemLanguage, ['en', 'sk', 'hu'], true)) {
-                $systemLanguage = 'sk';
-                $stmtLang = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'");
-                if ($stmtLang && ($val = $stmtLang->fetchColumn()) !== false) {
-                    if (in_array($val, ['en', 'sk', 'hu'], true)) {
-                        $systemLanguage = $val;
-                    }
-                }
-            }
-
-            // 1. Warehouses
-            $whTexts = [
-                'sk' => [
-                    'wh1_name' => 'Hlavný sklad Bratislava',
-                    'wh2_name' => 'Výrobný sklad Trnava',
-                ],
-                'en' => [
-                    'wh1_name' => 'Main Warehouse Bratislava',
-                    'wh2_name' => 'Production Warehouse Trnava',
-                ],
-                'hu' => [
-                    'wh1_name' => 'Fő raktár Pozsony',
-                    'wh2_name' => 'Gyártási raktár Nagyszombat',
-                ],
-            ];
-            $tWh = $whTexts[$systemLanguage] ?? $whTexts['sk'];
-
-            $warehouses = [
-                ['wh-1', $tWh['wh1_name'], 'WH-BA-01', 'Vajnorská 142, 831 04 Bratislava', 'u-' . md5('alex@crm.com'), 1],
-                ['wh-2', $tWh['wh2_name'], 'WH-TT-01', 'Zavarská 11, 917 01 Trnava', 'u-' . md5('sam@crm.com'), 0],
-            ];
-            $insWh = $pdo->prepare("INSERT INTO `warehouses` (`id`, `name`, `code`, `address`, `manager_user_id`, `is_default`) VALUES (?, ?, ?, ?, ?, ?)");
-            foreach ($warehouses as $w) {
-                $insWh->execute($w);
-            }
-
-            // 2. Suppliers
-            $suppliers = [
-                [
-                    'sup-1',
-                    'Laminam Slovakia s.r.o.',
-                    '48123456',
-                    '2120123456',
-                    'SK2120123456',
-                    'Prievozská 4D',
-                    'Bratislava',
-                    '821 09',
-                    'Slovakia',
-                    'objednavky@laminam.sk',
-                    '+421 905 111 222',
-                    'https://laminam.sk',
-                    'SK8902000000001234567890',
-                    'SUBA SK BX',
-                    14,
-                    'Oficiálny distribútor veľkoformátových keramických a quartzových dosiek.',
-                    json_encode([
-                        ['name' => 'Peter Kováč', 'position' => 'Obchodný riaditeľ', 'phone' => '+421 905 111 222', 'email' => 'kovac@laminam.sk'],
-                        ['name' => 'Lucia Vargová', 'position' => 'Zákaznícky servis', 'phone' => '+421 905 111 223', 'email' => 'vargova@laminam.sk']
-                    ])
-                ],
-                [
-                    'sup-2',
-                    'Stone Import Verona S.r.l.',
-                    'IT0987654321',
-                    'IT0987654321',
-                    'IT0987654321',
-                    'Via del Marmo 45',
-                    'Verona',
-                    '37135',
-                    'Italy',
-                    'export@stoneverona.it',
-                    '+39 045 889 900',
-                    'https://stoneverona.it',
-                    'IT60X0542811101000000123456',
-                    'UNCRITM1VER',
-                    30,
-                    'Dodávateľ prírodného mramoru, žuly a kvarcitu priamo z talianskych lomov.',
-                    json_encode([
-                        ['name' => 'Marco Rossi', 'position' => 'Export Area Manager', 'phone' => '+39 340 123 4567', 'email' => 'm.rossi@stoneverona.it']
-                    ])
-                ],
-                [
-                    'sup-3',
-                    'Mapei Slovensko s.r.o.',
-                    '35890123',
-                    '2021890123',
-                    'SK2021890123',
-                    'Nádražná 39',
-                    'Ivanka pri Dunaji',
-                    '900 28',
-                    'Slovakia',
-                    'predaj@mapei.sk',
-                    '+421 2 4020 4511',
-                    'https://mapei.sk',
-                    'SK1211000000002621234567',
-                    'TATR SK BX',
-                    14,
-                    'Špičková stavebná chémia, lepidlá triedy S1/S2 a škárovacie hmoty.',
-                    json_encode([
-                        ['name' => 'Ing. Ján Novotný', 'position' => 'Technický zástupca', 'phone' => '+421 911 333 444', 'email' => 'j.novotny@mapei.sk']
-                    ])
-                ]
-            ];
-            $insSup = $pdo->prepare("INSERT INTO `suppliers` (`id`, `name`, `company_id`, `tax_id`, `vat_id`, `street`, `city`, `postal_code`, `country`, `email`, `phone`, `website`, `iban`, `swift`, `payment_due_days`, `notes`, `contacts_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            foreach ($suppliers as $s) {
-                $insSup->execute($s);
-            }
-
-            // 3. Warehouse Items
-            $itemTexts = [
-                'sk' => [
-                    'it1_name' => 'Calacatta Gold Quartz doska 20mm',
-                    'it1_desc' => 'Prémiový technický kameň so zlatistým žilkovaním, lesklý povrch, formát 3200x1600mm.',
-                    'it1_cat'  => 'Veľkoformátové dosky',
-                    'it1_unit' => 'm²',
-                    'it2_name' => 'Nero Marquina mramor doska 30mm',
-                    'it2_desc' => 'Čierny španielsky mramor s výraznými bielymi žilami, leštený.',
-                    'it2_cat'  => 'Prírodný kameň',
-                    'it2_unit' => 'm²',
-                    'it3_name' => 'Patagonia Quartzite doska 20mm',
-                    'it3_desc' => 'Exkluzívny translucentný brazílsky kvarcit s kryštálmi živca a kremeňa.',
-                    'it3_cat'  => 'Prírodný kameň',
-                    'it3_unit' => 'm²',
-                    'it4_name' => 'Keraflex Maxi S1 cementové lepidlo 25kg',
-                    'it4_desc' => 'Deformovateľné cementové lepidlo so zníženým vertikálnym sklzom a predĺženou dobou zavädnutia na kamenné dosky.',
-                    'it4_cat'  => 'Stavebná chémia',
-                    'it4_unit' => 'balenie',
-                    'it5_name' => 'Tenax Ager impregnácia a zvýrazňovač farby 1L',
-                    'it5_desc' => 'Vysokoúčinná impregnácia s mokrým efektom pre zvýraznenie štruktúry lešteného a matného kameňa.',
-                    'it5_cat'  => 'Ošetrenie a údržba',
-                    'it5_unit' => 'ks',
-                ],
-                'en' => [
-                    'it1_name' => 'Calacatta Gold Quartz Slab 20mm',
-                    'it1_desc' => 'Premium engineered quartz with golden veining, polished finish, format 3200x1600mm.',
-                    'it1_cat'  => 'Large Format Slabs',
-                    'it1_unit' => 'm²',
-                    'it2_name' => 'Nero Marquina Marble Slab 30mm',
-                    'it2_desc' => 'Black Spanish marble with distinct white veining, polished.',
-                    'it2_cat'  => 'Natural Stone',
-                    'it2_unit' => 'm²',
-                    'it3_name' => 'Patagonia Quartzite Slab 20mm',
-                    'it3_desc' => 'Exclusive translucent Brazilian quartzite with feldspar and quartz crystals.',
-                    'it3_cat'  => 'Natural Stone',
-                    'it3_unit' => 'm²',
-                    'it4_name' => 'Keraflex Maxi S1 Cement Adhesive 25kg',
-                    'it4_desc' => 'Deformable cementitious adhesive with no vertical slip and extended open time for stone slabs.',
-                    'it4_cat'  => 'Building Chemicals',
-                    'it4_unit' => 'pack',
-                    'it5_name' => 'Tenax Ager Stone Enhancer & Sealer 1L',
-                    'it5_desc' => 'High performance wet-look colour enhancer and sealer for polished and honed stones.',
-                    'it5_cat'  => 'Care & Maintenance',
-                    'it5_unit' => 'pcs',
-                ],
-                'hu' => [
-                    'it1_name' => 'Calacatta Gold Quartz lap 20mm',
-                    'it1_desc' => 'Prémium műkő arany erezettel, polírozott felülettel, 3200x1600mm méretben.',
-                    'it1_cat'  => 'Nagyméretű lapok',
-                    'it1_unit' => 'm²',
-                    'it2_name' => 'Nero Marquina márványlap 30mm',
-                    'it2_desc' => 'Fekete spanyol márvány markáns fehér erezettel, polírozva.',
-                    'it2_cat'  => 'Természetes kő',
-                    'it2_unit' => 'm²',
-                    'it3_name' => 'Patagonia Kvarcit lap 20mm',
-                    'it3_desc' => 'Exkluzív áttetsző brazil kvarcit földpát és kvarc kristályokkal.',
-                    'it3_cat'  => 'Természetes kő',
-                    'it3_unit' => 'm²',
-                    'it4_name' => 'Keraflex Maxi S1 cementkötésű ragasztó 25kg',
-                    'it4_desc' => 'Alakváltozásra képes, lecsúszásmentes, nyújtott nyitott idejű cementkötésű ragasztó kőlapokhoz.',
-                    'it4_cat'  => 'Építési vegyi anyagok',
-                    'it4_unit' => 'csomag',
-                    'it5_name' => 'Tenax Ager színélénkítő kőimpregnáló 1L',
-                    'it5_desc' => 'Nagy hatékonyságú színélénkítő nedves hatású impregnáló polírozott és matt kövekhez.',
-                    'it5_cat'  => 'Ápolás és karbantartás',
-                    'it5_unit' => 'db',
-                ],
-            ];
-            $tIt = $itemTexts[$systemLanguage] ?? $itemTexts['sk'];
-
-            $items = [
-                ['item-1', 'SKU-CQ-01', '858800123401', $tIt['it1_name'], $tIt['it1_desc'], $tIt['it1_cat'], $tIt['it1_unit'], 20.00, 80.00, 'A-01-RACK', 0, 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=300&h=300&fit=crop', 185.00, 95.0000, 95.00],
-                ['item-2', 'SKU-NM-02', '858800123402', $tIt['it2_name'], $tIt['it2_desc'], $tIt['it2_cat'], $tIt['it2_unit'], 15.00, 50.00, 'A-03-RACK', 0, 'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?w=300&h=300&fit=crop', 210.00, 110.0000, 110.00],
-                ['item-3', 'SKU-PQ-03', '858800123403', $tIt['it3_name'], $tIt['it3_desc'], $tIt['it3_cat'], $tIt['it3_unit'], 10.00, 30.00, 'A-05-RACK', 0, 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=300&h=300&fit=crop', 340.00, 190.0000, 190.00],
-                ['item-4', 'SKU-MAP-04', '858800123404', $tIt['it4_name'], $tIt['it4_desc'], $tIt['it4_cat'], $tIt['it4_unit'], 30.00, 100.00, 'CHEM-PAL-02', 1, 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=300&h=300&fit=crop', 24.50, 14.2000, 14.20],
-                ['item-5', 'SKU-TNX-05', '858800123405', $tIt['it5_name'], $tIt['it5_desc'], $tIt['it5_cat'], $tIt['it5_unit'], 10.00, 40.00, 'CHEM-SHELF-01', 1, 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=300&h=300&fit=crop', 42.00, 22.8000, 22.80]
-            ];
-            $insItem = $pdo->prepare("INSERT INTO `warehouse_items` (`id`, `sku`, `barcode`, `name`, `description`, `category`, `unit`, `min_stock`, `optimal_stock`, `default_location`, `has_expiration`, `image_url`, `default_sell_price`, `avg_purchase_price`, `last_purchase_price`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            foreach ($items as $it) {
-                $insItem->execute($it);
-            }
-
-            // 4. Stock
-            $stock = [
-                ['wh-1', 'item-1', 45.00, 12.00, 'A-01-RACK'],
-                ['wh-1', 'item-2', 28.00, 0.00, 'A-03-RACK'],
-                ['wh-1', 'item-4', 65.00, 10.00, 'CHEM-PAL-02'],
-                ['wh-1', 'item-5', 18.00, 0.00, 'CHEM-SHELF-01'],
-                ['wh-2', 'item-3', 16.00, 0.00, 'TT-RACK-01'],
-                ['wh-2', 'item-4', 20.00, 0.00, 'TT-CHEM-01']
-            ];
-            $insStock = $pdo->prepare("INSERT INTO `warehouse_stock` (`warehouse_id`, `item_id`, `quantity`, `reserved_quantity`, `location`) VALUES (?, ?, ?, ?, ?)");
-            foreach ($stock as $st) {
-                $insStock->execute($st);
-            }
-
-            // 5. Batches
-            $batches = [
-                ['bat-1', 'item-4', 'wh-1', 'BAT-2026-001', '2026-11-30', 40.00, 40.00, 14.20],
-                ['bat-2', 'item-4', 'wh-1', 'BAT-2025-089', '2026-09-05', 30.00, 25.00, 13.80],
-                ['bat-3', 'item-5', 'wh-1', 'BAT-2026-TX1', '2027-06-15', 20.00, 18.00, 22.80]
-            ];
-            $insBatch = $pdo->prepare("INSERT INTO `warehouse_batches` (`id`, `item_id`, `warehouse_id`, `batch_number`, `expiration_date`, `initial_quantity`, `current_quantity`, `purchase_price`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            foreach ($batches as $b) {
-                $insBatch->execute($b);
-            }
-
-            // 6. Movements
-            $movements = [
-                [
-                    'mov-1', 'PRI-2026-0001', 'inward', 'confirmed', 'wh-1', null, 'sup-1', null,
-                    4275.00, 8325.00, 4050.00, 'Alex',
-                    'Príjem dodávky Calacatta Gold dosiek od Laminam SK.',
-                    'dodaci_list_laminam_001.pdf', null, '2026-05-02 09:30:00',
-                    [
-                        ['mvi-1', 'item-1', null, 45.00, 95.00, 185.00, 4275.00, null, 'Dosky v bezchybnom stave, opticky skontrolované.']
-                    ]
-                ],
-                [
-                    'mov-2', 'PRI-2026-0002', 'inward', 'confirmed', 'wh-1', null, 'sup-3', null,
-                    923.00, 1592.50, 669.50, 'Alex',
-                    'Príjem palety Keraflex Maxi S1 z Mapei.',
-                    'dl_mapei_9812.pdf', null, '2026-05-04 14:15:00',
-                    [
-                        ['mvi-2', 'item-4', 'bat-1', 65.00, 14.20, 24.50, 923.00, '2026-11-30', 'Paleta 1/1, šarža BAT-2026-001.']
-                    ]
-                ],
-                [
-                    'mov-3', 'VYD-2026-0001', 'outward', 'confirmed', 'wh-1', null, null, 'lead-1',
-                    1140.00, 2220.00, 1080.00, 'Alex',
-                    'Výdaj materiálu na zákazku kuchynskej dosky pre klienta Ján Novák.',
-                    null, null, '2026-05-16 11:00:00',
-                    [
-                        ['mvi-3', 'item-1', null, 12.00, 95.00, 185.00, 2220.00, null, 'Vydané do výroby na CNC opracovanie.']
-                    ]
-                ]
-            ];
-
-            $insMov = $pdo->prepare("INSERT INTO `warehouse_movements` (`id`, `document_number`, `type`, `status`, `warehouse_id`, `target_warehouse_id`, `supplier_id`, `lead_id`, `total_cost_value`, `total_sell_value`, `total_profit_value`, `created_by`, `note`, `file_name`, `file_path`, `issued_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $insMovItem = $pdo->prepare("INSERT INTO `warehouse_movement_items` (`id`, `movement_id`, `item_id`, `batch_id`, `quantity`, `unit_purchase_price`, `unit_sell_price`, `total_price`, `expiration_date`, `note`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-
-            foreach ($movements as $m) {
-                $itemsList = array_pop($m);
-                $insMov->execute($m);
-                foreach ($itemsList as $it) {
-                    $insMovItem->execute([$it[0], $m[0], $it[1], $it[2], $it[3], $it[4], $it[5], $it[6], $it[7], $it[8]]);
-                }
-            }
-        } catch (\Throwable $e) {
-            error_log('[ccrm schema] warehouse seed skipped: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Seeds demo sales orders and line items for demo installations.
-     */
-    function ccrm_seed_default_orders(PDO $pdo, string $systemLanguage = 'sk'): void {
-        try {
-            $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders'")->fetchColumn();
-            if ($hasTable === 0) return;
-
-            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
-            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
-
-            $count = (int)$pdo->query("SELECT COUNT(*) FROM `orders`")->fetchColumn();
-            if ($count > 0) return;
-
-            if (!in_array($systemLanguage, ['en', 'sk', 'hu'], true)) {
-                $systemLanguage = 'sk';
-                $stmtLang = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'");
-                if ($stmtLang && ($val = $stmtLang->fetchColumn()) !== false) {
-                    if (in_array($val, ['en', 'sk', 'hu'], true)) {
-                        $systemLanguage = $val;
-                    }
-                }
-            }
-
-            $orderTexts = [
-                'sk' => [
-                    's1_name' => 'Kuriérska preprava DPD',
-                    's2_name' => 'SPS Kuriér na adresu',
-                    's3_name' => 'Packeta Z-Box výdajné miesto',
-                    's4_name' => 'Dobierka príplatok',
-                    's5_name' => 'GLS Špeciálna paletová preprava',
-                    'it1_name' => 'Calacatta Gold Quartz doska 20mm',
-                    'it2_name' => 'Nero Marquina mramor doska 30mm',
-                    'it4_name' => 'Keraflex Maxi S1 cementové lepidlo 25kg',
-                    'it5_name' => 'Tenax Ager impregnácia a zvýrazňovač farby 1L',
-                    'unit_pack' => 'balenie',
-                    'unit_pcs' => 'ks',
-                    'unit_srv' => 'služba',
-                    'ord1_note' => 'Prosím doručiť pred 16:00, zvonček Novák.',
-                    'ord2_note' => 'Nechať na recepcii v prípade neprítomnosti.',
-                    'ord3_note' => 'Výdajné miesto Z-Box Nitra Mlyny.',
-                    'ord4_note' => 'Dodanie s hydraulickým čelom na stavbu.',
-                ],
-                'en' => [
-                    's1_name' => 'DPD Express Courier',
-                    's2_name' => 'SPS Courier to Address',
-                    's3_name' => 'Packeta Z-Box Pick-up Point',
-                    's4_name' => 'Cash on Delivery Surcharge',
-                    's5_name' => 'GLS Freight Pallet Transport',
-                    'it1_name' => 'Calacatta Gold Quartz Slab 20mm',
-                    'it2_name' => 'Nero Marquina Marble Slab 30mm',
-                    'it4_name' => 'Keraflex Maxi S1 Cement Adhesive 25kg',
-                    'it5_name' => 'Tenax Ager Stone Enhancer & Sealer 1L',
-                    'unit_pack' => 'pack',
-                    'unit_pcs' => 'pcs',
-                    'unit_srv' => 'service',
-                    'ord1_note' => 'Please deliver before 16:00, ring bell Novák.',
-                    'ord2_note' => 'Leave at reception if absent.',
-                    'ord3_note' => 'Pick-up location Z-Box Nitra Mlyny.',
-                    'ord4_note' => 'Delivery with hydraulic tail lift to site.',
-                ],
-                'hu' => [
-                    's1_name' => 'DPD futárszolgálat',
-                    's2_name' => 'SPS futár házhozszállítás',
-                    's3_name' => 'Packeta Z-Box csomagpont',
-                    's4_name' => 'Utánvét kezelési díj',
-                    's5_name' => 'GLS Speciális raklapos szállítás',
-                    'it1_name' => 'Calacatta Gold Quartz lap 20mm',
-                    'it2_name' => 'Nero Marquina márványlap 30mm',
-                    'it4_name' => 'Keraflex Maxi S1 cementkötésű ragasztó 25kg',
-                    'it5_name' => 'Tenax Ager színélénkítő kőimpregnáló 1L',
-                    'unit_pack' => 'csomag',
-                    'unit_pcs' => 'db',
-                    'unit_srv' => 'szolgáltatás',
-                    'ord1_note' => 'Kérjük 16:00 előtt szállítani, Novák csengő.',
-                    'ord2_note' => 'Távollét esetén a recepción hagyni.',
-                    'ord3_note' => 'Z-Box átvevőhely Nyitra Mlyny.',
-                    'ord4_note' => 'Szállítás emelőhátfalas teherautóval a helyszínre.',
-                ],
-            ];
-            $t = $orderTexts[$systemLanguage] ?? $orderTexts['sk'];
-
-            $orders = [
-                // 1. Order 1 - Client Ján Novák (delivered, paid)
-                [
-                    'id' => 'ord-demo-1',
-                    'order_number' => 'OBJ-2026-0001',
-                    'type' => 'sales',
-                    'status' => 'delivered',
-                    'customer_type' => 'client',
-                    'client_id' => 'lead-1',
-                    'supplier_id' => null,
-                    'guest_name' => null,
-                    'guest_email' => null,
-                    'guest_phone' => null,
-                    'guest_company' => null,
-                    'guest_ico' => null,
-                    'guest_dic' => null,
-                    'guest_ic_dph' => null,
-                    'delivery_recipient' => 'Ing. Ján Novák',
-                    'delivery_street' => 'Mlynské Nivy 42',
-                    'delivery_city' => 'Bratislava',
-                    'delivery_zip' => '821 09',
-                    'delivery_country' => 'SK',
-                    'delivery_phone' => '+421 905 123 456',
-                    'delivery_notes' => $t['ord1_note'],
-                    'shipping_method' => 'dpd',
-                    'shipping_pickup_point_id' => null,
-                    'shipping_tracking_number' => '1029384756',
-                    'billing_name' => 'Ján Novák s.r.o.',
-                    'billing_street' => 'Mlynské Nivy 42',
-                    'billing_city' => 'Bratislava',
-                    'billing_zip' => '821 09',
-                    'billing_country' => 'SK',
-                    'billing_ico' => '36123456',
-                    'billing_dic' => '2021234567',
-                    'billing_ic_dph' => 'SK2021234567',
-                    'payment_method' => 'bank_transfer',
-                    'payment_status' => 'paid',
-                    'paid_at' => '2026-05-16 14:20:00',
-                    'payment_reference' => 'OBJ-2026-0001',
-                    'currency' => 'EUR',
-                    'items_net_amount' => 468.00,
-                    'services_net_amount' => 15.00,
-                    'total_net_amount' => 483.00,
-                    'total_tax_amount' => 96.60,
-                    'total_gross_amount' => 579.60,
-                    'order_date' => '2026-05-15',
-                    'requested_delivery_date' => '2026-05-18',
-                    'confirmed_delivery_date' => '2026-05-18',
-                    'warehouse_id' => 'wh-1',
-                    'notes' => 'Kompletne vybavená objednávka dosiek a lepidla.',
-                    'customer_note' => null,
-                    'created_by' => 'Sam',
-                    'items' => [
-                        [
-                            'id' => 'oi-demo-1',
-                            'item_type' => 'product',
-                            'item_id' => 'item-1',
-                            'sku' => 'SKU-CQ-01',
-                            'ean' => '858800123401',
-                            'name' => $t['it1_name'],
-                            'variant_title' => '20mm',
-                            'quantity' => 2.00,
-                            'unit' => 'm²',
-                            'unit_price' => 185.0000,
-                            'discount_percent' => 0.00,
-                            'tax_rate' => 20.00,
-                            'total_net_amount' => 370.00,
-                            'total_gross_amount' => 444.00,
-                            'fulfilled_quantity' => 2.00,
-                            'service_code' => null,
-                            'notes' => null,
-                            'sort_order' => 1,
-                        ],
-                        [
-                            'id' => 'oi-demo-2',
-                            'item_type' => 'product',
-                            'item_id' => 'item-4',
-                            'sku' => 'SKU-MAP-04',
-                            'ean' => '858800123404',
-                            'name' => $t['it4_name'],
-                            'variant_title' => '25kg',
-                            'quantity' => 4.00,
-                            'unit' => $t['unit_pack'],
-                            'unit_price' => 24.5000,
-                            'discount_percent' => 0.00,
-                            'tax_rate' => 20.00,
-                            'total_net_amount' => 98.00,
-                            'total_gross_amount' => 117.60,
-                            'fulfilled_quantity' => 4.00,
-                            'service_code' => null,
-                            'notes' => null,
-                            'sort_order' => 2,
-                        ],
-                        [
-                            'id' => 'oi-demo-3',
-                            'item_type' => 'service',
-                            'item_id' => null,
-                            'sku' => 'SRV-DPD',
-                            'ean' => null,
-                            'name' => $t['s1_name'],
-                            'variant_title' => null,
-                            'quantity' => 1.00,
-                            'unit' => $t['unit_srv'],
-                            'unit_price' => 15.0000,
-                            'discount_percent' => 0.00,
-                            'tax_rate' => 20.00,
-                            'total_net_amount' => 15.00,
-                            'total_gross_amount' => 18.00,
-                            'fulfilled_quantity' => 1.00,
-                            'service_code' => 'SHIPPING-DPD',
-                            'notes' => 'Expresná kuriérska služba DPD s poistením',
-                            'sort_order' => 3,
-                        ]
-                    ]
-                ],
-
-                // 2. Order 2 - Client Martina Kováčová (processing, paid)
-                [
-                    'id' => 'ord-demo-2',
-                    'order_number' => 'OBJ-2026-0002',
-                    'type' => 'sales',
-                    'status' => 'processing',
-                    'customer_type' => 'client',
-                    'client_id' => 'lead-2',
-                    'supplier_id' => null,
-                    'guest_name' => null,
-                    'guest_email' => null,
-                    'guest_phone' => null,
-                    'guest_company' => null,
-                    'guest_ico' => null,
-                    'guest_dic' => null,
-                    'guest_ic_dph' => null,
-                    'delivery_recipient' => 'Martina Kováčová',
-                    'delivery_street' => 'Kukučínova 15',
-                    'delivery_city' => 'Trnava',
-                    'delivery_zip' => '917 01',
-                    'delivery_country' => 'SK',
-                    'delivery_phone' => '+421 911 987 654',
-                    'delivery_notes' => $t['ord2_note'],
-                    'shipping_method' => 'sps',
-                    'shipping_pickup_point_id' => null,
-                    'shipping_tracking_number' => 'SPS8829104',
-                    'billing_name' => 'Martina Kováčová',
-                    'billing_street' => 'Kukučínova 15',
-                    'billing_city' => 'Trnava',
-                    'billing_zip' => '917 01',
-                    'billing_country' => 'SK',
-                    'billing_ico' => null,
-                    'billing_dic' => null,
-                    'billing_ic_dph' => null,
-                    'payment_method' => 'card',
-                    'payment_status' => 'paid',
-                    'paid_at' => '2026-05-18 10:15:00',
-                    'payment_reference' => 'CARD-984210',
-                    'currency' => 'EUR',
-                    'items_net_amount' => 133.00,
-                    'services_net_amount' => 6.50,
-                    'total_net_amount' => 139.50,
-                    'total_tax_amount' => 27.90,
-                    'total_gross_amount' => 167.40,
-                    'order_date' => '2026-05-18',
-                    'requested_delivery_date' => '2026-05-21',
-                    'confirmed_delivery_date' => '2026-05-21',
-                    'warehouse_id' => 'wh-1',
-                    'notes' => 'Pripravené na balenie v sklade.',
-                    'customer_note' => null,
-                    'created_by' => 'Jordan',
-                    'items' => [
-                        [
-                            'id' => 'oi-demo-4',
-                            'item_type' => 'product',
-                            'item_id' => 'item-5',
-                            'sku' => 'SKU-TNX-05',
-                            'ean' => '858800123405',
-                            'name' => $t['it5_name'],
-                            'variant_title' => '1L',
-                            'quantity' => 2.00,
-                            'unit' => $t['unit_pcs'],
-                            'unit_price' => 42.0000,
-                            'discount_percent' => 0.00,
-                            'tax_rate' => 20.00,
-                            'total_net_amount' => 84.00,
-                            'total_gross_amount' => 100.80,
-                            'fulfilled_quantity' => 0.00,
-                            'service_code' => null,
-                            'notes' => null,
-                            'sort_order' => 1,
-                        ],
-                        [
-                            'id' => 'oi-demo-5',
-                            'item_type' => 'product',
-                            'item_id' => 'item-4',
-                            'sku' => 'SKU-MAP-04',
-                            'ean' => '858800123404',
-                            'name' => $t['it4_name'],
-                            'variant_title' => '25kg',
-                            'quantity' => 2.00,
-                            'unit' => $t['unit_pack'],
-                            'unit_price' => 24.5000,
-                            'discount_percent' => 0.00,
-                            'tax_rate' => 20.00,
-                            'total_net_amount' => 49.00,
-                            'total_gross_amount' => 58.80,
-                            'fulfilled_quantity' => 0.00,
-                            'service_code' => null,
-                            'notes' => null,
-                            'sort_order' => 2,
-                        ],
-                        [
-                            'id' => 'oi-demo-6',
-                            'item_type' => 'service',
-                            'item_id' => null,
-                            'sku' => 'SRV-SPS',
-                            'ean' => null,
-                            'name' => $t['s2_name'],
-                            'variant_title' => null,
-                            'quantity' => 1.00,
-                            'unit' => $t['unit_srv'],
-                            'unit_price' => 6.5000,
-                            'discount_percent' => 0.00,
-                            'tax_rate' => 20.00,
-                            'total_net_amount' => 6.50,
-                            'total_gross_amount' => 7.80,
-                            'fulfilled_quantity' => 0.00,
-                            'service_code' => 'SHIPPING-SPS',
-                            'notes' => 'Doručenie SPS kuriérom priamo domov',
-                            'sort_order' => 3,
-                        ]
-                    ]
-                ],
-
-                // 3. Order 3 - Guest Peter Horváth (new, unpaid COD)
-                [
-                    'id' => 'ord-demo-3',
-                    'order_number' => 'OBJ-2026-0003',
-                    'type' => 'sales',
-                    'status' => 'new',
-                    'customer_type' => 'guest',
-                    'client_id' => null,
-                    'supplier_id' => null,
-                    'guest_name' => 'Peter Horváth',
-                    'guest_email' => 'peter.horvath@example.com',
-                    'guest_phone' => '+421 903 777 888',
-                    'guest_company' => null,
-                    'guest_ico' => null,
-                    'guest_dic' => null,
-                    'guest_ic_dph' => null,
-                    'delivery_recipient' => 'Peter Horváth',
-                    'delivery_street' => 'Hviezdoslavova 8',
-                    'delivery_city' => 'Nitra',
-                    'delivery_zip' => '949 01',
-                    'delivery_country' => 'SK',
-                    'delivery_phone' => '+421 903 777 888',
-                    'delivery_notes' => $t['ord3_note'],
-                    'shipping_method' => 'packeta',
-                    'shipping_pickup_point_id' => 'SK-19402',
-                    'shipping_tracking_number' => 'Z92817345',
-                    'billing_name' => 'Peter Horváth',
-                    'billing_street' => 'Hviezdoslavova 8',
-                    'billing_city' => 'Nitra',
-                    'billing_zip' => '949 01',
-                    'billing_country' => 'SK',
-                    'billing_ico' => null,
-                    'billing_dic' => null,
-                    'billing_ic_dph' => null,
-                    'payment_method' => 'cod',
-                    'payment_status' => 'unpaid',
-                    'paid_at' => null,
-                    'payment_reference' => null,
-                    'currency' => 'EUR',
-                    'items_net_amount' => 42.00,
-                    'services_net_amount' => 5.40,
-                    'total_net_amount' => 47.40,
-                    'total_tax_amount' => 9.48,
-                    'total_gross_amount' => 56.88,
-                    'order_date' => '2026-05-20',
-                    'requested_delivery_date' => '2026-05-22',
-                    'confirmed_delivery_date' => null,
-                    'warehouse_id' => 'wh-1',
-                    'notes' => 'E-shop nákup bez registrácie na dobierku do Z-Boxu.',
-                    'customer_note' => 'Prosím poslať SMS s kódom hneď po uložení.',
-                    'created_by' => 'E-shop Web',
-                    'items' => [
-                        [
-                            'id' => 'oi-demo-7',
-                            'item_type' => 'product',
-                            'item_id' => 'item-5',
-                            'sku' => 'SKU-TNX-05',
-                            'ean' => '858800123405',
-                            'name' => $t['it5_name'],
-                            'variant_title' => '1L',
-                            'quantity' => 1.00,
-                            'unit' => $t['unit_pcs'],
-                            'unit_price' => 42.0000,
-                            'discount_percent' => 0.00,
-                            'tax_rate' => 20.00,
-                            'total_net_amount' => 42.00,
-                            'total_gross_amount' => 50.40,
-                            'fulfilled_quantity' => 0.00,
-                            'service_code' => null,
-                            'notes' => null,
-                            'sort_order' => 1,
-                        ],
-                        [
-                            'id' => 'oi-demo-8',
-                            'item_type' => 'service',
-                            'item_id' => null,
-                            'sku' => 'SRV-PACKETA',
-                            'ean' => null,
-                            'name' => $t['s3_name'],
-                            'variant_title' => null,
-                            'quantity' => 1.00,
-                            'unit' => $t['unit_srv'],
-                            'unit_price' => 3.9000,
-                            'discount_percent' => 0.00,
-                            'tax_rate' => 20.00,
-                            'total_net_amount' => 3.90,
-                            'total_gross_amount' => 4.68,
-                            'fulfilled_quantity' => 0.00,
-                            'service_code' => 'SHIPPING-PACKETA',
-                            'notes' => 'Packeta výdajné miesto / Z-Box',
-                            'sort_order' => 2,
-                        ],
-                        [
-                            'id' => 'oi-demo-9',
-                            'item_type' => 'service',
-                            'item_id' => null,
-                            'sku' => 'SRV-COD',
-                            'ean' => null,
-                            'name' => $t['s4_name'],
-                            'variant_title' => null,
-                            'quantity' => 1.00,
-                            'unit' => $t['unit_srv'],
-                            'unit_price' => 1.5000,
-                            'discount_percent' => 0.00,
-                            'tax_rate' => 20.00,
-                            'total_net_amount' => 1.50,
-                            'total_gross_amount' => 1.80,
-                            'fulfilled_quantity' => 0.00,
-                            'service_code' => 'COD-FEE',
-                            'notes' => 'Platba pri prevzatí balíka',
-                            'sort_order' => 3,
-                        ]
-                    ]
-                ],
-
-                // 4. Order 4 - Client Thomas Müller (shipped, paid)
-                [
-                    'id' => 'ord-demo-4',
-                    'order_number' => 'OBJ-2026-0004',
-                    'type' => 'sales',
-                    'status' => 'shipped',
-                    'customer_type' => 'client',
-                    'client_id' => 'lead-3',
-                    'supplier_id' => null,
-                    'guest_name' => null,
-                    'guest_email' => null,
-                    'guest_phone' => null,
-                    'guest_company' => null,
-                    'guest_ico' => null,
-                    'guest_dic' => null,
-                    'guest_ic_dph' => null,
-                    'delivery_recipient' => 'Thomas Müller',
-                    'delivery_street' => 'Hauptstrasse 102',
-                    'delivery_city' => 'Košice',
-                    'delivery_zip' => '040 01',
-                    'delivery_country' => 'SK',
-                    'delivery_phone' => '+49 172 888 999',
-                    'delivery_notes' => $t['ord4_note'],
-                    'shipping_method' => 'gls',
-                    'shipping_pickup_point_id' => null,
-                    'shipping_tracking_number' => 'GLS987654321SK',
-                    'billing_name' => 'Thomas Müller GmbH',
-                    'billing_street' => 'Hauptstrasse 102',
-                    'billing_city' => 'Košice',
-                    'billing_zip' => '040 01',
-                    'billing_country' => 'SK',
-                    'billing_ico' => 'DE98765432',
-                    'billing_dic' => '115/908/332',
-                    'billing_ic_dph' => null,
-                    'payment_method' => 'bank_transfer',
-                    'payment_status' => 'paid',
-                    'paid_at' => '2026-05-12 11:00:00',
-                    'payment_reference' => 'OBJ-2026-0004',
-                    'currency' => 'EUR',
-                    'items_net_amount' => 1050.00,
-                    'services_net_amount' => 85.00,
-                    'total_net_amount' => 1135.00,
-                    'total_tax_amount' => 227.00,
-                    'total_gross_amount' => 1362.00,
-                    'order_date' => '2026-05-11',
-                    'requested_delivery_date' => '2026-05-15',
-                    'confirmed_delivery_date' => '2026-05-15',
-                    'warehouse_id' => 'wh-1',
-                    'notes' => 'Paletová zásielka mramorových platní na pobočku.',
-                    'customer_note' => null,
-                    'created_by' => 'Alex',
-                    'items' => [
-                        [
-                            'id' => 'oi-demo-10',
-                            'item_type' => 'product',
-                            'item_id' => 'item-2',
-                            'sku' => 'SKU-NM-02',
-                            'ean' => '858800123402',
-                            'name' => $t['it2_name'],
-                            'variant_title' => '30mm leštený',
-                            'quantity' => 5.00,
-                            'unit' => 'm²',
-                            'unit_price' => 210.0000,
-                            'discount_percent' => 0.00,
-                            'tax_rate' => 20.00,
-                            'total_net_amount' => 1050.00,
-                            'total_gross_amount' => 1260.00,
-                            'fulfilled_quantity' => 5.00,
-                            'service_code' => null,
-                            'notes' => 'Zabalené na A-stojane drevenej palety.',
-                            'sort_order' => 1,
-                        ],
-                        [
-                            'id' => 'oi-demo-11',
-                            'item_type' => 'service',
-                            'item_id' => null,
-                            'sku' => 'SRV-GLS-PAL',
-                            'ean' => null,
-                            'name' => $t['s5_name'],
-                            'variant_title' => null,
-                            'quantity' => 1.00,
-                            'unit' => $t['unit_srv'],
-                            'unit_price' => 85.0000,
-                            'discount_percent' => 0.00,
-                            'tax_rate' => 20.00,
-                            'total_net_amount' => 85.00,
-                            'total_gross_amount' => 102.00,
-                            'fulfilled_quantity' => 1.00,
-                            'service_code' => 'SHIPPING-CARGO',
-                            'notes' => 'Paletová preprava nadrozmerného nákladu.',
-                            'sort_order' => 2,
-                        ]
-                    ]
-                ]
-            ];
-
-            $insOrd = $pdo->prepare("INSERT INTO `orders` (
-                `id`, `order_number`, `type`, `status`, `customer_type`, `client_id`, `supplier_id`,
-                `guest_name`, `guest_email`, `guest_phone`, `guest_company`, `guest_ico`, `guest_dic`, `guest_ic_dph`,
-                `delivery_recipient`, `delivery_street`, `delivery_city`, `delivery_zip`, `delivery_country`, `delivery_phone`, `delivery_notes`,
-                `shipping_method`, `shipping_pickup_point_id`, `shipping_tracking_number`,
-                `billing_name`, `billing_street`, `billing_city`, `billing_zip`, `billing_country`, `billing_ico`, `billing_dic`, `billing_ic_dph`,
-                `payment_method`, `payment_status`, `paid_at`, `payment_reference`, `currency`,
-                `items_net_amount`, `services_net_amount`, `total_net_amount`, `total_tax_amount`, `total_gross_amount`,
-                `order_date`, `requested_delivery_date`, `confirmed_delivery_date`, `warehouse_id`, `notes`, `customer_note`, `created_by`
-            ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?
-            )");
-
-            $insOi = $pdo->prepare("INSERT INTO `order_items` (
-                `id`, `order_id`, `item_type`, `item_id`, `sku`, `ean`, `name`, `variant_title`,
-                `quantity`, `unit`, `unit_price`, `discount_percent`, `tax_rate`,
-                `total_net_amount`, `total_gross_amount`, `fulfilled_quantity`, `service_code`, `notes`, `sort_order`
-            ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?
-            )");
-
-            foreach ($orders as $ord) {
-                $items = $ord['items'];
-                unset($ord['items']);
-                $insOrd->execute([
-                    $ord['id'],
-                    $ord['order_number'],
-                    $ord['type'],
-                    $ord['status'],
-                    $ord['customer_type'],
-                    $ord['client_id'] ?? null,
-                    $ord['supplier_id'] ?? null,
-                    $ord['guest_name'] ?? null,
-                    $ord['guest_email'] ?? null,
-                    $ord['guest_phone'] ?? null,
-                    $ord['guest_company'] ?? null,
-                    $ord['guest_ico'] ?? null,
-                    $ord['guest_dic'] ?? null,
-                    $ord['guest_ic_dph'] ?? null,
-                    $ord['delivery_recipient'] ?? null,
-                    $ord['delivery_street'] ?? null,
-                    $ord['delivery_city'] ?? null,
-                    $ord['delivery_zip'] ?? null,
-                    $ord['delivery_country'] ?? 'SK',
-                    $ord['delivery_phone'] ?? null,
-                    $ord['delivery_notes'] ?? null,
-                    $ord['shipping_method'] ?? null,
-                    $ord['shipping_pickup_point_id'] ?? null,
-                    $ord['shipping_tracking_number'] ?? null,
-                    $ord['billing_name'] ?? null,
-                    $ord['billing_street'] ?? null,
-                    $ord['billing_city'] ?? null,
-                    $ord['billing_zip'] ?? null,
-                    $ord['billing_country'] ?? 'SK',
-                    $ord['billing_ico'] ?? null,
-                    $ord['billing_dic'] ?? null,
-                    $ord['billing_ic_dph'] ?? null,
-                    $ord['payment_method'] ?? null,
-                    $ord['payment_status'] ?? 'unpaid',
-                    $ord['paid_at'] ?? null,
-                    $ord['payment_reference'] ?? null,
-                    $ord['currency'] ?? 'EUR',
-                    $ord['items_net_amount'] ?? 0.00,
-                    $ord['services_net_amount'] ?? 0.00,
-                    $ord['total_net_amount'] ?? 0.00,
-                    $ord['total_tax_amount'] ?? 0.00,
-                    $ord['total_gross_amount'] ?? 0.00,
-                    $ord['order_date'],
-                    $ord['requested_delivery_date'] ?? null,
-                    $ord['confirmed_delivery_date'] ?? null,
-                    $ord['warehouse_id'] ?? null,
-                    $ord['notes'] ?? null,
-                    $ord['customer_note'] ?? null,
-                    $ord['created_by'] ?? null,
-                ]);
-
-                foreach ($items as $oi) {
-                    $insOi->execute([
-                        $oi['id'],
-                        $ord['id'],
-                        $oi['item_type'],
-                        $oi['item_id'] ?? null,
-                        $oi['sku'] ?? null,
-                        $oi['ean'] ?? null,
-                        $oi['name'],
-                        $oi['variant_title'] ?? null,
-                        $oi['quantity'],
-                        $oi['unit'],
-                        $oi['unit_price'],
-                        $oi['discount_percent'] ?? 0.00,
-                        $oi['tax_rate'] ?? 20.00,
-                        $oi['total_net_amount'],
-                        $oi['total_gross_amount'],
-                        $oi['fulfilled_quantity'] ?? 0.00,
-                        $oi['service_code'] ?? null,
-                        $oi['notes'] ?? null,
-                        $oi['sort_order'] ?? 0,
-                    ]);
-                }
-            }
-        } catch (\Throwable $e) {
-            error_log('[ccrm schema] orders seed skipped: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Seeds demo project types, projects, and invoices/offers for demo installations.
-     */
-    function ccrm_seed_default_invoices_and_projects(PDO $pdo, string $systemLanguage = 'sk'): void {
-        try {
-            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
-            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
-
-            if (!in_array($systemLanguage, ['en', 'sk', 'hu'], true)) {
-                $systemLanguage = 'sk';
-                $stmtLang = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'");
-                if ($stmtLang && ($val = $stmtLang->fetchColumn()) !== false) {
-                    if (in_array($val, ['en', 'sk', 'hu'], true)) {
-                        $systemLanguage = $val;
-                    }
-                }
-            }
-
-            $projTexts = [
-                'sk' => [
-                    'pt_name' => 'Zákazková kamenná výroba',
-                    'pt_desc' => 'Výroba a montáž kamenných kuchynských dosiek, obkladov a schodov.',
-                    'pr1_name' => 'Vila Slavín - Kamenné obklady fasády a interiéru',
-                    'pr2_name' => 'Kuchyňa Trnava - Calacatta Quartz doska a zástena',
-                    'off_title' => 'Cenová ponuka - Kuchynská doska Calacatta Quartz',
-                    'off_subject' => 'Dodávka a opracovanie kamennej kuchynskej dosky s podstavným drezom',
-                    'off_greet' => 'Vážený pán Novák, ďakujeme za prejavenú dôveru a záujem o naše služby.',
-                    'off_item2' => 'Opracovanie výrezu pre podstavný drez vrátane leštenia hrán',
-                    'off_item3' => 'Odborná montáž, lepenie spojov a zameranie Proliner',
-                    'inv_title' => 'Faktúra - Calacatta Quartz kuchynská doska',
-                    'inv_subject' => 'Fakturácia dodávky kamennej dosky podľa objednávky OBJ-2026-0001',
-                    'inv_item1' => 'Calacatta Gold Quartz doska 20mm',
-                    'inv_item2' => 'Keraflex Maxi S1 cementové lepidlo 25kg',
-                    'inv_item3' => 'Kuriérska preprava DPD',
-                    'unit_pack' => 'balenie',
-                    'unit_srv' => 'služba',
-                ],
-                'en' => [
-                    'pt_name' => 'Custom Stone Fabrication',
-                    'pt_desc' => 'Bespoke manufacturing and installation of stone countertops, cladding and stairs.',
-                    'pr1_name' => 'Villa Slavín - Exterior & Interior Stone Cladding',
-                    'pr2_name' => 'Kitchen Trnava - Calacatta Quartz Worktop & Backsplash',
-                    'off_title' => 'Price Quote - Calacatta Quartz Kitchen Worktop',
-                    'off_subject' => 'Supply and fabrication of stone worktop with undermount sink',
-                    'off_greet' => 'Dear Mr. Novák, thank you for your confidence in our craftsmanship.',
-                    'off_item2' => 'Undermount sink cutout fabrication & edge polishing',
-                    'off_item3' => 'Professional installation, joint gluing & Proliner laser templating',
-                    'inv_title' => 'Invoice - Calacatta Quartz Kitchen Worktop',
-                    'inv_subject' => 'Invoicing delivery of stone worktop per order OBJ-2026-0001',
-                    'inv_item1' => 'Calacatta Gold Quartz Slab 20mm',
-                    'inv_item2' => 'Keraflex Maxi S1 Cement Adhesive 25kg',
-                    'inv_item3' => 'DPD Express Courier',
-                    'unit_pack' => 'pack',
-                    'unit_srv' => 'service',
-                ],
-                'hu' => [
-                    'pt_name' => 'Egyedi kőmegmunkálás',
-                    'pt_desc' => 'Kő konyhapultok, falburkolatok és lépcsők egyedi gyártása és beépítése.',
-                    'pr1_name' => 'Slavín Villa - Homlokzati és beltéri kőburkolat',
-                    'pr2_name' => 'Nagyszombat Konyha - Calacatta Quartz pult és hátfal',
-                    'off_title' => 'Árajánlat - Calacatta Quartz konyhapult',
-                    'off_subject' => 'Kő konyhapult szállítása és beépítése alulról épített mosogatóval',
-                    'off_greet' => 'Tisztelt Novák Úr, köszönjük megtisztelő bizalmát.',
-                    'off_item2' => 'Alulról beépített mosogató kivágása és élpolírozása',
-                    'off_item3' => 'Szakszerű beépítés, illesztések ragasztása és Proliner lézeres felmérés',
-                    'inv_title' => 'Számla - Calacatta Quartz konyhapult',
-                    'inv_subject' => 'Kőlap számlázása az OBJ-2026-0001 megrendelés alapján',
-                    'inv_item1' => 'Calacatta Gold Quartz lap 20mm',
-                    'inv_item2' => 'Keraflex Maxi S1 cementkötésű ragasztó 25kg',
-                    'inv_item3' => 'DPD futárszolgálat',
-                    'unit_pack' => 'csomag',
-                    'unit_srv' => 'szolgáltatás',
-                ],
-            ];
-            $t = $projTexts[$systemLanguage] ?? $projTexts['sk'];
-
-            // 1. Project Types
-            $hasPtTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_types'")->fetchColumn();
-            if ($hasPtTable > 0) {
-                $ptCount = (int)$pdo->query("SELECT COUNT(*) FROM `project_types`")->fetchColumn();
-                if ($ptCount === 0) {
-                    $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `deadline_required`, `has_files`, `has_tickets`) VALUES (?, ?, ?, ?, ?, '[]', 1, 1, 1, 7, 0, 1, 1)");
-                    $insPt->execute(['pt_luxury_stone', $t['pt_name'], $t['pt_desc'], 'Boxes', '#10b981']);
-                }
-            }
-
-            // 2. Projects
-            $hasProjTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'")->fetchColumn();
-            if ($hasProjTable > 0) {
-                $projCount = (int)$pdo->query("SELECT COUNT(*) FROM `projects`")->fetchColumn();
-                if ($projCount === 0) {
-                    $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `start_date`, `budget`, `value`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_public_hash`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0)");
-                    $insProj->execute(['proj-vila-slavin', 'pt_luxury_stone', $t['pr1_name'], 'lead-1', 'lead-1', 'active', 'Cstudios', 5, '2026-08-30', '2026-05-15', 6500.00, 12500.00, json_encode(['localhost', '127.0.0.1', 'slavin-residence.sk']), bin2hex(random_bytes(16))]);
-                    $insProj->execute(['proj-kuchyna-neolith', 'pt_luxury_stone', $t['pr2_name'], 'lead-2', 'lead-2', 'active', 'Cstudios', 4, '2026-07-15', '2026-05-18', 4200.00, 8400.00, json_encode(['localhost', '127.0.0.1']), bin2hex(random_bytes(16))]);
-
-                    // Project Managers
-                    if ((int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_managers'")->fetchColumn() > 0) {
-                        $insPm = $pdo->prepare("INSERT INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `user_id` = VALUES(`user_id`)");
-                        $insPm->execute(['proj-vila-slavin', 'u-' . md5('alex@crm.com')]);
-                        $insPm->execute(['proj-kuchyna-neolith', 'u-' . md5('sam@crm.com')]);
-                    }
-                }
-            }
-
-            // 3. Invoices & Offers
-            $hasIoTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'invoices_offers'")->fetchColumn();
-            if ($hasIoTable > 0) {
-                $ioCount = (int)$pdo->query("SELECT COUNT(*) FROM `invoices_offers`")->fetchColumn();
-                if ($ioCount === 0) {
-                    $insIo = $pdo->prepare("INSERT INTO `invoices_offers` (
-                        `id`, `document_number`, `type`, `mode`, `lead_id`, `client_id`, `client_name`, `client_email`, `client_phone`,
-                        `client_street`, `client_city`, `client_postal_code`, `client_country`, `client_ico`, `client_dic`, `client_icdph`,
-                        `title`, `subject`, `location`, `greeting_note`, `subtotal`, `vat_amount`, `total_price`, `currency`,
-                        `status`, `status_changed_at`, `issued_at`, `valid_until`, `due_date`, `created_by`
-                    ) VALUES (
-                        ?, ?, ?, 'default', ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?, ?, ?, 'EUR',
-                        ?, ?, ?, ?, ?, ?
-                    )");
-
-                    $insIoi = $pdo->prepare("INSERT INTO `invoice_offer_items` (
-                        `id`, `invoice_offer_id`, `warehouse_item_id`, `sku`, `name`, `description`, `quantity`, `unit`, `unit_price`, `vat_rate`, `discount_pct`, `total_price`
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-
-                    // Offer 1: Price Offer for Ján Novák
-                    $insIo->execute([
-                        'off-demo-1', 'CP-2026-0001', 'price_offer', 'lead-1', 'lead-1', 'Ján Novák', 'novak@example.com', '+421 905 123 456',
-                        'Mlynské Nivy 42', 'Bratislava', '821 09', 'Slovakia', '36123456', '2021234567', 'SK2021234567',
-                        $t['off_title'], $t['off_subject'], 'Bratislava', $t['off_greet'],
-                        3450.00, 690.00, 4140.00,
-                        'approved', '2026-05-18', '2026-05-16', '2026-06-16', null, 'Sam'
-                    ]);
-
-                    $insIoi->execute(['ioi-demo-1', 'off-demo-1', 'item-1', 'SKU-CQ-01', $t['inv_item1'], 'Prémiová kremenná kompozitná platňa hrúbky 20mm', 2.0000, 'm²', 185.0000, 20.00, 0.00, 444.00]);
-                    $insIoi->execute(['ioi-demo-2', 'off-demo-1', null, 'SRV-CUT-SINK', $t['off_item2'], 'CNC rezanie vodným lúčom a ručné brúsenie/leštenie hrany', 1.0000, 'ks', 280.0000, 20.00, 0.00, 336.00]);
-                    $insIoi->execute(['ioi-demo-3', 'off-demo-1', null, 'SRV-INSTALL', $t['off_item3'], 'Zameranie, doprava, vynáška, osadenie a chemické kotvenie', 1.0000, 'komplet', 450.0000, 20.00, 0.00, 540.00]);
-
-                    // Invoice 1: Invoice for Ján Novák (OBJ-2026-0001)
-                    $insIo->execute([
-                        'inv-demo-1', 'FA-2026-0001', 'invoice', 'lead-1', 'lead-1', 'Ján Novák', 'novak@example.com', '+421 905 123 456',
-                        'Mlynské Nivy 42', 'Bratislava', '821 09', 'Slovakia', '36123456', '2021234567', 'SK2021234567',
-                        $t['inv_title'], $t['inv_subject'], 'Bratislava', null,
-                        483.00, 96.60, 579.60,
-                        'sent', '2026-05-22', '2026-05-22', null, '2026-06-05', 'Sam'
-                    ]);
-
-                    $insIoi->execute(['ioi-demo-4', 'inv-demo-1', 'item-1', 'SKU-CQ-01', $t['inv_item1'], null, 2.0000, 'm²', 185.0000, 20.00, 0.00, 444.00]);
-                    $insIoi->execute(['ioi-demo-5', 'inv-demo-1', 'item-4', 'SKU-MAP-04', $t['inv_item2'], null, 4.0000, $t['unit_pack'], 24.5000, 20.00, 0.00, 117.60]);
-                    $insIoi->execute(['ioi-demo-6', 'inv-demo-1', null, 'SRV-DPD', $t['inv_item3'], null, 1.0000, $t['unit_srv'], 15.0000, 20.00, 0.00, 18.00]);
-                }
-            }
-        } catch (\Throwable $e) {
-            error_log('[ccrm schema] invoices and projects seed skipped: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * One-time repair for demo installs that already hit the 'pending' ENUM bug:
-     * the seed inserted the employees, all salaries and the vacations that came
-     * before the first 'pending' one, then died. `employees` was no longer empty,
-     * so the seed never retried and those installs keep a calendar with a handful
-     * of leave records.
-     *
-     * Deliberately narrow, because it deletes rows. It acts only when ALL hold:
-     *  - DEMO_MODE is 'true' (never a real installation);
-     *  - the four seeded employees exist;
-     *  - every vacation row is a seeded `vac-demo-N` row nobody has edited
-     *    (updated_at = created_at) — a user's own or touched leave is never replaced;
-     *  - none of them is 'pending' (a healthy seed always contains some).
-     * Salaries and employees were written completely by the failed run, so only
-     * vacations are rebuilt. Runs in one transaction and is idempotent: once the
-     * pending rows exist the signature no longer matches.
-     */
-    function ccrm_repair_demo_employee_vacations(PDO $pdo): void {
-        $ownTransaction = false;
-        try {
-            $hasTables = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('employees', 'employee_vacations', 'system_settings')")->fetchColumn();
-            if ($hasTables < 3) return;
-
-            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'")->fetchColumn();
-            if ($demoMode !== 'true') return;
-
-            $seeded = (int)$pdo->query("SELECT COUNT(*) FROM `employees` WHERE `id` IN ('emp-1', 'emp-2', 'emp-3', 'emp-4')")->fetchColumn();
-            if ($seeded < 4) return;
-
-            $total = (int)$pdo->query("SELECT COUNT(*) FROM `employee_vacations`")->fetchColumn();
-            if ($total === 0) return;
-            $untouchedSeed = (int)$pdo->query(
-                "SELECT COUNT(*) FROM `employee_vacations`
-                 WHERE `id` REGEXP '^vac-demo-[0-9]+$' AND `updated_at` = `created_at` AND `status` <> 'pending'"
-            )->fetchColumn();
-            if ($untouchedSeed !== $total) return;
-
-            if (!$pdo->inTransaction()) {
-                $pdo->beginTransaction();
-                $ownTransaction = true;
-            }
-            $pdo->exec("DELETE FROM `employee_vacations` WHERE `id` REGEXP '^vac-demo-[0-9]+$'");
-            $insVac = $pdo->prepare("INSERT INTO `employee_vacations` (`id`, `employee_id`, `vacation_type_id`, `start_date`, `end_date`, `days_count`, `status`, `note`, `approved_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            foreach (ccrm_demo_employee_vacations(new \DateTimeImmutable('now')) as $row) {
-                $insVac->execute($row);
-            }
-            if ($ownTransaction) $pdo->commit();
-            error_log('[ccrm schema] demo vacations repaired after the pending-status seed failure');
-        } catch (\Throwable $e) {
-            if ($ownTransaction && $pdo->inTransaction()) $pdo->rollBack();
-            error_log('[ccrm schema] demo vacation repair skipped: ' . $e->getMessage());
-        }
-    }
 
     /**
      * Migrates ticket system tables and columns on leads, project_types, and projects.
@@ -4209,10 +3756,7 @@ if (!function_exists('ccrm_schema_statements')) {
                 } catch (\Throwable $e) {}
             }
             try {
-                $pdo->exec("UPDATE `tasks` t INNER JOIN `ticket_task_links` tt ON tt.task_id = t.id SET t.related_ticket_id = tt.ticket_id WHERE t.related_ticket_id IS NULL OR t.related_ticket_id = ''");
-                $pdo->exec("UPDATE `projects` SET `name` = 'Vila Slavín – Kamenná fasáda a terasa' WHERE `id` = 'proj-vila-slavin' AND (`name` IS NULL OR `name` = '')");
-                $pdo->exec("UPDATE `projects` SET `name` = 'Kuchynský ostrov Neolith Calacatta' WHERE `id` = 'proj-kuchyna-neolith' AND (`name` IS NULL OR `name` = '')");
-                $pdo->exec("UPDATE `projects` SET `ticket_widget_enabled` = 1, `ticket_allowed_domains` = '[\"localhost\",\"127.0.0.1\",\"slavin-residence.sk\"]' WHERE `id` = 'proj-vila-slavin' AND (`ticket_allowed_domains` IS NULL OR `ticket_allowed_domains` = '' OR `ticket_allowed_domains` = '[]')");
+                $pdo->exec("UPDATE `tasks` t INNER JOIN `ticket_task_links` tt ON tt.task_id = t.id SET t.related_ticket_id = tt.ticket_id WHERE t.related_ticket_id IS NULL OR t.related_ticket_id = ''"); /* recurring-template: schema and migrations */
             } catch (\Throwable $e) {}
 
             // Seed default TICKET_STATUSES and TICKET_SETTINGS if absent
@@ -4307,136 +3851,13 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
-     * Seeds realistic sample tickets, messages, time entries, and support contract on fresh/demo installs.
-     */
-    function ccrm_seed_default_tickets(PDO $pdo): void {
-        try {
-            $hasTicketsTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tickets'")->fetchColumn();
-            if ($hasTicketsTable === 0) return;
-
-            $ticketCount = (int)$pdo->query("SELECT COUNT(*) FROM `tickets`")->fetchColumn();
-            if ($ticketCount > 0) return;
-
-            // Ensure demo project type has tickets enabled
-            try {
-                $pdo->exec("UPDATE `project_types` SET `has_tickets` = 1 WHERE `id` = 'pt_luxury_stone'");
-                $pdo->exec("UPDATE `projects` SET `ticket_widget_enabled` = 1, `ticket_allowed_domains` = '[\"localhost\",\"127.0.0.1\",\"slavin-residence.sk\"]' WHERE `id` = 'proj-vila-slavin' AND (`ticket_allowed_domains` IS NULL OR `ticket_allowed_domains` = '')");
-            } catch (\Throwable $e) {}
-
-            $language = 'sk';
-            try {
-                $langRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'")->fetchColumn();
-                if (is_string($langRaw) && in_array($langRaw, ['sk', 'en', 'hu'], true)) {
-                    $language = $langRaw;
-                }
-            } catch (\Throwable $e) {}
-
-            $texts = [
-                'sk' => [
-                    't1_title' => 'Chyba pri odosielaní kontaktného formulára na podstránke cenníka',
-                    't1_desc' => 'Pri kliknutí na tlačidlo Odoslať dopyt na podstránke /cennik vyskočí v konzole chyba TypeError: Cannot read properties of null (reading \'value\') a formulár sa neodošle.',
-                    't1_msg1' => 'Dobrý deň, posielam screenshot a zachytenú chybu z prehliadača. Prosím o urgentnú opravu, beží nám kampaň.',
-                    't1_msg2' => 'Príčina identifikovaná v chýbajúcom poli #phone-prefix pri mobilnom zobrazení. Pripravujem opravu.',
-                    't2_title' => 'Úprava rozmerov výrezu pre varnú dosku v technickom výkrese',
-                    't2_desc' => 'Prosíme o úpravu šírky výrezu v technickej dokumentácii projektu z 560mm na 564mm podľa novej špecifikácie spotrebiča Bora.',
-                    't2_msg1' => 'Dobrý deň, v prílohe posielam aktualizovaný technický list spotrebiča. Prosím o potvrdenie zapracovania.',
-                    't2_msg2' => 'Dobrý deň pán Novák, výkres sme aktualizovali na 564mm a poslali do výroby.',
-                    'sc_notes' => 'Prioritná projektová a webová podpora SLA Pro',
-                ],
-                'en' => [
-                    't1_title' => 'Contact form submission error on pricing subpage',
-                    't1_desc' => 'Clicking Submit Inquiry on /pricing throws TypeError: Cannot read properties of null (reading \'value\') and fails to submit.',
-                    't1_msg1' => 'Hello, sending screenshot and captured console error from the widget. Please fix urgently as our campaign is live.',
-                    't1_msg2' => 'Root cause identified in missing #phone-prefix input on mobile viewport. Deploying fix.',
-                    't2_title' => 'Adjust cooktop cutout dimensions in technical drawing',
-                    't2_desc' => 'Please update the cutout width in the project CAD specification from 560mm to 564mm per the new Bora appliance sheet.',
-                    't2_msg1' => 'Hi team, please confirm once the CAD file is updated.',
-                    't2_msg2' => 'Hello Mr. Novák, we updated the CAD drawing to 564mm and forwarded it to CNC production.',
-                    'sc_notes' => 'Priority project & web support SLA Pro',
-                ],
-                'hu' => [
-                    't1_title' => 'Hiba a kapcsolatfelvételi űrlap beküldésekor az árlista aloldalon',
-                    't1_desc' => 'Az ajánlatkérés gombra kattintva a /arlista oldalon TypeError: Cannot read properties of null (reading \'value\') hiba jelentkezik.',
-                    't1_msg1' => 'Üdvözlöm, küldöm a képernyőképet és a konzolhibát. Kérem sürgősen javítsák, mert fut a kampányunk.',
-                    't1_msg2' => 'A hibát a mobil nézetben hiányzó #phone-prefix mező okozza. Javítás folyamatban.',
-                    't2_title' => 'Főzőlap kivágási méretének módosítása a műszaki rajzon',
-                    't2_desc' => 'Kérjük a kivágás szélességének módosítását 560mm-ről 564mm-re az új Bora specifikáció alapján.',
-                    't2_msg1' => 'Üdvözlöm, kérem jelezzenek vissza, amint frissült a műszaki rajz.',
-                    't2_msg2' => 'Tisztelt Novák Úr, a rajzot frissítettük 564mm-re és továbbítottuk a gyártásnak.',
-                    'sc_notes' => 'Kiemelt projekt és webes támogatás SLA Pro',
-                ],
-            ];
-            $tx = $texts[$language] ?? $texts['sk'];
-
-            // Seed support contract
-            $insSc = $pdo->prepare("INSERT INTO `support_contracts` (`id`, `client_id`, `project_id`, `tier`, `monthly_hours`, `hourly_rate`, `sla_response_critical_hours`, `sla_response_high_hours`, `sla_response_normal_hours`, `sla_response_low_hours`, `sla_resolve_critical_hours`, `sla_resolve_high_hours`, `sla_resolve_normal_hours`, `sla_resolve_low_hours`, `valid_from`, `valid_until`, `notes`) VALUES (?, ?, ?, 'pro', 10.00, 65.00, 1.00, 4.00, 8.00, 24.00, 4.00, 16.00, 40.00, 120.00, '2026-01-01', '2026-12-31', ?)");
-            $insSc->execute(['sc-demo-1', 'lead-1', 'proj-vila-slavin', $tx['sc_notes']]);
-
-            $now = date('Y-m-d H:i:s');
-            $respDue1 = date('Y-m-d H:i:s', strtotime('+2 hours'));
-            $resDue1 = date('Y-m-d H:i:s', strtotime('+12 hours'));
-            $created2 = date('Y-m-d H:i:s', strtotime('-1 day'));
-            $respAt2 = date('Y-m-d H:i:s', strtotime('-22 hours'));
-            $resAt2 = date('Y-m-d H:i:s', strtotime('-18 hours'));
-
-            $meta1 = json_encode([
-                'url' => 'https://slavin-residence.sk/cennik',
-                'userAgent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36',
-                'viewport' => '1440x900',
-                'origin' => 'https://slavin-residence.sk',
-                'errors' => [
-                    [
-                        'type' => 'onerror',
-                        'message' => "Uncaught TypeError: Cannot read properties of null (reading 'value')",
-                        'source' => 'https://slavin-residence.sk/assets/form.js:142:29',
-                        'timestamp' => date('c', strtotime('-15 minutes'))
-                    ]
-                ]
-            ], JSON_UNESCAPED_UNICODE);
-
-            $insT = $pdo->prepare("INSERT INTO `tickets` (
-                `id`, `ticket_number`, `title`, `description`, `status`, `priority`, `type`, `source`,
-                `project_id`, `client_id`, `reporter_name`, `reporter_email`, `reporter_phone`,
-                `assignee_id`, `assignee_name`, `watchers_json`, `tags_json`, `metadata_json`,
-                `first_response_due_at`, `first_responded_at`, `resolve_due_at`, `resolved_at`, `created_at`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-
-            $insT->execute([
-                'tck-demo-1', 'TCK-000001', $tx['t1_title'], $tx['t1_desc'], 'in_progress', 'high', 'bug', 'widget',
-                'proj-vila-slavin', 'lead-1', 'Ján Novák', 'novak@example.com', '+421 905 123 456',
-                'u-' . md5('alex@crm.com'), 'Alex', json_encode(['Sam']), json_encode(['widget', 'frontend', 'urgent']), $meta1,
-                $respDue1, $now, $resDue1, null, $now
-            ]);
-
-            $insT->execute([
-                'tck-demo-2', 'TCK-000002', $tx['t2_title'], $tx['t2_desc'], 'resolved', 'normal', 'request', 'email',
-                'proj-vila-slavin', 'lead-1', 'Ján Novák', 'novak@example.com', '+421 905 123 456',
-                'u-' . md5('sam@crm.com'), 'Sam', json_encode([]), json_encode(['cad', 'výroba']), null,
-                date('Y-m-d H:i:s', strtotime('-16 hours')), $respAt2, date('Y-m-d H:i:s', strtotime('+24 hours')), $resAt2, $created2
-            ]);
-
-            $insMsg = $pdo->prepare("INSERT INTO `ticket_messages` (`id`, `ticket_id`, `author_type`, `author_user_id`, `author_name`, `author_email`, `is_internal`, `body`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $insMsg->execute(['tmsg-demo-1', 'tck-demo-1', 'client', null, 'Ján Novák', 'novak@example.com', 0, $tx['t1_msg1'], $now]);
-            $insMsg->execute(['tmsg-demo-2', 'tck-demo-1', 'agent', 'u-' . md5('alex@crm.com'), 'Alex', 'alex@crm.com', 1, $tx['t1_msg2'], $now]);
-            $insMsg->execute(['tmsg-demo-3', 'tck-demo-2', 'client', null, 'Ján Novák', 'novak@example.com', 0, $tx['t2_msg1'], $created2]);
-            $insMsg->execute(['tmsg-demo-4', 'tck-demo-2', 'agent', 'u-' . md5('sam@crm.com'), 'Sam', 'sam@crm.com', 0, $tx['t2_msg2'], $resAt2]);
-
-            $insTime = $pdo->prepare("INSERT INTO `ticket_time_entries` (`id`, `ticket_id`, `user_id`, `user_name`, `minutes`, `billable`, `note`, `logged_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            $insTime->execute(['ttime-demo-1', 'tck-demo-1', 'u-' . md5('alex@crm.com'), 'Alex', 45, 1, 'Diagnostika chyby formulára cez widget logy', date('Y-m-d')]);
-            $insTime->execute(['ttime-demo-2', 'tck-demo-2', 'u-' . md5('sam@crm.com'), 'Sam', 30, 1, 'Úprava CAD výkresu 564mm', date('Y-m-d', strtotime('-1 day'))]);
-        } catch (\Throwable $e) {
-            error_log('[ccrm schema] tickets seed skipped: ' . $e->getMessage());
-        }
-    }
-
-    /**
      * Identity of the schema CODE: a hash of every file whose edit can change
      * what ccrm_apply_schema() does. Stored in system_settings once the schema
      * has been applied, so a request can tell "already done for this code".
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/lead_client_backfill.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php', __DIR__ . '/task_files_lib.php', __DIR__ . '/clickup_lib.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php', __DIR__ . '/time_pause_migration.php', __DIR__ . '/notes_migration.php', __DIR__ . '/client_contacts_lib.php', __DIR__ . '/assigned_employees_migration.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

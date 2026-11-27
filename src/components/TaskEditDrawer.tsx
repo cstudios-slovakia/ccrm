@@ -1,23 +1,43 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
     Archive as ArchiveIcon,
     ArrowUpRight,
+    Check,
     CheckSquare,
+    Copy,
+    Repeat,
     FolderKanban,
     Hash,
     Lock,
+    Maximize2,
+    MessageSquare,
+    PanelRightOpen,
     RotateCcw,
     Ticket as TicketIcon,
+    Timer,
     Trash2,
+    UserCheck,
     X,
 } from "lucide-react";
-import type { Lead, Project, Task, Ticket, UserProfile } from "../types";
+import { useUserPref } from "../utils/userPrefs";
+import { TaskActivityPanel } from "./tasks/TaskActivityPanel";
+import { TaskDescriptionFullscreenModal } from "./tasks/TaskDescriptionFullscreenModal";
+import { TaskFilePreviewModal } from "./tasks/TaskFilePreviewModal";
+import { uploadTaskFile } from "../utils/taskFilesApi";
+import type { Lead, Project, Task, TaskFile, Ticket, UserProfile, RecurringTaskTemplate, TaskRecurrence } from "../types";
+import { AgencyWorkerSelect } from "./agency/AgencyWorkerSelect";
+import { TaskRecurrenceFields, createDefaultRecurrence } from "./TaskRecurrenceFields";
+import { RecurringOccurrenceDeleteDialog, type OccurrenceDeleteChoice } from "./RecurringOccurrenceDeleteDialog";
+import { describeRecurrence } from "../utils/recurringTasks";
 import type { Language } from "../utils/translations";
 import { CustomSelect, type DropdownOption } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { TaskEmailReminderField } from "./TaskEmailReminderField";
+import { TaskAddTimeLink, TaskTimeControls } from "./timeTracking/TaskTimeControls";
+import { TaskTimeBreakdown } from "./timeTracking/TaskTimeBreakdown";
 import { projectDisplayName } from "../utils/projects";
+import { taskCategoryOptions } from "../utils/taskCategory";
 import { isClientRecord, recordHref } from "../utils/clientRecord";
 import { staleLeadIdsForTasks } from "../utils/taskLeadPicker";
 import { isDoneTaskState, localStampStr } from "../utils/projectTasks";
@@ -28,6 +48,19 @@ import { useTaskSettings } from "../hooks/useTaskSettings";
 import { CONCLUSION_MAX, cleanConclusion, needsConclusionToFinish, canUntickConclusion } from "../utils/taskConclusion";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { extractTagsFromText, type MentionEntity } from "./TaskPillText";
+import { BlockEditor } from "./BlockEditor";
+import {
+    blockNotesToPlainText,
+    parseNotesToBlocks,
+    removeTagFromDescription,
+    serializeTaskDescription,
+} from "../utils/blockNotes";
+import { TaskWhatsAppMarks } from "./WhatsAppChip";
+import { ClickUpTaskBadge } from "./projects/ClickUpTaskBadge";
+import { isClickUpTask } from "../utils/clickupTasks";
+import { DeadlinePostponedBadge, QuickDeadlineChips, formatDeadlineDate } from "./TaskDeadlineExtras";
+import { clampDeadline, deadlineChange, minDeadlineFor, taskCreatedDate } from "../utils/taskDeadline";
+import { entityAccentStyle } from "../utils/entityAccent";
 
 // Named preset deadline times offered in the picker. "End of day (23:59)" was removed
 // in favour of a "Custom" option that lets the user type any specific time.
@@ -117,7 +150,7 @@ export const DeadlineTimePicker: React.FC<{
                     value={currentValue}
                     disabled={disabled}
                     onChange={(e) => onChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
+                    className="w-full px-3 py-2 rounded-md border border-gray-200 focus:border-entity-solid focus:outline-none bg-white font-semibold disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
                 />
             )}
         </div>
@@ -142,7 +175,9 @@ const CLOSE_ANIMATION_MS = 350;
 
 interface TaskEditDrawerProps {
     /** The task as it is stored; the drawer edits its own copy until Save. */
-    task: Task;
+    task: Task | RecurringTaskTemplate;
+    isTemplate?: boolean;
+    recurringTemplates?: RecurringTaskTemplate[];
     leads: Lead[];
     projects?: Project[];
     tickets?: Ticket[];
@@ -161,15 +196,25 @@ interface TaskEditDrawerProps {
     canDelete?: boolean;
     /** False when no outgoing mail server is set up; the e-mail reminder then warns. */
     mailConfigured?: boolean;
+    /** True when the opt-in Agency & Workforce Leasing module is enabled. */
+    agencyEnabled?: boolean;
     existingTags?: string[];
     /** Lead-state settings, to keep closed leads out of the lead / client picker. */
     leadStageGroups?: Record<string, string>;
     leadStateParents?: Record<string, string>;
     onTagClick?: (tag: string) => void;
     onSave: (task: Task) => void;
+    onSaveTemplate?: (template: RecurringTaskTemplate) => void;
+    onConvertToRecurring?: (task: Task, recurrence: TaskRecurrence) => void;
+    onEditSeries?: (templateId: string) => void;
+    onDeleteOccurrence?: (task: Task, choice: OccurrenceDeleteChoice) => void;
     onToggleArchive?: (task: Task) => void;
     /** Resolves true once the task is really gone; the drawer only closes then. */
     onDelete?: (task: Task) => Promise<boolean>;
+    /** Called when task comment count, reaction counts, or file count change in the activity/files panel. */
+    onTaskMetaPatch?: (taskId: string, patch: { commentCount?: number; reactions?: Record<string, string[]> | null; fileCount?: number }) => void;
+    /** Force the Activity & Chat pane open initially (e.g. clicking a board comment badge). */
+    initialChatOpen?: boolean;
     /** Called after the closing animation has played. */
     onClose: () => void;
 }
@@ -190,22 +235,90 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     systemLanguage,
     currentUserName,
     currentUser,
-    canEdit,
-    canArchive = false,
-    canDelete = false,
+    canEdit: canEditProp,
+    canArchive: canArchiveProp = false,
+    canDelete: canDeleteProp = false,
     mailConfigured,
+    agencyEnabled = false,
     existingTags = [],
     leadStageGroups,
     leadStateParents,
+    isTemplate: isTemplateProp = false,
+    recurringTemplates,
     onTagClick,
     onSave,
+    onSaveTemplate,
+    onConvertToRecurring,
+    onEditSeries,
+    onDeleteOccurrence,
     onToggleArchive,
     onDelete,
+    onTaskMetaPatch,
+    initialChatOpen,
     onClose,
 }) => {
     const t: Translate = (en, sk, hu) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
-    const [draft, setDraft] = useState<Task>(task);
+    const isTemplate = isTemplateProp || Boolean((task as any).recurrence);
+    const isClickUp = !isTemplate && isClickUpTask(task as Task);
+    const canEdit = canEditProp && !isClickUp;
+    const canArchive = canArchiveProp && !isClickUp;
+    const canDelete = canDeleteProp && !isClickUp;
+    const [draft, setDraft] = useState<Task>(task as Task);
+    const [chatExpandedPref, setChatExpandedPref] = useUserPref("taskDrawerChatExpanded");
+    const showChatPane = !isTemplate && Boolean(draft.id);
+    const [chatOpen, setChatOpen] = useState<boolean>(() => !isTemplate && Boolean(initialChatOpen ?? chatExpandedPref));
+    const [mobileTab, setMobileTab] = useState<"details" | "activity">(() => (initialChatOpen ? "activity" : "details"));
+    const [filesRefreshKey, setFilesRefreshKey] = useState(0);
+    const [insertFileSignal, setInsertFileSignal] = useState<{ nonce: number; file: TaskFile } | null>(null);
+    const [fullscreenDescOpen, setFullscreenDescOpen] = useState(false);
+    const [previewFile, setPreviewFile] = useState<TaskFile | null>(null);
+    const [copiedLink, setCopiedLink] = useState(false);
+    const handleTaskMetaChange = useCallback(
+        (taskId: string, patch: { commentCount?: number; reactions?: Record<string, string[]> | null; fileCount?: number }) => {
+            setDraft((prev) => (prev.id === taskId ? { ...prev, ...patch } : prev));
+            if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("ccrm-task-meta-patch", { detail: { taskId, ...patch } }));
+            }
+            onTaskMetaPatch?.(taskId, patch);
+        },
+        [onTaskMetaPatch],
+    );
+    const handleDescriptionFileUpload = useCallback(
+        async (file: File): Promise<TaskFile | null> => {
+            if (!draft.id || isTemplate || !canEdit) return null;
+            try {
+                const res = await uploadTaskFile(draft.id, file);
+                setFilesRefreshKey((k) => k + 1);
+                handleTaskMetaChange(draft.id, { fileCount: res.fileCount });
+                return res.file;
+            } catch (err) {
+                (window as any).showToast?.(
+                    err instanceof Error ? err.message : t("File upload failed.", "Nahrávanie súboru zlyhalo.", "Fájlfeltöltés sikertelen."),
+                    "error",
+                );
+                return null;
+            }
+        },
+        [draft.id, isTemplate, canEdit, handleTaskMetaChange],
+    );
+    const handleInsertFileIntoDescription = useCallback((file: TaskFile) => {
+        setInsertFileSignal({ nonce: Date.now() + Math.random(), file });
+    }, []);
+    const handleInsertFileHandled = useCallback((nonce: number) => {
+        setInsertFileSignal((prev) => (prev?.nonce === nonce ? null : prev));
+    }, []);
+    const [descVersion, setDescVersion] = useState(0);
+    const [templateRecurrence, setTemplateRecurrence] = useState<TaskRecurrence>(() =>
+        (task as any).recurrence ? (task as any).recurrence : createDefaultRecurrence((task as Task).deadline)
+    );
+    const [makeRepeating, setMakeRepeating] = useState(false);
+    const [occurrenceDeleteDialogOpen, setOccurrenceDeleteDialogOpen] = useState(false);
+    const recurringSeriesDescription = useMemo(() => {
+        if (isTemplate || !(task as Task).recurringSourceId || !recurringTemplates) return undefined;
+        const found = recurringTemplates.find((r) => r.id === (task as Task).recurringSourceId);
+        return found ? describeRecurrence(found.recurrence, systemLanguage) : undefined;
+    }, [isTemplate, task, recurringTemplates, systemLanguage]);
     const { offerConclusion } = useTaskSettings();
     const effectiveUser = useMemo<Pick<UserProfile, "name" | "role">>(
         () => currentUser ?? users.find((u) => u.name === currentUserName) ?? { name: currentUserName, role: "" },
@@ -241,6 +354,18 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
         setIsClosing(true);
         closeTimer.current = window.setTimeout(() => onCloseRef.current(), CLOSE_ANIMATION_MS);
     };
+
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.defaultPrevented) return;
+            if (e.key === "Escape" && !occurrenceDeleteDialogOpen && !fullscreenDescOpen && !previewFile) {
+                e.stopPropagation();
+                requestClose();
+            }
+        };
+        document.addEventListener("keydown", onKeyDown);
+        return () => document.removeEventListener("keydown", onKeyDown);
+    }, [occurrenceDeleteDialogOpen, fullscreenDescOpen, previewFile]);
 
     const update = (patch: Partial<Task>) => setDraft((prev) => ({ ...prev, ...patch }));
 
@@ -292,7 +417,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
     const combinedTags = useMemo(() => {
         const fromTitle = extractTagsFromText(draft.title);
-        const fromDesc = extractTagsFromText(draft.description);
+        const fromDesc = extractTagsFromText(blockNotesToPlainText(draft.description));
         const explicit = draft.tags || [];
         return Array.from(new Set([...explicit, ...fromTitle, ...fromDesc]));
     }, [draft.title, draft.description, draft.tags]);
@@ -325,12 +450,18 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
     // Does saving this draft finish a task that still lacks its conclusion?
     // Judged against the stored task, so only a real move to a done state counts.
-    const finishingWithoutConclusion = needsConclusionToFinish(
-        { ...task, requiresConclusion: draft.requiresConclusion, conclusion: draft.conclusion },
+    const finishingWithoutConclusion = !isTemplate && needsConclusionToFinish(
+        { ...(task as Task), requiresConclusion: draft.requiresConclusion, conclusion: draft.conclusion },
         draft.status,
         taskStates,
     );
     const draftIsDone = isDoneTaskState(draft.status, taskStates);
+    // A deadline cannot lie before the day the task was created (a series template has no deadline of its own).
+    const storedTask = isTemplate ? null : (task as Task);
+    const minDeadline = storedTask ? minDeadlineFor(storedTask) : "";
+    // The postponement counters follow the stored deadline, so several edits before one Save count once.
+    const withDeadlineHistory = (next: Task): Task => (storedTask ? { ...next, ...deadlineChange(storedTask, next.deadline) } : next);
+    const draftPostpones = Boolean(storedTask && draft.deadline && storedTask.deadline && draft.deadline > storedTask.deadline);
     // The conclusion box shows once it matters: the task asks for one and is
     // being (or has been) finished, or it already holds text.
     const showConclusion = Boolean(draft.requiresConclusion) && (draftIsDone || Boolean(draft.conclusion?.trim()));
@@ -392,35 +523,169 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     if (typeof document === "undefined") return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[100000] flex justify-end">
+        <div style={entityAccentStyle("tasks")} className="fixed inset-0 z-[100000] flex justify-end">
             <div
                 onClick={requestClose}
                 className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isClosing ? "animate-fade-out" : "animate-fade-in"}`}
             />
             <div
-                className={`relative w-full max-w-md bg-white shadow-2xl h-full flex flex-col p-6 overflow-y-auto ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                role="dialog"
+                aria-modal="true"
+                aria-label={draft.title || t("Task", "Úloha", "Feladat")}
+                className={`relative w-full ${showChatPane && chatOpen ? "max-w-xl lg:max-w-5xl" : "max-w-xl"} bg-white border-l border-gray-200 shadow-lg h-full flex flex-col lg:flex-row overflow-hidden transition-[max-width] duration-200 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
             >
-                <div className="pb-4 border-b border-slate-100 space-y-2">
-                    <div className="flex items-center justify-between">
-                        <span className="type-overline text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
-                            <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
-                            {canEdit
-                                ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
-                                : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
+                <div className="flex-1 min-w-0 flex flex-col min-h-0 h-full">
+                <div className="px-6 pt-6 pb-4 border-b border-gray-200 space-y-2 shrink-0">
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="type-overline text-entity-text bg-entity-subtle border border-entity-border px-2 py-0.5 rounded-md flex items-center gap-1.5">
+                            {isTemplate ? (
+                                <>
+                                    <Repeat className="h-3.5 w-3.5 text-entity-text" />
+                                    {canEdit
+                                        ? t("Edit Recurring Task", "Upraviť opakovanú úlohu", "Ismétlődő feladat szerkesztése")
+                                        : t("View Recurring Task", "Zobraziť opakovanú úlohu", "Ismétlődő feladat megtekintése")}
+                                </>
+                            ) : (
+                                <>
+                                    <CheckSquare className="h-3.5 w-3.5 text-entity-text" />
+                                    {canEdit
+                                        ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
+                                        : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
+                                </>
+                            )}
                         </span>
-                        <button
-                            type="button"
-                            onClick={requestClose}
-                            className="p-1 hover:bg-slate-100 active:scale-95 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
-                        >
-                            <X className="h-5 w-5" />
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                            {!isTemplate && Boolean(draft.id) && (
+                                <>
+                                    <button
+                                        type="button"
+                                        data-testid="task-drawer-copy-link-btn"
+                                        onClick={async () => {
+                                            const hash = `#task-${encodeURIComponent(draft.id)}`;
+                                            const fullUrl =
+                                                typeof window !== "undefined"
+                                                    ? `${window.location.origin}${window.location.pathname}${hash}`
+                                                    : hash;
+                                            try {
+                                                await navigator.clipboard.writeText(fullUrl);
+                                                setCopiedLink(true);
+                                                window.setTimeout(() => setCopiedLink(false), 1800);
+                                            } catch {
+                                                // ignore clipboard error
+                                            }
+                                        }}
+                                        title={t("Copy link to task", "Kopírovať odkaz na úlohu", "Feladat linkjének másolása")}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 text-micro font-bold transition-colors cursor-pointer"
+                                    >
+                                        {copiedLink ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                                        <span className="hidden sm:inline">
+                                            {copiedLink ? t("Copied", "Skopírované", "Másolva") : t("Copy link", "Odkaz", "Link")}
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-testid="task-drawer-open-page-btn"
+                                        onClick={() => {
+                                            if (
+                                                !isTemplate &&
+                                                canEdit &&
+                                                draft.title.trim() &&
+                                                !finishingWithoutConclusion &&
+                                                JSON.stringify(draft) !== JSON.stringify(task)
+                                            ) {
+                                                const sanitizedRequiresConclusion =
+                                                    (!canUntick && task.requiresConclusion)
+                                                        ? true
+                                                        : (draft.requiresConclusion ? true : undefined);
+                                                onSave(withDeadlineHistory({
+                                                    ...draft,
+                                                    requiresConclusion: sanitizedRequiresConclusion,
+                                                    conclusion: cleanConclusion(draft.conclusion ?? ""),
+                                                    tags: combinedTags,
+                                                }));
+                                            }
+                                            if (typeof window !== "undefined") {
+                                                window.location.hash = `task-${encodeURIComponent(draft.id)}`;
+                                            }
+                                            requestClose();
+                                        }}
+                                        title={t("Open full page view", "Otvoriť celú stránku úlohy", "Megnyitás teljes oldalon")}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 text-micro font-bold transition-colors cursor-pointer"
+                                    >
+                                        <Maximize2 className="h-3.5 w-3.5" />
+                                        <span className="hidden sm:inline">
+                                            {t("Full page", "Celá stránka", "Teljes oldal")}
+                                        </span>
+                                    </button>
+                                </>
+                            )}
+                            {showChatPane && (
+                                <button
+                                    type="button"
+                                    data-testid="task-drawer-chat-toggle"
+                                    onClick={() => {
+                                        const next = !chatOpen;
+                                        setChatOpen(next);
+                                        setChatExpandedPref(next);
+                                    }}
+                                    title={chatOpen ? t("Hide Activity & Chat", "Skryť aktivitu a chat", "Aktivitás és csevegés elrejtése") : t("Show Activity & Chat", "Zobraziť aktivitu a chat", "Aktivitás és csevegés megjelenítése")}
+                                    className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-micro font-bold transition-colors cursor-pointer ${
+                                        chatOpen
+                                            ? "bg-entity-subtle border-entity-border text-entity-text"
+                                            : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                                    }`}
+                                >
+                                    {chatOpen ? <MessageSquare className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
+                                    <span>{t("Activity & Chat", "Aktivita a chat", "Aktivitás és csevegés")}</span>
+                                    {(draft.commentCount ?? 0) > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded-full bg-entity-solid text-white tabular-nums">
+                                            {draft.commentCount}
+                                        </span>
+                                    )}
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={requestClose}
+                                aria-label={t("Close", "Zavrieť", "Bezárás")}
+                                title={t("Close", "Zavrieť", "Bezárás")}
+                                className="p-1 hover:bg-gray-100 active:scale-95 rounded-md text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
                     </div>
-                    <h1 className="type-page-title text-slate-900 leading-snug break-words">
+                    <h1 className="type-page-title text-gray-900 leading-snug break-words">
                         {draft.title || t("Untitled Task", "Úloha bez názvu", "Névtelen feladat")}
                     </h1>
+                    {showChatPane && (
+                        <div className="lg:hidden grid grid-cols-2 gap-1 bg-gray-100 p-0.5 rounded-lg border border-gray-200">
+                            <button
+                                type="button"
+                                onClick={() => setMobileTab("details")}
+                                className={`py-1.5 rounded-md text-micro font-bold transition-all cursor-pointer ${
+                                    mobileTab === "details" ? "bg-white text-gray-900 shadow-2xs" : "text-gray-500"
+                                }`}
+                            >
+                                {t("Details", "Detaily", "Részletek")}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setMobileTab("activity")}
+                                className={`py-1.5 rounded-md text-micro font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                    mobileTab === "activity" ? "bg-white text-entity-text shadow-2xs" : "text-gray-500"
+                                }`}
+                            >
+                                <span>{t("Activity & Chat", "Aktivita a chat", "Aktivitás")}</span>
+                                {(draft.commentCount ?? 0) > 0 && (
+                                    <span className="px-1.5 rounded-full bg-entity-subtle text-entity-text tabular-nums">
+                                        {draft.commentCount}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+                    )}
                 </div>
-
                 <form
                     onSubmit={(e) => {
                         e.preventDefault();
@@ -442,16 +707,87 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             (!canUntick && task.requiresConclusion)
                                 ? true
                                 : (draft.requiresConclusion ? true : undefined);
-                        onSave({
+                        if (isTemplate && onSaveTemplate) {
+                            onSaveTemplate({
+                                ...(task as RecurringTaskTemplate),
+                                ...draft,
+                                tags: combinedTags,
+                                recurrence: templateRecurrence,
+                            });
+                            requestClose();
+                            return;
+                        }
+                        if (makeRepeating && onConvertToRecurring) {
+                            onConvertToRecurring(
+                                {
+                                    ...draft,
+                                    requiresConclusion: sanitizedRequiresConclusion,
+                                    conclusion: cleanConclusion(draft.conclusion ?? ""),
+                                    tags: combinedTags,
+                                },
+                                templateRecurrence,
+                            );
+                            requestClose();
+                            return;
+                        }
+                        onSave(withDeadlineHistory({
                             ...draft,
                             requiresConclusion: sanitizedRequiresConclusion,
                             conclusion: cleanConclusion(draft.conclusion ?? ""),
                             tags: combinedTags,
-                        });
+                        }));
                         requestClose();
                     }}
-                    className="flex-1 py-5 space-y-5 text-ui font-bold"
+                    className={`flex-1 min-h-0 flex-col ${showChatPane && mobileTab === "activity" ? "hidden lg:flex" : "flex"}`}
                 >
+                    <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 text-ui font-bold">
+                        {isClickUp && (
+                            <div
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-violet-200 bg-violet-50/70 px-3 py-2.5 text-caption font-medium text-violet-900"
+                                data-testid="task-drawer-clickup-banner"
+                            >
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <ClickUpTaskBadge task={task as Task} showListName showLink={false} userLanguage={systemLanguage} />
+                                    <span>
+                                        {t(
+                                            "Mirrored from ClickUp (read-only). Edit details in ClickUp; track hours below.",
+                                            "Zrkadlené z ClickUpu (iba na čítanie). Detaily upravte v ClickUpe; čas sledujte nižšie.",
+                                            "ClickUpból tükrözve (csak olvasható). A részleteket a ClickUpban szerkessze; az időt alább rögzítheti.",
+                                        )}
+                                    </span>
+                                </div>
+                                {(task as Task).externalUrl && (
+                                    <a
+                                        href={(task as Task).externalUrl || undefined}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-white px-2.5 py-1 text-micro font-bold text-violet-700 hover:bg-violet-50 transition-colors shrink-0"
+                                    >
+                                        <ArrowUpRight className="h-3.5 w-3.5" />
+                                        {t("Open in ClickUp", "Otvoriť v ClickUpe", "Megnyitás ClickUpban")}
+                                    </a>
+                                )}
+                            </div>
+                        )}
+                        {!isTemplate && Boolean((task as Task).recurringSourceId) && (
+                            <div className="p-3 bg-entity-subtle border border-entity-border rounded-lg flex items-center justify-between text-caption font-semibold text-entity-text">
+                                <div className="flex items-center gap-2">
+                                    <Repeat className="h-4 w-4 text-entity-text shrink-0" />
+                                    <span>
+                                        {recurringSeriesDescription || t("Part of a recurring series", "Súčasť opakovanej série", "Egy ismétlődő sorozat része")}
+                                    </span>
+                                </div>
+                                {onEditSeries && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onEditSeries((task as Task).recurringSourceId!)}
+                                        className="text-entity-text hover:opacity-80 underline font-bold cursor-pointer shrink-0 ml-3"
+                                    >
+                                        {t("Edit series", "Upraviť sériu", "Sorozat szerkesztése")}
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     <fieldset disabled={!canEdit} className="space-y-5 min-w-0">
                         <div className="space-y-1">
                             <label className="type-overline text-slate-500 flex items-center justify-between">
@@ -473,32 +809,48 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 }}
                                 mentionEntities={mentionEntities}
                                 onAssignEntity={handleAssignEntity}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50 text-ui font-bold"
+                                className="w-full px-3 py-2 rounded-md border border-gray-200 focus:border-entity-solid focus:outline-none disabled:bg-gray-50 text-ui font-medium"
                             />
                         </div>
 
-                        <div className="space-y-1">
-                            <label className="type-overline text-slate-500 flex items-center justify-between">
+                        <div className="space-y-1.5">
+                            <label className="type-overline text-gray-500 flex items-center justify-between gap-2">
                                 <span>{t("Description", "Popis", "Leírás")}</span>
-                                <span className="text-micro font-normal text-indigo-500">
-                                    {t("Use # for tags, @ to assign", "Použite # pre tagy, @ pre priradenie", "Használjon #-et címkékhez, @-ot hozzárendeléshez")}
+                                <span className="text-micro font-normal text-entity-text text-right">
+                                    {t("Type '/' for blocks & formatting · # for tags", "Napíšte '/' pre bloky a formátovanie · # pre tagy", "Írjon '/' jelet a blokkokhoz · # a címkékhez")}
                                 </span>
                             </label>
-                            <TaskTagMentionInput
-                                multiline
-                                rows={3}
-                                value={draft.description}
-                                onChange={(val) => update({ description: val })}
-                                disabled={!canEdit}
-                                existingTags={existingTags}
-                                onTagAdded={(tag) => {
-                                    const current = draft.tags || [];
-                                    if (!current.includes(tag)) update({ tags: [...current, tag] });
-                                }}
-                                mentionEntities={mentionEntities}
-                                onAssignEntity={handleAssignEntity}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none resize-none disabled:bg-slate-50 text-ui font-bold"
-                            />
+                            <div
+                                className={`flex flex-col min-h-56 max-h-[28rem] overflow-y-auto rounded-md border border-gray-200 px-2.5 py-1.5 transition-colors font-normal ${
+                                    !canEdit
+                                        ? "bg-gray-50 cursor-default"
+                                        : "bg-white focus-within:border-entity-solid focus-within:ring-2 focus-within:ring-entity-ring cursor-text"
+                                }`}
+                            >
+                                <BlockEditor
+                                    key={`${draft.id || "task"}-${descVersion}`}
+                                    compact
+                                    fillHeight
+                                    readOnly={!canEdit}
+                                    initialBlocks={parseNotesToBlocks(draft.description)}
+                                    onChange={(blocks) => update({ description: serializeTaskDescription(blocks) })}
+                                    systemLanguage={systemLanguage}
+                                    exportTitle={draft.title}
+                                    onUploadFile={canEdit && !isTemplate && draft.id ? handleDescriptionFileUpload : undefined}
+                                    onPreviewFile={setPreviewFile}
+                                    insertFileSignal={!fullscreenDescOpen ? insertFileSignal : null}
+                                    onInsertFileHandled={handleInsertFileHandled}
+                                    onOpenFullscreen={() => {
+                                        setInsertFileSignal(null);
+                                        setFullscreenDescOpen(true);
+                                    }}
+                                    placeholder={t(
+                                        "Write task description... (type '/' for blocks, headings, checklists)",
+                                        "Napíšte popis úlohy... (napíšte '/' pre bloky, nadpisy, zoznam úloh)",
+                                        "Írja be a feladat leírását... (írjon '/' jelet a blokkokhoz, címsorokhoz)",
+                                    )}
+                                />
+                            </div>
                         </div>
 
                         {/* Offered while the setting is on; a task that already carries
@@ -518,7 +870,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
                         {combinedTags.length > 0 && (
                             <div className="space-y-1 pt-0.5">
-                                <label className="type-overline text-slate-400 block">
+                                <label className="type-overline text-gray-400 block">
                                     {t("Active Tags", "Aktívne tagy", "Aktív címkék")}
                                 </label>
                                 <div className="flex flex-wrap gap-1.5">
@@ -531,8 +883,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                                     onTagClick(tag);
                                                 }
                                             }}
-                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg type-overline bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs ${
-                                                onTagClick ? "cursor-pointer hover:bg-indigo-100" : ""
+                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md type-overline bg-entity-subtle text-entity-text border border-entity-border shadow-2xs ${
+                                                onTagClick ? "cursor-pointer hover:opacity-90" : ""
                                             }`}
                                             title={onTagClick ? `Filter archive by #${tag}` : undefined}
                                         >
@@ -546,7 +898,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                                         const nextTags = (draft.tags || []).filter((t) => t !== tag);
                                                         const tagRegex = new RegExp(`#${tag}\\b`, "gi");
                                                         const nextTitle = draft.title.replace(tagRegex, "").trim();
-                                                        const nextDesc = draft.description.replace(tagRegex, "").trim();
+                                                        const nextDesc = removeTagFromDescription(draft.description, tag);
+                                                        setDescVersion((v) => v + 1);
                                                         update({
                                                             tags: nextTags,
                                                             title: nextTitle,
@@ -565,48 +918,129 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         )}
 
                         <div className="space-y-1">
-                            <label className="type-overline text-slate-500">
+                            <label className="type-overline text-gray-500">
                                 {t("Start Date", "Dátum začiatku", "Kezdő dátum")}
                             </label>
                             <input
                                 type="date"
                                 value={draft.startDate || ""}
                                 onChange={(e) => update({ startDate: e.target.value })}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50"
+                                className="w-full px-3 py-2 rounded-md border border-gray-200 focus:border-entity-solid focus:outline-none disabled:bg-gray-50"
                             />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                                <label className="type-overline text-slate-500">
-                                    {t("Deadline Date", "Termín", "Határidő")}
-                                </label>
-                                <input
-                                    type="date"
-                                    required
-                                    value={draft.deadline}
-                                    onChange={(e) => update({ deadline: e.target.value })}
-                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50"
-                                />
+                        {!isTemplate && !(task as Task).recurringSourceId && (
+                            <div className="flex items-center justify-between py-2 border-t border-b border-gray-200">
+                                <div className="flex items-center gap-1.5">
+                                    <Repeat className="w-3.5 h-3.5 text-entity-text" />
+                                    <span className="type-overline text-gray-700 font-semibold">
+                                        {t("Make this task repeat", "Nastaviť opakovanie úlohy", "Feladat ismétlődővé tétele")}
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={makeRepeating}
+                                    aria-label={t("Make this task repeat", "Nastaviť opakovanie úlohy", "Feladat ismétlődővé tétele")}
+                                    onClick={() => setMakeRepeating(!makeRepeating)}
+                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                        makeRepeating ? "bg-entity-solid" : "bg-gray-200"
+                                    }`}
+                                >
+                                    <span
+                                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                            makeRepeating ? "translate-x-4" : "translate-x-0"
+                                        }`}
+                                    />
+                                </button>
                             </div>
-                            <div className="space-y-1">
-                                <label className="type-overline text-slate-500">
-                                    {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
-                                </label>
-                                <DeadlineTimePicker
-                                    value={draft.deadlineTime || ""}
-                                    onChange={(val) => update({ deadlineTime: val })}
+                        )}
+
+                        {isTemplate || makeRepeating ? (
+                            <div className="space-y-3">
+                                <TaskRecurrenceFields
+                                    recurrence={templateRecurrence}
+                                    onChange={setTemplateRecurrence}
+                                    t={t}
+                                    language={systemLanguage}
+                                />
+                                <div className="space-y-1">
+                                    <label className="type-overline text-slate-500">
+                                        {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
+                                    </label>
+                                    <DeadlineTimePicker
+                                        value={draft.deadlineTime || ""}
+                                        onChange={(val) => update({ deadlineTime: val })}
+                                        t={t}
+                                        disabled={!canEdit}
+                                    />
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="type-overline text-slate-500">
+                                        {t("Deadline Date", "Termín", "Határidő")}
+                                    </label>
+                                    <input
+                                        type="date"
+                                        required
+                                        value={draft.deadline}
+                                        min={minDeadline || undefined}
+                                        onChange={(e) => update({ deadline: clampDeadline(e.target.value, minDeadline) })}
+                                        className="w-full px-3 py-2 rounded-md border border-gray-200 focus:border-entity-solid focus:outline-none disabled:bg-gray-50"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="type-overline text-slate-500">
+                                        {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
+                                    </label>
+                                    <DeadlineTimePicker
+                                        value={draft.deadlineTime || ""}
+                                        onChange={(val) => update({ deadlineTime: val })}
+                                        t={t}
+                                        disabled={!canEdit}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {!isTemplate && !makeRepeating && (
+                            <div className="space-y-1.5 -mt-2.5" data-testid="task-deadline-extras">
+                                <QuickDeadlineChips
+                                    value={draft.deadline}
+                                    min={minDeadline}
+                                    onPick={(date) => update({ deadline: date })}
                                     t={t}
                                     disabled={!canEdit}
                                 />
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <DeadlinePostponedBadge task={task as Task} language={systemLanguage} t={t} />
+                                    {draftPostpones && (
+                                        <span className="text-micro font-semibold text-amber-600" data-testid="deadline-will-postpone">
+                                            {t(
+                                                "Saving counts as a postponement",
+                                                "Uložením sa to započíta ako posunutie termínu",
+                                                "A mentés halasztásnak számít",
+                                            )}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
-                        <div className="space-y-1">
-                            <label className="type-overline text-slate-500">
-                                {t("Task Status", "Stav úlohy", "Feladat állapota")}
-                            </label>
-                            <CustomSelect
+                        {!isTemplate && (task as Task).externalSource === "waai" && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <TaskWhatsAppMarks task={task as Task} userLanguage={systemLanguage} />
+                            </div>
+                        )}
+
+                        {!isTemplate && (
+                            <div className="space-y-1">
+                                <label className="type-overline text-slate-500">
+                                    {t("Task Status", "Stav úlohy", "Feladat állapota")}
+                                </label>
+                                <CustomSelect
                                 value={draft.status}
                                 disabled={!canEdit}
                                 onChange={(val) => {
@@ -620,8 +1054,9 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 options={taskStates.map((st) => ({ value: st, label: taskStateLabel(st, t), color: taskStateColors[st] || "#64748b" }))}
                             />
                         </div>
+                        )}
 
-                        {showConclusion && (
+                        {!isTemplate && showConclusion && (
                             <div className="space-y-1">
                                 <label className="type-overline text-slate-500 flex items-center justify-between">
                                     <span>{t("Conclusion", "Záver", "Összegzés")}</span>
@@ -648,39 +1083,51 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                         "Krátka poznámka alebo správa o tom, ako úloha dopadla…",
                                         "Rövid jegyzet vagy beszámoló arról, hogyan zárult a feladat…",
                                     )}
-                                    className={`w-full px-3 py-2 rounded-xl border-2 focus:outline-none resize-none disabled:bg-slate-50 text-ui font-bold ${
+                                    className={`w-full px-3 py-2 rounded-md border focus:outline-none resize-none disabled:bg-gray-50 text-ui font-medium ${
                                         conclusionMissing && finishingWithoutConclusion
                                             ? "border-rose-400 focus:border-rose-500"
-                                            : "border-slate-200 focus:border-indigo-600"
+                                            : "border-gray-200 focus:border-entity-solid"
                                     }`}
                                 />
                             </div>
                         )}
 
                         <div className="space-y-1.5">
-                            <label className="type-overline text-slate-500">
+                            <label className="type-overline text-gray-500">
                                 {t("Priority", "Priorita", "Prioritás")}
                             </label>
-                            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1.5 rounded-xl border-2 border-slate-200">
+                            <div className="grid grid-cols-3 gap-2 bg-gray-100 p-1 rounded-lg border border-gray-200">
                                 {(["low", "medium", "high"] as const).map((prio) => (
                                     <button
                                         key={prio}
                                         type="button"
                                         onClick={() => update({ priority: prio })}
-                                        className={`py-2 rounded-lg type-overline transition-all disabled:cursor-not-allowed ${
+                                        className={`py-1.5 rounded-md type-overline transition-all disabled:cursor-not-allowed ${
                                             draft.priority === prio
                                                 ? prio === "high"
                                                     ? "bg-rose-600 text-white"
                                                     : prio === "medium"
                                                       ? "bg-amber-500 text-white"
-                                                      : "bg-slate-600 text-white"
-                                                : "bg-white text-slate-500 hover:bg-slate-100"
+                                                      : "bg-gray-600 text-white"
+                                                : "bg-white text-gray-500 hover:bg-gray-50"
                                         }`}
                                     >
                                         {taskPriorityLabel(prio, t)}
                                     </button>
                                 ))}
                             </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="type-overline text-slate-500">
+                                {t("Category", "Kategória", "Kategória")}
+                            </label>
+                            <CustomSelect
+                                value={draft.category || ""}
+                                disabled={!canEdit}
+                                onChange={(v) => update({ category: v || null })}
+                                options={taskCategoryOptions(t)}
+                            />
                         </div>
 
                         <div className="space-y-1">
@@ -721,6 +1168,38 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 options={projectOptions}
                             />
                         </div>
+
+                        {(agencyEnabled || Boolean(draft.relatedAgencyWorkerId)) && (
+                            <div className="space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                    <label className="type-overline text-slate-500 flex items-center gap-1">
+                                        <UserCheck className="h-3 w-3 text-teal-600" />
+                                        {t("Agency Worker / Rented Employee", "Agentúrny pracovník", "Kölcsönzött dolgozó")}
+                                    </label>
+                                    {draft.relatedAgencyWorkerId && draft.relatedAgencyWorkerId === (task as Task).relatedAgencyWorkerId && (
+                                        <a
+                                            href={`#agency/worker/${encodeURIComponent(draft.relatedAgencyWorkerId)}`}
+                                            data-testid="task-drawer-agency-worker-link"
+                                            className="group/worker type-overline text-teal-600 hover:text-teal-800 flex items-center gap-0.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors"
+                                        >
+                                            {t("Open worker", "Otvoriť pracovníka", "Dolgozó megnyitása")}
+                                            <ArrowUpRight className="h-3 w-3 transition-transform group-hover/worker:translate-x-px group-hover/worker:-translate-y-px" />
+                                        </a>
+                                    )}
+                                </div>
+                                <AgencyWorkerSelect
+                                    value={draft.relatedAgencyWorkerId || ""}
+                                    onChange={(v) =>
+                                        update({
+                                            relatedAgencyWorkerId: isTemplate ? (v || null) : (v || undefined),
+                                        })
+                                    }
+                                    lang={systemLanguage}
+                                    disabled={!canEdit}
+                                    testId="task-drawer-agency-worker"
+                                />
+                            </div>
+                        )}
 
                         {(tickets.length > 0 || resolvedTicketId) && (
                             <div className="space-y-1">
@@ -779,7 +1258,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                     projects,
                                     leadStageGroups,
                                     leadStateParents,
-                                    draft.relatedLeadId || task.relatedLeadId,
+                                    draft.relatedLeadId || task.relatedLeadId || undefined,
                                 )}
                                 value={draft.relatedLeadId || ""}
                                 disabled={!canEdit}
@@ -799,8 +1278,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         </div>
 
                         {draft.relatedLeadId && (
-                            <div className="p-3 rounded-xl bg-violet-50/50 border border-violet-100 flex items-center justify-between">
-                                <span className="type-overline text-violet-700 flex items-center gap-1">
+                            <div style={entityAccentStyle("leads")} className="p-3 rounded-lg bg-entity-subtle border border-entity-border flex items-center justify-between">
+                                <span className="type-overline text-entity-text flex items-center gap-1">
                                     <Lock className="h-3 w-3" />{" "}
                                     {t("Block Pipeline Stage", "Zablokovať fázu pipeline", "Folyamat szakasz zárolása")}
                                 </span>
@@ -808,86 +1287,220 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                     type="checkbox"
                                     checked={draft.isLocking || false}
                                     onChange={(e) => update({ isLocking: e.target.checked })}
-                                    className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed"
+                                    className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed accent-entity-solid"
                                 />
                             </div>
                         )}
-
-                        <TaskEmailReminderField
-                            task={draft}
-                            onChange={(emailReminders) => update({ emailReminders })}
-                            currentUserName={currentUserName}
-                            users={users}
-                            systemLanguage={systemLanguage}
-                            t={t}
-                            disabled={!canEdit}
-                            mailConfigured={mailConfigured}
-                        />
                     </fieldset>
 
-                    <button
-                        type="submit"
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 text-white rounded-xl font-bold text-ui shadow-lg shadow-indigo-600/20 transition-all disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={!canEdit}
-                    >
-                        {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
-                    </button>
+                        <div style={entityAccentStyle("time_tracking")} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                            <div className="type-label mb-2 flex items-center gap-1.5 text-gray-700">
+                                <Timer className="size-4 shrink-0 text-entity-text" />
+                                {t("Time tracking", "Evidencia času", "Időkövetés")}
+                                {!isTemplate && <TaskAddTimeLink task={draft} projects={projects} leads={leads} />}
+                            </div>
+                            {!isTemplate && (
+                                <>
+                                    <TaskTimeControls
+                                        task={draft}
+                                        projects={projects}
+                                        leads={leads}
+                                        onSaveProject={(_id, projectId) => update({ relatedProjectId: projectId })}
+                                    />
+                                    <TaskTimeBreakdown taskId={draft.id} users={users} />
+                                </>
+                            )}
+                            <label className="mt-3 grid gap-1">
+                                <span className="type-overline text-gray-500">{t("Estimate (minutes)", "Odhad (minúty)", "Becslés (perc)")}</span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    disabled={!canEdit}
+                                    value={draft.estimateMinutes ?? ""}
+                                    onChange={(e) => update({ estimateMinutes: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) })}
+                                    className="h-10 w-28 rounded-md border border-gray-200 bg-white px-3 text-ui tabular-nums outline-none focus:border-entity-solid disabled:opacity-60"
+                                />
+                            </label>
+                        </div>
 
-                    {draft.id && canArchive && onToggleArchive && (() => {
-                        // Both parents flip only the stored task's flag, so
-                        // edits made in the drawer before archiving were
-                        // dropped without a word. Keep them first.
-                        const toggleArchive = () => {
-                            if (canEdit && draft.title.trim() && !finishingWithoutConclusion && JSON.stringify(draft) !== JSON.stringify(task)) {
-                                onSave({
-                                    ...draft,
-                                    requiresConclusion: (!canUntick && task.requiresConclusion)
-                                        ? true
-                                        : (draft.requiresConclusion ? true : undefined),
-                                    tags: combinedTags,
-                                });
-                            }
-                            onToggleArchive(draft);
-                            requestClose();
-                        };
-                        const buttonClass = "w-full py-2.5 border-2 border-slate-200 hover:bg-slate-50 active:scale-[0.98] text-slate-600 rounded-xl type-overline flex items-center justify-center gap-1.5 transition-all";
-                        // Unarchiving is a plain click; only archiving needs the hold.
-                        return draft.archived ? (
-                            <button type="button" onClick={toggleArchive} className={`${buttonClass} cursor-pointer`}>
-                                <RotateCcw className="h-3.5 w-3.5" />
-                                {t("Unarchive Task", "Zrušiť archiváciu úlohy", "Feladat archiválásának visszavonása")}
-                            </button>
-                        ) : (
-                            <HoldToConfirmButton
-                                tone="archive"
-                                lang={systemLanguage}
-                                what={draft.title}
-                                onConfirm={toggleArchive}
-                                className={buttonClass}
-                                icon={<ArchiveIcon className="h-3.5 w-3.5" />}
-                            >
-                                {t("Archive Task", "Archivovať úlohu", "Feladat archiválása")}
-                            </HoldToConfirmButton>
-                        );
-                    })()}
+                        {!isClickUp && (
+                            <TaskEmailReminderField
+                                task={draft}
+                                onChange={(emailReminders) => update({ emailReminders })}
+                                currentUserName={currentUserName}
+                                users={users}
+                                systemLanguage={systemLanguage}
+                                t={t}
+                                disabled={!canEdit}
+                                mailConfigured={mailConfigured}
+                            />
+                        )}
 
-                    {draft.id && canDelete && onDelete && (
-                        <HoldToConfirmButton
-                            tone="danger"
-                            lang={systemLanguage}
-                            what={draft.title}
-                            onConfirm={async () => {
-                                const deleted = await onDelete(draft);
-                                if (deleted) requestClose();
-                            }}
-                            className="w-full py-2.5 border-2 border-rose-100 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-xl type-overline flex items-center justify-center gap-1.5 transition-all"
-                            icon={<Trash2 className="h-3.5 w-3.5" />}
+                        {storedTask && taskCreatedDate(storedTask) && (
+                            <p className="type-meta font-medium text-gray-400" data-testid="task-created-on">
+                                {t("Created on", "Vytvorené", "Létrehozva")}{" "}
+                                <span className="font-semibold text-gray-500">
+                                    {formatDeadlineDate(taskCreatedDate(storedTask), systemLanguage)}
+                                    {/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(storedTask.createdAt ?? "") && `, ${(storedTask.createdAt as string).slice(11, 16)}`}
+                                </span>
+                                {storedTask.createdBy ? <> · <span className="font-semibold text-gray-500">{storedTask.createdBy}</span></> : null}
+                            </p>
+                        )}
+                    </div>
+
+                    {!isClickUp && (
+                    <div className="shrink-0 border-t border-gray-200 bg-gray-50/90 px-6 py-4 space-y-2">
+                        <button
+                            type="submit"
+                            className="w-full py-2.5 bg-entity-solid hover:opacity-90 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 text-white rounded-md font-semibold text-ui shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!canEdit}
                         >
-                            {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
-                        </HoldToConfirmButton>
+                            {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
+                        </button>
+
+                        {((draft.id && canArchive && !isTemplate && onToggleArchive) || (draft.id && canDelete && (onDelete || onDeleteOccurrence))) && (
+                            <div className="flex items-center gap-2 [&>*]:flex-1">
+                                {draft.id && canArchive && !isTemplate && onToggleArchive && (() => {
+                                    // Both parents flip only the stored task's flag, so
+                                    // edits made in the drawer before archiving were
+                                    // dropped without a word. Keep them first.
+                                    const toggleArchive = () => {
+                                        if (canEdit && draft.title.trim() && !finishingWithoutConclusion && JSON.stringify(draft) !== JSON.stringify(task)) {
+                                            onSave(withDeadlineHistory({
+                                                ...draft,
+                                                requiresConclusion: (!canUntick && task.requiresConclusion)
+                                                    ? true
+                                                    : (draft.requiresConclusion ? true : undefined),
+                                                tags: combinedTags,
+                                            }));
+                                        }
+                                        onToggleArchive(draft);
+                                        requestClose();
+                                    };
+                                    const buttonClass = "w-full py-2 px-2 border border-gray-200 bg-white hover:bg-gray-50 active:scale-[0.98] text-gray-700 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all";
+                                    // Unarchiving is a plain click; only archiving needs the hold.
+                                    return draft.archived ? (
+                                        <button type="button" onClick={toggleArchive} className={`${buttonClass} cursor-pointer`}>
+                                            <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                                            {t("Unarchive Task", "Zrušiť archiváciu úlohy", "Feladat archiválásának visszavonása")}
+                                        </button>
+                                    ) : (
+                                        <HoldToConfirmButton
+                                            tone="archive"
+                                            lang={systemLanguage}
+                                            what={draft.title}
+                                            onConfirm={toggleArchive}
+                                            className={buttonClass}
+                                            icon={<ArchiveIcon className="h-3.5 w-3.5 shrink-0" />}
+                                        >
+                                            {t("Archive Task", "Archivovať úlohu", "Feladat archiválása")}
+                                        </HoldToConfirmButton>
+                                    );
+                                })()}
+
+                                {draft.id && canDelete && !isTemplate && Boolean((task as Task).recurringSourceId) && onDeleteOccurrence ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => setOccurrenceDeleteDialogOpen(true)}
+                                            className="w-full py-2 px-2 border border-rose-200 bg-white hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                                            {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
+                                        </button>
+                                        <RecurringOccurrenceDeleteDialog
+                                            task={occurrenceDeleteDialogOpen ? (task as Task) : null}
+                                            onChoice={(c) => {
+                                                setOccurrenceDeleteDialogOpen(false);
+                                                if (c !== "cancel") {
+                                                    onDeleteOccurrence(task as Task, c);
+                                                    requestClose();
+                                                }
+                                            }}
+                                            t={t}
+                                        />
+                                    </>
+                                ) : draft.id && canDelete && onDelete && (
+                                    <HoldToConfirmButton
+                                        tone="danger"
+                                        lang={systemLanguage}
+                                        what={draft.title}
+                                        onConfirm={async () => {
+                                            const deleted = await onDelete(draft);
+                                            if (deleted) requestClose();
+                                        }}
+                                        className="w-full py-2 px-2 border border-rose-200 bg-white hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all"
+                                        icon={<Trash2 className="h-3.5 w-3.5 shrink-0" />}
+                                    >
+                                        {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
+                                    </HoldToConfirmButton>
+                                )}
+                            </div>
+                        )}
+                    </div>
                     )}
                 </form>
+                </div>
+                {showChatPane && (chatOpen || mobileTab === "activity") && (
+                    <div
+                        className={`w-full lg:w-96 xl:w-105 min-h-0 flex-1 lg:flex-none lg:h-full lg:border-l border-gray-200 flex-col ${
+                            mobileTab === "activity" ? "flex" : "hidden"
+                        } ${chatOpen ? "lg:flex" : "lg:hidden"}`}
+                    >
+                        <TaskActivityPanel
+                            task={draft}
+                            users={users}
+                            currentUserName={currentUserName}
+                            currentUserRole={effectiveUser.role}
+                            systemLanguage={systemLanguage}
+                            taskStates={taskStates}
+                            taskStateColors={taskStateColors}
+                            mentionEntities={mentionEntities}
+                            onTagClick={onTagClick}
+                            onTaskMetaChange={handleTaskMetaChange}
+                            canEdit={canEdit && !isTemplate}
+                            filesRefreshKey={filesRefreshKey}
+                            onInsertFileIntoDescription={canEdit && !isTemplate ? handleInsertFileIntoDescription : undefined}
+                            onPreviewFile={setPreviewFile}
+                            onCollapse={() => {
+                                setChatOpen(false);
+                                setChatExpandedPref(false);
+                            }}
+                        />
+                    </div>
+                )}
             </div>
+            <TaskDescriptionFullscreenModal
+                open={fullscreenDescOpen}
+                title={draft.title}
+                taskId={isTemplate ? "" : draft.id}
+                description={draft.description}
+                systemLanguage={systemLanguage}
+                currentUserName={currentUserName}
+                currentUserRole={effectiveUser.role}
+                canEdit={canEdit}
+                filesRefreshKey={filesRefreshKey}
+                insertFileSignal={fullscreenDescOpen ? insertFileSignal : null}
+                onInsertFileHandled={handleInsertFileHandled}
+                onChangeDescription={(blocks) => update({ description: serializeTaskDescription(blocks) })}
+                onUploadFile={canEdit && !isTemplate && draft.id ? handleDescriptionFileUpload : undefined}
+                onPreviewFile={setPreviewFile}
+                onInsertIntoDescription={canEdit && !isTemplate ? handleInsertFileIntoDescription : undefined}
+                onFilesChanged={({ fileCount }) => {
+                    if (draft.id && !isTemplate) {
+                        handleTaskMetaChange(draft.id, { fileCount });
+                    }
+                }}
+                onClose={() => {
+                    setFullscreenDescOpen(false);
+                    setDescVersion((v) => v + 1);
+                }}
+            />
+            <TaskFilePreviewModal
+                file={previewFile}
+                systemLanguage={systemLanguage}
+                onClose={() => setPreviewFile(null)}
+            />
         </div>,
         document.body,
     );

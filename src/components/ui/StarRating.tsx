@@ -54,7 +54,7 @@ export const StarRating: React.FC<StarRatingProps> = ({ rating = 0, onChange, us
           >
             <div
               className={`h-2 w-2 rounded-full transition-colors duration-150 ${
-                isFilled ? "bg-amber-500 shadow-sm animate-pulse" : "bg-slate-200"
+                isFilled ? "bg-amber-500 shadow-sm" : "bg-slate-200"
               }`}
             />
           </button>

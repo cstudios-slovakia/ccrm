@@ -1,0 +1,20 @@
+# Agent notes
+
+The repository rules live in [`CLAUDE.md`](CLAUDE.md) (testing, workflow, things that will
+bite you) and `.agents/rules/`. They apply to every agent and every change.
+
+**Time tracking module:** one file, [`docs/TIME-TRACKING.md`](docs/TIME-TRACKING.md). When asked
+to "make phase N", follow Part A of that file (status table, checklist, tests, tick the boxes,
+report, stop).
+
+**Time tracking v2** (parallel tracking, auto-pause, status-driven timers): one file,
+[`docs/TIME-TRACKING-V2.md`](docs/TIME-TRACKING-V2.md); it overrides the first file where they
+disagree. When asked to "make tt2 phase N", follow Part A of that file.
+
+**Demo mode rebuild:** one file, [`docs/DEMO-MODE.md`](docs/DEMO-MODE.md). When asked to
+"make demo phase N", follow Part A of that file.
+
+**Newsletter module:** one file, [`docs/NEWSLETTER.md`](docs/NEWSLETTER.md). When asked to
+"make newsletter phase N", follow Part A of that file (parallel work packages, one worktree each).
+
+**Agency & Workforce Leasing module:** one file, [`docs/AGENCY-MODULE.md`](docs/AGENCY-MODULE.md). Status table, database/API contract, and per-phase checklists live there.

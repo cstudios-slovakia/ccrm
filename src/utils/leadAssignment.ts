@@ -1,4 +1,5 @@
-import type { LeadAssignmentSettings } from "../types";
+import type { LeadAssignmentSettings, UserProfile } from "../types";
+import { projectManagerUserNames } from "./projectEmployees.ts";
 
 /** Auto-assignment off — the behaviour every installation had before the setting existed. */
 export const DEFAULT_LEAD_ASSIGNMENT: LeadAssignmentSettings = {
@@ -58,6 +59,17 @@ export function resolveAssignmentPool(
   return config.users
     .map((u) => byLower.get(u.toLowerCase()))
     .filter((n): n is string => Boolean(n));
+}
+
+/**
+ * Who new leads can be handed to: the users with the Project Manager role, since a lead's owner is its
+ * Project Manager. On an install where nobody has that role, every user, as before the rule.
+ * Mirrors ccrm_lead_assignment_pool() in api/auth.php.
+ */
+export function leadAssignableUserNames(users: ReadonlyArray<UserProfile> | null | undefined): string[] {
+  const pms = projectManagerUserNames(users);
+  if (pms.length > 0) return pms;
+  return Array.from(new Set((users ?? []).map((u) => (u.name || "").trim()).filter(Boolean)));
 }
 
 /** True when a new lead left without an owner will actually get one. */

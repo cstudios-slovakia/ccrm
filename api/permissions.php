@@ -38,13 +38,13 @@ if (!function_exists('ccrm_permission_sections')) {
      */
     function ccrm_permission_sections(): array {
         // Mirrors the access() / toggle() / deleteToggle() helpers of the TS file.
-        $access = function (string $key, string $legacyDefault = 'edit', string $newRoleDefault = 'nothing', ?array $legacy = null): array {
+        $access = function (string $key, string $legacyDefault = 'edit', string $newRoleDefault = 'nothing', ?array $legacy = null, ?array $requires = null): array {
             return [
                 'key' => $key,
                 'kind' => 'access',
                 'legacyDefault' => $legacyDefault,
                 'newRoleDefault' => $newRoleDefault,
-                'requires' => null,
+                'requires' => $requires,
                 'legacyKeys' => $legacy['keys'] ?? null,
                 'legacyEdit' => $legacy['edit'] ?? null,
             ];
@@ -75,6 +75,14 @@ if (!function_exists('ccrm_permission_sections')) {
                 $deleteToggle('tasks', 'nothing'),
                 // On for every role until revoked — see resolveTaskViewAll in taskSelectors.
                 $toggle('tasks.view_all', 'edit', 'edit', ['key' => 'tasks', 'level' => 'view']),
+                // Standalone Weekly Plan board view inside Tasks.
+                $access(
+                    'tasks.weekly_plan',
+                    'edit',
+                    'nothing',
+                    ['keys' => ['tasks.view', 'tasks.create', 'tasks.edit'], 'edit' => ['tasks.create', 'tasks.edit']],
+                    ['key' => 'tasks', 'level' => 'view']
+                ),
             ]],
             ['id' => 'leads', 'permissions' => [
                 $access('leads', 'edit', 'nothing', ['keys' => ['leads.view', 'leads.create', 'leads.edit'], 'edit' => ['leads.create', 'leads.edit']]),
@@ -82,7 +90,11 @@ if (!function_exists('ccrm_permission_sections')) {
             ]],
             ['id' => 'clients', 'permissions' => [$access('clients'), $deleteToggle('clients')]],
             ['id' => 'projects', 'permissions' => [$access('projects'), $deleteToggle('projects')]],
-            ['id' => 'tickets', 'permissions' => [$access('tickets'), $deleteToggle('tickets')]],
+            ['id' => 'tickets', 'permissions' => [
+                $access('tickets'),
+                $deleteToggle('tickets'),
+                $toggle('tickets.time', 'nothing', 'nothing', ['key' => 'tickets', 'level' => 'view']),
+            ]],
             ['id' => 'invoices', 'permissions' => [$access('invoices'), $deleteToggle('invoices')]],
             ['id' => 'orders', 'permissions' => [$access('orders'), $deleteToggle('orders')]],
             ['id' => 'warehouse', 'permissions' => [$access('warehouse'), $deleteToggle('warehouse')]],
@@ -95,6 +107,13 @@ if (!function_exists('ccrm_permission_sections')) {
                 $toggle('employees.files', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view']),
                 $toggle('employees.personal', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view']),
             ]],
+            ['id' => 'agency', 'permissions' => [
+                // Added after roles existed: a stored role without these keys gets nothing until an admin grants it.
+                $access('agency', 'nothing', 'nothing'),
+                $deleteToggle('agency', 'nothing'),
+                $toggle('agency.personal', 'nothing', 'nothing', ['key' => 'agency', 'level' => 'view']),
+                $toggle('agency.payments', 'nothing', 'nothing', ['key' => 'agency', 'level' => 'view']),
+            ]],
             ['id' => 'self_service', 'permissions' => [
                 $access('self.profile', 'nothing', 'nothing'),
                 $toggle('self.payroll', 'nothing', 'nothing'),
@@ -104,6 +123,22 @@ if (!function_exists('ccrm_permission_sections')) {
                 $toggle('self.account', 'edit', 'nothing'),
             ]],
             ['id' => 'meetings', 'permissions' => [$access('meetings'), $deleteToggle('meetings')]],
+            ['id' => 'time_tracking', 'permissions' => [
+                $access('time_tracking', 'edit', 'nothing'),
+                $toggle('time_tracking_team', 'nothing', 'nothing', ['key' => 'time_tracking', 'level' => 'view']),
+                $toggle('time_tracking_costs', 'nothing', 'nothing', ['key' => 'time_tracking', 'level' => 'view']),
+                $toggle('time_tracking_salary_report', 'nothing', 'nothing', ['key' => 'time_tracking', 'level' => 'view']),
+                $toggle('time_tracking_parallel', 'edit', 'edit', ['key' => 'time_tracking', 'level' => 'edit']),
+                $toggle('time_tracking_create_projects', 'edit', 'edit', ['key' => 'time_tracking', 'level' => 'edit']),
+            ]],
+            // WAAI (WhatsApp) shown inside the CRM. Nobody has it until an administrator grants it; admins always do.
+            ['id' => 'whatsapp', 'permissions' => [$access('whatsapp', 'nothing', 'nothing')]],
+            // Newsletter: nobody until an administrator grants it; admins always have everything.
+            ['id' => 'newsletter', 'permissions' => [
+                $access('newsletter', 'nothing', 'nothing'),
+                $toggle('newsletter_send', 'nothing', 'nothing', ['key' => 'newsletter', 'level' => 'edit']),
+                $toggle('newsletter_settings', 'nothing', 'nothing', ['key' => 'newsletter', 'level' => 'edit']),
+            ]],
             ['id' => 'files', 'permissions' => [
                 $access('files', 'edit', 'nothing', ['keys' => ['files.view', 'files.create'], 'edit' => ['files.create']]),
                 $toggle('files.delete', 'edit', 'nothing', ['key' => 'files', 'level' => 'edit'], ['files.delete']),
@@ -153,15 +188,20 @@ if (!function_exists('ccrm_permission_sections')) {
 
     /**
      * findRole(): case-insensitive lookup so a stored `admin` and a registry
-     * `Admin` still meet. Returns the role record or null.
+     * `Admin` still meet, and the legacy enum spelling `project_manager` still
+     * finds `Project Manager`. The session carries `users.role` as stored, and a
+     * writer that skips ccrm_normalize_role (the demo seeder did) otherwise left
+     * that user with no role at all: every module closed, every push refused.
+     * Returns the role record or null.
      */
     function ccrm_find_role(?array $roles, ?string $roleName): ?array {
-        $wanted = strtolower(trim((string)$roleName));
+        $fold = static fn(string $name): string => str_replace('_', ' ', strtolower(trim($name)));
+        $wanted = $fold((string)$roleName);
         if ($wanted === '' || !is_array($roles)) {
             return null;
         }
         foreach ($roles as $role) {
-            if (is_array($role) && strtolower(trim((string)($role['name'] ?? ''))) === $wanted) {
+            if (is_array($role) && $fold((string)($role['name'] ?? '')) === $wanted) {
                 return $role;
             }
         }
@@ -209,6 +249,7 @@ if (!function_exists('ccrm_permission_sections')) {
                     'tasks' => 'edit',
                     'tasks.delete' => 'nothing',
                     'tasks.view_all' => 'edit',
+                    'tasks.weekly_plan' => 'edit',
                     'leads' => 'edit',
                     'leads.delete' => 'edit',
                     'clients' => 'edit',
@@ -217,6 +258,7 @@ if (!function_exists('ccrm_permission_sections')) {
                     'projects.delete' => 'edit',
                     'tickets' => 'edit',
                     'tickets.delete' => 'edit',
+                    'tickets.time' => 'edit',
                     'invoices' => 'edit',
                     'invoices.delete' => 'edit',
                     'orders' => 'edit',
@@ -231,8 +273,18 @@ if (!function_exists('ccrm_permission_sections')) {
                     'employees.vacations' => 'edit',
                     'employees.files' => 'edit',
                     'employees.personal' => 'edit',
+                    'agency' => 'edit',
+                    'agency.delete' => 'edit',
+                    'agency.personal' => 'edit',
+                    'agency.payments' => 'nothing',
                     'meetings' => 'edit',
                     'meetings.delete' => 'edit',
+                    'time_tracking' => 'edit',
+                    'time_tracking_team' => 'edit',
+                    'time_tracking_costs' => 'nothing',
+                    'time_tracking_salary_report' => 'nothing',
+                    'time_tracking_parallel' => 'edit',
+                    'time_tracking_create_projects' => 'edit',
                     'files' => 'edit',
                     'files.delete' => 'edit',
                     'email' => 'edit',
@@ -368,6 +420,7 @@ if (!function_exists('ccrm_permission_sections')) {
             'tasks' => 'edit',
             'tasks.delete' => 'nothing',
             'tasks.view_all' => 'nothing',
+            'tasks.weekly_plan' => 'view',
             'leads' => 'nothing',
             'leads.delete' => 'nothing',
             'clients' => 'nothing',
@@ -380,6 +433,7 @@ if (!function_exists('ccrm_permission_sections')) {
             'orders.delete' => 'nothing',
             'tickets' => 'nothing',
             'tickets.delete' => 'nothing',
+            'tickets.time' => 'nothing',
             'warehouse' => 'nothing',
             'warehouse.delete' => 'nothing',
             'financial' => 'nothing',
@@ -390,8 +444,22 @@ if (!function_exists('ccrm_permission_sections')) {
             'employees.vacations' => 'nothing',
             'employees.files' => 'nothing',
             'employees.personal' => 'nothing',
+            'agency' => 'nothing',
+            'agency.delete' => 'nothing',
+            'agency.personal' => 'nothing',
+            'agency.payments' => 'nothing',
             'meetings' => 'nothing',
             'meetings.delete' => 'nothing',
+            'time_tracking' => 'edit',
+            'time_tracking_team' => 'nothing',
+            'time_tracking_costs' => 'nothing',
+            'time_tracking_salary_report' => 'nothing',
+            'time_tracking_parallel' => 'edit',
+            'time_tracking_create_projects' => 'edit',
+            'whatsapp' => 'nothing',
+            'newsletter' => 'nothing',
+            'newsletter_send' => 'nothing',
+            'newsletter_settings' => 'nothing',
             'files' => 'nothing',
             'files.delete' => 'nothing',
             'email' => 'nothing',

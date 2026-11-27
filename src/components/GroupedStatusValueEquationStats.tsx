@@ -20,6 +20,7 @@ import { deepenForWhite } from "../utils/accentColor";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
 import { BigNumber, CardFooter, SegmentBar, SegmentedToggle, WidgetCard } from "./dashboard/widgetKit";
+import { PRODUCT_NAME } from "../utils/brand";
 
 export interface StatusStatDetailRow {
   id: string;
@@ -30,6 +31,8 @@ export interface StatusStatDetailRow {
   date?: string;
   totalBudget?: number;
   invoiced?: number;
+  /** Issued/planned invoices that are not paid yet (project rows). */
+  invoicedOpen?: number;
   invoicable: number;
   type: "lead" | "project";
   url?: string;
@@ -38,13 +41,15 @@ export interface StatusStatDetailRow {
 export interface StatusStatItem {
   key: string;
   name: string;
-  value: number; // Always the invoicable value!
+  value: number; // Always the invoicable (not yet invoiced) value!
   count: number;
   color?: string;
   /** Closed in the lead / project status settings (won, lost, completed, cancelled…). */
   closed?: boolean;
   totalBudget?: number;
   invoiced?: number;
+  /** Total issued/planned but unpaid invoices across projects in this status. */
+  invoicedOpen?: number;
   rows?: StatusStatDetailRow[];
 }
 
@@ -763,7 +768,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                       "Filtrovať podľa názvu, klienta, manažéra, divízie...",
                       "Szűrés név, ügyfél, felelős, divízió szerint..."
                     )}
-                    className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold focus:outline-hidden focus:bg-white focus:border-indigo-500 transition-colors"
+                    className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-md text-ui font-medium focus:outline-hidden focus:border-entity-solid focus:ring-2 focus:ring-entity-ring transition-colors"
                   />
                   {drawerSearch && (
                     <button
@@ -891,7 +896,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                           onClick={() => setDrawerData(null)}
                           className="text-micro font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
                         >
-                          <span>{t("Open in CRM", "Otvoriť v CRM", "Megnyitás a CRM-ben")}</span>
+                          <span>{t(`Open in ${PRODUCT_NAME}`, `Otvoriť v ${PRODUCT_NAME}`, `Megnyitás a ${PRODUCT_NAME}-ben`)}</span>
                           <ExternalLink className="h-3 w-3" />
                         </a>
                       </div>

@@ -60,7 +60,7 @@ test.describe('Leads — favorites on the top', () => {
 
     const firstColumn = page.locator('h4', { hasText: NOVAK }).first();
     await expect(firstColumn).toBeVisible();
-    const headers = page.locator('span.type-overline.text-slate-800');
+    const headers = page.locator('[data-kanban-col-header]');
     await expect(headers.first()).toHaveText('Obľúbené');
     await expect(page.locator('h4', { hasText: NOVAK })).toHaveCount(1);
   });

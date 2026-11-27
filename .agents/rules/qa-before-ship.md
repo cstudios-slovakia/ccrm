@@ -8,24 +8,30 @@ Full guide: [`docs/TESTING.md`](../../docs/TESTING.md).
 
 ## 1. The rule
 
-When a feature, fix or UI change is **finished**, before the version bump and
-the build commit:
+When a feature, fix or UI change is **finished**, before its commit is merged
+and before the build commit:
 
-1. Type-check and run the unit tests:
+1. Run the standard verification:
    ```bash
-   npx tsc -p tsconfig.app.json --noEmit
-   npm run test:unit
+   npm run check          # app + QA-suite type-check, unit tests, backend mirror, undefined-symbol audit
+   npm run check -- --fast  # same without the unit tests, while iterating
    ```
+   It is what CI runs, with incremental type-checks (warm: a few seconds). A Claude Code
+   Stop hook (`scripts/agent/stop-check.mjs`) runs it automatically when you finish with
+   changed source and blocks the stop on a failure, so do not claim "done" on a red check.
+   Audit findings are compared with `scripts/agent/undefined-symbols-baseline.json`:
+   fix a new finding, never add it to the baseline to get green.
 2. Run QA on **your own files only**, never plain `npm run test:qa`. Redirect the
    output to a log file and read it (no `tail`/`head` pipes):
    ```bash
-   QA_WAIT_MIN=10 node scripts/qa/run-qa.mjs --files <files you changed> > qa.log 2>&1
+   node scripts/qa/run-qa.mjs --files <files you changed> > qa.log 2>&1
    ```
 3. Act on the exit code:
    - **0** - commit as usual.
    - **1** - findings. Triage and fix under the rules in section 5: never loosen
      a check; a run that hit its cap or ran under load is load, not evidence.
-   - **2** (not admitted within 10 min), **or** the shell tool cut the call off
+   - **2** (skipped: another run is live, RAM is low or the port is busy - the
+     runner checks once and never waits), **or** the shell tool cut the call off
      before a verdict, **or** the user said to skip QA - commit anyway with a
      line `QA: pending` in the commit message body (above the co-author
      trailers), and tell the user in the reply.
@@ -37,7 +43,7 @@ the build commit:
 This slots into [`commit-and-versioning.md`](./commit-and-versioning.md) as the
 step before it:
 
-> test -> bump `src/utils/version.ts` -> changelog entry -> build -> commit
+> test (`npm run check` + scoped QA) -> collect changelog (bumps the version) -> build -> commit
 
 Nothing here needs Docker, PHP or a database. The suite mocks `/sync.php`,
 `/api/*` and `/upload.php` and seeds its own data, so it never touches a real
@@ -47,7 +53,7 @@ backend and is safe to run at any time.
 
 | You changed | Run |
 |---|---|
-| Pure logic in `src/utils` | `npm run test:unit` |
+| Pure logic in `src/utils` | `npm run check` (includes the unit tests) |
 | One module's UI | `npm run test:qa:crawler` |
 | Sidebar, header or routing | `npm run test:qa:nav` |
 | How `sync.php` or `api/*.php` stores or reads back a field | `npm run test:persistence` — the QA suite mocks the backend and cannot see a value saved under one key and read back under another (TESTING.md 5c) |
@@ -72,8 +78,8 @@ Several sessions share this machine and often this checkout. Every one of them
 following this rule at once is what overloaded it, so `scripts/qa/run-qa.mjs`
 admits one run at a time. The rules that go with it:
 
-- **If it prints `Waiting: ...`, wait** - up to the 10 minutes `QA_WAIT_MIN=10`
-  allows, then see exit code 2 above. Never kill the other run, never sweep
+- **If it prints `QA run skipped: ...`, move on** - see exit code 2 above. Do
+  not retry in a loop or wait for it yourself. Never kill the other run, never sweep
   processes by port, never set another `QA_PORT` to run beside it.
 - **Never start a QA run as a background task.** A backgrounded shell task that
   gets cut off kills the run halfway. Run it in the foreground and read the
@@ -81,9 +87,9 @@ admits one run at a time. The rules that go with it:
 - **Name your files** (`--files`). Plain `npm run test:qa` diffs the whole
   working tree, so its scope is every session's changes, not yours.
 - **Pure logic needs no browser.** A change confined to `src/utils` is covered by
-  `npm run test:unit`; the scoped run would only add the shell tests.
+  `npm run check`; the scoped run would only add the shell tests.
 - **Do not pipe the runner through `tail` or `head`.** The output then only
-  appears when the run ends, so you cannot see `Waiting:`, the scope line
+  appears when the run ends, so you cannot see the scope line
   (`Scope: FULL SUITE` means stop and reconsider) or progress.
 - A run that hits its time cap (15 min scoped, 45 full) or reports defects while
   other runs were live is **load, not evidence** - re-run it alone before

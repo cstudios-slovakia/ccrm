@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatNumber, formatMoney } from "./currency.ts";
+import { formatNumber, formatMoney, defaultCurrencyForLanguage } from "./currency.ts";
 
 test("formatNumber: formats numbers with Central European spacing instead of American commas", () => {
   // Thousands separation uses space (non-breaking space \u00a0 or \u202f)
@@ -24,4 +24,18 @@ test("formatMoney: places symbol and Central European separators", () => {
   const eur = formatMoney(3100, "EUR", "sk");
   const normalized = eur.replace(/\s|\u00a0|\u202f/g, " ");
   assert.equal(normalized, "3 100 €");
+});
+
+test("formatMoney: HUF is a suffix currency without decimals", () => {
+  const norm = (s: string) => s.replace(/\s| | /g, " ");
+  assert.equal(norm(formatMoney(1234567, "HUF", "hu")), "1 234 567 Ft");
+  assert.equal(norm(formatMoney(72000.4, "HUF", "hu")), "72 000 Ft");
+  // Explicit options still win.
+  assert.equal(norm(formatMoney(12345.5, "HUF", "hu", { minimumFractionDigits: 1, maximumFractionDigits: 1 })), "12 345,5 Ft");
+});
+
+test("defaultCurrencyForLanguage follows decision B4", () => {
+  assert.equal(defaultCurrencyForLanguage("sk"), "EUR");
+  assert.equal(defaultCurrencyForLanguage("hu"), "HUF");
+  assert.equal(defaultCurrencyForLanguage("en"), "USD");
 });

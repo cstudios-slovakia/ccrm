@@ -22,6 +22,41 @@ export const hashRecord = (record: any): string => {
   return hash;
 };
 
+// --- Warehouse stock rows ----------------------------------------------------
+// `warehouse_stock` has a composite key (warehouse_id, item_id) and no id column.
+// A row without an id cannot sit in a baseline, so diffRecords() used to send the
+// whole stock table, as absolute quantities, on every push from a warehouse editor.
+// That silently reverted any stock change made meanwhile by MCP or another tab.
+// The synthetic id `<warehouseId>:<itemId>` (sync.php emits the same on read) lets
+// the diff send only the rows this tab actually changed.
+
+export const stockRowId = (row: { warehouseId?: unknown; itemId?: unknown }): string =>
+  `${String(row.warehouseId ?? "")}:${String(row.itemId ?? "")}`;
+
+// Same object in, same object out, so hashRecord's identity cache keeps working
+// and an untouched locally-created row hashes identically push after push.
+const stockIdCache = new WeakMap<object, any>();
+
+export const withStockRowIds = <T extends { warehouseId?: unknown; itemId?: unknown; id?: unknown }>(
+  rows: readonly T[] | undefined,
+): (T & { id: string })[] => {
+  const out: (T & { id: string })[] = [];
+  for (const r of rows ?? []) {
+    if (!r || typeof r !== "object") continue;
+    if (r.id != null && r.id !== "") {
+      out.push(r as T & { id: string });
+      continue;
+    }
+    let withId = stockIdCache.get(r);
+    if (!withId) {
+      withId = { ...r, id: stockRowId(r) };
+      stockIdCache.set(r, withId);
+    }
+    out.push(withId);
+  }
+  return out;
+};
+
 export const baselineOf = (records: any[] | undefined): RecordBaseline => {
   const out: RecordBaseline = new Map();
   for (const r of records ?? []) {
@@ -79,6 +114,10 @@ export const diffRecords = (
   return { changed, deletedIds, next };
 };
 
+/** The finance blobs a push carries whole; each is left out while it still matches the server. */
+export const FINANCIAL_BLOB_KEYS = ["financialTrend", "financialMode", "financialSimplifiedTable"] as const;
+export type FinancialBlobKey = typeof FINANCIAL_BLOB_KEYS[number];
+
 // Collections the delta sync tracks, plus the two blobs that are not record
 // lists (settings, the role registry). A refusal tag whose collection is not
 // here is one this client does not know — it is still a refused write.
@@ -86,7 +125,7 @@ const KNOWN_SKIP_COLLECTIONS = new Set([
   "leads", "tasks", "users", "roles", "meetingNotes", "customDashboards",
   "projectTypes", "projects", "warehouses", "suppliers", "warehouseItems",
   "warehouseStock", "warehouseBatches", "warehouseMovements", "financialCategories",
-  "financialRecords", "invoicesOffers", "aiCustomTemplates", "clientCategories",
+  "financialRecords", "invoicesOffers", "aiCustomTemplates", "clientCategories", "offerCategories",
   "employees", "employeeSalaries", "employeeVacations", "orders", "tickets",
   "supportContracts", "settings", "unifiedEntries", "unifiedEntriesData",
 ]);
@@ -134,8 +173,48 @@ export const skipIsLostWork = (tag: string, payload: { [key: string]: unknown })
     const ids = deleted && typeof deleted === "object"
       ? (deleted as { [key: string]: unknown })[col]
       : undefined;
-    return Array.isArray(ids) && ids.length > 0;
+    return carriesWork(ids);
   }
-  const body = payload[col];
-  return Array.isArray(body) ? body.length > 0 : body != null && typeof body === "object";
+  return carriesWork(payload[col]);
+};
+
+/**
+ * Whether a payload section holds anything to save. `unifiedEntriesData` (and its
+ * deletions) is a map of entry id → rows, so a push that changed nothing sends
+ * `{}` or `{ id: [] }` — that is not work, and counting it as such warned every
+ * restricted user on every push.
+ */
+const carriesWork = (value: unknown): boolean => {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value != null && typeof value === "object") return Object.values(value).some(carriesWork);
+  return value != null;
+};
+
+/**
+ * The GitHub pairing of a project travels in a save only when this tab changed it. A project record is
+ * sent whole, and a tab that has not pulled a colleague's pairing yet would otherwise overwrite it with
+ * the old value on any unrelated edit. The baseline holds the record as last synced: a pairing key equal
+ * to it was not changed here and is left out (sync.php treats an absent key as "unchanged"). A project
+ * with no baseline entry is new and goes out whole.
+ */
+export const omitUnchangedGithubPairing = (changed: any[], baseline: RecordBaseline | undefined): any[] => {
+  if (!baseline) return changed;
+  return changed.map((project) => {
+    const synced = project && typeof project === "object" && project.id != null ? baseline.get(String(project.id)) : undefined;
+    if (synced === undefined) return project;
+    let stored: any;
+    try {
+      stored = JSON.parse(synced);
+    } catch {
+      return project;
+    }
+    let out = project;
+    for (const key of ["githubRepo", "githubBranch"]) {
+      if (key in project && (project[key] || null) === (stored?.[key] || null)) {
+        if (out === project) out = { ...project };
+        delete out[key];
+      }
+    }
+    return out;
+  });
 };

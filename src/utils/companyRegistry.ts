@@ -11,6 +11,8 @@
 // (registeruz.sk — DIČ and the statistical codes) for Slovakia, and ARES for
 // Czechia, then hands back the normalised shapes below.
 
+import { contactNameFromRegistry } from "./contactName.ts";
+
 export type RegistryCountry = "SK" | "CZ";
 
 /** Which register the entity sits in. `zrsr` = a freelancer / sole trader. */
@@ -246,6 +248,12 @@ export function companyAddressFields(details: CompanyDetails): CompanyAddressFie
   };
 }
 
+/** The first / last name a registry contact person is split into, as record fields (empty when unsure). */
+function registryContactParts(person?: string): { contactFirstName?: string; contactLastName?: string } {
+  const parts = contactNameFromRegistry(person);
+  return parts ? { contactFirstName: parts.firstName, contactLastName: parts.lastName } : {};
+}
+
 /**
  * Merges registry details into a client record. Every form that already holds a
  * Lead (the invoicing wizard, and anything else that refreshes a client from the
@@ -267,6 +275,8 @@ export function applyCompanyDetailsToLead<T extends CompanyBackedRecord>(lead: T
     taxId: keep(details.taxId, lead.taxId),
     vatId: keep(details.vatId, lead.vatId),
     contactPerson: (lead.contactPerson || "").trim() || details.contactPerson || "",
+    // A person added from the register is split like the server splits an old contact (null when unsure).
+    ...((lead.contactPerson || "").trim() ? {} : registryContactParts(details.contactPerson)),
     address: {
       ...(lead.address || {}),
       street: keep(details.street, lead.address?.street),
@@ -294,6 +304,8 @@ export interface CompanyBackedRecord {
   taxId?: string;
   vatId?: string;
   contactPerson?: string;
+  contactFirstName?: string;
+  contactLastName?: string;
   address?: {
     street?: string;
     city?: string;

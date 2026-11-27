@@ -1,0 +1,1 @@
+var e=e=>(e.id||``).startsWith(`client-`)||(Number(e.adjustment)||0)>0,t=t=>e(t)?`client`:`lead`,n=t=>e(t)?`#client-${encodeURIComponent((t.name||``).trim())}`:`#lead-${encodeURIComponent(t.id||``)}`;export{n,t as r,e as t};

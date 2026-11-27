@@ -1,6 +1,8 @@
 <?php
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/workflows_engine.php';
 require_once __DIR__ . '/task_reminders.php';
+require_once __DIR__ . '/recurring_tasks.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -8,7 +10,7 @@ header('Cache-Control: no-store');
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed.')]);
     exit;
 }
 require_once $configFile;
@@ -21,9 +23,47 @@ try {
     exit;
 }
 
+// Run as a PHP file (a host's "run a PHP script" cron, or `php api/cron.php`): there is
+// no HTTP request, so only someone already on the server can start it and no token is
+// asked for. A web request always sets REQUEST_METHOD, so this can't be reached over HTTP.
+$ccrmCronFromCli = !isset($_SERVER['REQUEST_METHOD'])
+    && (PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg' || strncmp(PHP_SAPI, 'cgi', 3) === 0);
+$isCli = $ccrmCronFromCli;
+if ($ccrmCronFromCli) {
+    // Code below reads the host from the request (SMTP greeting name, links); give it the
+    // app's stored address so a CLI run behaves like the URL call.
+    require_once __DIR__ . '/auth.php';
+    $appBase = function_exists('ccrm_app_base_url') ? ccrm_app_base_url($pdo, false) : '';
+    $appHost = $appBase !== '' ? (string)parse_url($appBase, PHP_URL_HOST) : '';
+    if ($appHost !== '') {
+        $_SERVER['HTTP_HOST'] = $_SERVER['SERVER_NAME'] = $appHost;
+        if (parse_url($appBase, PHP_URL_SCHEME) === 'https') {
+            $_SERVER['HTTPS'] = 'on';
+        }
+    }
+}
+
+// `php api/cron.php --trigger-wa=<account>`: run only the reactive WhatsApp triggers.
+if ($ccrmCronFromCli && !empty($argv) && is_array($argv)) {
+    foreach ($argv as $arg) {
+        if (str_starts_with((string)$arg, '--trigger-wa=')) {
+            $waAcc = trim(substr((string)$arg, strlen('--trigger-wa=')));
+            try {
+                require_once __DIR__ . '/marveen/marveen_lib.php';
+                $res = ccrm_marveen_process_event_triggers($pdo, $waAcc !== '' ? $waAcc : null);
+                echo json_encode(array_merge(['success' => true, 'mode' => 'wa_reactive_trigger'], $res));
+            } catch (Throwable $e) {
+                if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+                echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            }
+            exit;
+        }
+    }
+}
+
 // The token may arrive in a header (preferred: `curl -H "X-Cron-Token: ..."`, or
-// Authorization: Bearer) or, for existing crontabs, as ?token= (VULN-07: URLs end up
-// in access logs, so new setups should use a header).
+// Authorization: Bearer) or as ?token= for hosts whose cron can only visit a URL
+// (VULN-07: URLs end up in access logs, so use a header where the host allows it).
 $token = trim((string)($_SERVER['HTTP_X_CRON_TOKEN'] ?? ''));
 if ($token === '') {
     $authHeader = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '')));
@@ -38,7 +78,7 @@ $autoConfig = ccrm_load_automation_config($pdo);
 $configuredToken = (string)($autoConfig['cronToken'] ?? '');
 
 // Token verification (constant-time, and an unset token never matches).
-if ($configuredToken === '' || $token === '' || !hash_equals($configuredToken, $token)) {
+if (!$ccrmCronFromCli && ($configuredToken === '' || $token === '' || !hash_equals($configuredToken, $token))) {
     // Not the cron token: fall back to a signed-in ADMIN session. That path runs the
     // whole automation pipeline, so it is not open to every user, and it must be a
     // POST so a cross-site link or image cannot trigger it with the session cookie.
@@ -57,33 +97,46 @@ if ($configuredToken === '' || $token === '' || !hash_equals($configuredToken, $
 }
 
 // 1. Process Timer Triggers
+//
+// "When did this timer last fire" is the last timer row it put on the queue, not
+// its last execution log: the log is written at the end of a run, so a run that
+// threw before logging, or one still waiting behind a backlog, made every cron
+// tick think the timer had never fired and enqueue it again. Queue rows are kept
+// (marked completed/failed), so they are the stored record of each fire. The log
+// still counts, so a manual run keeps resetting the clock as it did before.
+// A named lock keeps two overlapping cron calls from both enqueuing the same fire.
+$timerLock = false;
 try {
+    $timerLock = (int)$pdo->query("SELECT GET_LOCK('ccrm_workflow_timers', 0)")->fetchColumn() === 1;
+} catch (Throwable $e) {
+    $timerLock = true; // no named locks on this server: run unguarded, as before
+}
+if ($timerLock) try {
     $stmt = $pdo->prepare("SELECT * FROM `workflows` WHERE `trigger_type` = 'timer' AND `is_active` = 1");
     $stmt->execute();
     $timerWorkflows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $now = time();
-    
+
+    $lastFireStmt = $pdo->prepare(
+        "SELECT (SELECT MAX(`created_at`) FROM `workflow_queue` WHERE `workflow_id` = ? AND `trigger_event_type` = 'timer') AS `last_queued`,
+                (SELECT MAX(`created_at`) FROM `workflow_logs` WHERE `workflow_id` = ?) AS `last_logged`,
+                NOW() AS `db_now`"
+    );
+
     foreach ($timerWorkflows as $wf) {
         $config = json_decode($wf['trigger_config_json'] ?? '{}', true) ?: [];
         $intervalMinutes = (int)($config['interval_minutes'] ?? 60);
         if ($intervalMinutes <= 0) $intervalMinutes = 60;
-        
-        // Find last run from logs
-        $lastLogStmt = $pdo->prepare("SELECT MAX(`created_at`) FROM `workflow_logs` WHERE `workflow_id` = ?");
-        $lastLogStmt->execute([$wf['id']]);
-        $lastRunStr = $lastLogStmt->fetchColumn();
-        
-        $shouldTrigger = false;
-        if (!$lastRunStr) {
-            $shouldTrigger = true;
-        } else {
-            $lastRunTs = strtotime($lastRunStr);
-            if (($now - $lastRunTs) >= ($intervalMinutes * 60)) {
-                $shouldTrigger = true;
-            }
-        }
-        
+
+        // All three timestamps come from MySQL, so PHP's time zone cannot skew them.
+        $lastFireStmt->execute([$wf['id'], $wf['id']]);
+        $fire = $lastFireStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $shouldTrigger = ccrm_timer_workflow_due(
+            $fire['last_queued'] ?? null,
+            $fire['last_logged'] ?? null,
+            (string)($fire['db_now'] ?? date('Y-m-d H:i:s')),
+            $intervalMinutes
+        );
+
         if ($shouldTrigger) {
             $payload = [
                 'triggered_at' => date('Y-m-d H:i:s'),
@@ -98,12 +151,22 @@ try {
     }
 } catch (Throwable $e) {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+} finally {
+    try { $pdo->query("SELECT RELEASE_LOCK('ccrm_workflow_timers')"); } catch (Throwable $e) {}
 }
 
 // 2. Task e-mail reminders ("Notify me by e-mail" in the task drawer)
 $taskReminders = null;
 try {
     $taskReminders = ccrm_process_task_reminders($pdo);
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
+// 2. Recurring task generation
+$recurringTasks = null;
+try {
+    $recurringTasks = ccrm_process_recurring_tasks($pdo);
 } catch (Throwable $e) {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
@@ -128,14 +191,97 @@ try {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
+// 2d. Public holidays for time tracking: refresh this year and next (SK, HU) from
+// Nager.Date, at most once a month (api/holidays_lib.php). A dead API is not fatal.
+$holidayRefresh = null;
+try {
+    require_once __DIR__ . '/holidays_lib.php';
+    $holidayRefresh = ccrm_holidays_refresh_cron($pdo);
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
+// PHASE5-PURGE: drop time_activity rows older than the retention. Cron only — never ?probe=1.
+$activityPurge = null;
+try {
+    require_once __DIR__ . '/schema.php';
+    if (function_exists('ccrm_apply_schema')) {
+        ccrm_apply_schema($pdo);
+    }
+    require_once __DIR__ . '/time_tracker_lib.php';
+    $activityPurge = ccrm_tta_purge($pdo);
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
+// 2d2. Time tracking rate card (docs/TIME-TRACKING-V2.md D4.3): once a day, recompute the monthly
+// rate of the current and previous month for every monthly employee, which re-prices a month whose
+// leave, salary or holidays changed since its last entry. Equal inputs write nothing.
+$rateCard = null;
+try {
+    require_once __DIR__ . '/time_rate_card.php';
+    $rateCard = ccrm_tt_rate_card_cron($pdo);
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
+// 2d3. Time tracking presence (docs/TIME-TRACKING-V2.md D7.3, D7.5, A4.2): every run (every minute),
+// settle every user with a timer item (automatic pause, expiry, autoStopAt) and send the presence
+// pushes; stamps TT_CRON_LAST_RUN for the "cron not running" warning in Settings.
+$presencePass = null;
+try {
+    require_once __DIR__ . '/time_presence_cron.php';
+    $presencePass = ccrm_tt_presence_cron_pass($pdo);
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
+// 2e. Autonomous AI Agent Connectors heartbeat (Marveen + CCRM MCP)
+$agentTicks = null;
+try {
+    require_once __DIR__ . '/marveen/marveen_lib.php';
+    if (function_exists('ccrm_marveen_run_autonomous_ticks')) {
+        $agentTicks = ccrm_marveen_run_autonomous_ticks($pdo);
+    }
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
+// 2f. ClickUp linked-project task mirror (throttled fallback beside webhooks; api/clickup_lib.php)
+$clickupSync = null;
+try {
+    require_once __DIR__ . '/clickup_lib.php';
+    $clickupSync = ccrm_clickup_cron_tick($pdo);
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
 // 3. Process Workflow Queue
 try {
     ccrm_process_workflow_queue($pdo);
+
+    // 4. Newsletter queue: one batch (20 s budget) after the other jobs. A newsletter error must
+    // never break the cron run; the worker pauses its own campaign when SMTP fails (api/newsletter_send.php).
+    $newsletter = null;
+    try {
+        require_once __DIR__ . '/newsletter_send.php';
+        $newsletter = ccrm_newsletter_tick($pdo);
+    } catch (Throwable $e) {
+        if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+    }
+
     echo json_encode([
         'success' => true,
         'message' => 'Queue processed successfully.',
         'taskReminders' => $taskReminders,
         'ticketPoll' => $ticketPollResult,
+        'holidayRefresh' => $holidayRefresh,
+        'activityPurge' => $activityPurge,
+        'rateCard' => $rateCard,
+        'presence' => $presencePass,
+        'clickupSync' => $clickupSync,
+        'newsletter' => $newsletter,
+        'agentTicks' => $agentTicks,
         'mailFiling' => $mailFiling === null ? null : [
             'ran' => $mailFiling['ran'] ?? false,
             'seen' => $mailFiling['seen'] ?? 0,

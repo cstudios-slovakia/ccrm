@@ -1,0 +1,374 @@
+import { readFileSync } from 'node:fs';
+import { expect, test, type Page } from '@playwright/test';
+import { startSession } from './helpers/appDriver';
+import { buildSyncPayload } from './helpers/fixture';
+
+/**
+ * The WhatsApp module on a demo instance without WAAI (docs/WHATSAPP-DEMO-MODULE.md C7): a fake WAAI in the
+ * browser (`src/components/whatsapp/demo`) answers the module API from `api/waai_demo.php`. Nothing may reach
+ * `/waai-api` or a WAAI address; the spec fails if anything does.
+ *
+ * The fixture runs in Slovak, and the dataset is the real sk file, so chat titles, task numbers and links match
+ * what the demo seeder writes.
+ */
+
+const DATASET = JSON.parse(readFileSync(new URL('../../public/api/demo_seed/whatsapp_demo.sk.json', import.meta.url), 'utf8'));
+
+const C1 = 'demo-wa-c1-site';
+const CLIENT_NAME = 'Horský park Development';
+
+const demoLead = (n: number, name: string, client: boolean) => ({
+  id: `demo-clients-${n}`,
+  name,
+  city: 'Bratislava',
+  clientType: 'business',
+  status: 'accepted',
+  source: 'website',
+  owner: 'Erik',
+  value: 0,
+  adjustment: client ? 1000 : 0,
+  createdAt: new Date().toISOString(),
+  timeline: [],
+});
+
+const demoProject = (n: number, name: string, leadId: string) => ({
+  id: `demo-projects-${n}`,
+  projectTypeId: 'ptype-roof',
+  name,
+  leadId,
+  clientId: leadId,
+  status: 'active',
+  managers: ['Erik'],
+  data: {},
+});
+
+/** The demo records the chats link to: three clients, one plain lead, three projects. */
+const DEMO_LEADS = [
+  demoLead(1, CLIENT_NAME, true),
+  demoLead(2, 'Horváth Residence', true),
+  demoLead(6, 'Hotel Aurum', true),
+  demoLead(10, 'Müller Architekten', false),
+];
+const DEMO_PROJECTS = [
+  demoProject(1, 'Fasáda Horský park', 'demo-clients-1'),
+  demoProject(2, 'Kuchyňa Horváth', 'demo-clients-2'),
+  demoProject(3, 'Wellness stena Aurum', 'demo-clients-6'),
+];
+
+async function installDemo(page: Page, config: { demoMode: boolean }) {
+  const leaks: string[] = [];
+  const waaiCalls: string[] = [];
+  await startSession(page);
+
+  await page.route('**/sync.php**', (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const base = buildSyncPayload();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...base,
+        demoMode: config.demoMode,
+        leads: [...base.leads, ...(config.demoMode ? DEMO_LEADS : [])],
+        projects: [...base.projects, ...(config.demoMode ? DEMO_PROJECTS : [])],
+      }),
+    });
+  });
+  await page.route('**/api/waai_sso.php', (route) =>
+    route.fulfill({
+      json: { success: true, configured: false, module: { ui: 'native', transport: 'proxy', base: '/waai-api' }, standalone_url: null, embed_url: null, can_manage: true, user_id: null },
+    }),
+  );
+  await page.route('**/api/waai_demo.php', (route) => {
+    waaiCalls.push(route.request().method());
+    return route.fulfill({ json: { success: true, edition: 'sk', dataset: DATASET } });
+  });
+  // Nothing of the demo may leave the browser for WAAI.
+  await page.route('**/waai-api/**', (route) => {
+    leaks.push(route.request().url());
+    return route.fulfill({ status: 500, json: { error: { code: 'server_error', message: 'leak', request_id: 'x' } } });
+  });
+  return { leaks, waaiCalls };
+}
+
+const tab = (page: Page, name: string) => page.getByTestId('wa-tabs').getByRole('tab', { name });
+const row = (page: Page, title: string) => page.getByTestId('wa-chat-row').filter({ hasText: title });
+
+/** Opens a chat from the list and switches to the Chat view (a chat opens on the AI view at this width). */
+async function openChat(page: Page, title: string) {
+  await row(page, title).click();
+  const chat = page.getByTestId('wa-conversation');
+  await expect(chat).toBeVisible();
+  await chat.getByTestId('wa-view-chat').click();
+  return chat;
+}
+
+async function openDemo(page: Page, hash = '#whatsapp') {
+  await page.clock.setFixedTime(new Date('2026-11-22T12:00:00+01:00'));
+  const demo = await installDemo(page, { demoMode: true });
+  await page.goto(`/${hash}`);
+  await expect(page.getByTestId('wa-account-pill')).toHaveText('Ukážkové dáta', { timeout: 20_000 });
+  return demo;
+}
+
+test.describe('WhatsApp module in demo mode, without WAAI', () => {
+  test('the chat list: four chats, unread badges on two, the summary cards, the demo pill and subtitle', async ({ page }) => {
+    const { leaks, waaiCalls } = await openDemo(page);
+
+    await expect(page.getByTestId('wa-chat-row')).toHaveCount(4);
+    await expect(page.getByText('Ukážkové konverzácie. Nič sa neodosiela do WhatsAppu.').first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Otvoriť v novej karte' })).toHaveCount(0);
+
+    // Two chats have two unread messages each.
+    await expect(page.getByTestId('wa-chat-row').locator('[aria-label="2 neprečítané správy"]')).toHaveCount(2);
+    await expect(row(page, 'Horský park').locator('[aria-label="2 neprečítané správy"]')).toHaveCount(1);
+    await expect(row(page, 'Hotel Aurum').locator('[aria-label="2 neprečítané správy"]')).toHaveCount(1);
+    await expect(row(page, 'Andrea Horváthová').locator('[aria-label*="neprečítan"]')).toHaveCount(0);
+    // The sidebar badge counts chats, not messages.
+    await expect(page.locator('nav button[data-dock-id="whatsapp"] span[aria-label="2"]').first()).toBeVisible();
+
+    // The summary cards of docs/WHATSAPP-DEMO-MODULE.md C4: 4 / 2 / 3 / 1 open bullets.
+    const bullets = async (title: string) => row(page, title).getByTestId('wa-row-summary-bullet').count();
+    await expect.poll(() => bullets('Horský park')).toBe(4);
+    expect(await bullets('Thomas Müller')).toBe(2);
+    expect(await bullets('Hotel Aurum')).toBe(3);
+    expect(await bullets('Andrea Horváthová')).toBe(1);
+
+    // StrictMode runs the session effect twice in the dev server, so one or two reads; never a write.
+    expect(waaiCalls.length).toBeGreaterThan(0);
+    expect(waaiCalls.every((m) => m === 'GET')).toBe(true);
+    expect(leaks, 'a request left the browser for WAAI').toEqual([]);
+  });
+
+  test('an open chat: messages, a document, an image, a quoted reply, and the CRM link chip', async ({ page }) => {
+    const { leaks } = await openDemo(page);
+    const chat = await openChat(page, 'Horský park');
+    await expect(chat.getByTestId('wa-message')).toHaveCount(13);
+    await expect(chat.getByText('Harmonogram montáže – Horský park.pdf').first()).toBeVisible();
+    await expect(chat.locator('img[src*="svg"]').first()).toBeVisible();
+    // m09 quotes m08: the quote is a button inside the bubble.
+    await expect(chat.locator('button.border-l-4').first()).toBeVisible();
+    // The chip names the first linked record, through the CRM's own leads and projects.
+    await expect(chat.getByRole('button', { name: new RegExp(`${CLIENT_NAME}`) })).toBeVisible();
+    // Opening the chat read it; the sidebar badge follows on its ten-second poll.
+    await expect(page.locator('nav button[data-dock-id="whatsapp"] span[aria-label="1"]').first()).toBeVisible({ timeout: 20_000 });
+
+    expect(leaks).toEqual([]);
+  });
+
+  test('send a message and react: both stay, in memory only', async ({ page }) => {
+    const { leaks } = await openDemo(page);
+    const chat = await openChat(page, 'Horský park');
+    await expect(chat.getByTestId('wa-message')).toHaveCount(13);
+
+    await chat.getByPlaceholder('Napíšte správu…').fill('Test');
+    await chat.getByRole('button', { name: 'Odoslať' }).click();
+    await expect(chat.getByTestId('wa-message')).toHaveCount(14);
+    const last = chat.getByTestId('wa-message').last();
+    await expect(last).toContainText('Test');
+    await expect(last).toHaveClass(/justify-end/);
+
+    // React 👍 to the first message.
+    const first = chat.getByTestId('wa-message').first();
+    await first.getByRole('button', { name: 'Možnosti správy' }).click({ force: true });
+    await page.getByTestId('wa-reaction-bar').getByRole('button', { name: '👍' }).click();
+    await expect(first.getByRole('button', { name: '👍' })).toBeVisible();
+
+    expect(leaks).toEqual([]);
+  });
+
+  test('a deep link opens the chat and highlights that message', async ({ page }) => {
+    const { leaks } = await openDemo(page, `#whatsapp/c/${C1}?m=${C1}-m11`);
+    const target = page.locator(`#wa-msg-${C1}-m11`);
+    await expect(target).toBeVisible({ timeout: 15_000 });
+    await expect(target.locator('.ring-green-500')).toBeVisible();
+    expect(leaks).toEqual([]);
+  });
+
+  test('Digest: each window has its own text, longer in a bigger one; listening says calmly that it is not in the demo', async ({ page }) => {
+    const { leaks } = await openDemo(page, '#whatsapp/digest');
+    await expect(tab(page, 'Súhrn')).toHaveAttribute('aria-selected', 'true');
+    const digest = page.getByTestId('wa-digest');
+    const bullets = digest.locator('div.space-y-2 > ul > li');
+    await expect(bullets.first()).toBeVisible({ timeout: 15_000 });
+    await expect(digest).toContainText('Marek Šimko');
+    // Open tasks are listed under the summary (five of the nine are open).
+    await expect(digest.getByRole('link', { name: /Marek Šimko – Horský park|Thomas Müller|Hotel Aurum|Andrea Horváthová/ }).first()).toBeVisible();
+
+    // Every window the chats are active in is offered; a wider one holds at least as many chats and says more about each.
+    const seen: { label: string; chats: number; chars: number }[] = [];
+    const expectedChats = [2, 4, 4, 4];
+    let previous = '';
+    for (const [i, label] of ['Dnes', '3 dni', '7 dní', '30 dní'].entries()) {
+      await digest.getByRole('button', { name: label, exact: true }).click();
+      // Switching a window empties the list while it loads, and until then it still holds the previous window's text,
+      // so a one-shot read can see nothing or the old window. Wait for this window's own chats and a text that is new.
+      await expect
+        .poll(
+          async () => {
+            const now = await bullets.allTextContents();
+            return now.length === expectedChats[i] && now.join('') !== previous;
+          },
+          { timeout: 15_000 },
+        )
+        .toBe(true);
+      const texts = await bullets.allTextContents();
+      previous = texts.join('');
+      seen.push({ label, chats: texts.length, chars: previous.length });
+    }
+    // Today holds the two chats that wrote this morning; the other windows hold all four.
+    expect(seen.map((w) => w.chats)).toEqual([2, 4, 4, 4]);
+    for (let k = 1; k < seen.length; k++) expect(seen[k]!.chars, seen[k]!.label + ' is longer than ' + seen[k - 1]!.label).toBeGreaterThan(seen[k - 1]!.chars);
+
+    // No spoken digest in the demo: the button says why instead of failing silently.
+    const listen = digest.getByTestId('wa-digest-listen');
+    await expect(listen).toHaveText(/Prehrať/);
+    await listen.click();
+    await expect(listen).toHaveText('V ukážke nie je dostupné.');
+    await expect(digest).not.toContainText(/not_implemented|\[object|undefined|Error:/);
+    await expect(digest.getByTestId('wa-digest-regenerate')).toBeEnabled();
+    expect(leaks).toEqual([]);
+  });
+
+  test('Tasks: nine tasks across the four chats, ticking an open one moves it to Done', async ({ page }) => {
+    const { leaks } = await openDemo(page, '#whatsapp/tasks');
+    await expect(tab(page, 'Úlohy')).toHaveAttribute('aria-selected', 'true');
+    // The counts come from the seed, so the spec follows the dataset instead of repeating numbers.
+    const seeded: { status: string }[] = DATASET.chats.flatMap((c: { tasks?: { status: string }[] }) => c.tasks ?? []);
+    const total = seeded.length;
+    const openCount = seeded.filter((t) => t.status === 'open').length;
+    const completedCount = seeded.filter((t) => t.status === 'completed').length;
+    expect(total, 'the title says nine tasks').toBe(9);
+    expect(openCount).toBeGreaterThan(0);
+
+    await page.getByRole('button', { name: 'Všetky', exact: true }).click();
+    const items = page.locator('main ul.divide-y > li');
+    await expect(items).toHaveCount(total, { timeout: 15_000 });
+
+    // Every count after a click is an auto-retrying assertion: a one-shot count() can read the list from before the filter applied.
+    await page.getByRole('button', { name: 'Otvorené', exact: true }).click();
+    await expect(items).toHaveCount(openCount);
+    await items.first().getByRole('checkbox').click();
+    await expect(items).toHaveCount(openCount - 1);
+    // A done task stays linked to the CRM: it cannot be reopened.
+    await page.getByRole('button', { name: 'Hotové', exact: true }).click();
+    await expect(items).toHaveCount(completedCount + 1);
+    await expect(items.first().getByRole('checkbox')).toBeDisabled();
+    expect(leaks).toEqual([]);
+  });
+
+  test('Ask: a word from the chats returns citations that open the message; an unknown word says so', async ({ page }) => {
+    const { leaks } = await openDemo(page, '#whatsapp/search');
+    await expect(tab(page, 'Opýtať sa')).toHaveAttribute('aria-selected', 'true');
+    const box = page.getByPlaceholder('Opýtajte sa na svoje chaty');
+    await box.fill('dosky');
+    await box.press('Enter');
+    await expect(page.getByText('V ukážke Opýtať sa prehľadáva ukážkové konverzácie.')).toBeVisible({ timeout: 15_000 });
+    const citation = page.locator('a[href^="#whatsapp/c/demo-wa-"][href*="?m=demo-wa-"]');
+    expect(await citation.count()).toBeGreaterThan(0);
+    await citation.first().click();
+    await expect(tab(page, 'Chaty')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('wa-conversation')).toBeVisible();
+
+    await page.goto('/#whatsapp/search');
+    const again = page.getByPlaceholder('Opýtajte sa na svoje chaty');
+    await again.fill('zzzzqqqq');
+    await again.press('Enter');
+    await expect(page.getByText('V ukážkových konverzáciách sa nič nenašlo.')).toBeVisible({ timeout: 15_000 });
+    expect(leaks).toEqual([]);
+  });
+
+  test('Settings: opens without an error card, the demo account is listed and a change is refused with a calm note', async ({ page }) => {
+    const { leaks } = await openDemo(page, '#whatsapp/settings');
+    await expect(tab(page, 'Nastavenia')).toHaveAttribute('aria-selected', 'true');
+    const settings = page.getByTestId('wa-settings');
+    await expect(settings).toBeVisible();
+    // A member has no AI or CRM section.
+    await expect(page.getByTestId('wa-settings-ai')).toHaveCount(0);
+    await expect(page.getByTestId('wa-settings-crm')).toHaveCount(0);
+
+    await page.getByTestId('wa-settings-whatsapp').click();
+    await expect(settings).toContainText('Andrej Kollár');
+    await expect(settings).toContainText('connected');
+    await page.getByRole('button', { name: 'Prepojiť účet WhatsApp' }).click();
+    await expect(settings.getByText('V ukážke nie je dostupné.')).toBeVisible();
+    await expect(settings).not.toContainText(/not_implemented/);
+
+    await page.getByTestId('wa-settings-system').click();
+    const toggle = settings.getByRole('checkbox');
+    await expect(toggle).toBeChecked();
+    await toggle.uncheck();
+    await expect(toggle).not.toBeChecked();
+    expect(leaks).toEqual([]);
+  });
+
+  /** A stand-in for a working WAAI: signs in, has a linked account and one chat. */
+  async function installRealWaai(page: Page, waai: { chatTitle: string }) {
+    await page.route('**/api/waai_sso.php', async (route) => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({ json: { success: true, configured: true, module: { ui: 'native', transport: 'proxy', base: '/waai-api' }, standalone_url: null, embed_url: null, can_manage: true, user_id: 'u1' } });
+      }
+      return route.fulfill({ json: { success: true, token: 'header.payload.signature', expires_in: 60 } });
+    });
+    await page.route('**/waai-api/**', async (route) => {
+      const req = route.request();
+      const path = new URL(req.url()).pathname.replace(/^\/waai-api/, '');
+      const user = { id: 'u1', role: 'admin', name: 'peter@example.sk', crm_user_id: 'u1' };
+      if (path === '/session') return req.method() === 'POST' ? route.fulfill({ json: { access_token: 'wam_real', expires_in: 3600, api_version: 1, user } }) : route.fulfill({ status: 204 });
+      if (path === '/meta') return route.fulfill({ json: { api_version: 1, features: ['session', 'meta', 'unread', 'chats'], user, ai_configured: true, standalone_url: null, wa_accounts: [{ id: 'acc1', status: 'connected', display_name: 'Peter' }] } });
+      if (path === '/unread') return route.fulfill({ json: { chats: 0, messages: 0 } });
+      if (path === '/wa/health') return route.fulfill({ json: { ok: true, worker_offline: false, disconnected: [], connecting: [] } });
+      if (path === '/conversations') {
+        return route.fulfill({ json: { conversations: [{ id: 'real1', title: waai.chatTitle, is_group: false, owner_email: 'peter@example.sk', avatar_url: null, unread_count: 0, last_message_at: '2026-04-20T09:15:00.000Z', last_message: { kind: 'text', body: 'Real message', sender: waai.chatTitle, direction: 'in' } }], summaries: {}, completed_task_ids: [], ai_configured: true, has_wa_account: true, user_name: 'Peter', user_avatar_url: null } });
+      }
+      return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x', request_id: 'x' } } });
+    });
+  }
+
+  test('a demo instance with a working WAAI and a linked account keeps showing the real WAAI', async ({ page }) => {
+    const demoCalls: string[] = [];
+    await startSession(page);
+    await page.route('**/sync.php**', (route) => (route.request().method() !== 'GET' ? route.fallback() : route.fulfill({ json: { ...buildSyncPayload(), demoMode: true } })));
+    await page.route('**/api/waai_demo.php', (route) => {
+      demoCalls.push(route.request().method());
+      return route.fulfill({ json: { success: true, edition: 'sk', dataset: DATASET } });
+    });
+    await installRealWaai(page, { chatTitle: 'Acme Stavba (real)' });
+    await page.goto('/#whatsapp');
+    await expect(row(page, 'Acme Stavba (real)')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('wa-chat-row')).toHaveCount(1);
+    await expect(page.getByTestId('wa-account-pill')).not.toHaveText('Ukážkové dáta');
+    await expect(page.getByText('Marek Šimko')).toHaveCount(0);
+    expect(demoCalls).toEqual([]);
+  });
+
+  test('demo mode does not bypass permissions: a refused user still sees "forbidden", never the demo chats', async ({ page }) => {
+    const demoCalls: string[] = [];
+    await startSession(page);
+    await page.route('**/sync.php**', (route) => (route.request().method() !== 'GET' ? route.fallback() : route.fulfill({ json: { ...buildSyncPayload(), demoMode: true } })));
+    await page.route('**/api/waai_demo.php', (route) => {
+      demoCalls.push(route.request().method());
+      return route.fulfill({ json: { success: true, edition: 'sk', dataset: DATASET } });
+    });
+    // The connection is configured, but the CRM refuses to issue this user a sign-in token (no whatsapp permission).
+    await page.route('**/api/waai_sso.php', (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({ json: { success: true, configured: true, module: { ui: 'native', transport: 'proxy', base: '/waai-api' }, standalone_url: null, embed_url: null, can_manage: false, user_id: 'u1' } })
+        : route.fulfill({ status: 403, json: { success: false, code: 'forbidden' } }),
+    );
+    await page.route('**/waai-api/**', (route) => route.fulfill({ status: 500, json: { error: { code: 'server_error', message: 'leak', request_id: 'x' } } }));
+    await page.goto('/#whatsapp');
+    await expect(page.getByTestId('wa-forbidden')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('wa-chat-row')).toHaveCount(0);
+    expect(demoCalls).toEqual([]);
+  });
+
+  test('a real instance is untouched: no demo mode and no connection still says "not configured", and asks for no demo data', async ({ page }) => {
+    const { leaks, waaiCalls } = await installDemo(page, { demoMode: false });
+    await page.goto('/#whatsapp');
+    await expect(page.getByTestId('wa-not-configured')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('wa-chat-row')).toHaveCount(0);
+    expect(waaiCalls).toEqual([]);
+    expect(leaks).toEqual([]);
+  });
+});

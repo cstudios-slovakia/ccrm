@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildUpdateNotesQuery,
   compareVersions,
+  hideNewerThanRunning,
   localizeUpdateNotes,
   splitListItems,
 } from "./updateNotes.ts";
@@ -80,4 +81,10 @@ test("the legacy query never names the extended block types", () => {
     assert.ok(!legacy.includes(type), type);
     assert.ok(buildUpdateNotesQuery(true).includes(type), type);
   }
+});
+
+test("hideNewerThanRunning drops notes for releases newer than the running version", () => {
+  const entries = ["1.13.92", "1.13.91-Nectarine", "1.13.5"].map((v) => row(v, v, "en", "2026-01-01")) as any[];
+  const kept = hideNewerThanRunning(entries, "1.13.91-Nectarine").map((e) => e.version);
+  assert.deepEqual(kept, ["1.13.91-Nectarine", "1.13.5"]);
 });

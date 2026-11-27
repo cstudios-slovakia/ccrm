@@ -10,11 +10,13 @@
 // Guarded: `php ccrm update` loads api/ for the licence check and dist/api/ for the migration,
 // and require_once does not dedupe two paths. Same pattern as schema.php.
 if (!function_exists('ccrm_compose_employee_name')) {
-    /** Record kinds: a person on the payroll, an outside company, or a payroll-only line such as commission. */
+    /** Record kinds: a person on the payroll, an outside supplier, or a payroll-only line such as commission. */
     define('CCRM_EMPLOYEE_KINDS', ['employee', 'contractor', 'ledger']);
+    /** Subtypes of an external supplier (`contractor`): person (freelancer), sole_trader (živnostník), or company (firma). */
+    define('CCRM_CONTRACTOR_TYPES', ['person', 'sole_trader', 'company']);
 
-    function ccrm_compose_employee_name(string $kind, ?string $first, ?string $last, string $name): string {
-        if ($kind === 'employee') {
+    function ccrm_compose_employee_name(string $kind, ?string $first, ?string $last, string $name, ?string $contractorType = null): string {
+        if ($kind === 'employee' || ($kind === 'contractor' && $contractorType === 'person')) {
             $full = trim(trim((string)$first) . ' ' . trim((string)$last));
             if ($full !== '') return $full;
         }

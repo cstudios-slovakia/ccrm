@@ -1,0 +1,331 @@
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowDownNarrowWide, ArrowDownWideNarrow, ChevronDown, GripVertical, Lock, SlidersHorizontal } from "lucide-react";
+import { CustomSelect } from "../ui/CustomSelect";
+import { cn } from "../../utils/cn";
+import { useDragReorder } from "../../hooks/useDragReorder";
+import { useColumnWidths } from "../../hooks/useColumnWidths";
+import type { DropPosition } from "../../utils/reorder";
+
+/* The sort select portals its option panel to <body>; a click in it must not
+   read as a click outside this menu. */
+const SORT_PANEL_CLASS = "list-view-menu-sort-panel";
+
+/* Full class strings per accent, so Tailwind sees every one of them. The
+   leads module is blue; projects and price offers use slate and indigo. */
+const ACCENTS = {
+  indigo: {
+    activeDirection: "bg-slate-700 text-white",
+    dropLine: "bg-indigo-500",
+    gripHover: "group-hover:text-indigo-500",
+    checkbox: "accent-indigo-600",
+    resetHover: "hover:text-indigo-600",
+  },
+  blue: {
+    activeDirection: "bg-blue-600 text-white",
+    dropLine: "bg-blue-500",
+    gripHover: "group-hover:text-blue-500",
+    checkbox: "accent-blue-600",
+    resetHover: "hover:text-blue-600",
+  },
+} as const;
+
+export type ListViewMenuAccent = keyof typeof ACCENTS;
+
+export interface ListViewSort<K extends string> {
+  key: K;
+  direction: "asc" | "desc";
+}
+
+export interface ListViewColumn {
+  key: string;
+  visible: boolean;
+}
+
+export interface ListViewMenuProps<K extends string, C extends ListViewColumn> {
+  t: (en: string, sk: string, hu: string) => string;
+  sort: ListViewSort<K>;
+  sortOptions: { value: K; label: string }[];
+  onSortChange: (next: ListViewSort<K>) => void;
+  /** Sort keys that have no direction to flip (the default and a hand-set order). */
+  directionlessKeys?: readonly K[];
+  /** Set when the current view ignores the sort (the structure): shown in place of the sort controls. */
+  sortNote?: string;
+  /** Every column the table can show, hidden ones included, in order. */
+  columns: C[];
+  onColumnsChange: (next: C[]) => void;
+  columnLabel: (col: C) => string;
+  /** The column that always leads the row and cannot be hidden or moved. */
+  lockedColumnKey: string;
+  /** Tooltip of the locked column's lock icon. */
+  lockedTitle: string;
+  /** Moves one column before or after another (and keeps the locked one first). */
+  moveColumn: (columns: readonly C[], dragKey: string, targetKey: string, position: DropPosition) => C[];
+  /** False when the layout may not be edited by this user. */
+  canEditColumns: boolean;
+  /** One line under the column list saying whose layout it is. */
+  columnsScope: string;
+  /** "Use default settings": default order and default columns. */
+  onReset: () => void;
+  /** Colour of the active sort direction, drop lines, checkboxes and hovers. Defaults to indigo. */
+  accent?: ListViewMenuAccent;
+  /** The list's key for stored column widths; adds a "Reset column widths" action. */
+  widthsListKey?: string;
+}
+
+/**
+ * A list's "View" menu: how the rows are ordered and which columns the table
+ * draws, in one popover. Shared by the leads, projects and price offers lists.
+ */
+export function ListViewMenu<K extends string, C extends ListViewColumn>({
+  t,
+  sort,
+  sortOptions,
+  onSortChange,
+  directionlessKeys = [],
+  sortNote,
+  columns,
+  onColumnsChange,
+  columnLabel,
+  lockedColumnKey,
+  lockedTitle,
+  moveColumn,
+  canEditColumns,
+  columnsScope,
+  onReset,
+  accent = "indigo",
+  widthsListKey = "",
+}: ListViewMenuProps<K, C>) {
+  const tone = ACCENTS[accent];
+  const colWidths = useColumnWidths(widthsListKey);
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [panelPos, setPanelPos] = useState<{ left: number; maxHeight: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPanelPos(null);
+      return;
+    }
+    const updatePosition = () => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const pad = 16;
+      const menuWidth = Math.min(416, vw - pad * 2);
+      const desiredLeft = rect.right - menuWidth;
+      const clampedViewportLeft = Math.max(pad, Math.min(desiredLeft, vw - menuWidth - pad));
+      setPanelPos({
+        left: Math.round(clampedViewportLeft - rect.left),
+        maxHeight: Math.max(220, vh - rect.bottom - pad - 8),
+      });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent) => {
+      const target = e.target as Element | null;
+      if (rootRef.current?.contains(target)) return;
+      if (target?.closest?.(`.${SORT_PANEL_CLASS}`)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  /* Drag-and-drop over the column list — the same hook the attribute list in
+     project type settings and the projects list itself use. */
+  const columnDrag = useDragReorder({
+    enabled: canEditColumns,
+    onMove: (dragKey, targetKey, position) =>
+      onColumnsChange(moveColumn(columns, dragKey, targetKey, position)),
+  });
+
+  const toggleColumn = (key: string) => {
+    if (!canEditColumns || key === lockedColumnKey) return;
+    onColumnsChange(columns.map(c => (c.key === key ? { ...c, visible: !c.visible } : c)));
+  };
+
+  // Neither the creation order nor a hand-set order has a direction to flip.
+  const sorted = !directionlessKeys.includes(sort.key);
+  const directions = [
+    { dir: "asc" as const, Icon: ArrowDownNarrowWide, label: t("Ascending", "Vzostupne", "Növekvő") },
+    { dir: "desc" as const, Icon: ArrowDownWideNarrow, label: t("Descending", "Zostupne", "Csökkenő") },
+  ];
+  const rowLabel = "text-ui font-semibold text-slate-600";
+
+  return (
+    <div className="relative shrink-0" ref={rootRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className={cn(
+          "h-9 flex items-center gap-1.5 px-3 rounded-md border text-ui font-semibold shadow-2xs transition-all duration-150 active:scale-95 cursor-pointer",
+          open
+            ? "bg-entity-subtle border-entity-border text-entity-text"
+            : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+        )}
+      >
+        <SlidersHorizontal className="h-4 w-4 shrink-0" />
+        <span>{t("View", "Pohľad", "Nézet")}</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform duration-200", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label={t("View settings", "Nastavenia pohľadu", "Nézet beállításai")}
+          style={panelPos ? { left: panelPos.left, maxHeight: panelPos.maxHeight } : undefined}
+          className="absolute top-full mt-2 z-50 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white shadow-xl overflow-x-hidden overflow-y-auto text-left animate-in fade-in zoom-in-95 slide-in-from-top-1 duration-150 origin-top-right"
+        >
+          {/* Sort */}
+          <div className="grid grid-cols-[6.5rem_1fr] items-center gap-3 px-4 py-3.5 border-b border-gray-200">
+            <span className={rowLabel}>{t("Sort by", "Zoradiť podľa", "Rendezés")}</span>
+            {sortNote ? (
+              <p className="text-caption font-semibold text-gray-400 leading-snug">{sortNote}</p>
+            ) : (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div className="flex-1 min-w-0">
+                  <CustomSelect
+                    className="h-9"
+                    panelClassName={SORT_PANEL_CLASS}
+                    value={sort.key}
+                    onChange={v => onSortChange({ key: v as K, direction: v === sort.key ? sort.direction : "asc" })}
+                    options={sortOptions}
+                  />
+                </div>
+                <div className="flex items-center shrink-0 rounded-md border border-gray-200 overflow-hidden">
+                  {directions.map(({ dir, Icon, label }) => {
+                    const active = sorted && sort.direction === dir;
+                    return (
+                      <button
+                        key={dir}
+                        type="button"
+                        disabled={!sorted}
+                        onClick={() => onSortChange({ ...sort, direction: dir })}
+                        title={label}
+                        aria-label={label}
+                        aria-pressed={active}
+                        className={cn(
+                          "h-9 w-9 flex items-center justify-center transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40",
+                          active ? tone.activeDirection : "bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200"
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Columns */}
+          <div className="grid grid-cols-[6.5rem_1fr] gap-3 px-4 py-3.5">
+            <span className={cn(rowLabel, "pt-1")}>{t("Table columns", "Stĺpce tabuľky", "Táblázat oszlopai")}</span>
+            <div className="min-w-0 border-l border-slate-200 pl-3">
+              <div className="max-h-[50vh] overflow-y-auto scrollbar-thin -my-0.5">
+                {columns.map(col => {
+                  const locked = col.key === lockedColumnKey;
+                  const drop = columnDrag.dropAt(col.key);
+                  const label = columnLabel(col);
+                  const draggable = canEditColumns && !locked;
+                  return (
+                    <div
+                      key={col.key}
+                      {...columnDrag.rowProps(col.key, !locked, !locked)}
+                      className={cn(
+                        "group relative flex items-center gap-2 py-1 rounded-lg transition-opacity duration-150",
+                        columnDrag.draggedId === col.key && "opacity-40"
+                      )}
+                    >
+                      {drop === "before" && (
+                        <span className={cn("pointer-events-none absolute inset-x-0 -top-px h-0.5 rounded-full", tone.dropLine)} />
+                      )}
+                      {drop === "after" && (
+                        <span className={cn("pointer-events-none absolute inset-x-0 -bottom-px h-0.5 rounded-full", tone.dropLine)} />
+                      )}
+                      <span
+                        className={cn("shrink-0", draggable && "cursor-grab active:cursor-grabbing")}
+                        title={
+                          locked
+                            ? lockedTitle
+                            : draggable
+                              ? t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez")
+                              : undefined
+                        }
+                      >
+                        {locked
+                          ? <Lock className="h-3.5 w-3.5 text-slate-300" />
+                          : <GripVertical className={cn("h-3.5 w-3.5 text-slate-300 transition-colors duration-150", draggable && tone.gripHover)} />}
+                      </span>
+                      <label className={cn(
+                        "flex items-center gap-2 min-w-0 flex-1",
+                        canEditColumns && !locked ? "cursor-pointer" : "cursor-default"
+                      )}>
+                        <input
+                          type="checkbox"
+                          checked={col.visible}
+                          disabled={!canEditColumns || locked}
+                          onChange={() => toggleColumn(col.key)}
+                          className={cn("h-4 w-4 shrink-0 rounded border-slate-300 cursor-pointer disabled:cursor-default", tone.checkbox)}
+                        />
+                        <span className={cn("text-ui font-medium truncate", col.visible ? "text-slate-800" : "text-slate-500")}>
+                          {label}
+                        </span>
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2.5 text-caption font-medium leading-snug text-slate-400">{columnsScope}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-gray-200 bg-gray-50">
+            <button
+              type="button"
+              onClick={onReset}
+              className={cn("text-ui font-semibold text-gray-600 transition-colors duration-150 cursor-pointer hover:text-entity-text", tone.resetHover)}
+            >
+              {t("Use default settings", "Použiť predvolené nastavenia", "Alapértelmezett beállítások")}
+            </button>
+            {widthsListKey && colWidths.hasWidths && (
+              <button
+                type="button"
+                onClick={colWidths.resetAll}
+                className={cn("text-ui font-semibold text-gray-600 transition-colors duration-150 cursor-pointer hover:text-entity-text", tone.resetHover)}
+              >
+                {t("Reset column widths", "Obnoviť šírky stĺpcov", "Oszlopszélességek visszaállítása")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="h-8 px-3.5 rounded-md border border-gray-300 bg-white text-ui font-semibold text-gray-700 hover:bg-gray-50 shadow-2xs active:scale-95 transition-all duration-150 cursor-pointer"
+            >
+              {t("Close", "Zavrieť", "Bezárás")}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

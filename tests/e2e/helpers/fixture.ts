@@ -1,4 +1,6 @@
 import type { Page } from '@playwright/test';
+import { installTimeTrackingMock, timeTrackingSeed } from './timeTrackingMock';
+import { DEFAULT_AGENCY_SETTINGS } from '../../../src/types/agency';
 
 /**
  * Deterministic CRM dataset served to the app in place of the PHP backend.
@@ -309,7 +311,75 @@ const LEADS = [
   },
 ];
 
+const RECURRING_TASKS = [
+  {
+    id: "rec-tpl-schedule",
+    taskKind: "recurring",
+    title: "Pravidelná týždenná záloha",
+    description: "Skontrolovať úložisko záloh.",
+    priority: "medium",
+    owner: "Erik",
+    createdBy: "Erik",
+    assignedUsers: ["Erik"],
+    deadline: isoDate(7),
+    startDate: isoDate(6),
+    deadlineTime: "10:00",
+    tags: ["it"],
+    recurrence: {
+      mode: "schedule",
+      frequency: "weekly",
+      interval: 1,
+      config: { weekday: 1 },
+      weekendRule: "keep",
+      leadDays: 1,
+      startsOn: isoDate(-14),
+      endsOn: null,
+      paused: false,
+      lastOccurrence: isoDate(0),
+      lastOccurrenceId: "task-rec-occ",
+    },
+  },
+  {
+    id: "rec-tpl-after-comp",
+    taskKind: "recurring",
+    title: "Revízia elektrických rozvodov",
+    description: "Servisná prehliadka po dokončení.",
+    priority: "low",
+    owner: "Erik",
+    createdBy: "Erik",
+    assignedUsers: ["Erik"],
+    deadline: isoDate(30),
+    startDate: isoDate(27),
+    recurrence: {
+      mode: "after_completion",
+      frequency: "monthly",
+      interval: 3,
+      weekendRule: "keep",
+      leadDays: 3,
+      startsOn: isoDate(-60),
+      endsOn: null,
+      paused: false,
+    },
+  },
+];
+
 const TASKS = [
+  {
+    id: "task-rec-occ",
+    title: "Pravidelná týždenná záloha",
+    description: "Skontrolovať úložisko záloh.",
+    status: "In progress",
+    priority: "medium",
+    startDate: isoDate(0),
+    deadline: isoDate(0),
+    deadlineTime: "10:00",
+    owner: "Erik",
+    createdBy: "Erik",
+    assignedUsers: ["Erik"],
+    tags: ["it"],
+    recurringSourceId: "rec-tpl-schedule",
+    recurringOccurrenceDate: isoDate(0),
+  },
   {
     id: 'task-1',
     title: 'Zavolať klientke Silvii',
@@ -879,7 +949,7 @@ const ROLES = [
 ];
 
 const SETTINGS = {
-  systemName: 'CCRM',
+  systemName: '',
   systemLanguage: 'sk',
   systemCurrency: 'EUR',
   leadStates: LEAD_STATES,
@@ -918,6 +988,7 @@ export function buildSyncPayload() {
     serverTime: new Date().toISOString(),
     leads: LEADS,
     tasks: TASKS,
+    recurringTasks: RECURRING_TASKS,
     users: [TEST_USER, SECOND_USER],
     roles: ROLES,
     meetingNotes: MEETING_NOTES,
@@ -990,6 +1061,12 @@ export async function installBackendMocks(
      * without the password (api/passkeys.php allows 300 s). 0 closes the window.
      */
     passkeyPwWindowMs?: number;
+    /** Replaces the seeded role registry, for specs that need a role with exactly some permissions. */
+    roles?: { name: string; permissions: Record<string, string> }[];
+    /** Support tickets for specs that log time on one. Omitted means the workspace has none. */
+    tickets?: Record<string, unknown>[];
+    /** Overrides `settings.integrationsConfig.disabledModules` for tests checking opt-in modules. */
+    disabledModules?: string[];
   } = {},
 ) {
   const baseUser = options.user ?? TEST_USER;
@@ -1010,6 +1087,7 @@ export async function installBackendMocks(
   const pushedListColumns = new Map<string, unknown>();
   /** dashboard id -> dashboard pushed by the app. */
   const pushedCustomDashboards = new Map<string, any>();
+  let pushedWarehouseItems: unknown[] | undefined;
   /**
    * The workspace's integrationsConfig as the app last pushed it. Settings ->
    * Visible Modules (and the module setup wizard) store `disabledModules` in
@@ -1017,6 +1095,17 @@ export async function installBackendMocks(
    * choice would come straight back as the seed.
    */
   let pushedIntegrationsConfig: unknown;
+  /** The project status list as the app last pushed it (Settings -> Project settings): a reload must not bring the built-ins back. */
+  let pushedProjectStatuses: unknown;
+  /** task id -> the title the app last pushed: time tracking joins a linked entry's title from it. */
+  const pushedTaskTitles = new Map<string, string>();
+  const pushedTicketTitles = new Map<string, string>();
+  const taskActivitiesStore = new Map<string, any[]>();
+  const taskReactionsStore = new Map<string, Record<string, string[]>>();
+  const taskSnapshotStore = new Map<string, { status?: string; priority?: string; deadline?: string }>(
+    TASKS.map((t) => [t.id, { status: t.status, priority: t.priority, deadline: t.deadline }]),
+  );
+  let nextActivityId = 100;
 
   await page.route('**/sync.php**', (route) => {
     const request = route.request();
@@ -1027,17 +1116,35 @@ export async function installBackendMocks(
         contentType: 'application/json',
         body: JSON.stringify({
           ...payload,
+          tasks: payload.tasks.map((tk: any) => ({
+            ...tk,
+            commentCount: (taskActivitiesStore.get(tk.id) ?? []).filter((it) => it.kind === 'comment' && !it.deleted).length,
+            reactions: taskReactionsStore.get(tk.id) ?? tk.reactions ?? null,
+          })),
+          roles: options.roles ?? payload.roles,
           users: [...payload.users, ...(options.extraUsers ?? [])]
             .map((u) => (u.email === signedIn.email ? signedIn : u))
             .map((u) => (pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u)),
-          settings:
-            pushedIntegrationsConfig === undefined
-              ? payload.settings
-              : { ...payload.settings, integrationsConfig: pushedIntegrationsConfig },
+          settings: {
+            ...(pushedIntegrationsConfig !== undefined
+              ? { ...payload.settings, integrationsConfig: pushedIntegrationsConfig }
+              : options.disabledModules
+                ? {
+                    ...payload.settings,
+                    integrationsConfig: {
+                      ...payload.settings.integrationsConfig,
+                      disabledModules: options.disabledModules,
+                    },
+                  }
+                : payload.settings),
+            ...(pushedProjectStatuses !== undefined ? { projectStatuses: pushedProjectStatuses } : {}),
+          },
+          ...(options.tickets ? { tickets: options.tickets } : {}),
           projectTypes: payload.projectTypes.map((pt) =>
             pushedListColumns.has(pt.id) ? { ...pt, listColumns: pushedListColumns.get(pt.id) } : pt,
           ),
           customDashboards: Array.from(pushedCustomDashboards.values()),
+          ...(pushedWarehouseItems !== undefined ? { warehouseItems: pushedWarehouseItems } : {}),
         }),
       });
     }
@@ -1046,10 +1153,44 @@ export async function installBackendMocks(
         users?: { email?: string; metadata_json?: unknown }[];
         projectTypes?: { id?: string; listColumns?: unknown }[];
         customDashboards?: { id?: string }[];
-        settings?: { integrationsConfig?: unknown };
+        warehouseItems?: unknown[];
+        settings?: { integrationsConfig?: unknown; projectStatuses?: unknown };
+        tasks?: { id?: string; title?: string; status?: string; priority?: string; deadline?: string }[];
+        tickets?: { id?: string; title?: string; subject?: string }[];
       };
+      const actor = signedIn.name || 'Erik';
+      const nowStamp = () => new Date().toISOString().slice(0, 23).replace('T', ' ');
+      for (const tk of body?.tasks ?? []) {
+        if (tk?.id && typeof tk.title === 'string') pushedTaskTitles.set(tk.id, tk.title);
+        if (tk?.id) {
+          const prev = taskSnapshotStore.get(tk.id);
+          const list = taskActivitiesStore.get(tk.id) ?? [];
+          if (prev) {
+            if (tk.status && prev.status && tk.status !== prev.status) {
+              list.push({ id: nextActivityId++, taskId: tk.id, kind: 'state_change', eventType: 'status', authorName: actor, body: '', meta: { from: prev.status, to: tk.status }, reactions: {}, createdAt: nowStamp(), updatedAt: nowStamp() });
+            }
+            if (tk.priority && prev.priority && tk.priority !== prev.priority) {
+              list.push({ id: nextActivityId++, taskId: tk.id, kind: 'state_change', eventType: 'priority', authorName: actor, body: '', meta: { from: prev.priority, to: tk.priority }, reactions: {}, createdAt: nowStamp(), updatedAt: nowStamp() });
+            }
+            if (tk.deadline && prev.deadline && tk.deadline !== prev.deadline) {
+              list.push({ id: nextActivityId++, taskId: tk.id, kind: 'state_change', eventType: 'deadline', authorName: actor, body: '', meta: { from: prev.deadline, to: tk.deadline, postponed: tk.deadline > prev.deadline }, reactions: {}, createdAt: nowStamp(), updatedAt: nowStamp() });
+            }
+          } else {
+            list.push({ id: nextActivityId++, taskId: tk.id, kind: 'state_change', eventType: 'created', authorName: actor, body: '', meta: {}, reactions: {}, createdAt: nowStamp(), updatedAt: nowStamp() });
+          }
+          taskActivitiesStore.set(tk.id, list);
+          taskSnapshotStore.set(tk.id, { status: tk.status ?? prev?.status, priority: tk.priority ?? prev?.priority, deadline: tk.deadline ?? prev?.deadline });
+        }
+      }
+      for (const tk of body?.tickets ?? []) {
+        const title = tk?.title || tk?.subject;
+        if (tk?.id && typeof title === 'string') pushedTicketTitles.set(tk.id, title);
+      }
       if (body?.settings?.integrationsConfig !== undefined) {
         pushedIntegrationsConfig = body.settings.integrationsConfig;
+      }
+      if (body?.settings?.projectStatuses !== undefined) {
+        pushedProjectStatuses = body.settings.projectStatuses;
       }
       for (const u of body?.users ?? []) {
         if (u?.email && u.metadata_json !== undefined) pushedUserMeta.set(u.email, u.metadata_json);
@@ -1060,6 +1201,7 @@ export async function installBackendMocks(
       for (const cd of body?.customDashboards ?? []) {
         if (cd?.id) pushedCustomDashboards.set(cd.id, cd);
       }
+      if (Array.isArray(body?.warehouseItems)) pushedWarehouseItems = body.warehouseItems;
     } catch {
       /* not JSON — nothing to remember */
     }
@@ -1121,16 +1263,68 @@ export async function installBackendMocks(
 
   // Everything else under /api/ and the upload endpoints: succeed quietly so a
   // missing PHP backend never shows up as an app defect.
-  await page.route('**/api/**', (route) =>
+  await page.route((url) => url.pathname === '/api/waai_sso.php', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, configured: false, module: { ui: 'native', transport: 'proxy', base: '/waai-api' }, standalone_url: null, embed_url: null, can_manage: signedIn.role === 'admin', user_id: signedIn.id }) }));
+  await page.route((url) => url.pathname.startsWith('/api/') && url.pathname !== '/api/waai_sso.php', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ success: true, data: [], items: [], agents: [], accounts: [], posts: [] }),
+      body: JSON.stringify({ success: true, data: [], items: [], agents: [], accounts: [], posts: [], client: null, tokens: [], users: [], mailboxes: [], userMailboxes: [], connectors: [] }),
     }),
   );
 
   // After the catch-all above, which would otherwise shadow it: the sign-in
   // screen needs `user` in the answer, not the catch-all's empty lists.
+  await page.route('**/api/clickup.php**', (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    let action = url.searchParams.get('action') || '';
+    let body: Record<string, any> = {};
+    if (req.method() === 'POST') {
+      try {
+        body = JSON.parse(req.postData() || '{}') || {};
+        if (body.action) action = String(body.action);
+      } catch {}
+    }
+    const fulfill = (payload: Record<string, unknown>) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, ...payload }) });
+    if (action === 'test_connection') {
+      return fulfill({ user: { id: 'cu-1', username: 'QA User', email: 'qa@cstudios.sk' }, teams: [{ id: 'team-1', name: 'QA Workspace' }] });
+    }
+    if (action === 'hierarchy') {
+      return fulfill({
+        spaces: [
+          {
+            id: 'sp-1',
+            name: 'Client Delivery',
+            folders: [{ id: 'fl-1', name: 'Web Projects', lists: [{ id: 'lst-1', name: 'Sprint Backlog', taskCount: 3 }] }],
+            lists: [{ id: 'lst-2', name: 'Support Queue', taskCount: 1 }],
+          },
+        ],
+      });
+    }
+    if (action === 'sync_project') {
+      return fulfill({ synced: 0, pruned: 0 });
+    }
+    if (action === 'sync_all') {
+      return fulfill({
+        projects: 0,
+        synced: 0,
+        pruned: 0,
+        errors: [],
+        config: { enabled: false, hasToken: false, apiToken: '', teamId: '', teamName: '', webhookActive: false, lastSyncAt: null, lastSyncError: null },
+        linkedProjectsCount: 0,
+        syncedTasksCount: 0,
+      });
+    }
+    return fulfill({
+      config: { enabled: false, hasToken: false, apiToken: '', teamId: '', teamName: '', webhookActive: false, lastSyncAt: null, lastSyncError: null },
+      connected: false,
+      webhook: { registered: false, reason: 'not_connected' },
+      linkedProjectsCount: 0,
+      syncedTasksCount: 0,
+    });
+  });
+
   await page.route('**/api/login.php', (route) => {
     passkeyPwAuthAt = Date.now();
     return route.fulfill({
@@ -1138,6 +1332,26 @@ export async function installBackendMocks(
       contentType: 'application/json',
       body: JSON.stringify({ success: true, user: signedIn }),
     });
+  });
+
+  // Time tracking has its own endpoints (never the sync blob). After the catch-all, which would
+  // otherwise answer them with empty lists.
+  await installTimeTrackingMock(page, {
+    user: signedIn,
+    users: [TEST_USER, SECOND_USER, ...(options.extraUsers ?? [])].map((u) => ({ id: u.id, name: u.name })),
+    roles: options.roles ?? ROLES,
+    tasks: TASKS,
+    tickets: options.tickets ?? [],
+    ticketsRenamed: pushedTicketTitles,
+    projects: PROJECTS,
+    leads: LEADS,
+    employees: {
+      [TEST_USER.id]: { id: 'emp-erik', kind: 'employee', salaryType: 'monthly', salaryAmount: 3200 },
+      // A freelancer: hourly, no employer multiplier. The specs that need him add his login via extraUsers.
+      'user-free': { id: 'emp-free', kind: 'contractor', salaryType: 'hourly', salaryAmount: 20 },
+    },
+    seed: timeTrackingSeed({ erik: TEST_USER.id, maria: SECOND_USER.id, free: 'user-free' }),
+    tasksRenamed: pushedTaskTitles,
   });
 
   // Dashboard widgets query the analytics endpoint per widget, so this must be
@@ -1446,6 +1660,275 @@ export async function installBackendMocks(
     });
   });
 
+  // Stateful in-memory mock for Weekly Plan cards & day notes.
+  const weeklyPlanCards = new Map<string, any>();
+  const weeklyPlanNotes = new Map<string, string>();
+  await page.route('**/api/weekly_plan.php**', async (route) => {
+    const req = route.request();
+    if (req.method() === 'GET') {
+      const url = new URL(req.url());
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const cards = Array.from(weeklyPlanCards.values()).filter((c) =>
+        (!from || c.date >= from) && (!to || c.date <= to),
+      );
+      const notes = Array.from(weeklyPlanNotes.entries())
+        .filter(([date]) => (!from || date >= from) && (!to || date <= to))
+        .map(([date, note]) => ({ date, note }));
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ cards, notes }),
+      });
+    }
+    const body = JSON.parse(req.postData() || '{}');
+    if (body.action === 'save_card') {
+      const card = {
+        id: body.id || `wpc_${Date.now()}`,
+        date: body.date,
+        content: body.content,
+        position: Number(body.position ?? 0),
+        completed: Boolean(body.completed),
+        color: String(body.color || ''),
+        refs: Array.isArray(body.refs) ? body.refs : [],
+        createdBy: signedIn.id,
+      };
+      weeklyPlanCards.set(card.id, card);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, card }),
+      });
+    }
+    if (body.action === 'reorder_cards') {
+      for (const item of body.items || []) {
+        const existing = weeklyPlanCards.get(item.id);
+        if (existing) {
+          weeklyPlanCards.set(item.id, { ...existing, date: item.date, position: Number(item.position ?? 0) });
+        }
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    if (body.action === 'delete_card') {
+      weeklyPlanCards.delete(body.id);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    if (body.action === 'save_note') {
+      if (body.note) weeklyPlanNotes.set(body.date, body.note);
+      else weeklyPlanNotes.delete(body.date);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, date: body.date, note: body.note || '' }),
+      });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+
+  // Stateful in-memory mock for Custom Calendars & Custom Calendar Events.
+  const customCalendarsStore = new Map<string, any>();
+  const customEventsStore = new Map<string, any>();
+  await page.route('**/api/custom_calendars.php**', async (route) => {
+    const req = route.request();
+    if (req.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          calendars: Array.from(customCalendarsStore.values()),
+          events: Array.from(customEventsStore.values()),
+        }),
+      });
+    }
+    const body = JSON.parse(req.postData() || '{}');
+    if (body.action === 'save_calendar') {
+      const calendar = {
+        id: body.id || `ccal_${Date.now()}`,
+        name: String(body.name || ''),
+        color: String(body.color || '#6366f1'),
+        description: body.description || null,
+        createdBy: signedIn.name || signedIn.id,
+      };
+      customCalendarsStore.set(calendar.id, calendar);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, calendar }) });
+    }
+    if (body.action === 'delete_calendar') {
+      customCalendarsStore.delete(body.id);
+      for (const [eid, ev] of customEventsStore.entries()) {
+        if (ev.calendarId === body.id) customEventsStore.delete(eid);
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    if (body.action === 'save_event') {
+      const event = {
+        id: body.id || `ccevt_${Date.now()}`,
+        calendarId: body.calendarId,
+        title: String(body.title || ''),
+        startDate: body.startDate,
+        endDate: body.endDate || body.startDate,
+        startTime: body.startTime || null,
+        endTime: body.endTime || null,
+        notes: body.notes || null,
+        color: body.color || null,
+        owner: body.owner || signedIn.name || null,
+        relatedLeadId: body.relatedLeadId || null,
+        relatedProjectId: body.relatedProjectId || null,
+      };
+      customEventsStore.set(event.id, event);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, event }) });
+    }
+    if (body.action === 'delete_event') {
+      customEventsStore.delete(body.id);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+
+  const tinyPngBytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await page.route('**/uploads/tasks/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: tinyPngBytes }),
+  );
+
+  // Stateful in-memory mock for ClickUp-style Task Activity, Chat Images & Reactions.
+  await page.route('**/api/task_activity.php**', async (route) => {
+    const req = route.request();
+    const actor = signedIn.name || 'Erik';
+    const stamp = () => new Date().toISOString().slice(0, 23).replace('T', ' ');
+    const toggleRx = (rxMap: Record<string, string[]> | undefined, emoji: string) => {
+      const next: Record<string, string[]> = { ...(rxMap || {}) };
+      const cur = next[emoji] || [];
+      if (cur.includes(actor)) {
+        const filtered = cur.filter((u) => u !== actor);
+        if (filtered.length === 0) delete next[emoji];
+        else next[emoji] = filtered;
+      } else {
+        next[emoji] = [...cur, actor];
+      }
+      return next;
+    };
+
+    if (req.method() === 'GET') {
+      const url = new URL(req.url());
+      const taskId = url.searchParams.get('taskId') || '';
+      const afterId = url.searchParams.get('afterId');
+      const list = taskActivitiesStore.get(taskId) ?? [];
+      const active = list.filter((it) => !it.deleted);
+      const commentCount = active.filter((it) => it.kind === 'comment').length;
+      const taskReactions = taskReactionsStore.get(taskId) ?? {};
+      const items = afterId !== null ? list.filter((it) => it.id > Number(afterId)) : active;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          items,
+          hasMore: false,
+          cursorUpdated: stamp(),
+          commentCount,
+          taskReactions,
+        }),
+      });
+    }
+
+    const contentType = req.headers()['content-type'] || '';
+    if (contentType.includes('multipart/form-data')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          image: {
+            url: `/uploads/tasks/2026-11/ta_${nextActivityId++}abcdef123456.png`,
+            name: 'board-screenshot.png',
+            w: 120,
+            h: 80,
+            size: tinyPngBytes.length,
+          },
+        }),
+      });
+    }
+
+    const body = JSON.parse(req.postData() || '{}');
+    const taskId = String(body.taskId || '');
+    const list = taskActivitiesStore.get(taskId) ?? [];
+
+    if (body.action === 'post_comment') {
+      const now = stamp();
+      const item = {
+        id: nextActivityId++,
+        taskId,
+        kind: 'comment',
+        eventType: null,
+        authorName: actor,
+        body: String(body.body || ''),
+        meta: Array.isArray(body.images) && body.images.length > 0 ? { images: body.images } : null,
+        reactions: {},
+        createdAt: now,
+        updatedAt: now,
+      };
+      list.push(item);
+      taskActivitiesStore.set(taskId, list);
+      const commentCount = list.filter((it) => it.kind === 'comment' && !it.deleted).length;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, item, commentCount }),
+      });
+    }
+
+    if (body.action === 'toggle_task_reaction') {
+      const next = toggleRx(taskReactionsStore.get(taskId), String(body.emoji || ''));
+      taskReactionsStore.set(taskId, next);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, taskReactions: next }),
+      });
+    }
+
+    if (body.action === 'toggle_message_reaction') {
+      const aid = Number(body.activityId);
+      const target = list.find((it) => it.id === aid);
+      const next = toggleRx(target?.reactions, String(body.emoji || ''));
+      if (target) {
+        target.reactions = next;
+        target.updatedAt = stamp();
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, id: aid, reactions: next }),
+      });
+    }
+
+    if (body.action === 'edit_comment') {
+      const aid = Number(body.activityId);
+      const target = list.find((it) => it.id === aid);
+      if (target) {
+        target.body = String(body.body || '');
+        target.meta = { ...(target.meta || {}), editedAt: new Date().toISOString() };
+        target.updatedAt = stamp();
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, item: target }) });
+    }
+
+    if (body.action === 'delete_comment') {
+      const aid = Number(body.activityId);
+      const target = list.find((it) => it.id === aid);
+      if (target) {
+        target.deleted = true;
+        target.updatedAt = stamp();
+      }
+      const commentCount = list.filter((it) => it.kind === 'comment' && !it.deleted).length;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, deletedId: aid, commentCount }) });
+    }
+
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+  });
+
   await page.route('**/upload.php', (route) =>
     route.fulfill({
       status: 200,
@@ -1463,6 +1946,47 @@ export async function installBackendMocks(
       body: JSON.stringify({ current: { temperature_2m: 14.2, weather_code: 2, is_day: 1 } }),
     }),
   );
+
+  await page.route('**/api/holidays.php**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        country: 'SK',
+        year: 2026,
+        days: [
+          { date: '2026-01-01', localName: 'Deň vzniku Slovenskej republiky', name: 'Day of the Establishment of the Slovak Republic' },
+          { date: '2026-05-01', localName: 'Sviatok práce', name: 'Labour Day' },
+        ],
+      }),
+    }),
+  );
+
+  await page.route('**/api/agency.php**', (route) => {
+    const url = new URL(route.request().url());
+    const action = url.searchParams.get('action') || 'bootstrap';
+    if (action === 'bootstrap' && route.request().method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          settings: DEFAULT_AGENCY_SETTINGS,
+          workers: [],
+          workplaces: [],
+          placements: [],
+          checklists: [],
+          shifts: [],
+          payments: [],
+        }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, settings: DEFAULT_AGENCY_SETTINGS }),
+    });
+  });
 
   await page.addInitScript((userJson: string) => {
     try {

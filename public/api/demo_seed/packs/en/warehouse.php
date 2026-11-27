@@ -1,0 +1,396 @@
+<?php
+/**
+ * Warehouse pack, English (US) edition: item details, supplier notes/contacts, batches and the ~6 months
+ * of stock documents that the module simulates (stock, batches and average cost are DERIVED from them).
+ * Data only (contract: demo_seed/index.php). Same keys, list lengths and numbers as the other two editions.
+ * Names, SKUs, units, prices and costs of items I1-I8, suppliers S1-S3 and warehouses W1-W2 live in
+ * packs/en/company.php. Every price here is EUR before conversion (demo_money()): inward lines carry the
+ * purchase price, outward lines the selling price. 'user' is the login who filed the document.
+ */
+return [
+    'numbering' => ['inward' => 'RCV', 'outward' => 'ISS', 'transfer' => 'TRF'],
+    'items' => [
+        'I1' => [
+            'description' => 'Engineered quartz, polished, 3200×1600 mm.',
+            'min' => 20,
+            'optimal' => 80,
+            'location' => 'A-01',
+            'location2' => 'S-01',
+            'expires' => 0,
+        ],
+        'I2' => [
+            'description' => 'Heat- and scratch-resistant sintered stone, dark marble look.',
+            'min' => 15,
+            'optimal' => 50,
+            'location' => 'A-02',
+            'location2' => 'S-02',
+            'expires' => 0,
+        ],
+        'I3' => [
+            'description' => 'Thin large-format porcelain for cladding and furniture.',
+            'min' => 40,
+            'optimal' => 160,
+            'location' => 'B-01',
+            'location2' => 'S-03',
+            'expires' => 0,
+        ],
+        'I4' => [
+            'description' => 'Natural black granite, polished, for heavily used worktops.',
+            'min' => 10,
+            'optimal' => 40,
+            'location' => 'A-03',
+            'location2' => 'S-04',
+            'expires' => 0,
+        ],
+        'I5' => [
+            'description' => 'Two-part adhesive for stone, mitred joints and bonding.',
+            'min' => 30,
+            'optimal' => 120,
+            'location' => 'C-01',
+            'location2' => 'S-05',
+            'expires' => 1,
+        ],
+        'I6' => [
+            'description' => 'Penetrating sealer for polished and honed stone.',
+            'min' => 12,
+            'optimal' => 40,
+            'location' => 'C-02',
+            'location2' => 'S-06',
+            'expires' => 1,
+        ],
+        'I7' => [
+            'description' => 'Cleaner and polish for everyday worktop care (e-shop product).',
+            'min' => 40,
+            'optimal' => 160,
+            'location' => 'D-01',
+            'location2' => 'S-07',
+            'expires' => 0,
+        ],
+        'I8' => [
+            'description' => 'Service item: on-site laser measuring visit, no stock.',
+            'min' => 0,
+            'optimal' => 0,
+            'location' => '',
+            'location2' => '',
+            'expires' => 0,
+        ],
+    ],
+    'suppliers' => [
+        'S1' => [
+            'position' => 'Sales manager',
+            'notes' => 'Italian producer of quartz, sintered stone and porcelain slabs; ships by the truckload.',
+            'extra' => [
+                [
+                    '_foreign' => true,
+                    'name' => 'Marco Rossi',
+                    'position' => 'Logistics',
+                    'phone' => '+39 0536 555 0124',
+                    'email' => 'logistica@marmi-fiorano.example',
+                ],
+            ],
+        ],
+        'S2' => [
+            'position' => 'Account manager',
+            'notes' => 'Local stone distributor: granite, marble and offcut sales.',
+            'extra' => [
+                ['name' => 'Linda Park', 'position' => 'Accounts', 'phone' => '+1 303 555 0232', 'email' => 'accounts@rockymountain-slab.example'],
+            ],
+        ],
+        'S3' => [
+            'position' => 'Technical sales',
+            'notes' => 'Adhesives, sealers and care products for stone.',
+            'extra' => [
+                ['name' => 'Tom Brandt', 'position' => 'Technical advisor', 'phone' => '+1 719 555 0313', 'email' => 'technical@buildchem-supply.example'],
+            ],
+        ],
+    ],
+    'batches' => [
+        [
+            'key' => 'b1',
+            'item' => 'I5',
+            'warehouse' => 'W1',
+            'number' => 'SF-A-01',
+            'expDay' => 230,
+        ],
+        [
+            'key' => 'b2',
+            'item' => 'I5',
+            'warehouse' => 'W1',
+            'number' => 'SF-A-02',
+            'expDay' => 18,
+        ],
+        [
+            'key' => 'b3',
+            'item' => 'I6',
+            'warehouse' => 'W1',
+            'number' => 'SS-A-01',
+            'expDay' => 300,
+        ],
+    ],
+    'reserved' => [
+        ['warehouse' => 'W1', 'item' => 'I1', 'qty' => 15],
+        ['warehouse' => 'W1', 'item' => 'I3', 'qty' => 25],
+        ['warehouse' => 'W1', 'item' => 'I2', 'qty' => 8],
+    ],
+    'movements' => [
+        [
+            'day' => -190,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S1',
+            'user' => 'pm',
+            'note' => 'Opening delivery of quartz and sintered slabs from Fiorano.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 80, 'priceEur' => 95.0],
+                ['item' => 'I2', 'qty' => 40, 'priceEur' => 110.0],
+            ],
+        ],
+        [
+            'day' => -184,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S1',
+            'user' => 'pm',
+            'note' => 'Porcelain slabs for the facade jobs.',
+            'lines' => [
+                ['item' => 'I3', 'qty' => 120, 'priceEur' => 72.0],
+            ],
+        ],
+        [
+            'day' => -176,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S3',
+            'user' => 'sales',
+            'note' => 'Adhesive, sealer and care kits.',
+            'lines' => [
+                ['item' => 'I5', 'qty' => 120, 'priceEur' => 14.2, 'batch' => 'b1'],
+                ['item' => 'I6', 'qty' => 36, 'priceEur' => 22.8, 'batch' => 'b3'],
+                ['item' => 'I7', 'qty' => 120, 'priceEur' => 12.4],
+            ],
+        ],
+        [
+            'day' => -162,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S2',
+            'user' => 'owner',
+            'note' => 'Granite from the local distributor.',
+            'lines' => [
+                ['item' => 'I4', 'qty' => 30, 'priceEur' => 130.0],
+            ],
+        ],
+        [
+            'day' => -150,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C4',
+            'user' => 'sales',
+            'note' => 'Showroom tables for {client:C4}.',
+            'lines' => [
+                ['item' => 'I2', 'qty' => 14, 'priceEur' => 210.0],
+            ],
+        ],
+        [
+            'day' => -128,
+            'type' => 'transfer',
+            'warehouse' => 'W1',
+            'to' => 'W2',
+            'user' => 'pm',
+            'note' => 'Slabs moved to the second warehouse.',
+            'lines' => [
+                ['item' => 'I3', 'qty' => 40, 'priceEur' => 0.0],
+                ['item' => 'I1', 'qty' => 12, 'priceEur' => 0.0],
+            ],
+        ],
+        [
+            'day' => -118,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S1',
+            'user' => 'pm',
+            'note' => 'Top-up of quartz and sintered slabs.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 60, 'priceEur' => 96.0],
+                ['item' => 'I2', 'qty' => 20, 'priceEur' => 112.0],
+            ],
+        ],
+        [
+            'day' => -104,
+            'type' => 'inward',
+            'warehouse' => 'W2',
+            'supplier' => 'S2',
+            'user' => 'owner',
+            'note' => 'Granite delivered straight to the second warehouse.',
+            'lines' => [
+                ['item' => 'I4', 'qty' => 12, 'priceEur' => 132.0],
+            ],
+        ],
+        [
+            'day' => -92,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C3',
+            'user' => 'sales',
+            'note' => '{client:C3}: batch of worktops.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 15, 'priceEur' => 185.0],
+                ['item' => 'I5', 'qty' => 6, 'priceEur' => 24.5, 'batch' => 'b1'],
+            ],
+        ],
+        [
+            'day' => -88,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S3',
+            'user' => 'owner',
+            'note' => 'Second adhesive delivery, short shelf life.',
+            'lines' => [
+                ['item' => 'I5', 'qty' => 80, 'priceEur' => 14.6, 'batch' => 'b2'],
+                ['item' => 'I6', 'qty' => 24, 'priceEur' => 23.1, 'batch' => 'b3'],
+            ],
+        ],
+        [
+            'day' => -80,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C3',
+            'user' => 'sales',
+            'note' => '{client:C3}: granite worktops for a partner job.',
+            'lines' => [
+                ['item' => 'I4', 'qty' => 14, 'priceEur' => 240.0],
+            ],
+        ],
+        [
+            'day' => -64,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S1',
+            'user' => 'pm',
+            'note' => 'More porcelain and sintered slabs for the facade project.',
+            'lines' => [
+                ['item' => 'I3', 'qty' => 100, 'priceEur' => 72.5],
+                ['item' => 'I2', 'qty' => 18, 'priceEur' => 111.0],
+            ],
+        ],
+        [
+            'day' => -56,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C2',
+            'user' => 'sales',
+            'note' => '{project:P2}: quartz slab and adhesive.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 10.6, 'priceEur' => 185.0],
+                ['item' => 'I5', 'qty' => 2, 'priceEur' => 24.5, 'batch' => 'b1'],
+            ],
+        ],
+        [
+            'day' => -48,
+            'type' => 'outward',
+            'warehouse' => 'W2',
+            'client' => 'C3',
+            'user' => 'sales',
+            'note' => '{client:C3}: batch of worktops from the second warehouse.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 12, 'priceEur' => 185.0],
+            ],
+        ],
+        [
+            'day' => -40,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S2',
+            'user' => 'owner',
+            'note' => 'Granite top-up.',
+            'lines' => [
+                ['item' => 'I4', 'qty' => 18, 'priceEur' => 131.0],
+            ],
+        ],
+        [
+            'day' => -33,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C1',
+            'user' => 'pm',
+            'note' => '{project:P1}: first facade pallet and adhesive.',
+            'lines' => [
+                ['item' => 'I3', 'qty' => 40, 'priceEur' => 140.0],
+                ['item' => 'I5', 'qty' => 16, 'priceEur' => 24.5, 'batch' => 'b2'],
+            ],
+        ],
+        [
+            'day' => -27,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S1',
+            'user' => 'pm',
+            'note' => 'Quartz and porcelain top-up.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 40, 'priceEur' => 98.0],
+                ['item' => 'I3', 'qty' => 60, 'priceEur' => 73.0],
+            ],
+        ],
+        [
+            'day' => -22,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C3',
+            'user' => 'sales',
+            'note' => '{client:C3}: batch of worktops.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 14, 'priceEur' => 185.0],
+                ['item' => 'I5', 'qty' => 5, 'priceEur' => 24.5, 'batch' => 'b2'],
+            ],
+        ],
+        [
+            'day' => -14,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C1',
+            'user' => 'pm',
+            'note' => '{project:P1}: second facade pallet and lobby floor.',
+            'lines' => [
+                ['item' => 'I3', 'qty' => 38, 'priceEur' => 140.0],
+                ['item' => 'I2', 'qty' => 22, 'priceEur' => 210.0],
+                ['item' => 'I6', 'qty' => 6, 'priceEur' => 42.0, 'batch' => 'b3'],
+            ],
+        ],
+        [
+            'day' => -10,
+            'type' => 'outward',
+            'warehouse' => 'W1',
+            'client' => 'C6',
+            'user' => 'sales',
+            'note' => '{project:P3}: slab samples for the reception desk and spa wall.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 1.5, 'priceEur' => 185.0],
+                ['item' => 'I2', 'qty' => 1.5, 'priceEur' => 210.0],
+            ],
+        ],
+        [
+            'day' => -6,
+            'type' => 'transfer',
+            'warehouse' => 'W1',
+            'to' => 'W2',
+            'user' => 'pm',
+            'note' => 'Samples and slabs moved to the second warehouse.',
+            'lines' => [
+                ['item' => 'I1', 'qty' => 10, 'priceEur' => 0.0],
+                ['item' => 'I2', 'qty' => 6, 'priceEur' => 0.0],
+            ],
+        ],
+        [
+            'day' => -4,
+            'type' => 'inward',
+            'warehouse' => 'W1',
+            'supplier' => 'S3',
+            'user' => 'owner',
+            'note' => 'Care kits and sealer for the e-shop.',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 60, 'priceEur' => 12.6],
+                ['item' => 'I6', 'qty' => 12, 'priceEur' => 23.0, 'batch' => 'b3'],
+            ],
+        ],
+    ],
+];

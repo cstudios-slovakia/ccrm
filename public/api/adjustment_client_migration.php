@@ -30,13 +30,14 @@
  */
 
 require_once __DIR__ . '/lead_client_backfill.php';
+require_once __DIR__ . '/deleted_records.php';
 
 if (!function_exists('ccrm_plan_adjustment_clients')) {
 
     /** Columns copied from the lead onto the new client row. Absent columns are skipped. */
     function ccrm_adjustment_copy_columns(): array {
         return [
-            'name', 'city', 'street', 'postal_code', 'country', 'phone', 'email', 'contact_person',
+            'name', 'city', 'street', 'postal_code', 'country', 'phone', 'email', 'contact_person', 'contact_first_name', 'contact_last_name',
             'company_id', 'tax_id', 'vat_id', 'website', 'client_type', 'status', 'source', 'owner',
             'division', 'rating', 'client_category_id', 'legal_form', 'sk_nace', 'establishment_date',
             'organization_size', 'ownership_type', 'data_source', 'dissolution_date', 'region',
@@ -253,7 +254,9 @@ if (!function_exists('ccrm_plan_adjustment_clients')) {
                     $pdo->prepare("UPDATE `leads` SET `adjustment` = ?, `client_id` = NULL WHERE `id` = ?")->execute([$adjustment, $moved[0]]);
                     $rest = $pdo->prepare("UPDATE `leads` SET `client_id` = NULL, `updated_at` = `updated_at` WHERE `id` = ? AND `client_id` = ?");
                     foreach (array_diff($linked, [$moved[0]]) as $id) $rest->execute([$id, $clientId]);
+                    $tomb = ccrm_deleted_snapshot($pdo, 'leads', (string)$clientId);
                     $pdo->prepare("DELETE FROM `leads` WHERE `id` = ?")->execute([$clientId]);
+                    ccrm_record_deleted($pdo, 'leads', (string)$clientId, $tomb, 'php kprnq (undo of the client-row migration)');
                     $pdo->prepare("DELETE FROM `client_adjustment_migration` WHERE `client_id` = ?")->execute([$clientId]);
                     $was = ccrm_register_total($before);
                     $now = ccrm_register_total(ccrm_adjustment_name_rows($pdo, $l['name']));

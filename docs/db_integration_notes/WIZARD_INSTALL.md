@@ -41,7 +41,7 @@ If successful:
 ## 3. Demo Mode Implementation Specs
 
 If the user installs demo data:
-1. Populate all tables sequentially with initial mock entities from `src/utils/mockData.ts`.
+1. Populate all tables with the demo dataset: `demo_seed_all()` in `public/api/demo_seed/` (company Lapidea, one pack per language; see `docs/DEMO-MODE.md`). Nothing is seeded by a migration.
 2. Save a configuration parameter `DEMO_MODE` as `true` (persisted in the `system_settings` table and synchronized to local storage).
 
 ### 3.1. Visual Indicators (Header & settings)

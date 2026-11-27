@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -423,7 +424,7 @@ if ($action === 'initiate_device_auth') {
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_TIMEOUT => 10,
-        CURLOPT_POSTFIELDS => json_encode(['deviceName' => 'CCRM Social Media Agent']),
+        CURLOPT_POSTFIELDS => json_encode(['deviceName' => (KOPERNIQ_PRODUCT_NAME . ' Social Media Agent')]),
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
             'Accept: application/json'

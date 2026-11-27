@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 
 header('Content-Type: application/json');
@@ -155,7 +156,7 @@ if ($action === 'train') {
         if ($step === 0) {
             $logs[] = "[INIT] Vector database: MariaDB, " . CCRM_VEC_MODEL . " (" . CCRM_VEC_DIM . " dimensions)";
             $q = ccrm_vec_queue_build($pdo, $vec);
-            $logs[] = "[SCAN] " . $q['indexed_items'] . " searchable records in the CRM; " . $q['queued'] . " new or changed, " . $q['removed'] . " removed from the index.";
+            $logs[] = "[SCAN] " . $q['indexed_items'] . (" searchable records in " . KOPERNIQ_PRODUCT_NAME . "; ") . $q['queued'] . " new or changed, " . $q['removed'] . " removed from the index.";
             foreach ($q['warnings'] as $w) {
                 $logs[] = "[WARN] Skipped a source: " . $w;
             }

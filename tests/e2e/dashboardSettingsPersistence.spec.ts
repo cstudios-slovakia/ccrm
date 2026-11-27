@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { startSession, gotoView } from './helpers/appDriver';
+import { LEGACY_WIDGET_DASHBOARD } from '../../src/utils/dashboardSection';
 
 test.describe('Dashboard widget settings persistence across reload', () => {
+  test.skip(!LEGACY_WIDGET_DASHBOARD, 'The widget board is retired from #dashboard (src/utils/dashboardSection.ts); this runs again when LEGACY_WIDGET_DASHBOARD is restored.');
   test('leads_by_status unchecking and settings survive save and page reload', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#dashboard');

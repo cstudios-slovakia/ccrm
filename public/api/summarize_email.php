@@ -2,8 +2,10 @@
 /**
  * AI Email Summarization Endpoint.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -17,6 +19,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // SECURITY: Authenticated users only
 $sessionUser = ccrm_require_auth();
 ccrm_gate($sessionUser, 'email');
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
 $userEmail = $sessionUser['email'] ?? '';
 
 if (empty($userEmail)) {
@@ -28,7 +33,7 @@ if (empty($userEmail)) {
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'installed' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'installed' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -61,6 +66,7 @@ try {
 // broker returns early when included from another endpoint, so only its helpers
 // are picked up here.
 require_once __DIR__ . '/mail_broker.php';
+require_once __DIR__ . '/graph_mail.php';
 
 // Plain text of one message, for the AI prompt only. Never marks it read.
 function ccrm_summary_body_from_mailbox($settings, $folder, $uid) {
@@ -89,6 +95,19 @@ if (empty($body) && $folder !== 'thread') {
         require_once __DIR__ . '/demo_mailbox.php';
         if ($emailSettings && ccrm_demo_mailbox_active($pdo, $emailSettings)) {
             $body = ccrm_demo_mailbox_body_text($pdo, strtolower((string)$emailSettings['imapUsername']), $folder, $emailUid);
+        } elseif ($emailSettings && ($emailSettings['provider'] ?? '') === 'microsoft365') {
+            // A Microsoft 365 mailbox is read through Graph; the uid is the message's Graph id.
+            try {
+                $userIdStmt = $pdo->prepare("SELECT `id` FROM `users` WHERE `email` = ?");
+                $userIdStmt->execute([$userEmail]);
+                $graphMailbox = ccrm_graph_mailbox($pdo, 'user', (string)$userIdStmt->fetchColumn(), $emailSettings);
+                $graphBody = ccrm_graph_body_text($graphMailbox, ccrm_graph_resolve_id($graphMailbox, $emailUid));
+                if ($graphBody !== '') {
+                    $body = $graphBody;
+                }
+            } catch (\Exception $ex) {
+                // fallback
+            }
         } elseif ($emailSettings && ($emailSettings['isValidated'] ?? false)) {
             try {
                 $imapBody = ccrm_summary_body_from_mailbox($emailSettings, $folder, $emailUid);
@@ -102,30 +121,39 @@ if (empty($body) && $folder !== 'thread') {
     }
 }
 
-// 1. Check if summary already exists in database
-try {
-    $checkStmt = $pdo->prepare("SELECT `summary` FROM `email_summaries` WHERE `user_email` = ? AND `folder` = ? AND `email_uid` = ?");
-    $checkStmt->execute([$userEmail, $folder, $emailUid]);
-    $existingSummary = $checkStmt->fetchColumn();
-    if ($existingSummary !== false) {
-        $decoded = json_decode($existingSummary, true);
-        if (is_array($decoded) && isset($decoded['summary'])) {
-            echo json_encode([
-                'success' => true,
-                'summary' => $decoded['summary'],
-                'actionItems' => $decoded['actionItems'] ?? []
-            ]);
-        } else {
-            echo json_encode([
-                'success' => true,
-                'summary' => $existingSummary,
-                'actionItems' => []
-            ]);
+// The key the summary is stored under. A Microsoft 365 message id (or a thread key made of
+// several) can be longer than `email_uid`; ccrm_mail_uid_key() leaves an IMAP uid as it is.
+$emailUid = ccrm_mail_uid_key($emailUid);
+
+// 1. Check if summary already exists in database (unless a fresh one was asked for)
+$existingSummary = false;
+if (empty($data['force'])) {
+    try {
+        $checkStmt = $pdo->prepare("SELECT `summary` FROM `email_summaries` WHERE `user_email` = ? AND `folder` = ? AND `email_uid` = ?");
+        $checkStmt->execute([$userEmail, $folder, $emailUid]);
+        $existingSummary = $checkStmt->fetchColumn();
+        if ($existingSummary !== false) {
+            $decoded = json_decode($existingSummary, true);
+            if (is_array($decoded) && isset($decoded['summary'])) {
+                echo json_encode([
+                    'success' => true,
+                    'summary' => $decoded['summary'],
+                    'problems' => is_array($decoded['problems'] ?? null) ? $decoded['problems'] : [],
+                    'actionItems' => $decoded['actionItems'] ?? []
+                ]);
+            } else {
+                echo json_encode([
+                    'success' => true,
+                    'summary' => $existingSummary,
+                    'problems' => [],
+                    'actionItems' => []
+                ]);
+            }
+            exit;
         }
-        exit;
+    } catch (\Exception $e) {
+        // If table not updated/created yet, proceed, but it should be auto-created by schema.php
     }
-} catch (\Exception $e) {
-    // If table not updated/created yet, proceed, but it should be auto-created by schema.php
 }
 
 // 2. Fetch integrations config to get OpenAI API key
@@ -134,13 +162,13 @@ $stmt->execute();
 $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
 $integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
 
-if (empty($openAiKey)) {
+if (!ccrm_ai_is_configured($pdo, $integrationsConfig)) {
     http_response_code(400);
     echo json_encode([
         'success' => false,
-        'message' => 'OpenAI API Key is not configured. Please configure it in Settings.'
+        'code' => 'ai_key_missing',
+        'message' => 'AI provider is not configured. Please configure an API key or LLM connector in Settings.'
     ]);
     exit;
 }
@@ -151,99 +179,56 @@ if (strlen($plainTextBody) > 4000) {
     $plainTextBody = substr($plainTextBody, 0, 4000) . '... [TRUNCATED]';
 }
 
-$openAiHeaders = [
-    'Content-Type: application/json',
-    'Authorization: Bearer ' . $openAiKey
-];
+$prompt = ("You are an expert " . KOPERNIQ_PRODUCT_NAME . " assistant. Analyze the following communication message or conversation flow and output a JSON response containing:
+1. \"summary\": A concise summary (1-2 sentences) highlighting the core status and any problems or blockers first.
+2. \"problems\": An array of specific problems, complaints, delays, risks, unanswered questions, or urgent blockers found in the communication (up to 4 items; empty array [] if everything is fine).
+3. \"actionItems\": A list of concrete action items / suggested follow-up tasks (up to 4 items).
 
-$prompt = "You are an expert CRM assistant. Analyze the following email details or conversation flow and output a JSON response containing a concise summary (1-2 sentences) and a list of action items / suggested tasks (up to 4 items).
-   
-You MUST detect the language in which the provided email is written and write the \"summary\" and all \"actionItems\" in that same language (e.g. Slovak if Slovak, English if English).
+You MUST detect the language in which the provided communication is written and write the \"summary\", \"problems\", and \"actionItems\" in that same language (e.g. Slovak if Slovak, Hungarian if Hungarian, English if English).
 
 You MUST respond ONLY with a valid JSON object. Do not wrap it in markdown code blocks.
 Output structure:
 {
-  \"summary\": \"Concise 1-2 sentence summary of the email.\",
-  \"actionItems\": [\"action1\", \"action2\", ...]
+  \"summary\": \"Concise 1-2 sentence summary highlighting any problems.\",
+  \"problems\": [\"problem1\", \"problem2\"],
+  \"actionItems\": [\"action1\", \"action2\"]
 }
 
-Email Subject: " . $subject . "\n\nEmail Content:\n" . $plainTextBody;
+Subject / Thread: ") . $subject . "\n\nContent:\n" . $plainTextBody;
 
-$emailModel = ccrm_ai_model();
-$payload = [
-    'model' => $emailModel,
-    'messages' => [
-        [
-            'role' => 'user',
-            'content' => $prompt
-        ]
+$emailModel = ccrm_ai_model($integrationsConfig);
+$aiRes = ccrm_ai_chat_completion(
+    $pdo,
+    [
+        'model' => $emailModel,
+        'messages' => [
+            [
+                'role' => 'user',
+                'content' => $prompt
+            ]
+        ],
+        'temperature' => 0.3,
     ],
-];
-if (ccrm_ai_model_supports_temperature($emailModel)) {
-    $payload['temperature'] = 0.3;
-}
+    [
+        'feature' => 'email_summary',
+        'timeout' => 25,
+        'retries' => 2,
+        'integrationsConfig' => $integrationsConfig,
+    ]
+);
 
-// IMAP-fetched bodies frequently contain bytes that are not valid UTF-8 (e.g.
-// Slovak text in ISO-8859-2 / Windows-1250). json_encode() returns false on
-// invalid UTF-8, which would send an empty POST body and make OpenAI reject the
-// request with "could not parse the JSON body". Substitute invalid sequences so
-// encoding always succeeds.
-$jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
-
-if ($jsonPayload === false) {
-    // Fallback for PHP builds where the flag is unavailable: scrub the prompt.
-    $payload['messages'][0]['content'] = mb_convert_encoding($prompt, 'UTF-8', 'UTF-8');
-    $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE);
-}
-
-if ($jsonPayload === false) {
+if (empty($aiRes['ok'])) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Failed to encode AI request payload.']);
+    echo json_encode([
+        'success' => false,
+        'code' => $aiRes['code'] ?: 'ai_error',
+        'message' => 'AI Error: ' . ($aiRes['error'] ?: 'AI API request failed'),
+        'providerMessage' => $aiRes['error'] ?? '',
+    ]);
     exit;
 }
 
-// OpenAI occasionally rejects a request transiently (HTTP 429 rate limit, or a
-// sporadic 5xx / network blip). The email view fires several summaries at once,
-// so a single transient failure should not surface to the user as a hard 500.
-// Retry transient failures a few times with exponential backoff; fail fast on
-// deterministic errors (e.g. 400/401) so we don't waste time or quota.
-$response = false; $httpCode = 0; $curlErr = '';
-$maxAttempts = 3;
-for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-    $ch = curl_init('https://api.openai.com/v1/chat/completions');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $openAiHeaders);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonPayload);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
-    curl_close($ch);
-
-    if ($httpCode === 200 && $response) {
-        break;
-    }
-    $isTransient = ($httpCode === 429 || $httpCode >= 500 || $response === false || $response === '' || !empty($curlErr));
-    if (!$isTransient || $attempt === $maxAttempts) {
-        break;
-    }
-    // Exponential backoff with jitter: ~0.8s, then ~1.6s.
-    usleep((int)(pow(2, $attempt - 1) * 800000) + rand(0, 250000));
-}
-
-if ($httpCode !== 200 || !$response) {
-    $errData = json_decode($response, true);
-    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API request failed');
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'OpenAI Error: ' . $errMsg]);
-    exit;
-}
-
-$resData = json_decode($response, true);
-$aiReply = trim($resData['choices'][0]['message']['content'] ?? '');
+$aiReply = trim((string)($aiRes['content'] ?? ''));
 
 if (empty($aiReply)) {
     http_response_code(500);
@@ -261,8 +246,12 @@ $aiJson = json_decode($cleanedReply, true);
 if (!is_array($aiJson) || empty($aiJson['summary'])) {
     $aiJson = [
         'summary' => $aiReply,
+        'problems' => [],
         'actionItems' => []
     ];
+} else {
+    $aiJson['problems'] = is_array($aiJson['problems'] ?? null) ? array_values($aiJson['problems']) : [];
+    $aiJson['actionItems'] = is_array($aiJson['actionItems'] ?? null) ? array_values($aiJson['actionItems']) : [];
 }
 
 $dbSaveValue = json_encode($aiJson, JSON_UNESCAPED_UNICODE);
@@ -278,5 +267,6 @@ try {
 echo json_encode([
     'success' => true,
     'summary' => $aiJson['summary'],
-    'actionItems' => $aiJson['actionItems'] ?? []
+    'problems' => $aiJson['problems'],
+    'actionItems' => $aiJson['actionItems']
 ]);

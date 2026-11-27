@@ -1,5 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { entityAccentStyle } from "../utils/entityAccent";
+import { applyOrderFulfillment, buildOrderFulfillmentMovement, planOrderFulfillment } from "../utils/orderFulfillment";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
+import { ContactNameFields } from "./ui/ContactNameFields";
+import { contactNameFieldsOf, contactNameFromRegistry, contactNamePatch, contactNameShown, type ContactNameParts } from "../utils/contactName";
 import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Search, Clock, User, Briefcase, Handshake, 
@@ -7,22 +13,23 @@ import {
   Calendar, ArrowUp, ArrowDown, ArrowUpDown, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
-  ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
-  AlertTriangle, CheckSquare, ShoppingCart, FileCheck, ExternalLink, Ticket as TicketIcon, Tag
+  ChevronLeft, ChevronRight, Milestone, MessageCircle, Coins, Archive, ArchiveRestore, Settings,
+  AlertTriangle, CheckSquare, FileCheck, ExternalLink, Ticket as TicketIcon, Tag, Building2
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
+import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, ClientContact, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
 import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, ticketTypeColor, ticketTypeLabel, PRIORITY_COLORS } from "../utils/tickets";
 import { useOrderStatuses } from "../hooks/useOrderStatuses";
 import { orderStatusColor, orderStatusLabel, calculateOrderTotals } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
+import { ClientNewsletterStatus } from "./newsletter/ClientNewsletterStatus";
 import { isClientRecord } from "../utils/clientRecord";
-import { applyClientProfile } from "../utils/leadClient";
+import { applyClientProfile, clientProfileGroups } from "../utils/leadClient";
 import { getDefaultVatRate } from "../utils/vat";
 import { issuedInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
-import { clientCategoryFilterIds, clientCategoryPath } from "../utils/clientCategoryTree";
+import { clientCategoryPath } from "../utils/clientCategoryTree";
 import { cn } from "../utils/cn";
 import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import { BlockEditor } from "./BlockEditor";
@@ -40,8 +47,14 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { AiKeyBanner } from "./ui/AiKeyBanner";
 import { EntityTasksPanel } from "./EntityTasksPanel";
+import type { AgencyRights } from "../utils/agencyRights";
+import { ClientCompanyAgencyTab } from "./agency/ClientCompanyAgencyTab";
+import { useTimeTracking } from "../hooks/useTimeTracking";
+import { entrySeconds } from "../utils/timeTracking.ts";
+import { ClientTimeTab } from "./timeTracking/ClientTimeTab";
 import {
   hasOpenAiKey,
+  hasTranscriptionKey,
   isAiKeyProblem,
   networkAiApiError,
   openAiSettings,
@@ -53,26 +66,46 @@ import { resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { isSystemMailConfigured } from "../utils/taskReminders";
 import { todayLocal, todayLocalPlusDays, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
-import { chartTheme, useAppearance } from "../utils/theme";
-import { chartFonts, useViewSize } from "../utils/viewSize";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
-import { splitRecordAmounts } from "../utils/financialOverviewTable";
+import { isRealMovement, movementAmounts, recurringOwnRowCharge } from "../utils/financialOverviewTable";
+import { markInvoiceMovementPaid } from "../utils/invoiceFinanceBridge";
+import { nextDocumentNumber } from "../utils/documentNumbering";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { isOutgoingMail } from "../utils/mailTimeline";
 import { FiledMailBody, MailAccountBadge } from "./FiledMail";
 import { fetchFiledMail, shouldReadStoredBody } from "../utils/filedMail";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
+import { WhatsAppChip, OpenInChatLink } from "./WhatsAppChip";
+import { ClientCompanyContacts } from "./clients/ClientCompanyContacts";
+import { ContactTagInput } from "./clients/ContactTagInput";
+import { collectAllContactTags, contactTagsSummary, normalizeContactTags, resolveContactTags } from "../utils/contactTags";
+import { ClientContactChats } from "./clients/ClientContactChats";
+import {
+  getWhatsAppChats,
+  inferConnectorType,
+  isMessagingConnector,
+  listMyConnectors,
+  type ConnectorType,
+  type WhatsAppChatSummary,
+} from "../utils/companyMailboxes";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveLeadsWithUndo } from "../utils/leadActions";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { detachTimelineFile, timelineEventFiles } from "../utils/timelineFiles";
-import { Chart as BundledChart } from "../utils/chartRuntime";
+import { FinancialReportView } from "./clients/FinancialReportView";
+export { FinancialReportView };
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { useListFilter } from "../hooks/useListFilter";
+import { useClientFacets } from "./clients/useClientFacets";
+import { FacetedMultiSelect } from "./ui/FacetedMultiSelect";
+import { PRODUCT_NAME } from "../utils/brand";
 
+import { ResizableTh } from "./ui/ResizableTh";
+import { projectManagerPickerNames } from "../utils/projectEmployees";
+import { ProjectEmployeesField } from "./projects/ProjectEmployeesField";
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
 
@@ -84,6 +117,8 @@ export interface ClientSortConfig {
 const CLIENTS_SORT_STORAGE_KEY = "ccrm_clients_sort_config";
 
 interface ClientsViewProps {
+  /** The user can open the Newsletter module: the profile shows the newsletter block (no request otherwise). */
+  newsletterEnabled?: boolean;
   /** The configured price levels: a client can be put on one (Client profile → Price level). */
   priceLevels?: PriceLevel[];
   leads: Lead[];
@@ -108,6 +143,7 @@ interface ClientsViewProps {
   companyBillingSettings?: CompanyBillingSettings | null;
   warehouseItems?: WarehouseItem[];
   warehouses?: Warehouse[];
+  warehouseMovements?: WarehouseMovement[];
   setWarehouseMovements?: (movements: WarehouseMovement[] | ((prev: WarehouseMovement[]) => WarehouseMovement[])) => void;
   invoicesOffers?: InvoiceOffer[];
   setInvoicesOffers?: (invoices: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => void;
@@ -118,6 +154,9 @@ interface ClientsViewProps {
   /** Customer categories (the Categories panel of the client register). */
   clientCategories?: ClientCategory[];
   setClientCategories?: (updater: ClientCategory[] | ((prev: ClientCategory[]) => ClientCategory[])) => void;
+  /** Separate table of company contact persons and standalone personal contacts. */
+  clientContacts?: ClientContact[];
+  setClientContacts?: (updater: ClientContact[] | ((prev: ClientContact[]) => ClientContact[])) => void;
   /**
    * The user's access to the clients module. `edit` unlocks everything that
    * creates or changes a client and what is filed under it, `delete` the
@@ -145,302 +184,13 @@ interface ClientsViewProps {
   taskStateColors?: Record<string, string>;
   tickets?: Ticket[];
   ticketStatuses?: TicketStatusDefinition[];
+  agencyEnabled?: boolean;
+  agencyRights?: AgencyRights;
 }
 
-/** The "without a category" row of the category filter. Not a real category id. */
-const NO_CLIENT_CATEGORY = "__none__";
-
-
-interface FinancialReportViewProps {
-  summary: string;
-  systemLanguage: string;
-}
-
-export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summary, systemLanguage }) => {
-  // chart.js paints to a canvas, so its axis, grid and legend colours cannot
-  // come from CSS — they are literals rebuilt whenever the appearance flips.
-  const appearance = useAppearance();
-  const { size: viewSize } = useViewSize();
-  const chart = chartTheme(appearance);
-  const chartRef = useRef<HTMLCanvasElement | null>(null);
-  const chartInstanceRef = useRef<any>(null);
-
-  // Parse the years, revenues, and profits from markdown table
-  const parsedData = useMemo(() => {
-    const lines = summary.split('\n');
-    const years: string[] = [];
-    const revenues: number[] = [];
-    const profits: number[] = [];
-
-    for (const line of lines) {
-      const parts = line.split('|').map(p => p.trim());
-      if (parts.length >= 4) {
-        const yearMatch = parts[1].match(/^\d{4}$/);
-        if (yearMatch) {
-          const year = parts[1];
-          const cleanNum = (str: string) => {
-            let cleaned = str.replace(/&euro;/g, '').replace(/[€\s]/g, '');
-            if (/, \d{3}/.test(cleaned) || /,\d{3}/.test(cleaned)) {
-              cleaned = cleaned.replace(/,/g, '');
-            }
-            return parseFloat(cleaned);
-          };
-          const revenue = cleanNum(parts[2]);
-          const profit = cleanNum(parts[3]);
-
-          if (!isNaN(revenue)) {
-            years.push(year);
-            revenues.push(revenue);
-            profits.push(isNaN(profit) ? 0 : profit);
-          }
-        }
-      }
-    }
-    return { years, revenues, profits };
-  }, [summary]);
-
-  useEffect(() => {
-    if (!chartRef.current || parsedData.years.length === 0) return;
-
-    if (chartInstanceRef.current) {
-      chartInstanceRef.current.destroy();
-    }
-
-    const ctx = chartRef.current.getContext('2d');
-    if (!ctx) return;
-
-    const ChartGlob: any = BundledChart;
-
-    const fonts = chartFonts();
-    chartInstanceRef.current = new ChartGlob(ctx, {
-      type: 'line',
-      data: {
-        labels: parsedData.years,
-        datasets: [
-          {
-            label: systemLanguage === 'sk' ? 'Celkové výnosy (€)' : systemLanguage === 'hu' ? 'Összes bevétel (€)' : 'Total Revenues (€)',
-            data: parsedData.revenues,
-            borderColor: 'rgb(79, 70, 229)',
-            backgroundColor: 'rgba(79, 70, 229, 0.05)',
-            borderWidth: 3,
-            pointBackgroundColor: 'rgb(79, 70, 229)',
-            pointRadius: 5,
-            fill: true,
-            tension: 0.3,
-            order: 2,
-          },
-          {
-            label: systemLanguage === 'sk' ? 'Výsledok hospodárenia (€)' : systemLanguage === 'hu' ? 'Nettó nyereség/veszteség (€)' : 'Net Profit/Loss (€)',
-            data: parsedData.profits,
-            borderColor: 'rgb(16, 185, 129)',
-            backgroundColor: 'rgba(16, 185, 129, 0.05)',
-            borderWidth: 3,
-            pointBackgroundColor: 'rgb(16, 185, 129)',
-            pointRadius: 5,
-            fill: true,
-            tension: 0.3,
-            order: 1,
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'top',
-            labels: {
-              font: {
-                family: 'Google Sans, sans-serif',
-                weight: 'bold',
-                size: fonts.label
-              },
-              color: chart.label
-            }
-          },
-          tooltip: {
-            titleFont: {
-              family: 'Google Sans, sans-serif',
-              weight: 'bold'
-            },
-            bodyFont: {
-              family: 'Google Sans, sans-serif'
-            }
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: {
-              color: chart.tick,
-              font: {
-                family: 'Google Sans, sans-serif',
-                size: fonts.tick,
-                weight: 'bold'
-              },
-              callback: (value: any) => '€' + value.toLocaleString()
-            },
-            grid: {
-              color: chart.grid
-            }
-          },
-          x: {
-            ticks: {
-              color: chart.tick,
-              font: {
-                family: 'Google Sans, sans-serif',
-                size: fonts.tick,
-                weight: 'bold'
-              }
-            },
-            grid: {
-              display: false
-            }
-          }
-        }
-      }
-    });
-
-    return () => {
-      if (chartInstanceRef.current) {
-        chartInstanceRef.current.destroy();
-      }
-    };
-  }, [parsedData, systemLanguage, appearance, viewSize]);
-
-  const renderBeautifulReport = (text: string) => {
-    if (!text) return null;
-
-    const cleanedText = text.replace(/```markdown\s*/g, '').replace(/```\s*/g, '');
-    const lines = cleanedText.split('\n');
-    const elements: React.ReactNode[] = [];
-    let listItems: string[] = [];
-    let tableRows: string[][] = [];
-
-    const formatInlineMarkdown = (str: string) => {
-      if (!str) return '';
-      // Escape HTML first so any markup in AI/registry-sourced text is inert;
-      // only our own ** / * markers are then turned into <strong>/<em>.
-      const escaped = str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-      return escaped
-        .replace(/\*\*(.*?)\*\*/g, '<strong class="font-black text-slate-900 font-extrabold">$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em class="italic text-slate-700">$1</em>');
-    };
-
-    const flushList = (key: string) => {
-      if (listItems.length > 0) {
-        elements.push(
-          <ul key={`list-${key}`} className="space-y-1 my-3 pl-5 list-disc text-slate-600 font-semibold leading-relaxed">
-            {listItems.map((item, idx) => (
-              <li key={idx} dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(item) }} />
-            ))}
-          </ul>
-        );
-        listItems = [];
-      }
-    };
-
-    const flushTable = (key: string) => {
-      if (tableRows.length > 0) {
-        elements.push(
-          <div key={`table-${key}`} className="overflow-x-auto my-4 rounded-xl border border-slate-200 shadow-sm bg-white">
-            <table className="min-w-full divide-y divide-slate-200 text-caption">
-              <thead className="bg-slate-50">
-                <tr>
-                  {tableRows[0].map((cell, idx) => (
-                    <th key={idx} className="px-4 py-2 text-left font-bold text-slate-700 uppercase tracking-wider" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(cell) }} />
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {tableRows.slice(1).map((row, rowIdx) => (
-                  <tr key={rowIdx} className="hover:bg-slate-50/50 transition-colors">
-                    {row.map((cell, cellIdx) => (
-                      <td key={cellIdx} className={`px-4 py-2 font-bold ${cellIdx === 0 ? 'text-slate-800 font-extrabold' : 'text-slate-600'}`} dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(cell) }} />
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-        tableRows = [];
-      }
-    };
-
-    for (let i = 0; i < lines.length; i++) {
-      let line = lines[i].trim();
-
-      const h1Match = line.match(/^#\s+(.*$)/);
-      const h2Match = line.match(/^##\s+(.*$)/);
-      const h3Match = line.match(/^###\s+(.*$)/);
-      const listMatch = line.match(/^\s*[-\*]\s+(.*$)/);
-      const isTableLine = line.startsWith('|');
-
-      if (h1Match || h2Match || h3Match || listMatch || isTableLine === false) {
-        flushList(String(i));
-        flushTable(String(i));
-      }
-
-      if (h1Match) {
-        elements.push(
-          <h2 key={i} className="text-body font-bold text-slate-900 mt-6 mb-3 border-b border-slate-200 pb-1.5 flex items-center gap-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h1Match[1]) }} />
-        );
-      } else if (h2Match) {
-        elements.push(
-          <h3 key={i} className="text-ui font-bold text-slate-800 mt-5 mb-2 flex items-center gap-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h2Match[1]) }} />
-        );
-      } else if (h3Match) {
-        elements.push(
-          <h4 key={i} className="type-overline text-slate-600 mt-4 mb-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h3Match[1]) }} />
-        );
-      } else if (listMatch) {
-        listItems.push(formatInlineMarkdown(listMatch[1]));
-      } else if (isTableLine) {
-        const cells = line.split('|').map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
-        const isSeparator = cells.every(c => /^[-:]+$/.test(c));
-        if (!isSeparator) {
-          tableRows.push(cells);
-        }
-      } else if (line !== "") {
-        elements.push(
-          <p key={i} className="my-2.5 leading-relaxed text-slate-600 font-semibold" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(line) }} />
-        );
-      }
-    }
-
-    flushList("end");
-    flushTable("end");
-
-    return <div className="space-y-1 text-caption">{elements}</div>;
-  };
-
-  return (
-    <div className="space-y-6">
-      {parsedData.years.length > 0 && (
-        <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h4 className="type-overline text-slate-500">
-              {systemLanguage === 'sk' ? 'Graf vývoja hospodárenia' : systemLanguage === 'hu' ? 'Pénzügyi trend diagram' : 'Financial Trend Chart'}
-            </h4>
-          </div>
-          <div className="h-48 relative w-full">
-            <canvas ref={chartRef} />
-          </div>
-        </div>
-      )}
-      
-      <div className="p-6 rounded-2xl bg-indigo-50/15 border-2 border-indigo-100/60 shadow-inner leading-relaxed text-ui">
-        {renderBeautifulReport(summary)}
-      </div>
-    </div>
-  );
-};
 
 export const ClientsView: React.FC<ClientsViewProps> = ({
+  newsletterEnabled = false,
   leads,
   setLeads,
   projectManagers,
@@ -453,7 +203,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   leadCategories,
   integrationsConfig,
   taskStates,
-  systemName = "CCRM",
+  systemName = PRODUCT_NAME,
   currencyCode,
   financialRecords = [],
   setFinancialRecords,
@@ -461,16 +211,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   setOrders,
   orderAccess,
   companyBillingSettings,
+  warehouseMovements = [],
   warehouseItems = [],
   warehouses = [],
   setWarehouseMovements,
-  invoicesOffers: _invoicesOffers = [],
+  invoicesOffers = [],
   invoiceStatuses,
   priceLevels = [],
   setInvoicesOffers,
   financialCategories = [],
   clientCategories = [],
   setClientCategories,
+  clientContacts = [],
+  setClientContacts,
   access = FULL_MODULE_ACCESS,
   financeAccess = FULL_MODULE_ACCESS,
   taskAccess,
@@ -480,8 +233,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   taskStateColors = {},
   tickets = [],
   ticketStatuses = DEFAULT_TICKET_STATUSES,
+  agencyEnabled = false,
+  agencyRights,
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const timeTracking = useTimeTracking();
   // Role gates. `view` is what let the user in; read-only users still search,
   // filter, open a profile and download what they can see. Deleting is never
   // open to a role that cannot edit, whatever the delete toggle says.
@@ -501,16 +257,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedType, setSelectedType] = useListFilter("clients.type", "all");
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
-  const [filterCity, setFilterCity] = useListFilter("clients.city", "");
-  const [filterPM, setFilterPM] = useListFilter("clients.manager", "");
   const [currentPage, setCurrentPage] = useState(1);
   // Active clients or the archive — the two never share the list, so a
   // restore is always one tab away, the way archived tasks work.
   const [clientArchiveScope, setClientArchiveScope] = useListFilter<"active" | "archived">("clients.archive", "active");
-  // "" = every category, NO_CLIENT_CATEGORY = clients filed under none.
-  const [filterClientCategory, setFilterClientCategory] = useListFilter("clients.category", "");
   // The categories manager takes the list's place while it is open.
   const [clientsSubView, setClientsSubView] = useState<"list" | "settings">("list");
 
@@ -570,10 +321,6 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     );
   };
 
-  // Reset pagination to page 1 on filter or sort changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, sortConfig]);
   
   // State hook to toggle detail card edit mode
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -598,7 +345,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [newClientCompanyId, setNewClientCompanyId] = useState("");
   const [newClientTaxId, setNewClientTaxId] = useState("");
   const [newClientVatId, setNewClientVatId] = useState("");
-  const [newClientContactPerson, setNewClientContactPerson] = useState("");
+  const [newClientContact, setNewClientContact] = useState<ContactNameParts>({ firstName: "", lastName: "" });
   const [newClientWebsite, setNewClientWebsite] = useState("");
   const [newClientEstablishmentDate, setNewClientEstablishmentDate] = useState("");
   const [newClientLegalForm, setNewClientLegalForm] = useState("");
@@ -609,11 +356,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [newClientDissolutionDate, setNewClientDissolutionDate] = useState("");
   const [newClientRegion, setNewClientRegion] = useState("");
   const [newClientDistrict, setNewClientDistrict] = useState("");
-  const [newClientOwner, setNewClientOwner] = useState(projectManagers[0] || "");
+  const [newClientOwner, setNewClientOwner] = useState(projectManagerPickerNames(users)[0] || "");
+  const [newClientEmployees, setNewClientEmployees] = useState<string[]>([]);
   const [newClientValue, setNewClientValue] = useState("");
   const [newClientAdjustment, setNewClientAdjustment] = useState("");
   const [newClientCategories, setNewClientCategories] = useState<string[]>([]);
   const [newClientCategoryId, setNewClientCategoryId] = useState("");
+  const [newClientCompanyClientId, setNewClientCompanyClientId] = useState("");
+  const [newClientContactTags, setNewClientContactTags] = useState<string[]>([]);
 
   // Company registry type-ahead for the register drawer. The client profile
   // panel keeps its own instance, declared next to the profile form state.
@@ -814,7 +564,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     if (details.country) setNewClientCountry(details.country);
     // The statutory body doubles as a contact person, but never over one the
     // user has already written down.
-    if (details.contactPerson && !newClientContactPerson.trim()) setNewClientContactPerson(details.contactPerson);
+    if (details.contactPerson && !newClientContact.firstName.trim() && !newClientContact.lastName.trim()) {
+      setNewClientContact(contactNameFromRegistry(details.contactPerson) ?? { firstName: details.contactPerson, lastName: "" });
+    }
 
     setNewClientEstablishmentDate(details.establishmentDate || "");
     setNewClientLegalForm(details.legalForm || "");
@@ -881,10 +633,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   useEffect(() => {
-    if (projectManagers.length > 0 && !newClientOwner) {
-      setNewClientOwner(projectManagers[0]);
+    const pms = projectManagerPickerNames(users);
+    if (pms.length > 0 && !newClientOwner) {
+      setNewClientOwner(pms[0]);
     }
-  }, [projectManagers]);
+  }, [users]);
 
   const closeRegisterDrawer = () => {
     setIsClosingRegisterDrawer(true);
@@ -909,7 +662,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       clientType: newClientType,
       status: "accepted", // Won client status
       source: "website",
-      owner: newClientOwner || projectManagers[0] || currentUser?.name || "",
+      owner: newClientOwner || projectManagerPickerNames(users)[0] || "",
+      ...(newClientEmployees.length ? { assignedEmployees: newClientEmployees.filter((n) => n !== newClientOwner) } : {}),
       value: parseFloat(newClientValue) || 0,
       adjustment: parseFloat(newClientAdjustment) || 0,
       // `leads.created_at` is a DATE column: a full ISO timestamp makes MySQL
@@ -929,7 +683,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       taxId: newClientType !== "person" ? newClientTaxId.trim() : undefined,
       vatId: newClientType !== "person" ? newClientVatId.trim() : undefined,
       vatValidationResult: newClientType !== "person" ? newClientVatResult : null,
-      contactPerson: newClientType !== "person" ? newClientContactPerson.trim() : undefined,
+      ...contactNamePatch(null, contactNameShown(newClientContact, newClientName, newClientType === "person"), newClientType === "person"),
       website: newClientType !== "person" ? newClientWebsite.trim() : undefined,
       establishmentDate: newClientType !== "person" ? newClientEstablishmentDate.trim() : undefined,
       legalForm: newClientType !== "person" ? newClientLegalForm.trim() : undefined,
@@ -942,6 +696,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       district: newClientType !== "person" ? newClientDistrict.trim() : undefined,
       categories: newClientCategories,
       clientCategoryId: newClientCategoryId || null,
+      companyClientId: newClientType === "person" ? (newClientCompanyClientId || null) : null,
+      contactRole: newClientType === "person" ? contactTagsSummary(newClientContactTags) : null,
+      contactTags: newClientType === "person" ? normalizeContactTags(newClientContactTags) : [],
       timeline: [
         {
           id: `ev-${Date.now()}`,
@@ -949,9 +706,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           timestamp: nowLocalStamp(),
           title: t("Client Registered", "Klient zaregistrovaný", "Ügyfél regisztrálva"),
           content: t(
-            "Client profile successfully registered inside CRM system.",
-            "Profil klienta bol úspešne zaregistrovaný v CRM systéme.",
-            "Az ügyfélprofil sikeresen regisztrálva a CRM rendszerben."
+            `Client profile successfully registered inside ${PRODUCT_NAME} system.`,
+            `Profil klienta bol úspešne zaregistrovaný v ${PRODUCT_NAME} systéme.`,
+            `Az ügyfélprofil sikeresen regisztrálva a ${PRODUCT_NAME} rendszerben.`
           )
         }
       ]
@@ -971,7 +728,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setNewClientCompanyId("");
     setNewClientTaxId("");
     setNewClientVatId("");
-    setNewClientContactPerson("");
+    setNewClientContact({ firstName: "", lastName: "" });
     setNewClientWebsite("");
     setNewClientEstablishmentDate("");
     setNewClientLegalForm("");
@@ -987,6 +744,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setNewClientAdjustment("");
     setNewClientCategories([]);
     setNewClientCategoryId("");
+    setNewClientCompanyClientId("");
+    setNewClientContactTags([]);
     setNewClientVatStatus("idle");
     setNewClientVatResult(null);
     
@@ -1002,6 +761,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
    */
   const allClientProfiles = useMemo(() => {
     const profilesMap: Record<string, {
+      primaryId: string;
       name: string;
       city: string;
       clientType: "person" | "business" | "partner";
@@ -1023,6 +783,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       taxId: string;
       vatId: string;
       contactPerson: string;
+      contactFirstName: string;
+      contactLastName: string;
       website: string;
       establishmentDate: string;
       legalForm: string;
@@ -1038,6 +800,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       ticketAllowedEmails: string[];
       clientCategoryId: string | null;
       priceLevelId: string | null;
+      companyClientId: string | null;
+      contactRole: string | null;
+      contactTags: string[];
+      assignedEmployees: string[];
       archived: boolean;
       aiSummary?: string;
       aiSummaryFingerprint?: string;
@@ -1051,77 +817,113 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       } | null;
     }> = {};
 
+    // A lead linked to its client by `clientId` belongs to that client's profile,
+    // whatever its own name; everything else still groups by name. A profile takes
+    // its name and details from its client record when it has one, so the route
+    // (#client-<name>) and the header always show the client, not a linked deal.
+    const groups = clientProfileGroups(leads);
+    const leadById = new Map(leads.map(l => [l.id, l]));
+    const anchorIdByKey = new Map<string, string>();
     leads.forEach(lead => {
-      const clientKey = lead.name.trim().toLowerCase();
+      const group = groups.get(lead);
+      const clientKey = group?.key ?? `name:${lead.name.trim().toLowerCase()}`;
       if (!profilesMap[clientKey]) {
+        const anchor = (group?.anchorId && leadById.get(group.anchorId)) || lead;
+        if (group?.anchorId) anchorIdByKey.set(clientKey, group.anchorId);
+        // Details come from the client record when the profile has one. The
+        // per-lead loop below still adds every lead's own value, categories and
+        // timeline, the anchor's included, exactly once.
         profilesMap[clientKey] = {
-          name: lead.name,
-          city: lead.city || "",
-          clientType: lead.clientType || "person",
-          source: lead.source || "website",
-          owner: lead.owner || "",
+          primaryId: anchor.id,
+          name: anchor.name,
+          city: anchor.city || "",
+          clientType: anchor.clientType || "person",
+          source: anchor.source || "website",
+          owner: anchor.owner || "",
           totalValue: 0,
-          adjustment: Number(lead.adjustment) || 0,
+          adjustment: Number(anchor.adjustment) || 0,
           leadsCount: 0,
           associatedLeads: [],
-          createdAt: lead.createdAt || "",
+          createdAt: anchor.createdAt || "",
 
-          phone: lead.phone || "",
-          email: lead.email || "",
-          street: lead.address?.street || "",
-          postalCode: lead.address?.postalCode || "",
-          country: lead.address?.country || "Slovakia",
-          companyId: lead.companyId || "",
-          taxId: lead.taxId || "",
-          vatId: lead.vatId || "",
-          contactPerson: lead.contactPerson || "",
-          website: lead.website || "",
-          establishmentDate: lead.establishmentDate || "",
-          legalForm: lead.legalForm || "",
-          skNace: lead.skNace || "",
-          organizationSize: lead.organizationSize || "",
-          ownershipType: lead.ownershipType || "",
-          dataSource: lead.dataSource || "",
-          dissolutionDate: lead.dissolutionDate || "",
-          region: lead.region || "",
-          district: lead.district || "",
-          timeline: lead.timeline || [],
+          phone: anchor.phone || "",
+          email: anchor.email || "",
+          street: anchor.address?.street || "",
+          postalCode: anchor.address?.postalCode || "",
+          country: anchor.address?.country || "Slovakia",
+          companyId: anchor.companyId || "",
+          taxId: anchor.taxId || "",
+          vatId: anchor.vatId || "",
+          contactPerson: anchor.contactPerson || "",
+          contactFirstName: anchor.contactFirstName || "",
+          contactLastName: anchor.contactLastName || "",
+          website: anchor.website || "",
+          establishmentDate: anchor.establishmentDate || "",
+          legalForm: anchor.legalForm || "",
+          skNace: anchor.skNace || "",
+          organizationSize: anchor.organizationSize || "",
+          ownershipType: anchor.ownershipType || "",
+          dataSource: anchor.dataSource || "",
+          dissolutionDate: anchor.dissolutionDate || "",
+          region: anchor.region || "",
+          district: anchor.district || "",
+          // A copy: the merge below pushes other leads' events into it.
+          timeline: [...(anchor.timeline || [])],
           categories: [],
           ticketAllowedEmails: [],
-          clientCategoryId: lead.clientCategoryId || null,
-          priceLevelId: lead.priceLevelId || null,
-          archived: !!lead.archived,
-          aiSummary: lead.aiSummary || "",
-          aiSummaryFingerprint: lead.aiSummaryFingerprint || "",
-          financialSummary: lead.financialSummary || "",
-          vatValidationResult: lead.vatValidationResult || null
+          clientCategoryId: anchor.clientCategoryId || null,
+          priceLevelId: anchor.priceLevelId || null,
+          companyClientId: anchor.companyClientId || null,
+          contactRole: anchor.contactRole || null,
+          contactTags: resolveContactTags(anchor.contactTags, anchor.contactRole),
+          assignedEmployees: anchor.assignedEmployees || [],
+          archived: !!anchor.archived,
+          aiSummary: anchor.aiSummary || "",
+          aiSummaryFingerprint: anchor.aiSummaryFingerprint || "",
+          financialSummary: anchor.financialSummary || "",
+          vatValidationResult: anchor.vatValidationResult || null
         };
-      } else {
-        if (lead.aiSummary && !profilesMap[clientKey].aiSummary) {
-          profilesMap[clientKey].aiSummary = lead.aiSummary;
-          profilesMap[clientKey].aiSummaryFingerprint = lead.aiSummaryFingerprint;
-        }
-        if (!profilesMap[clientKey].clientCategoryId && lead.clientCategoryId) {
-          profilesMap[clientKey].clientCategoryId = lead.clientCategoryId;
-        }
-        if (!profilesMap[clientKey].priceLevelId && lead.priceLevelId) {
-          profilesMap[clientKey].priceLevelId = lead.priceLevelId;
-        }
-        // Archived only while every lead of the profile is: a new deal under the
-        // same name brings the client back into the register on its own.
-        profilesMap[clientKey].archived = profilesMap[clientKey].archived && !!lead.archived;
-        if (lead.financialSummary && !profilesMap[clientKey].financialSummary) {
-          profilesMap[clientKey].financialSummary = lead.financialSummary;
-        }
-        if (lead.vatValidationResult && !profilesMap[clientKey].vatValidationResult) {
-          profilesMap[clientKey].vatValidationResult = lead.vatValidationResult;
-        }
-        if (lead.adjustment !== undefined && lead.adjustment !== null && lead.adjustment !== 0 && !profilesMap[clientKey].adjustment) {
-          profilesMap[clientKey].adjustment = Number(lead.adjustment) || 0;
-        }
-        if (lead.createdAt && (!profilesMap[clientKey].createdAt || lead.createdAt < profilesMap[clientKey].createdAt)) {
-          profilesMap[clientKey].createdAt = lead.createdAt;
-        }
+      }
+      // Fold this lead into its profile. Every merge below keeps the first value
+      // it finds, so it is a no-op for the anchor that seeded the profile, and the
+      // first lead seen counts too when it is not the anchor.
+      if ((lead.id || "").startsWith("client-") && !profilesMap[clientKey].primaryId.startsWith("client-")) {
+        profilesMap[clientKey].primaryId = lead.id;
+      }
+      if (lead.aiSummary && !profilesMap[clientKey].aiSummary) {
+        profilesMap[clientKey].aiSummary = lead.aiSummary;
+        profilesMap[clientKey].aiSummaryFingerprint = lead.aiSummaryFingerprint;
+      }
+      if (!profilesMap[clientKey].clientCategoryId && lead.clientCategoryId) {
+        profilesMap[clientKey].clientCategoryId = lead.clientCategoryId;
+      }
+      if (!profilesMap[clientKey].priceLevelId && lead.priceLevelId) {
+        profilesMap[clientKey].priceLevelId = lead.priceLevelId;
+      }
+      if (!profilesMap[clientKey].companyClientId && lead.companyClientId) {
+        profilesMap[clientKey].companyClientId = lead.companyClientId;
+      }
+      if (!profilesMap[clientKey].contactRole && lead.contactRole) {
+        profilesMap[clientKey].contactRole = lead.contactRole;
+      }
+      if (profilesMap[clientKey].contactTags.length === 0) {
+        const mergedTags = resolveContactTags(lead.contactTags, lead.contactRole);
+        if (mergedTags.length > 0) profilesMap[clientKey].contactTags = mergedTags;
+      }
+      // Archived only while every lead of the profile is: a new deal under the
+      // same name brings the client back into the register on its own.
+      profilesMap[clientKey].archived = profilesMap[clientKey].archived && !!lead.archived;
+      if (lead.financialSummary && !profilesMap[clientKey].financialSummary) {
+        profilesMap[clientKey].financialSummary = lead.financialSummary;
+      }
+      if (lead.vatValidationResult && !profilesMap[clientKey].vatValidationResult) {
+        profilesMap[clientKey].vatValidationResult = lead.vatValidationResult;
+      }
+      if (lead.adjustment !== undefined && lead.adjustment !== null && lead.adjustment !== 0 && !profilesMap[clientKey].adjustment) {
+        profilesMap[clientKey].adjustment = Number(lead.adjustment) || 0;
+      }
+      if (lead.createdAt && (!profilesMap[clientKey].createdAt || lead.createdAt < profilesMap[clientKey].createdAt)) {
+        profilesMap[clientKey].createdAt = lead.createdAt;
       }
       profilesMap[clientKey].totalValue += (Number(lead.value) || 0);
       profilesMap[clientKey].leadsCount += 1;
@@ -1154,6 +956,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       }
     });
 
+    // The client record leads its profile's list: "the profile's first lead" is
+    // where new invoices, tasks and documents of the client attach.
+    anchorIdByKey.forEach((anchorId, key) => {
+      const list = profilesMap[key]?.associatedLeads;
+      const at = list ? list.findIndex(l => l.id === anchorId) : -1;
+      if (list && at > 0) list.unshift(...list.splice(at, 1));
+    });
+
     // Add adjustment to total client value & sort timelines chronologically (Newest First)
     Object.values(profilesMap).forEach(profile => {
       profile.totalValue += (Number(profile.adjustment) || 0);
@@ -1165,14 +975,51 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   // A profile in the Clients registry must either have an explicit client record
   // (id starts with 'client-') or a confirmed positive adjustment. Un-won pipeline
-  // leads belong strictly to the Sales Pipeline (#leads).
+  // leads belong strictly to the Sales Pipeline (#leads). Legacy company-attached
+  // person contacts belong in `client_contacts`, never the Clients list.
   const clientProfiles = useMemo(() => {
     return allClientProfiles.filter(profile => {
+      if (profile.clientType === "person" && !!profile.companyClientId) return false;
       const hasClientRecord = profile.associatedLeads.some(l => (l.id || "").startsWith("client-"));
       const hasAdjustment = (Number(profile.adjustment) || 0) > 0;
       return hasClientRecord || hasAdjustment;
     });
   }, [allClientProfiles]);
+
+  // Type, city, manager and category: multi-select and faceted (see clients/useClientFacets.ts).
+  const facets = useClientFacets({
+    clients: clientProfiles,
+    categories: clientCategories,
+    managerNames: projectManagers,
+    searchQuery,
+    archive: clientArchiveScope,
+    t,
+  });
+  // Reset pagination to page 1 on filter or sort changes
+  const facetKey = JSON.stringify(facets.selection);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, facetKey, clientArchiveScope, sortConfig]);
+
+  // Business / Partner companies available for attaching client-side person contacts.
+  const companyClientProfiles = useMemo(
+    () => clientProfiles.filter(c => c.clientType !== "person" && !c.archived),
+    [clientProfiles]
+  );
+
+  const companyByIdMap = useMemo(() => {
+    const map = new Map<string, (typeof clientProfiles)[number]>();
+    for (const company of clientProfiles) {
+      if (company.clientType === "person") continue;
+      map.set(company.primaryId, company);
+      for (const l of company.associatedLeads) {
+        if (l.id) map.set(l.id, company);
+      }
+    }
+    return map;
+  }, [clientProfiles]);
+
+  const allContactTags = useMemo(() => collectAllContactTags([...clientContacts, ...leads]), [clientContacts, leads]);
 
   // Find active client details based on URL deep routing (resilient matching across all client profiles)
   const activeClient = useMemo(() => {
@@ -1193,7 +1040,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     });
     if (cleanMatch) return cleanMatch;
 
-    // 3. Prefix or inclusion match (e.g. "Cstudios" matches "Cstudios, s.r.o.")
+    // 3. Prefix or inclusion match (e.g. "Acme" matches "Acme, s.r.o.")
     const fuzzyMatch = allClientProfiles.find(c => {
       const cLower = c.name.toLowerCase();
       return cLower.startsWith(lookupLower) || lookupLower.startsWith(cLower) || cLower.includes(lookupLower) || lookupLower.includes(cLower);
@@ -1287,6 +1134,64 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [isLoadingMails, setIsLoadingMails] = useState(false);
   // Why the mail half of the timeline is empty, when it is empty for a reason.
   const [clientMailError, setClientMailError] = useState<string | null>(null);
+
+  const [messagingChannels, setMessagingChannels] = useState<
+    Array<{ id: string; name: string; connectorType: ConnectorType; chats: WhatsAppChatSummary[] }>
+  >([]);
+  const [chatClientLinks, setChatClientLinks] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("ccrm_chat_client_links") || "{}");
+    } catch {
+      return {};
+    }
+  });
+
+  const updateChatClientLink = (chatKey: string, leadId: string) => {
+    setChatClientLinks((prev) => {
+      const next = { ...prev };
+      if (leadId) next[chatKey] = leadId;
+      else delete next[chatKey];
+      try {
+        localStorage.setItem("ccrm_chat_client_links", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!activeClient) return;
+    let cancelled = false;
+    void listMyConnectors()
+      .then(async (res) => {
+        if (cancelled) return;
+        const msgBoxes = (res.connectors ?? res.mailboxes ?? [])
+          .map((box) => ({
+            id: box.id,
+            name: box.name || box.address,
+            connectorType: inferConnectorType(box.settings, box.address, box.connectorType),
+          }))
+          .filter((b) => isMessagingConnector(b.connectorType));
+        const loaded = await Promise.all(
+          msgBoxes.map(async (b) => {
+            try {
+              const st = await getWhatsAppChats(b.id);
+              return { ...b, chats: Array.isArray(st.chats) ? st.chats : [] };
+            } catch {
+              return { ...b, chats: [] };
+            }
+          }),
+        );
+        if (!cancelled) setMessagingChannels(loaded);
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeClient?.name]);
 
   useEffect(() => {
     if (!activeClient || !activeClient.email || !userEmailSettings || !userEmailSettings.isValidated) {
@@ -1425,10 +1330,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileEmail, setProfileEmail] = useState("");
   const [profileType, setProfileType] = useState<"person" | "business" | "partner">("person");
   const [profileOwner, setProfileOwner] = useState("");
+  const [profileEmployees, setProfileEmployees] = useState<string[]>([]);
   const [profileCompanyId, setProfileCompanyId] = useState("");
   const [profileTaxId, setProfileTaxId] = useState("");
   const [profileVatId, setProfileVatId] = useState("");
-  const [profileContactPerson, setProfileContactPerson] = useState("");
+  const [profileContact, setProfileContact] = useState<ContactNameParts>({ firstName: "", lastName: "" });
   const [profileWebsite, setProfileWebsite] = useState("");
   const [profileEstablishmentDate, setProfileEstablishmentDate] = useState("");
   const [profileLegalForm, setProfileLegalForm] = useState("");
@@ -1442,6 +1348,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileCategories, setProfileCategories] = useState<string[]>([]);
   const [profileClientCategoryId, setProfileClientCategoryId] = useState("");
   const [profilePriceLevelId, setProfilePriceLevelId] = useState("");
+  const [profileCompanyClientId, setProfileCompanyClientId] = useState("");
+  const [profileContactTags, setProfileContactTags] = useState<string[]>([]);
 
   // The same registry autofill as the register drawer, on the client profile.
   const profileLookup = useCompanyLookup<CompanyLookupField>({
@@ -1457,7 +1365,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     if (details.city) setProfileCity(details.city);
     if (details.postalCode) setProfilePostalCode(details.postalCode);
     if (details.country) setProfileCountry(details.country);
-    if (details.contactPerson && !profileContactPerson.trim()) setProfileContactPerson(details.contactPerson);
+    if (details.contactPerson && !profileContact.firstName.trim() && !profileContact.lastName.trim()) {
+      setProfileContact(contactNameFromRegistry(details.contactPerson) ?? { firstName: details.contactPerson, lastName: "" });
+    }
 
     setProfileEstablishmentDate(details.establishmentDate || "");
     setProfileLegalForm(details.legalForm || "");
@@ -1553,7 +1463,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   });
 
   // --- DETAIL TABS & DOCUMENT UPLOADER STATE WITH URL SYNC ---
-  type DetailTabKey = "timeline" | "tasks" | "orders" | "invoices" | "leads" | "financial_status" | "files" | "tickets";
+  type DetailTabKey = "timeline" | "tasks" | "time" | "orders" | "invoices" | "leads" | "contacts" | "agency_workers" | "financial_status" | "files" | "tickets";
 
   const getInitialDetailTab = (): DetailTabKey => {
     const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
@@ -1563,9 +1473,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       tabParam === "orders" ||
       tabParam === "files" ||
       tabParam === "leads" ||
+      tabParam === "contacts" ||
+      tabParam === "agency_workers" ||
       tabParam === "financial_status" ||
       tabParam === "timeline" ||
       tabParam === "tasks" ||
+      tabParam === "time" ||
       tabParam === "tickets"
     ) {
       return tabParam as DetailTabKey;
@@ -1640,9 +1553,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return;
     }
     const nextList = [...current, raw];
+    // Every lead of the profile, not only the same-name ones: the list shown is
+    // the union of all of them (see allClientProfiles).
+    const memberIds = new Set((activeClient.associatedLeads || []).map((l) => l.id));
     setLeads((prev) =>
       prev.map((lead) =>
-        lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()
+        memberIds.has(lead.id)
           ? { ...lead, ticketAllowedEmails: nextList }
           : lead,
       ),
@@ -1653,9 +1569,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const handleRemoveClientWhitelistEmail = (email: string) => {
     if (!canEdit || !activeClient) return;
     const nextList = (activeClient.ticketAllowedEmails || []).filter((em) => em !== email);
+    const memberIds = new Set((activeClient.associatedLeads || []).map((l) => l.id));
     setLeads((prev) =>
       prev.map((lead) =>
-        lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()
+        memberIds.has(lead.id)
           ? { ...lead, ticketAllowedEmails: nextList }
           : lead,
       ),
@@ -1736,43 +1653,41 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const handleFulfillWarehouse = (order: Order) => {
     if (!canEditOrders || !setWarehouseMovements) return;
-    const physicalItems = (order.items || []).filter(i => i.itemType === "product" && i.quantity > 0);
-    if (physicalItems.length === 0) {
-      alert(t("This order contains no physical products to fulfill.", "Táto objednávka neobsahuje žiadne fyzické produkty na vyskladnenie.", "Ez a rendelés nem tartalmaz fizikai termékeket."));
+    const plan = planOrderFulfillment(order, warehouseItems);
+    if (plan.lines.length === 0) {
+      if (plan.alreadyFulfilled.length > 0 && plan.skippedNonCatalog.length === 0) {
+        alert(t("All products of this order have already been issued from the warehouse.", "Všetky produkty tejto objednávky už boli vyskladnené.", "A rendelés összes terméke már ki lett adva a raktárból."));
+      } else if (plan.skippedNonCatalog.length > 0) {
+        alert(t("The remaining products of this order are not warehouse items, so they cannot be put on a delivery note.", "Zvyšné produkty tejto objednávky nie sú skladové položky, preto ich nemožno vyskladniť.", "A rendelés többi terméke nem raktári tétel, ezért nem adható ki."));
+      } else {
+        alert(t("This order contains no physical products to fulfill.", "Táto objednávka neobsahuje žiadne fyzické produkty na vyskladnenie.", "Ez a rendelés nem tartalmaz fizikai termékeket."));
+      }
+      return;
+    }
+    const warehouseId = order.warehouseId || warehouses?.[0]?.id || "";
+    if (!warehouseId) {
+      alert(t("Create a warehouse first.", "Najprv vytvorte sklad.", "Először hozzon létre egy raktárt."));
       return;
     }
 
-    if (!confirm(t(`Create warehouse delivery note (výdajka) for ${physicalItems.length} products?`, `Vystaviť výdajku zo skladu pre ${physicalItems.length} produktov?`, `Kiállítja a raktári kiadási bizonylatot ${physicalItems.length} termékre?`))) return;
+    const count = plan.lines.length;
+    const skipped = plan.skippedNonCatalog.length;
+    const skippedNote = skipped > 0
+      ? t(` (${skipped} non-warehouse products are left out)`, ` (${skipped} neskladových produktov sa vynechá)`, ` (${skipped} nem raktári termék kimarad)`)
+      : "";
+    if (!confirm(t(`Create warehouse delivery note (výdajka) for ${count} products?`, `Vystaviť výdajku zo skladu pre ${count} produktov?`, `Kiállítja a raktári kiadási bizonylatot ${count} termékre?`) + skippedNote)) return;
 
-    const warehouseId = order.warehouseId || (warehouses?.[0]?.id ?? "wh-default");
-    const newMovement: WarehouseMovement = {
-      id: `mov_${Date.now()}`,
-      documentNumber: `VYD-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-      type: "outward",
-      status: "confirmed",
-      warehouseId,
-      leadId: order.clientId || undefined,
-      totalCostValue: 0,
-      totalSellValue: order.itemsNetAmount,
-      totalProfitValue: 0,
-      createdBy: propCurrentUser?.name || "System",
-      note: `${t("Order fulfillment", "Vyskladnenie k objednávke", "Rendelés teljesítése")}: ${order.orderNumber}`,
-      issuedAt: new Date().toISOString().split("T")[0],
-      createdAt: new Date().toISOString(),
-      items: physicalItems.map(item => ({
-        id: `mov_item_${Date.now()}_${Math.random()}`,
-        itemId: item.itemId || item.id,
-        quantity: item.quantity,
-        unitPurchasePrice: 0,
-        unitSellPrice: item.unitPrice,
-        totalPrice: item.totalNetAmount,
-        note: item.name
-      }))
-    };
-
-    setWarehouseMovements(prev => [newMovement, ...prev]);
+    const note = `${t("Order fulfillment", "Vyskladnenie k objednávke", "Rendelés teljesítése")}: ${order.orderNumber}`;
+    const createdBy = propCurrentUser?.name || "System";
+    const now = new Date();
+    // The VYD number and the movement id follow what is already on file.
+    const movement = buildOrderFulfillmentMovement(order, plan, { existingMovements: warehouseMovements, warehouseId, createdBy, note, now });
+    const documentNumber = movement.documentNumber;
+    setWarehouseMovements(prev => [movement, ...prev]);
+    // What was issued is stored on the order lines, so a second click issues nothing.
+    setOrders?.(prev => prev.map(o => (o.id === order.id ? applyOrderFulfillment(o, plan) : o)));
     const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
-    toast?.(t(`Delivery note ${newMovement.documentNumber} created!`, `Výdajka ${newMovement.documentNumber} bola úspešne vytvorená!`, `A(z) ${newMovement.documentNumber} kiadási bizonylat elkészült!`));
+    toast?.(t(`Delivery note ${documentNumber} created!`, `Výdajka ${documentNumber} bola úspešne vytvorená!`, `A(z) ${documentNumber} kiadási bizonylat elkészült!`));
   };
 
   const handleCreateInvoice = async (order: Order) => {
@@ -1803,9 +1718,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
     const nowIso = new Date().toISOString();
     const newInvoiceId = `inv_${Date.now()}`;
-    const newInvoiceNumber = `FA-${new Date().getFullYear()}-${String(
-      Math.floor(Math.random() * 9000) + 1000
-    )}`;
+    // The next number of the invoice series, as MCP issues it (mcp_next_document_number,
+    // FA, 3 digits): a random number could collide with one already issued.
+    const newInvoiceNumber = nextDocumentNumber(
+      invoicesOffers.map((io) => io.documentNumber),
+      "FA",
+      new Date().getFullYear(),
+      3
+    );
 
     let targetLead = order.clientId ? leads.find(l => l.id === order.clientId) : null;
     if (!targetLead && order.billing?.ico) {
@@ -1875,6 +1795,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     };
 
     setInvoicesOffers?.(prev => [newInvoice, ...prev]);
+
+    // An order already paid: the invoice's ledger movement is settled too, as the
+    // Orders module does. Otherwise it would wait in "awaiting payment" forever.
+    if (order.paymentStatus === "paid" && setFinancialRecords) {
+      const paidAmt = companyBillingSettings?.financeNetMode ? order.totalNetAmount : order.totalGrossAmount;
+      setFinancialRecords(prev =>
+        markInvoiceMovementPaid(prev, newInvoiceId, paidAmt, order.paidAt || order.orderDate || todayLocal())
+      );
+    }
 
     const updatedOrder: Order = {
       ...order,
@@ -2274,7 +2203,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       recorder.onstop = async () => {
         setIsUploadingAudio(true);
-        const ext = mimeType.split("/")[1] || "webm";
+        const ext = mimeType.split(";")[0].split("/")[1] || "webm";
         const blob = new Blob(chunks, { type: mimeType });
         const localUrl = URL.createObjectURL(blob);
         localAudioUrlRef.current = localUrl;
@@ -2449,7 +2378,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           manualNotes: manualNotesText,
           // A timeline note has no meeting_notes row to look the recording up
           // by, so say which stored file to transcribe.
-          audioFile: uploadedAudioFile || undefined
+          audioFile: uploadedAudioFile || undefined,
+          durationSeconds: Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : undefined,
+          language: systemLanguage
         })
       });
       const data = await res.json();
@@ -2571,7 +2502,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         onResume={resumeRecording}
         onStop={stopRecording}
         onRemove={removeAudioFile}
-        canTranscribe={isOpenAiConfigured}
+        canTranscribe={hasTranscriptionKey(integrationsConfig)}
         isTranscribing={isTranscribing}
         isUploadingAudio={isUploadingAudio}
         hasUploadedAudio={!!uploadedAudioFile}
@@ -2666,6 +2597,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         setProfileEmail(activeClient.email);
         setProfileType(activeClient.clientType);
         setProfileOwner(activeClient.owner);
+        setProfileEmployees(activeClient.assignedEmployees || []);
         setProfileCompanyId(activeClient.companyId);
         setProfileTaxId(activeClient.taxId);
         setProfileVatId(activeClient.vatId);
@@ -2689,7 +2621,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           setProfileVatResult(null);
           autoCheckedVatRef.current = null;
         }
-        setProfileContactPerson(activeClient.contactPerson);
+        setProfileContact(contactNameFieldsOf(activeClient));
         setProfileWebsite(activeClient.website);
         setProfileEstablishmentDate(activeClient.establishmentDate || "");
         setProfileLegalForm(activeClient.legalForm || "");
@@ -2703,6 +2635,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         setProfileCategories(activeClient.categories || []);
         setProfileClientCategoryId(activeClient.clientCategoryId || "");
         setProfilePriceLevelId(activeClient.priceLevelId || "");
+        setProfileCompanyClientId(activeClient.companyClientId || "");
+        setProfileContactTags(resolveContactTags(activeClient.contactTags, activeClient.contactRole));
         
         if (clientNameChanged) {
           setIsEditingProfile(false); // Reset to read-only by default on transition to a new client
@@ -2790,7 +2724,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       taxId: profileType !== "person" ? profileTaxId.trim() : undefined,
       vatId: profileType !== "person" ? profileVatId.trim() : undefined,
       vatValidationResult: profileType !== "person" ? profileVatResult : null,
-      contactPerson: profileType !== "person" ? profileContactPerson.trim() : undefined,
+      ...contactNamePatch(activeClient, profileContact, profileType === "person", profileName),
       website: profileType !== "person" ? profileWebsite.trim() : undefined,
       establishmentDate: profileType !== "person" ? profileEstablishmentDate.trim() : undefined,
       legalForm: profileType !== "person" ? profileLegalForm.trim() : undefined,
@@ -2803,8 +2737,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       district: profileType !== "person" ? profileDistrict.trim() : undefined,
       categories: profileCategories,
       clientCategoryId: profileClientCategoryId || null,
-      priceLevelId: profilePriceLevelId || null
+      priceLevelId: profilePriceLevelId || null,
+      companyClientId: profileType === "person" ? (profileCompanyClientId || null) : null,
+      contactRole: profileType === "person" ? contactTagsSummary(profileContactTags) : null,
+      contactTags: profileType === "person" ? normalizeContactTags(profileContactTags) : []
     }));
+    // Employees belong to the client record itself; its leads keep their own.
+    const nextEmployees = profileEmployees.filter((n) => n !== profileOwner);
+    setLeads(prev => prev.map(l => (l.id === activeClient.primaryId ? { ...l, assignedEmployees: nextEmployees } : l)));
 
     setIsEditingProfile(false); // Toggle back to read-only
     // Update dynamic URL to reflect new client profile name
@@ -3062,21 +3002,6 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     alert(t("Document attached successfully!", "Dokument bol úspešne pripojený!", "A dokumentum sikeresen csatolva!"));
   };
 
-  // Extract unique cities dynamically from the active customer registry
-  const uniqueCities = useMemo(() => {
-    const cities = new Set(clientProfiles.map(c => c.city).filter(Boolean));
-    return Array.from(cities).sort();
-  }, [clientProfiles]);
-
-  // Picking a main category also finds the clients filed under its subcategories.
-  const categoryFilterIds = useMemo(
-    () =>
-      filterClientCategory && filterClientCategory !== NO_CLIENT_CATEGORY
-        ? clientCategoryFilterIds(clientCategories, filterClientCategory)
-        : null,
-    [clientCategories, filterClientCategory]
-  );
-
   const archivedClientsCount = useMemo(() => clientProfiles.filter(c => c.archived).length, [clientProfiles]);
 
   // Clients filed directly under each category, for the counts in the manager.
@@ -3090,33 +3015,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   // Filter & sort clients list
   const processedClients = useMemo(() => {
-    const filtered = clientProfiles
-      .filter(client => {
-        const matchesSearch = 
-          searchQuery === "" ||
-          client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          client.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          client.owner.toLowerCase().includes(searchQuery.toLowerCase());
-        
-        const matchesType = selectedType === "all" || client.clientType === selectedType;
-
-        const matchesCity = filterCity === "" || client.city.toLowerCase() === filterCity.toLowerCase();
-        
-        const matchesPM = filterPM === "" || client.owner.toLowerCase() === filterPM.toLowerCase();
-
-        const matchesArchive = clientArchiveScope === "archived" ? client.archived : !client.archived;
-
-        // A category id that no longer exists counts as no category.
-        const hasKnownCategory = !!client.clientCategoryId && clientCategories.some(c => c.id === client.clientCategoryId);
-        const matchesCategory =
-          filterClientCategory === ""
-            ? true
-            : filterClientCategory === NO_CLIENT_CATEGORY
-              ? !hasKnownCategory
-              : !!client.clientCategoryId && !!categoryFilterIds?.has(client.clientCategoryId);
-
-        return matchesSearch && matchesType && matchesCity && matchesPM && matchesArchive && matchesCategory;
-      });
+    const filtered = facets.filteredClients;
 
     if (!sortConfig) return filtered;
 
@@ -3177,7 +3076,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       return collator.compare(String(valA), String(valB)) * sign;
     });
-  }, [clientProfiles, searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, categoryFilterIds, clientCategories, sortConfig]);
+  }, [facets.filteredClients, sortConfig]);
 
   // Paginated subset of clients
   const paginatedClients = useMemo(() => {
@@ -3187,14 +3086,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
 
 
-  // Archive or restore a client profile. A profile is every lead sharing the
-  // name, so all of them change together — the same rule the profile editor uses.
+  // Archive or restore a client profile. A profile is its client record, the
+  // leads linked to it by id and the unlinked leads sharing its name (see
+  // allClientProfiles), so all of them change together: the profile counts as
+  // archived only while every one of them is.
   const setClientArchived = (clientName: string, archived: boolean) => {
     const key = clientName.trim().toLowerCase();
+    const profile = allClientProfiles.find(c => c.name.trim().toLowerCase() === key);
+    const memberIds = new Set(
+      profile
+        ? profile.associatedLeads.map(l => l.id)
+        : leads.filter(lead => lead.name.trim().toLowerCase() === key).map(l => l.id)
+    );
     if (archived) {
       // Held and undoable: one Undo puts every lead row of the profile back.
       archiveLeadsWithUndo({
-        targets: leads.filter(lead => lead.name.trim().toLowerCase() === key && !lead.archived),
+        targets: leads.filter(lead => memberIds.has(lead.id) && !lead.archived),
         setLeads,
         lang: systemLanguage,
         label: { entity: "client", title: clientName },
@@ -3202,7 +3109,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return;
     }
     setLeads(prev => prev.map(lead =>
-      lead.name.trim().toLowerCase() === key && !!lead.archived !== archived ? { ...lead, archived } : lead
+      memberIds.has(lead.id) && !!lead.archived !== archived ? { ...lead, archived } : lead
     ));
     (window as any).showToast?.(
       t("Client restored — back in the client list.", "Klient obnovený — je späť v zozname klientov.", "Ügyfél visszaállítva — újra az ügyféllistán.")
@@ -3212,7 +3119,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // Deleted categories take their clients with them only as far as the filing:
   // the clients stay, uncategorised.
   const handleClientCategoriesDeleted = (ids: Set<string>) => {
-    if (filterClientCategory && ids.has(filterClientCategory)) setFilterClientCategory("");
+    if (facets.selection.category.some(id => ids.has(id))) facets.setSelection("category", facets.selection.category.filter(id => !ids.has(id)));
     // How each client was filed, so the category's Undo can file it back.
     const filed = new Map(
       leads.filter(l => l.clientCategoryId && ids.has(l.clientCategoryId)).map(l => [l.id, l.clientCategoryId as string])
@@ -3275,6 +3182,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           cardBorder: "border-l-4 border-l-emerald-500 border-y-slate-200 border-r-slate-200",
           badgeBg: "bg-emerald-50 text-emerald-700 border-emerald-200"
         };
+      // Pushed in by WAAI (task created / done in a linked chat); never logged by hand.
+      case "whatsapp":
+        return {
+          dotBg: "bg-green-600 border-green-700 text-white shadow-md shadow-green-500/20",
+          cardBorder: "border-l-4 border-l-green-500 border-y-slate-200 border-r-slate-200",
+          badgeBg: "bg-green-50 text-green-700 border-green-200"
+        };
       case "appointment":
         return {
           dotBg: "bg-rose-600 border-rose-700 text-white shadow-md shadow-rose-500/20",
@@ -3301,6 +3215,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       // Automatic pipeline-state entry. It keeps the neutral slate default from
       // getEventColors — written by the system, not logged by a person.
       case "status_change": return <Milestone className="h-3 w-3 stroke-[2.5]" />;
+      case "whatsapp": return <MessageCircle className="h-3 w-3 stroke-[2.5]" />;
       default: return <Clock className="h-3 w-3 stroke-[2.5]" />;
     }
   };
@@ -3311,13 +3226,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   if (initialSelectedClient) {
     if (!activeClient) {
       return (
-        <div className="p-8 glass-panel rounded-[28px] border-2 border-red-400 bg-white shadow-glass text-center space-y-4">
+        <div className="p-8 rounded-lg border border-rose-300 bg-white shadow-xs text-center space-y-4">
           <div className="text-display text-rose-600 animate-bounce">⚠️</div>
-          <h2 className="text-title font-heading font-bold text-slate-900">{t("Client Profile Not Found", "Profil klienta sa nenašiel", "Az ügyfélprofil nem található")}</h2>
-          <p className="text-ui text-slate-600 font-semibold">{t(`The profile name '${initialSelectedClient}' could not be resolved in the active database.`, `Názov profilu '${initialSelectedClient}' sa nepodarilo nájsť v aktívnej databáze.`, `A(z) '${initialSelectedClient}' profilnév nem feloldható az aktív adatbázisban.`)}</p>
+          <h2 className="text-title font-heading font-semibold text-gray-900">{t("Client Profile Not Found", "Profil klienta sa nenašiel", "Az ügyfélprofil nem található")}</h2>
+          <p className="text-ui text-gray-600 font-medium">{t(`The profile name '${initialSelectedClient}' could not be resolved in the active database.`, `Názov profilu '${initialSelectedClient}' sa nepodarilo nájsť v aktívnej databáze.`, `A(z) '${initialSelectedClient}' profilnév nem feloldható az aktív adatbázisban.`)}</p>
           <button
             onClick={() => { window.location.hash = "clients"; }}
-            className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-ui font-bold transition-all active:scale-95 shadow-md cursor-pointer"
+            className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-md text-ui font-semibold transition-all shadow-xs cursor-pointer"
           >
             {t("Back to Clients List", "Späť na zoznam klientov", "Vissza az ügyféllistához")}
           </button>
@@ -3348,9 +3263,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           }}
           backLabel={t("Back to Client", "Späť na klienta", "Vissza az ügyfélhez")}
           companyBillingSettings={companyBillingSettings}
+          projects={projects}
         />
       );
     }
+
+    const activeClientIds = activeClient.associatedLeads.map((l) => l.id).filter(Boolean);
+    const activeClientIdSet = new Set(activeClientIds);
+    const clientTrackedSeconds =
+      activeClientIds.reduce((sum, id) => sum + (timeTracking.totals.byClient?.[id]?.seconds ?? 0), 0) +
+      timeTracking.running.reduce((sum, e) => (e.clientId && activeClientIdSet.has(e.clientId) ? sum + entrySeconds(e, timeTracking.nowMs) : sum), 0);
 
     return (
       <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
@@ -3359,36 +3281,61 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           onBack={() => { window.location.hash = "clients"; }}
           backLabel={getTranslation(systemLanguage, "common.back_to_clients")}
           avatar={
-            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-bold text-title shadow-md shrink-0">
+            <div className="h-12 w-12 rounded-lg bg-entity-solid text-white flex items-center justify-center font-heading font-semibold text-title shadow-xs shrink-0">
               {getInitials(profileName || activeClient.name)}
             </div>
           }
           title={profileName || activeClient.name}
           badges={<>
                 {activeClient.clientType && (
-                  <span className="capitalize px-2.5 py-0.5 rounded-full type-overline bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  <span className="capitalize px-2.5 py-0.5 rounded-md type-overline bg-entity-subtle text-entity-text border border-entity-border">
                     {activeClient.clientType}
                   </span>
                 )}
+                {activeClient.clientType === "person" && activeClient.companyClientId && companyByIdMap.get(activeClient.companyClientId) && (() => {
+                  const tagSummary = resolveContactTags(activeClient.contactTags, activeClient.contactRole).join(", ");
+                  return (
+                    <EntityBadge
+                      entity="clients"
+                      label={`${companyByIdMap.get(activeClient.companyClientId)!.name}${tagSummary ? ` • ${tagSummary}` : ""}`}
+                      onClick={() => {
+                        const comp = companyByIdMap.get(activeClient.companyClientId!);
+                        if (comp) window.location.hash = `client-${encodeURIComponent(comp.name)}`;
+                      }}
+                      size="sm"
+                    />
+                  );
+                })()}
                 {activeClient.companyId && (
-                  <span className="font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200 text-caption">
+                  <span className="font-mono bg-gray-100 text-gray-700 px-2 py-0.5 rounded-md border border-gray-200 text-caption">
                     IČO: {activeClient.companyId}
                   </span>
                 )}
                 {activeClient.city && (
-                  <span className="text-slate-600 font-medium flex items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <span className="text-gray-600 font-medium flex items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                     {activeClient.city}
                   </span>
                 )}
                 {activeClient.owner && (
-                  <span className="text-slate-400 font-medium">
+                  <span className="text-gray-500 font-medium">
                     • {activeClient.owner}
                   </span>
                 )}
+                {timeTracking.enabled && clientTrackedSeconds > 0 && (
+                  <button
+                    type="button"
+                    data-testid="client-tracked-time-badge"
+                    onClick={() => handleDetailTabChange("time")}
+                    className="inline-flex items-center gap-1 rounded-full border border-teal-500/20 bg-teal-500/10 px-2.5 py-0.5 text-micro font-semibold tabular-nums text-teal-700 hover:bg-teal-500/15 cursor-pointer"
+                  >
+                    <Clock className="h-3 w-3 shrink-0" />
+                    {formatDuration(clientTrackedSeconds)}
+                  </button>
+                )}
           </>}
           primaryAction={
-                      <span className="text-ui font-bold text-emerald-800 bg-emerald-100 border-2 border-emerald-300 px-4 py-2 rounded-2xl shadow-inner">
+                      <span className="text-ui font-semibold text-entity-text bg-entity-subtle border border-entity-border px-3.5 py-1.5 rounded-md">
                         {getTranslation(systemLanguage, "common.client_value")}: {money(activeClient.totalValue, { minimumFractionDigits: 2 })}
                       </span>
           }
@@ -3396,11 +3343,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           {canEditOrders && (
             <button
               type="button"
+              style={entityAccentStyle("orders")}
               onClick={handleOpenCreateOrder}
-              className="h-9 px-3 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 transition-all text-ui font-semibold flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
+              className="h-9 px-3 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white transition-all text-ui font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer"
               title={t("Place new order for this client", "Vystaviť novú objednávku pre tohto klienta", "Új rendelés feladása")}
             >
-              <ShoppingCart className="h-4 w-4 stroke-[2.5]" />
+              <SectionIcon id="orders" className="h-4 w-4" />
               <span>{t("New order", "Nová objednávka", "Új rendelés")}</span>
             </button>
           )}
@@ -3408,9 +3356,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             <button
               type="button"
               onClick={() => setClientArchived(activeClient.name, false)}
-              className="h-9 px-3 rounded-xl border transition-all text-ui font-semibold flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700"
+              className="h-9 px-3 rounded-md transition-all text-ui font-semibold flex items-center gap-2 shadow-xs cursor-pointer bg-entity-solid hover:bg-entity-solid-hover text-white"
             >
-              <ArchiveRestore className="h-4 w-4 stroke-[2.5]" />
+              <ArchiveRestore className="h-4 w-4" />
               {t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása")}
             </button>
           ) : (
@@ -3419,8 +3367,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               lang={systemLanguage}
               what={activeClient.name}
               onConfirm={() => setClientArchived(activeClient.name, true)}
-              className="h-9 px-3 rounded-xl border transition-all text-ui font-semibold flex items-center gap-2 shadow-sm active:scale-95 bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-400"
-              icon={<Archive className="h-4 w-4 stroke-[2.5]" />}
+              className="h-9 px-3 rounded-md border transition-all text-ui font-semibold flex items-center gap-2 shadow-2xs bg-white border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300"
+              icon={<Archive className="h-4 w-4" />}
             >
               {t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
             </HoldToConfirmButton>
@@ -3435,49 +3383,40 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             url={`#client-${encodeURIComponent(activeClient.name)}`}
             showLabel
             systemLanguage={systemLanguage}
-            className="h-9 px-3 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-ui font-semibold shadow-sm"
+            className="h-9 px-3 rounded-md bg-white border border-gray-200 hover:border-rose-300 text-ui font-semibold shadow-2xs"
           />
           </>}
         />
 
-        {(!isOpenAiConfigured || localSummary || isGeneratingSummary) && (
-          <div className="flex flex-wrap items-center gap-3">
-            {/* AI Summary Purple Card */}
-            {(!isOpenAiConfigured && !localSummary) ? (
-              <div className="flex items-center gap-2.5 bg-purple-50/50 border border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-md text-ui font-bold text-purple-800 shadow-sm">
-                <Brain className="h-5 w-5 text-purple-400 shrink-0" />
-                <span className="text-micro text-purple-600 italic">
-                  {systemLanguage === "sk" ? "AI zhrnutie nie je k dispozícii. Nastavte OpenAI kľúč v nastaveniach." : systemLanguage === "hu" ? "Az AI összefoglaló nem érhető el. Állítsa be az OpenAI kulcsot a beállításokban." : "AI summary unavailable. Configure OpenAI Key in settings."}
-                </span>
+        {isOpenAiConfigured && (localSummary || isGeneratingSummary) && (
+          <div className="flex flex-wrap items-center gap-3" style={entityAccentStyle("rag_ai")}>
+            {/* AI Summary Card */}
+            <div className="flex items-center gap-2.5 bg-entity-subtle/70 border border-entity-border p-2.5 px-3.5 rounded-lg max-w-xl text-ui font-medium text-gray-900 shadow-xs transition-all animate-fade-in">
+              <Brain className={`h-4.5 w-4.5 text-entity-text shrink-0 ${isGeneratingSummary ? 'animate-pulse' : ''}`} />
+              <div>
+                {isGeneratingSummary && !localSummary ? (
+                  <span className="text-micro text-entity-text italic animate-pulse flex items-center gap-1.5">
+                    <Loader2 className="h-3 w-3 animate-spin text-entity-text" />
+                    {systemLanguage === "sk" ? "Generuje sa AI zhrnutie..." : systemLanguage === "hu" ? "AI összefoglaló generálása..." : "Generating AI summary..."}
+                  </span>
+                ) : (
+                  <p className="leading-relaxed text-caption font-medium text-left">
+                    {localSummary}
+                    {isGeneratingSummary && (
+                      <span className="ml-1 text-micro text-entity-text animate-pulse">
+                        ({systemLanguage === "sk" ? "Aktualizuje sa..." : systemLanguage === "hu" ? "Frissítés..." : "Updating..."})
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
-            ) : (localSummary || isGeneratingSummary) ? (
-              <div className="flex items-center gap-2.5 bg-purple-50 border-2 border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-xl text-ui font-bold text-purple-900 shadow-sm hover:shadow-md transition-all animate-fade-in">
-                <Brain className={`h-5 w-5 text-purple-600 shrink-0 ${isGeneratingSummary ? 'animate-pulse' : ''}`} />
-                <div>
-                  {isGeneratingSummary && !localSummary ? (
-                    <span className="text-micro text-purple-600 italic animate-pulse flex items-center gap-1.5">
-                      <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
-                      {systemLanguage === "sk" ? "Generuje sa AI zhrnutie..." : systemLanguage === "hu" ? "AI összefoglaló generálása..." : "Generating AI summary..."}
-                    </span>
-                  ) : (
-                    <p className="leading-relaxed text-caption font-semibold text-left">
-                      {localSummary}
-                      {isGeneratingSummary && (
-                        <span className="ml-1 text-micro text-purple-500 animate-pulse">
-                          ({systemLanguage === "sk" ? "Aktualizuje sa..." : systemLanguage === "hu" ? "Frissítés..." : "Updating..."})
-                        </span>
-                      )}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ) : null}
+            </div>
           </div>
         )}
 
         {activeClient.archived && (
-          <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-800 text-ui font-bold animate-in fade-in slide-in-from-top-2 duration-200">
-            <Archive className="h-4 w-4 shrink-0 stroke-[2.5]" />
+          <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 text-ui font-semibold animate-in fade-in slide-in-from-top-2 duration-200">
+            <Archive className="h-4 w-4 shrink-0" />
             {t(
               "This client is archived — it is hidden from the client list until you restore it.",
               "Tento klient je archivovaný — v zozname klientov sa nezobrazuje, kým ho neobnovíte.",
@@ -3487,18 +3426,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         )}
 
         {/* Master Dual-Panel Dashboard Grid */}
-        <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-5 items-start">
           
           {/* LEFT PANEL: Comprehensive Details Form */}
-          <div className="ws-lg:col-span-5 glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl space-y-6">
-            <div className="border-b-2 border-slate-100 pb-4 flex items-center justify-between gap-2.5">
+          <div className="ws-lg:col-span-5 p-5 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white shadow-xs space-y-5">
+            <div className="border-b border-gray-200 pb-3.5 flex items-center justify-between gap-2.5">
               <div className="flex items-center gap-2.5">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-bold text-body shadow-md">
+                <div className="h-10 w-10 rounded-md bg-entity-solid text-white flex items-center justify-center font-heading font-semibold text-body shadow-xs">
                   {getInitials(profileName || activeClient.name)}
                 </div>
                 <div>
-                  <h3 className="text-md font-heading font-bold text-slate-900 uppercase tracking-tight">{getTranslation(systemLanguage, "profile.client_contact")}</h3>
-                  <p className="type-overline text-slate-400 mt-0.5">{getTranslation(systemLanguage, "profile.edit_desc")}</p>
+                  <h3 className="text-ui font-heading font-semibold text-gray-900">{getTranslation(systemLanguage, "profile.client_contact")}</h3>
+                  <p className="type-overline text-gray-400 mt-0.5">{getTranslation(systemLanguage, "profile.edit_desc")}</p>
                 </div>
               </div>
               
@@ -3518,6 +3457,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     setProfileEmail(activeClient.email);
                     setProfileType(activeClient.clientType);
                     setProfileOwner(activeClient.owner);
+                    setProfileEmployees(activeClient.assignedEmployees || []);
                     setProfileCompanyId(activeClient.companyId);
                     setProfileTaxId(activeClient.taxId);
                     setProfileVatId(activeClient.vatId);
@@ -3537,7 +3477,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       setProfileVatResult(null);
                       autoCheckedVatRef.current = null;
                     }
-                    setProfileContactPerson(activeClient.contactPerson);
+                    setProfileContact(contactNameFieldsOf(activeClient));
                     setProfileWebsite(activeClient.website);
                     setProfileEstablishmentDate(activeClient.establishmentDate || "");
                     setProfileLegalForm(activeClient.legalForm || "");
@@ -3548,13 +3488,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     setProfileDissolutionDate(activeClient.dissolutionDate || "");
                     setProfileRegion(activeClient.region || "");
                     setProfileDistrict(activeClient.district || "");
+                    setProfileCompanyClientId(activeClient.companyClientId || "");
+                    setProfileContactTags(resolveContactTags(activeClient.contactTags, activeClient.contactRole));
                   }
                   setIsEditingProfile(!isEditingProfile);
                 }}
-                className={`h-9 w-9 rounded-xl flex items-center justify-center transition-all border-2 shadow-sm ${
+                className={`h-9 w-9 rounded-md flex items-center justify-center transition-all border shadow-2xs cursor-pointer ${
                   isEditingProfile 
                     ? "bg-rose-50 border-rose-300 text-rose-600 hover:bg-rose-100" 
-                    : "bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                    : "bg-entity-subtle border-entity-border text-entity-text hover:opacity-90"
                 }`}
                 title={isEditingProfile ? t("Cancel editing", "Zrušiť úpravy", "Szerkesztés megszakítása") : t("Edit Profile details", "Upraviť údaje profilu", "Profiladatok szerkesztése")}
               >
@@ -3596,7 +3538,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   {isEditingProfile ? (
                     <CustomSelect
                       value={profileType}
-                      onChange={(v) => setProfileType(v as any)}
+                      onChange={(v) => { setProfileType(v as any); setProfileContact(contactNameFieldsOf(activeClient, v === "person")); }}
                       options={[
                         { value: "person", label: systemLanguage === "sk" ? "Súkromná osoba" : systemLanguage === "hu" ? "Magánszemély" : "Private Person" },
                         { value: "business", label: systemLanguage === "sk" ? "Firma / Podnikanie" : systemLanguage === "hu" ? "Cég / Vállalkozás" : "Company / Business" },
@@ -3613,10 +3555,33 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               </div>
 
+              {profileType === "person" && (
+                <ContactNameFields
+                  forPerson
+                  lang={systemLanguage}
+                  value={profileContact}
+                  onChange={setProfileContact}
+                  disabled={!isEditingProfile}
+                  labelClassName="type-overline text-slate-500"
+                  inputClassName={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                    isEditingProfile
+                      ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 text-slate-800"
+                      : "bg-transparent border-0 pl-0 text-slate-900 text-body font-bold cursor-default select-all"
+                  }`}
+                />
+              )}
+
               {/* Phone & Email */}
               <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="type-overline text-slate-500 flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.phone")}</label>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="type-overline text-slate-500 flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.phone")}</label>
+                    {!isEditingProfile && (() => {
+                      // A client profile gathers the records of one customer; the chip looks up the client record's family.
+                      const record = activeClient.associatedLeads.find((l) => (l.id || "").startsWith("client-")) ?? activeClient.associatedLeads[0];
+                      return record ? <WhatsAppChip lead={{ ...record, phone: activeClient.phone }} leads={leads} userLanguage={systemLanguage} /> : null;
+                    })()}
+                  </div>
                   <input
                     type="text"
                     required
@@ -3692,6 +3657,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               </div>
 
+              {/* Chats / Instant Messaging under Client Contact Profile */}
+              <ClientContactChats
+                activeClient={activeClient}
+                messagingChannels={messagingChannels}
+                chatClientLinks={chatClientLinks}
+                updateChatClientLink={updateChatClientLink}
+                t={t}
+              />
+
               {/* Address details */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-3">
                 <span className="type-overline text-emerald-600 flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {getTranslation(systemLanguage, "profile.address_details")}</span>
@@ -3754,7 +3728,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       />
                     ) : (
                       <div className="pl-0 text-slate-900 font-bold cursor-default select-all">
-                        🇪🇺 {profileCountry}
+                        {profileCountry}
                       </div>
                     )}
                   </div>
@@ -3853,20 +3827,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "profile.contact_person")}</label>
-                        <input
-                          type="text"
-                          readOnly={!isEditingProfile}
-                          value={profileContactPerson}
-                          onChange={(e) => setProfileContactPerson(e.target.value)}
-                          className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
-                            isEditingProfile 
-                              ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
-                          }`}
-                        />
-                      </div>
+                      <ContactNameFields
+                        className="contents"
+                        lang={systemLanguage}
+                        value={profileContact}
+                        onChange={setProfileContact}
+                        disabled={!isEditingProfile}
+                        labelClassName="type-overline text-slate-400"
+                        inputClassName={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
+                          isEditingProfile
+                            ? "bg-white border-2 border-slate-200 text-slate-800"
+                            : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
+                        }`}
+                      />
                       <div className="space-y-1">
                         <label className="type-overline text-slate-400 flex items-center gap-1"><Globe className="h-3 w-3" /> {getTranslation(systemLanguage, "profile.website")}</label>
                         <input
@@ -4003,6 +3976,70 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               )}
 
+              {/* Person client company attachment (client-side contacts only, never rented employees) */}
+              {profileType === "person" && (
+                <div className="border-t-2 border-slate-100 pt-4 space-y-3 text-left">
+                  <div className="space-y-1">
+                    <label className="type-overline text-slate-500 flex items-center gap-1">
+                      <Building2 className="h-3 w-3" /> {t("Attached Company", "Priradená firma", "Kapcsolt cég")}
+                    </label>
+                    {isEditingProfile ? (
+                      <CustomSelect
+                        value={profileCompanyClientId}
+                        onChange={setProfileCompanyClientId}
+                        options={[
+                          { value: "", label: t("Independent / No company", "Nezávislá osoba / Bez firmy", "Független / Nincs cég") },
+                          ...companyClientProfiles.map(c => ({ value: c.primaryId, label: c.name })),
+                        ]}
+                      />
+                    ) : profileCompanyClientId && companyByIdMap.get(profileCompanyClientId) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const comp = companyByIdMap.get(profileCompanyClientId);
+                          if (comp) window.location.hash = `client-${encodeURIComponent(comp.name)}`;
+                        }}
+                        className="inline-flex items-center gap-1.5 text-ui font-semibold text-entity-text hover:underline cursor-pointer pt-0.5"
+                      >
+                        <Building2 className="h-3.5 w-3.5 text-entity-text" />
+                        <span>{companyByIdMap.get(profileCompanyClientId)!.name}</span>
+                        <ExternalLink className="h-3 w-3 opacity-60" />
+                      </button>
+                    ) : (
+                      <span className="block pt-0.5 text-micro text-slate-400 italic">
+                        {t("Independent person", "Nezávislá osoba", "Független személy")}
+                      </span>
+                    )}
+                  </div>
+                  {(isEditingProfile || profileContactTags.length > 0) && (
+                    <div className="space-y-1">
+                      <label className="type-overline text-slate-500">
+                        {t("Function tags", "Funkčné štítky", "Funkció címkék")}
+                      </label>
+                      {isEditingProfile ? (
+                        <ContactTagInput
+                          value={profileContactTags}
+                          onChange={setProfileContactTags}
+                          suggestions={allContactTags}
+                          placeholder={t("e.g. CEO, Billing", "napr. CEO, Fakturácia", "pl. Ügyvezető, Számlázás")}
+                        />
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {profileContactTags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="px-2 py-0.5 rounded-md type-overline bg-sky-50 text-sky-700 border border-sky-200"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Project Manager */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-1">
                 <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "profile.primary_pm")}</label>
@@ -4010,13 +4047,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <CustomSelect
                     value={profileOwner}
                     onChange={(v) => setProfileOwner(v)}
-                    options={projectManagers.map(pm => ({ value: pm, label: pm }))}
+                    options={projectManagerPickerNames(users, profileOwner).map(pm => ({ value: pm, label: pm }))}
                   />
                 ) : (
                   <div className="pl-0 text-slate-900 font-bold cursor-default select-all">
                     👤 {profileOwner}
                   </div>
                 )}
+              </div>
+              <div className="pt-1">
+                <ProjectEmployeesField userLanguage={systemLanguage} users={users} value={profileEmployees} managers={profileOwner ? [profileOwner] : []} canEdit={isEditingProfile} onChange={setProfileEmployees} />
               </div>
 
               {/* Customer category (Clients → Categories) */}
@@ -4070,16 +4110,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   📁 {systemLanguage === "sk" ? "Zaujímavé kategórie" : systemLanguage === "hu" ? "Érdeklődési kategóriák" : "Interested Categories"}
                 </label>
                 {isEditingProfile ? (
-                  <div className="grid grid-cols-2 gap-2 bg-emerald-50/5 border border-slate-200/60 p-3 rounded-2xl">
+                  <div className="grid grid-cols-2 gap-2 bg-gray-50 border border-gray-200 p-3 rounded-lg">
                     {leadCategories.map((cat) => {
                       const isChecked = profileCategories.includes(cat);
                       return (
                         <label 
                           key={cat} 
-                          className={`flex items-center gap-2 p-2 rounded-xl border type-overline cursor-pointer transition-all ${
+                          className={`flex items-center gap-2 p-2 rounded-md border type-overline cursor-pointer transition-all ${
                             isChecked 
-                              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700" 
-                              : "bg-white border-slate-200/60 text-slate-500 hover:border-slate-300"
+                              ? "bg-entity-subtle border-entity-border text-entity-text" 
+                              : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
                           }`}
                         >
                           <input 
@@ -4094,7 +4134,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             }}
                             className="hidden"
                           />
-                          <span className={`h-2 w-2 rounded-full ${isChecked ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
+                          <span className={`h-2 w-2 rounded-full ${isChecked ? "bg-entity-solid" : "bg-gray-300"}`} />
                           <span className="truncate">{cat}</span>
                         </label>
                       );
@@ -4103,12 +4143,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 ) : (
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     {profileCategories.length === 0 ? (
-                      <span className="text-micro text-slate-400 italic">{t("None", "Žiadne", "Nincs")}</span>
+                      <span className="text-micro text-gray-400 italic">{t("None", "Žiadne", "Nincs")}</span>
                     ) : (
                       profileCategories.map((cat) => (
                         <span 
                           key={cat}
-                          className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 type-overline"
+                          className="px-2 py-0.5 rounded-md bg-entity-subtle text-entity-text border border-entity-border type-overline"
                         >
                           {cat}
                         </span>
@@ -4120,22 +4160,23 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* Actions visible only in edit mode */}
               {isEditingProfile && (
-                <div className="pt-4 border-t-2 border-slate-100 flex gap-3 animate-in fade-in duration-200">
+                <div className="pt-4 border-t border-gray-200 flex gap-3 animate-in fade-in duration-200">
                   <button
                     type="submit"
-                    className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-ui font-bold shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                    className="w-full py-2.5 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Check className="h-4.5 w-4.5 stroke-[2.5]" /> {systemLanguage === "sk" ? "Uložiť profil klienta" : systemLanguage === "hu" ? "Ügyfélprofil mentése" : "Save Client Profile"}
+                    <Check className="h-4 w-4" /> {systemLanguage === "sk" ? "Uložiť profil klienta" : systemLanguage === "hu" ? "Ügyfélprofil mentése" : "Save Client Profile"}
                   </button>
                 </div>
               )}
 
             </form>
+            <ClientNewsletterStatus emails={[activeClient.email, ...activeClient.associatedLeads.map(l => l.email)]} enabled={newsletterEnabled} language={systemLanguage} t={t} />
           </div>
 
           {/* RIGHT PANEL: Chronological Event Timeline & Interactive Logger (Combined) */}
           <div className="ws-lg:col-span-7">
-            <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl space-y-6">
+            <div className="p-5 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white shadow-xs space-y-5">
               
               {/* Tab Navigation Switches */}
               <Tabs
@@ -4143,18 +4184,38 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 onChange={handleDetailTabChange}
                 items={[
                   { key: "timeline", icon: <Clock className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.history_timeline") },
-                  { key: "tasks", icon: <CheckSquare className="h-4.5 w-4.5" />, label: t("Tasks", "Úlohy", "Feladatok"), count: clientOpenTasksCount },
-                  { key: "orders", icon: <ShoppingCart className="h-4.5 w-4.5" />, label: t("Orders", "Objednávky", "Rendelések"), count: clientOrders.length },
-                  { key: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
+                  { key: "tasks", entity: "tasks", icon: <CheckSquare className="h-4.5 w-4.5" />, label: t("Tasks", "Úlohy", "Feladatok"), count: clientOpenTasksCount },
+                  { key: "time", entity: "time-tracking", hidden: !timeTracking.enabled, icon: <Clock className="h-4.5 w-4.5" />, label: t("Time", "Čas", "Idő"), badge: clientTrackedSeconds > 0 ? <span className="px-1.5 rounded-full text-micro font-semibold tabular-nums bg-teal-500/15 text-teal-700">{formatDuration(clientTrackedSeconds)}</span> : undefined },
+                  { key: "orders", entity: "orders", icon: <SectionIcon id="orders" className="h-4.5 w-4.5" />, label: t("Orders", "Objednávky", "Rendelések"), count: clientOrders.length },
+                  { key: "invoices", entity: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
                   {
                     key: "leads",
+                    entity: "leads",
                     icon: <Layers className="h-4.5 w-4.5" />,
                     label: systemLanguage === "sk" ? "Aktívne Leady" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads",
                     count: (activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost").length,
                   },
-                  { key: "financial_status", hidden: activeClient.clientType === "person", icon: <TrendingUp className="h-4.5 w-4.5" />, label: t("Financial Report", "Finančný report", "Pénzügyi jelentés") },
-                  { key: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: (activeClient.timeline || []).reduce((n, event) => n + timelineEventFiles(event).length, 0) },
-                  { key: "tickets", icon: <TicketIcon className="h-4.5 w-4.5" />, label: t("Tickets", "Tikety", "Jegyek"), count: clientTickets.length || undefined },
+                  {
+                    key: "contacts",
+                    hidden: activeClient.clientType === "person",
+                    icon: <Users className="h-4.5 w-4.5" />,
+                    label: t("Contacts", "Kontakty", "Kapcsolattartók"),
+                    count: (() => {
+                      const ids = new Set([activeClient.primaryId, ...activeClient.associatedLeads.map((l: Lead) => l.id)]);
+                      return clientContacts.filter(c => !c.archived && !!c.companyClientId && ids.has(c.companyClientId)).length;
+                    })(),
+                  },
+                  {
+                    key: "agency_workers",
+                    entity: "agency",
+                    testId: "client-tab-agency-workers",
+                    hidden: !agencyEnabled || activeClient.clientType === "person",
+                    icon: <UserCheck className="h-4.5 w-4.5" />,
+                    label: t("Rented Employees", "Prenajatí zamestnanci", "Kölcsönzött dolgozók"),
+                  },
+                  { key: "financial_status", entity: "rag_ai", hidden: activeClient.clientType === "person", icon: <TrendingUp className="h-4.5 w-4.5" />, label: t("Financial Report", "Finančný report", "Pénzügyi jelentés") },
+                  { key: "files", entity: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: (activeClient.timeline || []).reduce((n, event) => n + timelineEventFiles(event).length, 0) },
+                  { key: "tickets", entity: "tickets", icon: <TicketIcon className="h-4.5 w-4.5" />, label: t("Tickets", "Tikety", "Jegyek"), count: clientTickets.length || undefined },
                 ]}
               />
 
@@ -4162,8 +4223,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <>
                   {/* Log event Form (New Event Bar) */}
                   <div>
-                    <h3 className="text-ui font-bold text-emerald-700 mb-4 flex items-center gap-1.5 border-b-2 border-slate-100 pb-2">
-                      <PencilLine className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> {getTranslation(systemLanguage, "common.log_event_client")}
+                    <h3 className="text-ui font-semibold text-entity-text mb-4 flex items-center gap-1.5 border-b border-gray-200 pb-2">
+                      <PencilLine className="h-4 w-4 text-entity-text" /> {getTranslation(systemLanguage, "common.log_event_client")}
                     </h3>
 
                     <form onSubmit={handleAddTimelineEvent} className="space-y-4 text-ui font-bold">
@@ -4171,7 +4232,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {/* Event Category Switcher */}
                       <div className="space-y-1">
                         <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "common.event_type")}</label>
-                        <div className="grid grid-cols-5 gap-1.5 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
+                        <div className="grid grid-cols-3 ws-sm:grid-cols-5 gap-1.5 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
                           {(["phone", "email", "note", "offer", "appointment"] as const).map(type => {
                             const colors = getEventColors(type);
                             return (
@@ -4343,7 +4404,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 <div className="flex flex-col border border-slate-200 rounded-xl bg-white p-3 min-h-45 max-h-80 overflow-y-auto outline-none text-ui cursor-text">
                                   <BlockEditor
                                     key={editorKey}
+                                    compact
                                     fillHeight
+                                    exportTitle={activeClient?.name}
                                     initialBlocks={noteBlocks}
                                     onChange={(blocks) => {
                                       setNoteBlocks(blocks);
@@ -4372,9 +4435,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           {/* Submit log */}
                           <button
                             type="submit"
-                            className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-ui font-bold transition-all flex items-center gap-1.5 active:scale-95 shadow-lg w-fit ml-auto border-2 border-emerald-700"
+                            className="px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold transition-all flex items-center gap-1.5 shadow-xs w-fit ml-auto cursor-pointer"
                           >
-                            <Plus className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "logger.btn_log")}
+                            <Plus className="h-4 w-4" /> {getTranslation(systemLanguage, "logger.btn_log")}
                           </button>
 
                         </div>
@@ -4384,10 +4447,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
 
                   {/* Timeline event log */}
-                  <div className="border-t-2 border-slate-100 pt-6 space-y-4">
-                    <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
-                      <Clock className="h-4.5 w-4.5 text-emerald-600 animate-pulse stroke-[2.5]" /> {getTranslation(systemLanguage, "common.chronological_timeline")}
-                      {isLoadingMails && <span className="ml-2 type-overline text-emerald-500 animate-pulse">{t("Syncing Mail...", "Synchronizujem poštu...", "Levelek szinkronizálása...")}</span>}
+                  <div className="border-t border-gray-200 pt-5 space-y-4">
+                    <h3 className="text-ui font-semibold text-gray-500 flex items-center gap-1.5 pb-2 border-b border-gray-200">
+                      <Clock className="h-4 w-4 text-entity-text animate-pulse" /> {getTranslation(systemLanguage, "common.chronological_timeline")}
+                      {isLoadingMails && <span className="ml-2 type-overline text-entity-text animate-pulse">{t("Syncing Mail...", "Synchronizujem poštu...", "Levelek szinkronizálása...")}</span>}
                     </h3>
 
                     {/* An unreachable mailbox must not read as "this client was
@@ -4536,6 +4599,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     );
                                   })()}
                                   </TimelineCollapsible>
+                                  {event.externalUrl && <OpenInChatLink path={event.externalUrl} userLanguage={systemLanguage} />}
 
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
@@ -4728,6 +4792,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     );
                                   })()}
                                   </TimelineCollapsible>
+                                  {event.externalUrl && <OpenInChatLink path={event.externalUrl} userLanguage={systemLanguage} />}
                                   <FiledMailBody event={event} language={systemLanguage} />
 
                                   {/* Extra values */}
@@ -4775,14 +4840,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               )}
 
               {activeDetailTab === "tasks" && (
-                <div className="space-y-4 text-left animate-in fade-in duration-150">
-                  <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
+                <div style={entityAccentStyle("tasks")} className="space-y-4 text-left animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between border-b border-gray-200 pb-3">
                     <div>
-                      <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                        <CheckSquare className="h-4.5 w-4.5 text-orange-600 stroke-[2.5]" />
+                      <h3 className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+                        <CheckSquare className="h-4.5 w-4.5 text-entity-text" />
                         {t("Client Tasks", "Úlohy klienta", "Ügyfél feladatai")}
                       </h3>
-                      <p className="text-caption text-slate-500 mt-0.5">
+                      <p className="text-caption text-gray-500 mt-0.5">
                         {t(
                           `Tasks associated with ${activeClient.name}`,
                           `Úlohy priradené ku klientovi ${activeClient.name}`,
@@ -4790,7 +4855,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         )}
                       </p>
                     </div>
-                    <span className="px-2.5 py-1 rounded-xl bg-orange-50 text-orange-700 border border-orange-200 text-ui font-bold">
+                    <span className="px-2.5 py-1 rounded-md bg-entity-subtle text-entity-text border border-entity-border text-ui font-semibold">
                       {clientOpenTasksCount} {t("open", "otvorených", "nyitott")}
                     </span>
                   </div>
@@ -4818,12 +4883,23 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               )}
 
+              {activeDetailTab === "time" && timeTracking.enabled && (
+                <ClientTimeTab
+                  clientIds={activeClientIds}
+                  language={systemLanguage}
+                  currency={currencyCode || "EUR"}
+                  users={users}
+                  projects={projects}
+                  leads={leads}
+                />
+              )}
+
               {activeDetailTab === "files" && (
-                <div className="space-y-6">
+                <div style={entityAccentStyle("files")} className="space-y-6">
                   {/* Attach New Document Form */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border-2 border-slate-200">
-                    <h3 className="text-ui font-bold text-emerald-700 mb-4 flex items-center gap-1.5 border-b border-slate-200 pb-2">
-                      <FolderOpen className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> {t("Attach New Document to Profile", "Pripojiť nový dokument k profilu", "Új dokumentum csatolása a profilhoz")}
+                  <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <h3 className="text-ui font-semibold text-entity-text mb-4 flex items-center gap-1.5 border-b border-gray-200 pb-2">
+                      <FolderOpen className="h-4.5 w-4.5 text-entity-text" /> {t("Attach New Document to Profile", "Pripojiť nový dokument k profilu", "Új dokumentum csatolása a profilhoz")}
                     </h3>
 
                     <form onSubmit={handleAttachFile} className="space-y-4 text-ui font-bold">
@@ -4831,7 +4907,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <div className="space-y-1">
                           <label className="type-overline text-slate-500 block pl-0.5">{t("Upload File", "Nahrať súbor", "Fájl feltöltése")} *</label>
                           <div className="flex items-center gap-2">
-                            <label className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-2 border-amber-300 transition-all cursor-pointer type-overline shadow-sm select-none shrink-0">
+                            <label className="flex items-center gap-1.5 px-3 py-2 rounded-md bg-entity-subtle hover:bg-entity-muted text-entity-text border border-entity-border transition-all cursor-pointer type-overline shadow-2xs select-none shrink-0">
                               <FolderOpen className="h-4 w-4" />
                               <span>{t("Select File", "Vybrať súbor", "Fájl kiválasztása")}</span>
                               <input 
@@ -4879,16 +4955,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                         <div className="space-y-1">
                           <label className="type-overline text-slate-500 block pl-0.5">{t("Document Category", "Kategória dokumentu", "Dokumentum kategória")} *</label>
-                          <div className="grid grid-cols-3 gap-2 bg-white p-1 rounded-xl border-2 border-slate-200">
+                          <div className="grid grid-cols-3 gap-2 bg-white p-1 rounded-md border border-gray-200">
                             {(["offer", "contract", "invoice"] as const).map(type => (
                               <button
                                 key={type}
                                 type="button"
                                 onClick={() => setUploadFileType(type)}
-                                className={`py-2 rounded-lg type-overline transition-all text-center flex items-center justify-center gap-1.5 ${
+                                className={`py-2 rounded-md type-overline transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
                                   uploadFileType === type 
-                                    ? "bg-amber-600 text-white border border-amber-700 shadow" 
-                                    : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/50"
+                                    ? "bg-entity-solid text-white border border-entity-solid shadow-2xs" 
+                                    : "text-gray-500 hover:text-gray-800 bg-white hover:bg-gray-50 border border-gray-200/70"
                                 }`}
                               >
                                 <span>
@@ -4910,15 +4986,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           placeholder={t("e.g. Approved price quote sheet for Q2...", "napr. Schválený cenový návrh za Q2...", "pl. Jóváhagyott árajánlat a Q2-re...")}
                           value={uploadDescription}
                           onChange={(e) => setUploadDescription(e.target.value)}
-                          className="w-full px-4 py-2 rounded-xl bg-white border-2 border-slate-200 focus:outline-none"
+                          className="w-full px-3.5 py-2 rounded-md bg-white border border-gray-300 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                         />
                       </div>
 
                       <button
                         type="submit"
-                        className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-ui font-bold transition-all flex items-center gap-1.5 active:scale-95 shadow-lg w-fit ml-auto border-2 border-emerald-700"
+                        className="px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold transition-all flex items-center gap-1.5 shadow-xs w-fit ml-auto cursor-pointer"
                       >
-                        <Plus className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Attach File to Client", "Pripojiť súbor ku klientovi", "Fájl csatolása az ügyfélhez")}
+                        <Plus className="h-4 w-4" /> {t("Attach File to Client", "Pripojiť súbor ku klientovi", "Fájl csatolása az ügyfélhez")}
                       </button>
                     </form>
                   </div>
@@ -4930,15 +5006,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     );
                     return (
                   <div className="space-y-4">
-                    <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
-                      <FileText className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> {t("Attached Client Documents", "Pripojené dokumenty klienta", "Csatolt ügyféldokumentumok")} ({attachedFiles.length})
+                    <h3 className="text-ui font-semibold text-gray-500 flex items-center gap-1.5 pb-2 border-b border-gray-200">
+                      <FileText className="h-4 w-4 text-entity-text" /> {t("Attached Client Documents", "Pripojené dokumenty klienta", "Csatolt ügyféldokumentumok")} ({attachedFiles.length})
                     </h3>
 
                     {attachedFiles.length === 0 ? (
-                      <div className="py-12 text-center text-slate-400">
+                      <div className="py-12 text-center text-gray-400">
                         <div className="text-display mb-2">📁</div>
-                        <div className="font-bold text-slate-700 uppercase tracking-wider">{t("No files attached to this client", "K tomuto klientovi nie sú pripojené žiadne súbory", "Nincs fájl csatolva ehhez az ügyfélhez")}</div>
-                        <div className="type-overline mt-1.5 text-slate-400">{t("Use the attachment form above to upload proposals, contracts or invoices.", "Pomocou formulára vyššie nahrajte ponuky, zmluvy alebo faktúry.", "A fenti űrlap segítségével töltsön fel ajánlatokat, szerződéseket vagy számlákat.")}</div>
+                        <div className="font-semibold text-gray-700 uppercase tracking-wider">{t("No files attached to this client", "K tomuto klientovi nie sú pripojené žiadne súbory", "Nincs fájl csatolva ehhez az ügyfélhez")}</div>
+                        <div className="type-overline mt-1.5 text-gray-400">{t("Use the attachment form above to upload proposals, contracts or invoices.", "Pomocou formulára vyššie nahrajte ponuky, zmluvy alebo faktúry.", "A fenti űrlap segítségével töltsön fel ajánlatokat, szerződéseket vagy számlákat.")}</div>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-3">
@@ -4947,7 +5023,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           return (
                             <div 
                               key={`${event.id}::${index}::${href}`} 
-                              className="p-4 rounded-2xl bg-white border-2 border-slate-100 shadow-md flex items-center justify-between gap-4 hover:border-slate-300 transition-all group"
+                              className="p-4 rounded-lg bg-white border border-gray-200 shadow-2xs flex items-center justify-between gap-4 hover:border-entity-border transition-all group"
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 <div className={`h-10 w-10 rounded-xl flex items-center justify-center border shrink-0 transition-transform group-hover:scale-105 ${
@@ -4997,11 +5073,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     lang={systemLanguage}
                                     what={attached.name || event.title}
                                     onConfirm={() => {
-                                    const clientKey = activeClient.name.trim().toLowerCase();
+                                    const memberIds = new Set((activeClient.associatedLeads || []).map(l => l.id));
                                     // The event stays. Undo puts this one file back on it.
                                     const snapshots = new Map<string, TimelineEvent>();
                                     leads.forEach(lead => {
-                                      if (lead.name.trim().toLowerCase() !== clientKey) return;
+                                      if (!memberIds.has(lead.id)) return;
                                       const found = (lead.timeline || []).find(evt => evt.id === event.id);
                                       if (found) snapshots.set(lead.id, found);
                                     });
@@ -5049,9 +5125,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               )}
 
               {activeDetailTab === "leads" && (
-                <div className="space-y-4 text-left">
-                  <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
-                    <Layers className="h-4.5 w-4.5 text-blue-600 stroke-[2.5]" /> {systemLanguage === "sk" ? "Aktívne obchodné prípady (Leady)" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads / Deals"}
+                <div style={entityAccentStyle("leads")} className="space-y-4 text-left">
+                  <h3 className="text-ui font-semibold text-gray-500 flex items-center gap-1.5 pb-2 border-b border-gray-200">
+                    <Layers className="h-4.5 w-4.5 text-entity-text" /> {systemLanguage === "sk" ? "Aktívne obchodné prípady (Leady)" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads / Deals"}
                   </h3>
                   {((activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost")).length === 0 ? (
                     <div className="py-8 text-center text-slate-400 text-ui font-bold">
@@ -5075,27 +5151,28 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           return (
                             <div 
                               key={lead.id} 
-                              className="p-4 rounded-2xl border-2 border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-all shadow-sm flex items-center justify-between gap-4 cursor-pointer"
+                              style={entityAccentStyle("leads")}
+                              className="p-4 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-entity-border transition-all shadow-2xs flex items-center justify-between gap-4 cursor-pointer"
                               onClick={() => {
                                 window.location.hash = `lead-${lead.id}`;
                               }}
                             >
                               <div className="min-w-0">
-                                <h4 className="font-heading font-bold text-ui text-slate-800 truncate max-w-70">{lead.name || t("Untitled Lead", "Lead bez názvu", "Cím nélküli lead")}</h4>
-                                <div className="flex flex-wrap items-center gap-2 mt-1.5 type-overline text-slate-400">
-                                  <span>{t("Worth", "Hodnota", "Érték")}: <strong className="text-emerald-700 font-extrabold">{money(lead.value)}</strong></span>
+                                <h4 className="font-heading font-semibold text-ui text-gray-900 truncate max-w-70">{lead.name || t("Untitled Lead", "Lead bez názvu", "Cím nélküli lead")}</h4>
+                                <div className="flex flex-wrap items-center gap-2 mt-1.5 type-overline text-gray-400">
+                                  <span>{t("Worth", "Hodnota", "Érték")}: <strong className="text-gray-900 font-bold tabular-nums">{money(lead.value)}</strong></span>
                                   <span>&bull;</span>
-                                  <span>PM: <strong className="text-slate-600 font-extrabold">{lead.owner || t("Unassigned", "Nepriradené", "Nincs hozzárendelve")}</strong></span>
+                                  <span>PM: <strong className="text-gray-600 font-semibold">{lead.owner || t("Unassigned", "Nepriradené", "Nincs hozzárendelve")}</strong></span>
                                 </div>
                               </div>
                               <div className="shrink-0 flex items-center gap-2">
                                 <span 
-                                  className="px-2.5 py-0.5 rounded-full type-overline text-white shadow-sm"
+                                  className="px-2 py-0.5 rounded-md type-overline text-white"
                                   style={{ backgroundColor: stateColor }}
                                 >
                                   {lead.status}
                                 </span>
-                                <span className="text-slate-400 font-bold text-ui">&rarr;</span>
+                                <span className="text-gray-400 font-semibold text-ui">&rarr;</span>
                               </div>
                             </div>
                           );
@@ -5105,11 +5182,34 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               )}
 
+              {activeDetailTab === "contacts" && activeClient.clientType !== "person" && (
+                <ClientCompanyContacts
+                  activeClient={activeClient}
+                  companyClients={companyClientProfiles}
+                  clientContacts={clientContacts}
+                  setClientContacts={setClientContacts}
+                  allContactTags={allContactTags}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  t={t}
+                />
+              )}
+
+              {activeDetailTab === "agency_workers" && agencyEnabled && activeClient.clientType !== "person" && (
+                <ClientCompanyAgencyTab
+                  companyIds={activeClient.associatedLeads.map((l: Lead) => l.id)}
+                  primaryCompanyId={activeClient.associatedLeads[0]?.id || ""}
+                  companyName={activeClient.name}
+                  lang={systemLanguage}
+                  rights={agencyRights}
+                />
+              )}
+
               {activeDetailTab === "financial_status" && (
-                <div className="space-y-4 text-left">
-                  <div className="flex items-center justify-between border-b-2 border-slate-100 pb-2">
-                    <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5">
-                      <TrendingUp className="h-4.5 w-4.5 text-indigo-600 stroke-[2.5]" /> 
+                <div style={entityAccentStyle("rag_ai")} className="space-y-4 text-left">
+                  <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                    <h3 className="text-ui font-semibold text-gray-500 flex items-center gap-1.5">
+                      <TrendingUp className="h-4.5 w-4.5 text-entity-text" /> 
                       {t("AI Financial Report", "AI Finančný report", "AI pénzügyi jelentés")}
                     </h3>
                     {/* Only the regenerate affordance lives in the header. While no
@@ -5120,9 +5220,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         type="button"
                         disabled={isAnalyzingFinancial}
                         onClick={handleCreateFinancialReport}
-                        className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-200 text-indigo-800 border border-indigo-300 type-overline transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:-translate-y-0.5 hover:shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                        className="px-3 py-1.5 rounded-md bg-entity-subtle hover:opacity-90 disabled:bg-gray-200 text-entity-text border border-entity-border type-overline transition-all flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
                       >
-                        <Brain className="h-3.5 w-3.5 text-indigo-600" />
+                        <Brain className="h-3.5 w-3.5 text-entity-text" />
                         <span>{t("Regenerate Report", "Pre-generovať report", "Jelentés újragenerálása")}</span>
                       </button>
                     )}
@@ -5135,15 +5235,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   />
 
                   {isAnalyzingFinancial ? (
-                    <div className="py-12 flex flex-col items-center justify-center gap-3 text-ui text-slate-500 font-bold">
-                      <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+                    <div className="py-12 flex flex-col items-center justify-center gap-3 text-ui text-gray-500 font-semibold">
+                      <Loader2 className="h-6 w-6 animate-spin text-entity-text" />
                       <span>{t("AI is generating financial report...", "AI generuje finančný report...", "Az AI pénzügyi jelentést készít...")}</span>
                     </div>
                   ) : activeClient.financialSummary ? (
                     <FinancialReportView summary={activeClient.financialSummary} systemLanguage={systemLanguage} />
                   ) : (
-                    <div className="py-10 text-center text-slate-400 text-ui font-bold flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                      <Brain className="h-8 w-8 text-indigo-300 animate-pulse" />
+                    <div
+                      style={entityAccentStyle("rag_ai")}
+                      className="py-10 text-center text-gray-500 text-ui font-semibold flex flex-col items-center justify-center gap-3 bg-gray-50 rounded-lg border border-dashed border-gray-300"
+                    >
+                      <Brain className="h-8 w-8 text-entity-text animate-pulse" />
                       <div>
                         {t("No financial report has been generated yet.", "Žiadny finančný report nie je vygenerovaný.", "Még nem készült pénzügyi jelentés.")}
                       </div>
@@ -5152,13 +5255,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           type="button"
                           disabled={isAnalyzingFinancial}
                           onClick={handleCreateFinancialReport}
-                          className="mt-2 px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white border-2 border-indigo-700 type-overline transition-all duration-200 flex items-center gap-1.5 shadow-md hover:-translate-y-0.5 hover:shadow-lg active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="mt-2 px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white type-overline transition-all duration-200 flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           <Brain className="h-4 w-4" />
                           <span>{t("Create Financial Report", "Vytvoriť finančný report", "Pénzügyi jelentés létrehozása")}</span>
                         </button>
                       ) : (
-                        <div className="text-micro text-slate-400 font-semibold lowercase tracking-tight max-w-sm mt-1">
+                        <div className="text-micro text-gray-400 font-semibold lowercase tracking-tight max-w-sm mt-1">
                           {t("the client must have a company ID configured to generate a financial report.", "na vytvorenie reportu musí mať klient vyplnené IČO.", "a pénzügyi jelentés létrehozásához az ügyfélnek beállított cégazonosítóval kell rendelkeznie.")}
                         </div>
                       )}
@@ -5167,19 +5270,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   {/* RegisterUZ Financial Statements (Slovak Register) */}
                   {activeClient.clientType !== "person" && activeClient.companyId && (
-                    <div className="space-y-4 pt-6 border-t-2 border-slate-100">
-                      <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
-                        <Download className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> 
+                    <div className="space-y-4 pt-6 border-t border-gray-200">
+                      <h3 className="text-ui font-semibold text-gray-500 flex items-center gap-1.5 pb-2 border-b border-gray-200">
+                        <Download className="h-4 w-4 text-entity-text" /> 
                         {systemLanguage === "sk" ? "Registre: Účtovné závierky (PDF)" : systemLanguage === "hu" ? "Regiszter: Pénzügyi beszámolók (PDF)" : "Registry: Financial Statements (PDF)"}
                       </h3>
 
                       {isLoadingRegistryStatements ? (
-                        <div className="py-8 flex items-center justify-center gap-2 text-ui text-slate-500 font-bold">
-                          <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
+                        <div className="py-8 flex items-center justify-center gap-2 text-ui text-gray-500 font-semibold">
+                          <Loader2 className="h-4 w-4 animate-spin text-entity-text" />
                           <span>{t("Loading statements from registry...", "Načítavam závierky z registra...", "Beszámolók betöltése a regiszterből...")}</span>
                         </div>
                       ) : registryStatements.length === 0 ? (
-                        <div className="py-6 text-center text-slate-400 text-ui font-extrabold">
+                        <div className="py-6 text-center text-gray-400 text-ui font-semibold">
                           {t("No financial statements found in registry", "Žiadne závierky neboli nájdené v registri", "Nem találhatók pénzügyi beszámolók a regiszterben")}
                         </div>
                       ) : (
@@ -5188,16 +5291,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             const label = `${stmt.typ || "Závierka"} (${stmt.obdobieOd || ""} - ${stmt.obdobieDo || ""})`;
                             const reportIds = stmt.idUctovnychVykazov || [];
                             return (
-                              <div key={stmt.id} className="p-4 rounded-2xl bg-white border-2 border-slate-100 shadow-md flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-4 hover:border-slate-300 transition-all text-left">
+                              <div key={stmt.id} className="p-4 rounded-lg bg-white border border-gray-200 shadow-2xs flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-4 hover:border-gray-300 transition-all text-left">
                                 <div className="flex items-center gap-3">
-                                  <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 flex items-center justify-center shrink-0">
-                                    <FileText className="h-5 w-5 stroke-[2.5]" />
+                                  <div className="h-10 w-10 rounded-md bg-purple-50 text-purple-700 border border-purple-200 flex items-center justify-center shrink-0">
+                                    <FileText className="h-5 w-5" />
                                   </div>
                                   <div className="flex flex-col">
-                                    <span className="text-ui font-bold text-slate-800">
+                                    <span className="text-ui font-semibold text-gray-900">
                                       {label}
                                     </span>
-                                    <span className="type-overline text-slate-400 mt-0.5">
+                                    <span className="type-overline text-gray-400 mt-0.5">
                                       ID: {stmt.id} | {stmt.zdrojDat || "RÚZ"}
                                     </span>
                                   </div>
@@ -5209,7 +5312,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={() => handleDownloadStatement(stmt.id, activeClient)}
-                                    className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-300 type-overline transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                                    className="px-3 py-1.5 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 type-overline transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
                                   >
                                     <Download className="h-3.5 w-3.5" />
                                     <span>
@@ -5224,7 +5327,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       href={`/api/registeruz.php?action=pdf&id=${rid}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 type-overline transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                                      className="px-3 py-1.5 rounded-md bg-entity-subtle hover:bg-entity-muted text-entity-text border border-entity-border type-overline transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
                                     >
                                       <Download className="h-3.5 w-3.5" />
                                       <span>
@@ -5245,15 +5348,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* INVOICES & BILLING TAB (CRITICAL REQUIREMENT #5 & #6) */}
               {activeDetailTab === "invoices" && (
-                <div className="space-y-5 text-left animate-in fade-in duration-150">
+                <div style={entityAccentStyle("invoices")} className="space-y-5 text-left animate-in fade-in duration-150">
                   {/* Top Bar with Add Button */}
-                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 border-b-2 border-slate-100 pb-3">
+                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 border-b border-gray-200 pb-3">
                     <div>
-                      <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                        <Coins className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" />
+                      <h3 className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+                        <Coins className="h-4 w-4 text-entity-text" />
                         {t("Client Invoices & Financial Movements", "Faktúry a finančné toky klienta", "Ügyfélszámlák és pénzügyi tételek")}
                       </h3>
-                      <p className="text-caption text-slate-500 mt-0.5">
+                      <p className="text-caption text-gray-500 mt-0.5">
                         {t("Overview of all issued and planned invoices associated with this client.", "Prehľad všetkých vystavených a plánovaných faktúr priradených k tomuto klientovi.", "Az ügyfélhez kapcsolódó összes kiállított és tervezett számla.")}
                       </p>
                     </div>
@@ -5262,7 +5365,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleOpenClientInvoiceModal()}
-                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-ui font-bold transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer shrink-0"
+                        className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-semibold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0"
                       >
                         <Plus className="h-4 w-4" />
                         <span>{t("New Invoice", "Nová faktúra", "Új számla")}</span>
@@ -5272,24 +5375,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   {/* Client Financial Summary Cards */}
                   {clientInvoices.length > 0 && (() => {
-                    const totalPlanned = clientInvoices.reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
-                    const totalReal = clientInvoices.reduce((acc, r) => acc + splitRecordAmounts(r).real, 0);
-                    const pendingAmount = clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").reduce((acc, r) => acc + splitRecordAmounts(r).estimated, 0);
-                    const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + splitRecordAmounts(r).estimated, 0);
+                    // A recurring rule is not one more movement next to the payments it has
+                    // stored; its row counts only when it holds a legacy payment of its own.
+                    const totalPlanned = clientInvoices.reduce((acc, r) => acc + (isRealMovement(r) || recurringOwnRowCharge(r) ? r.amountPlanned || 0 : 0), 0);
+                    const totalReal = clientInvoices.reduce((acc, r) => acc + movementAmounts(r).real, 0);
+                    const pendingAmount = clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").reduce((acc, r) => acc + movementAmounts(r).estimated, 0);
+                    const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + movementAmounts(r).estimated, 0);
 
                     return (
                       <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
-                        <div className="p-3.5 rounded-2xl bg-emerald-50/50 border border-emerald-200">
+                        <div className="p-3.5 rounded-lg bg-emerald-50/50 border border-emerald-200">
                           <span className="type-overline text-emerald-700 block">{t("Total Invoiced", "Celkom vyfakturované", "Összes számlázott")}</span>
                           <div className="text-title-sm font-bold text-emerald-900 mt-0.5">{money(totalReal)}</div>
                           <span className="text-micro text-emerald-600">{t("Plan:", "Plán:", "Terv:")} {money(totalPlanned)}</span>
                         </div>
-                        <div className="p-3.5 rounded-2xl bg-amber-50/50 border border-amber-200">
+                        <div className="p-3.5 rounded-lg bg-amber-50/50 border border-amber-200">
                           <span className="type-overline text-amber-700 block">{t("Pending Payment", "Čaká na úhradu", "Fizetésre vár")}</span>
                           <div className="text-title-sm font-bold text-amber-900 mt-0.5">{money(pendingAmount)}</div>
                           <span className="text-micro text-amber-600">{clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").length} {t("invoices", "faktúr", "számla")}</span>
                         </div>
-                        <div className="p-3.5 rounded-2xl bg-rose-50/50 border border-rose-200">
+                        <div className="p-3.5 rounded-lg bg-rose-50/50 border border-rose-200">
                           <span className="type-overline text-rose-700 block">{t("Overdue", "Po splatnosti", "Lejárt")}</span>
                           <div className="text-title-sm font-bold text-rose-900 mt-0.5">{money(overdueAmount)}</div>
                           <span className="text-micro text-rose-600">{clientInvoices.filter(r => r.status === "overdue").length} {t("overdue", "po splatnosti", "lejárt")}</span>
@@ -5300,14 +5405,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   {/* Invoices List Table */}
                   {clientInvoices.length === 0 ? (
-                    <div className="py-12 text-center text-slate-400 text-ui font-semibold flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                      <Coins className="h-8 w-8 text-slate-300 animate-bounce" />
+                    <div className="py-12 text-center text-gray-500 text-ui font-medium flex flex-col items-center justify-center gap-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                      <Coins className="h-8 w-8 text-gray-300" />
                       <div>{t("No invoices created for this client yet.", "Pre tohto klienta zatiaľ neboli vystavené žiadne faktúry.", "Még nincsenek számlák rögzítve ehhez az ügyfélhez.")}</div>
                       {canEditFinance && (
                         <button
                           type="button"
                           onClick={() => handleOpenClientInvoiceModal()}
-                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-ui font-bold shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                          className="px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
                         >
                           <Plus className="h-3.5 w-3.5" />
                           {t("Issue First Invoice", "Vystaviť prvú faktúru", "Első számla kiállítása")}
@@ -5315,7 +5420,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
                       <table className="w-full text-left text-ui">
                         <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                           <tr>
@@ -5366,7 +5471,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       type="button"
                                       onClick={() => handleOpenClientInvoiceModal(inv)}
                                       disabled={inv.isRecurring}
-                                      className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                                      className="p-1.5 text-gray-400 hover:text-entity-text rounded-md hover:bg-entity-subtle transition-colors cursor-pointer disabled:opacity-40 disabled:hover:text-gray-400 disabled:hover:bg-transparent disabled:cursor-not-allowed"
                                       title={inv.isRecurring ? t("This is a recurring rule — edit it from Financial Management → Recurring.", "Toto je opakovaná platba — upravte ju v Finančnom prehľade → Opakované platby.", "Ez egy ismétlődő szabály — szerkessze a Pénzügyek → Ismétlődők nézetben.") : t("Edit invoice", "Upraviť faktúru", "Számla szerkesztése")}
                                     >
                                       <PencilLine className="h-3.5 w-3.5" />
@@ -5396,46 +5501,46 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   {/* CLIENT INVOICE MODAL */}
                   {isClientInvModalOpen && (
                     <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-                      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div className="bg-white rounded-lg border border-gray-200 shadow-lg max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="flex items-center justify-between border-b border-gray-200 pb-3">
                           <div className="flex items-center gap-2">
-                            <Coins className="h-5 w-5 text-emerald-600" />
-                            <h3 className="text-body font-bold text-slate-900">
+                            <Coins className="h-5 w-5 text-entity-text" />
+                            <h3 className="text-body font-semibold text-gray-900">
                               {clientInvEditing
                                 ? t("Edit Client Invoice", "Upraviť faktúru klienta", "Ügyfélszámla szerkesztése")
                                 : t("Issue Invoice for Client", "Vystaviť faktúru pre klienta", "Számla kiállítása ügyfélnek")}
                             </h3>
                           </div>
-                          <button onClick={() => setIsClientInvModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+                          <button onClick={() => setIsClientInvModalOpen(false)} className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer">
                             <X className="h-4 w-4" />
                           </button>
                         </div>
 
-                        <form onSubmit={handleSaveClientInvoice} className="space-y-3.5 text-ui font-semibold text-left">
+                        <form onSubmit={handleSaveClientInvoice} className="space-y-3.5 text-ui font-medium text-left">
                           <div>
-                            <label className="block type-overline text-slate-400 mb-1">{t("Invoice Title / Service Description *", "Názov faktúry / popis plnenia *", "Számla tárgya / leírás *")}</label>
+                            <label className="block type-overline text-gray-500 mb-1">{t("Invoice Title / Service Description *", "Názov faktúry / popis plnenia *", "Számla tárgya / leírás *")}</label>
                             <input
                               required
                               value={clientInvTitle}
                               onChange={(e) => setClientInvTitle(e.target.value)}
                               placeholder="e.g. Záloha za kuchynskú dosku..."
-                              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:border-emerald-500 font-medium"
+                              className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring font-medium"
                             />
                           </div>
 
                           <div>
-                            <label className="block type-overline text-slate-400 mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
+                            <label className="block type-overline text-gray-500 mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
                             <input
                               value={clientInvNumber}
                               onChange={(e) => setClientInvNumber(e.target.value)}
                               placeholder="FA-2026-0001"
-                              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono"
+                              className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white font-mono"
                             />
                           </div>
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="block type-overline text-slate-400 mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
+                              <label className="block type-overline text-gray-500 mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
                               <input
                                 type="number"
                                 step="0.01"
@@ -5443,29 +5548,29 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 value={clientInvPlanned}
                                 onChange={(e) => setClientInvPlanned(e.target.value ? parseFloat(e.target.value) : "")}
                                 placeholder="0.00"
-                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold"
+                                className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white font-semibold"
                               />
                             </div>
                             <div>
-                              <label className="block type-overline text-slate-400 mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
+                              <label className="block type-overline text-gray-500 mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
                               <input
                                 type="number"
                                 step="0.01"
                                 value={clientInvReal}
                                 onChange={(e) => setClientInvReal(e.target.value ? parseFloat(e.target.value) : "")}
                                 placeholder="0.00"
-                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-emerald-600"
+                                className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white font-semibold text-emerald-600"
                               />
                             </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="block type-overline text-slate-400 mb-1">{t("Category", "Kategória", "Kategória")}</label>
+                              <label className="block type-overline text-gray-500 mb-1">{t("Category", "Kategória", "Kategória")}</label>
                               <select
                                 value={clientInvCategoryId}
                                 onChange={(e) => setClientInvCategoryId(e.target.value)}
-                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                                className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                               >
                                 <option value="">{t("-- Select Category --", "-- Vyberte kategóriu --", "-- Válasszon --")}</option>
                                 {financialCategories
@@ -5479,11 +5584,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             </div>
 
                             <div>
-                              <label className="block type-overline text-slate-400 mb-1">{t("Status", "Stav úhrady", "Fizetési állapot")}</label>
+                              <label className="block type-overline text-gray-500 mb-1">{t("Status", "Stav úhrady", "Fizetési állapot")}</label>
                               <select
                                 value={clientInvStatus}
                                 onChange={(e) => setClientInvStatus(e.target.value as any)}
-                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                                className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                               >
                                 {FINANCIAL_STATUS_OPTIONS.map((s) => (
                                   <option key={s} value={s}>
@@ -5506,37 +5611,37 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="block type-overline text-slate-400 mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
+                              <label className="block type-overline text-gray-500 mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
                               <input
                                 type="date"
                                 required
                                 value={clientInvIssueDate}
                                 onChange={(e) => setClientInvIssueDate(e.target.value)}
-                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                                className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                               />
                             </div>
                             <div>
-                              <label className="block type-overline text-slate-400 mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
+                              <label className="block type-overline text-gray-500 mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
                               <input
                                 type="date"
                                 value={clientInvDueDate}
                                 onChange={(e) => setClientInvDueDate(e.target.value)}
-                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                                className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                               />
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                          <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-200">
                             <button
                               type="button"
                               onClick={() => setIsClientInvModalOpen(false)}
-                              className="px-4 py-2 rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer"
+                              className="px-4 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer"
                             >
                               {t("Cancel", "Zrušiť", "Mégsem")}
                             </button>
                             <button
                               type="submit"
-                              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer shadow-sm"
+                              className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md font-semibold cursor-pointer shadow-xs"
                             >
                               {t("Save Invoice", "Uložiť faktúru", "Számla mentése")}
                             </button>
@@ -5550,14 +5655,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* ORDERS TAB */}
               {activeDetailTab === "orders" && (
-                <div className="space-y-5 text-left animate-in fade-in duration-150">
-                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 border-b-2 border-slate-100 pb-3">
+                <div style={entityAccentStyle("orders")} className="space-y-5 text-left animate-in fade-in duration-150">
+                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 border-b border-gray-200 pb-3">
                     <div>
-                      <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                        <ShoppingCart className="h-4.5 w-4.5 text-sky-600 stroke-[2.5]" />
+                      <h3 className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+                        <SectionIcon id="orders" className="h-4 w-4 text-entity-text" />
                         {t("Client Orders & E-Shop Purchases", "Objednávky a nákupy klienta", "Ügyfél rendelései és vásárlásai")}
                       </h3>
-                      <p className="text-caption text-slate-500 mt-0.5">
+                      <p className="text-caption text-gray-500 mt-0.5">
                         {t("History of all commercial and e-shop orders placed by this client.", "História všetkých obchodných a e-shopových objednávok tohto klienta.", "Az ügyfél összes rendelése.")}
                       </p>
                     </div>
@@ -5566,7 +5671,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <button
                         type="button"
                         onClick={handleOpenCreateOrder}
-                        className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-ui font-bold transition-all flex items-center gap-1.5 shadow-md shadow-indigo-500/20 active:scale-95 cursor-pointer shrink-0"
+                        className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-semibold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0"
                       >
                         <Plus className="h-4 w-4" />
                         <span>{t("New Order", "Nová objednávka", "Új rendelés")}</span>
@@ -5575,15 +5680,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
 
                   {clientOrders.length === 0 ? (
-                    <div className="p-8 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-caption space-y-3">
-                      <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500">
-                        <ShoppingCart className="w-6 h-6" />
+                    <div className="p-8 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-500 text-caption space-y-3">
+                      <div className="w-12 h-12 mx-auto rounded-lg bg-entity-subtle border border-entity-border flex items-center justify-center text-entity-text">
+                        <SectionIcon id="orders" className="w-6 h-6" />
                       </div>
                       <div>
-                        <p className="font-semibold text-slate-600">
+                        <p className="font-semibold text-gray-700">
                           {t("This client has no recorded orders yet.", "Tento klient zatiaľ nemá žiadne zaznamenané objednávky.", "Ennek az ügyfélnek még nincsenek rendelései.")}
                         </p>
-                        <p className="text-micro text-slate-400 mt-0.5">
+                        <p className="text-micro text-gray-400 mt-0.5">
                           {t("Create a commercial or e-shop order for this client directly.", "Vytvorte obchodnú alebo e-shopovú objednávku priamo pre tohto klienta.", "Hozzon létre rendelést közvetlenül ehhez az ügyfélhez.")}
                         </p>
                       </div>
@@ -5591,7 +5696,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <button
                           type="button"
                           onClick={handleOpenCreateOrder}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-caption font-bold transition-all inline-flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                          className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-caption font-semibold transition-all inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
                         >
                           <Plus className="h-4 w-4" />
                           <span>{t("Place Order", "Vystaviť objednávku", "Rendelés leadása")}</span>
@@ -5606,21 +5711,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         return (
                           <div
                             key={order.id}
-                            className="p-3.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs hover:shadow-sm hover:border-indigo-200 transition-all flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 group"
+                            className="p-3.5 rounded-lg bg-white border border-gray-200 shadow-2xs hover:border-entity-border transition-all flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 group"
                           >
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
+                                <EntityBadge
+                                  entity="orders"
+                                  label={order.orderNumber}
                                   onClick={() => handleOpenEditOrder(order)}
-                                  className="font-mono font-bold text-caption text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer transition-colors text-left"
-                                  title={t("Open and edit order", "Otvoriť a upraviť objednávku", "Rendelés megnyitása és szerkesztése")}
-                                >
-                                  {order.orderNumber}
-                                </button>
-                                <span className="text-micro text-slate-400 font-mono">{order.orderDate}</span>
+                                  size="sm"
+                                />
+                                <span className="text-micro text-gray-400 font-mono">{order.orderDate}</span>
                                 <span
-                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold"
+                                  className="inline-flex items-center px-2 py-0.5 rounded-md text-micro font-semibold"
                                   style={{ backgroundColor: `${statusColor}18`, color: statusColor }}
                                 >
                                   {statusName}
@@ -5670,7 +5773,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenEditOrder(order)}
-                                  className="p-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all cursor-pointer"
+                                  className="p-2 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-all cursor-pointer"
                                   title={t("Edit order", "Upraviť objednávku", "Rendelés szerkesztése")}
                                 >
                                   <PencilLine className="w-4 h-4" />
@@ -5697,13 +5800,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* TICKETS & EMAIL WHITELIST TAB */}
               {activeDetailTab === "tickets" && (
-                <div className="space-y-6 text-left animate-in fade-in duration-150">
+                <div style={entityAccentStyle("tickets")} className="space-y-6 text-left animate-in fade-in duration-150">
                   {/* Client Support Email Whitelist */}
-                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
+                  <div className="p-4 rounded-lg border border-gray-200 bg-gray-50 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <h4 className="font-heading font-bold text-slate-800 text-ui flex items-center gap-1.5">
-                          <Mail className="w-4 h-4 text-emerald-600" />
+                        <h4 className="font-heading font-semibold text-gray-900 text-ui flex items-center gap-1.5">
+                          <Mail className="w-4 h-4 text-entity-text" />
                           <span>
                             {t(
                               "Support Ticket Email Whitelist",
@@ -5712,7 +5815,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             )}
                           </span>
                         </h4>
-                        <p className="text-micro text-slate-500 mt-0.5">
+                        <p className="text-micro text-gray-500 mt-0.5">
                           {t(
                             "Allowed sender emails or @domains for support tickets on this client. Leave empty to accept support ticket requests from any email address verbatim.",
                             "Povolené e-maily alebo @domény pre tikety tohto klienta. Ak necháte prázdne, systém prijme požiadavky na tikety z ľubovoľného e-mailu.",
@@ -5729,11 +5832,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           value={newClientWhitelistEmail}
                           onChange={(e) => setNewClientWhitelistEmail(e.target.value)}
                           placeholder={t("client@company.sk or @company.sk", "klient@firma.sk alebo @firma.sk", "ugyfel@ceg.hu vagy @ceg.hu")}
-                          className="flex-1 h-9 px-3 rounded-xl border border-slate-200 bg-white text-caption font-mono"
+                          className="flex-1 h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-mono focus:outline-none focus:border-entity-solid"
                         />
                         <button
                           type="submit"
-                          className="px-3.5 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-caption font-bold cursor-pointer"
+                          className="px-3.5 h-9 rounded-md bg-entity-solid hover:opacity-90 text-white text-caption font-semibold cursor-pointer"
                         >
                           {t("Add", "Pridať", "Hozzáadás")}
                         </button>
@@ -5742,7 +5845,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                     <div className="flex flex-wrap gap-1.5">
                       {(activeClient.ticketAllowedEmails || []).length === 0 ? (
-                        <span className="text-micro text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                        <span className="text-micro text-entity-text font-medium bg-entity-subtle border border-entity-border px-2.5 py-1 rounded-md">
                           {t(
                             "No email whitelist set — accepting support ticket requests from any sender verbatim.",
                             "Žiadny zoznam e-mailov — tikety sa prijímajú od akéhokoľvek odosielateľa.",
@@ -5753,14 +5856,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         (activeClient.ticketAllowedEmails || []).map((em) => (
                           <span
                             key={em}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-caption font-mono font-bold text-slate-700"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-gray-200 text-caption font-mono font-semibold text-gray-700"
                           >
                             {em}
                             {canEdit && (
                               <button
                                 type="button"
                                 onClick={() => handleRemoveClientWhitelistEmail(em)}
-                                className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                                className="text-gray-400 hover:text-rose-600 cursor-pointer"
                               >
                                 <X className="w-3.5 h-3.5" />
                               </button>
@@ -5773,13 +5876,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   {/* Client Tickets List */}
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between border-b-2 border-slate-100 pb-2">
+                    <div className="flex items-center justify-between border-b border-gray-200 pb-2">
                       <div>
-                        <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                          <TicketIcon className="h-4.5 w-4.5 text-indigo-600 stroke-[2.5]" />
+                        <h3 className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+                          <TicketIcon className="h-4.5 w-4.5 text-entity-text" />
                           {t("Client & Project Support Tickets", "Podporné tikety klienta a projektov", "Ügyfél és projekt támogatási jegyek")}
                         </h3>
-                        <p className="text-caption text-slate-500 mt-0.5">
+                        <p className="text-caption text-gray-500 mt-0.5">
                           {t(
                             "Tickets directly linked to this client or attached to any of this client's projects.",
                             "Tikety priamo priradené klientovi alebo k projektom tohto klienta.",
@@ -5792,7 +5895,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         onClick={() => {
                           window.location.hash = "tickets";
                         }}
-                        className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-caption font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-2 rounded-md border border-entity-border bg-entity-subtle hover:opacity-90 text-caption font-semibold text-entity-text flex items-center gap-1.5 cursor-pointer"
                       >
                         <span>{t("Open Tickets Module", "Otvoriť modul Tikety", "Jegyek modul megnyitása")}</span>
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -5800,7 +5903,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </div>
 
                     {clientTickets.length === 0 ? (
-                      <div className="py-10 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-caption">
+                      <div className="py-10 text-center bg-gray-50 rounded-lg border border-dashed border-gray-200 text-gray-400 text-caption">
                         {t(
                           "No support tickets recorded for this client or its projects yet.",
                           "Pre tohto klienta ani jeho projekty zatiaľ neboli zaznamenané žiadne tikety.",
@@ -5820,7 +5923,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               onClick={() => {
                                 window.location.hash = `tickets/${tk.id}`;
                               }}
-                              className="p-3.5 rounded-2xl bg-white border border-slate-200 hover:border-indigo-300 shadow-2xs transition-all flex items-center justify-between gap-3 cursor-pointer"
+                              className="p-3.5 rounded-lg bg-white border border-gray-200 hover:border-entity-border shadow-2xs transition-all flex items-center justify-between gap-3 cursor-pointer"
                             >
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
@@ -5834,21 +5937,20 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   >
                                     {tk.ticketNumber}
                                   </span>
-                                  <span className="font-bold text-ui text-slate-800 truncate">{tk.subject}</span>
+                                  <span className="font-semibold text-ui text-gray-900 truncate">{tk.subject}</span>
                                   {linkedProj && (
-                                    <span
+                                    <EntityBadge
+                                      entity="projects"
+                                      label={linkedProj.name || linkedProj.id}
+                                      showIcon
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         window.location.hash = `projects/${linkedProj.id}?tab=tickets`;
                                       }}
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-micro font-bold hover:bg-purple-100"
-                                    >
-                                      <Briefcase className="w-3 h-3" />
-                                      <span>{linkedProj.name || linkedProj.id}</span>
-                                    </span>
+                                    />
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2 text-micro text-slate-400 mt-1">
+                                <div className="flex items-center gap-2 text-micro text-gray-400 mt-1">
                                   <span>{tk.reporterEmail || tk.reporterName || "—"}</span>
                                   <span>•</span>
                                   <span>{String(tk.createdAt || "").slice(0, 16)}</span>
@@ -5856,7 +5958,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <span
-                                  className="px-2 py-0.5 rounded-full text-micro font-bold uppercase"
+                                  className="px-2 py-0.5 rounded-md text-micro font-semibold uppercase"
                                   style={{
                                     backgroundColor: `${typeColor}18`,
                                     color: typeColor,
@@ -5865,7 +5967,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   {ticketTypeLabel(tk.type, systemLanguage)}
                                 </span>
                                 <span
-                                  className="px-2 py-0.5 rounded-full text-micro font-bold uppercase"
+                                  className="px-2 py-0.5 rounded-md text-micro font-semibold uppercase"
                                   style={{
                                     backgroundColor: `${PRIORITY_COLORS[tk.priority] || "#3b82f6"}18`,
                                     color: PRIORITY_COLORS[tk.priority] || "#3b82f6",
@@ -5874,7 +5976,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   {tk.priority}
                                 </span>
                                 <span
-                                  className="px-2.5 py-1 rounded-full text-micro font-bold border"
+                                  className="px-2.5 py-1 rounded-md text-micro font-semibold border"
                                   style={{
                                     backgroundColor: `${stColor}15`,
                                     color: stColor,
@@ -5907,7 +6009,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       {/* 1. Title header */}
       <PageHeader
-        icon={<Users className="h-6 w-6 text-emerald-600" />}
+        icon={<SectionIcon id="clients" />}
         title={getTranslation(systemLanguage, "clients.title")}
         badge={<>
           {!canEdit && (
@@ -5924,7 +6026,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setClientsSubView("list")}
-                className="flex items-center gap-1.5 pl-3 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-slate-600 font-heading font-bold text-ui hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 pl-3 pr-4 py-2 rounded-md border border-gray-300 bg-white text-gray-700 font-heading font-semibold text-ui hover:bg-gray-50 hover:text-gray-900 shadow-2xs transition-all cursor-pointer"
               >
                 <ChevronLeft className="h-4 w-4 shrink-0" />
                 <span>{t("Back to clients", "Späť na klientov", "Vissza az ügyfelekhez")}</span>
@@ -5934,7 +6036,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 type="button"
                 onClick={() => setClientsSubView("settings")}
                 title={t("Client settings", "Nastavenia klientov", "Ügyfél beállítások")}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-ui hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-gray-200 bg-white text-gray-600 font-heading font-semibold text-ui hover:bg-gray-50 hover:text-gray-900 shadow-2xs transition-all cursor-pointer"
               >
                 <Settings className="h-4 w-4 shrink-0" />
                 <span className="hidden ws-sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
@@ -5947,10 +6049,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       {clientsSubView === "settings" ? (
         <div className="space-y-6">
           <div className="flex flex-col">
-            <h3 className="font-heading font-bold text-slate-800 text-title-sm">
+            <h3 className="font-heading font-semibold text-gray-900 text-title-sm">
               {t("Client Categories", "Kategórie klientov", "Ügyfélkategóriák")}
             </h3>
-            <p className="type-overline text-slate-400 mt-0.5">
+            <p className="type-overline text-gray-400 mt-0.5">
               {t("Organize clients into categories and subcategories", "Usporiadajte klientov do kategórií a podkategórií", "Ügyfelek rendezése kategóriákba és alkategóriákba")}
             </p>
           </div>
@@ -5967,18 +6069,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       ) : (
       <>
       {/* 2. Control search & filter bar */}
-      <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-white shadow-lg space-y-4">
-        <div className="flex flex-col ws-sm:flex-row items-center gap-3 w-full">
+      <div className="p-4 rounded-lg border border-gray-200 bg-white shadow-xs space-y-3">
+        <div className="flex flex-col ws-sm:flex-row items-center gap-2.5 w-full">
 
-          {/* Saturated & Prominent Search Input */}
+          {/* Search Input */}
           <div className="relative flex-1 w-full min-w-55">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-600 stroke-[2.5]" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={getTranslation(systemLanguage, "clients.filter.search")}
-              className="w-full pl-12 pr-4 py-3 rounded-2xl bg-emerald-50/15 border-2 border-emerald-200 text-ui text-slate-800 placeholder:text-slate-400 font-extrabold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-inner"
+              className="w-full h-10 pl-9 pr-3 rounded-md bg-white border border-gray-300 text-ui text-gray-900 placeholder:text-gray-400 font-medium focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring transition-all"
             />
           </div>
 
@@ -5987,44 +6089,30 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           <button
             type="button"
             onClick={() => setShowRegisterDrawer(true)}
-            className="w-full ws-sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 border-2 border-emerald-700 text-white font-bold text-ui transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/10 hover:scale-[1.02] active:scale-95 cursor-pointer shrink-0"
+            className="w-full ws-sm:w-auto h-10 px-4 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white font-semibold text-ui transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer shrink-0"
           >
-            <Plus className="h-4.5 w-4.5 text-emerald-100 stroke-[2.5]" />
+            <Plus className="h-4 w-4" />
             {systemLanguage === "sk" ? "Registrovať klienta" : systemLanguage === "hu" ? "Ügyfél regisztráció" : "Register Client"}
           </button>
           )}
 
-          {/* Saturated Client Type Selector */}
+          {/* Client Type Selector */}
           <div className="relative w-full ws-sm:w-45 shrink-0">
-            <div className="flex items-center gap-2 bg-slate-50 border-2 border-slate-200 text-slate-700 rounded-2xl px-4 py-3 shadow-sm hover:border-slate-300 transition-colors">
-              <Users className="h-4.5 w-4.5 text-slate-400 shrink-0" />
-              <CustomSelect
-                value={selectedType}
-                onChange={(v) => setSelectedType(v)}
-                unstyled
-                className="bg-transparent type-overline text-slate-700 focus:outline-none cursor-pointer w-full justify-between select-none"
-                options={[
-                  { value: "all", label: t("All Types", "Všetky typy", "Minden típus") },
-                  { value: "person", label: t("Person", "Osoba", "Személy") },
-                  { value: "business", label: t("Business", "Firma", "Cég") },
-                  { value: "partner", label: t("Partner", "Partner", "Partner") },
-                ]}
-              />
-            </div>
+            <FacetedMultiSelect className="h-10 w-full" icon={<Users className="h-4 w-4 text-gray-400 shrink-0" />} options={facets.options.type} selected={facets.selection.type} onChange={(v) => facets.setSelection("type", v)} allLabel={facets.allLabels.type} />
           </div>
 
-          {/* Saturated Toggle Filters Drawer Button */}
+          {/* Toggle Filters Drawer Button */}
           <button
             type="button"
             onClick={() => setShowFilterDrawer(!showFilterDrawer)}
-            className={`p-3.5 rounded-2xl border-2 transition-all flex items-center justify-center shadow-sm shrink-0 active:scale-95 ${
+            className={`h-10 w-10 rounded-md border transition-all flex items-center justify-center shrink-0 cursor-pointer ${
               showFilterDrawer
-                ? "bg-emerald-700 text-white border-emerald-800 shadow-md shadow-emerald-700/25"
-                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                ? "bg-entity-solid text-white border-entity-solid shadow-xs"
+                : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50 hover:text-gray-900"
             }`}
             title={showFilterDrawer ? t("Close Filters Drawer", "Zavrieť panel filtrov", "Szűrőpanel bezárása") : t("Open Filters Drawer", "Otvoriť panel filtrov", "Szűrőpanel megnyitása")}
           >
-            <SlidersHorizontal className="h-4.5 w-4.5 stroke-[2.5]" />
+            <SlidersHorizontal className="h-4 w-4" />
           </button>
 
         </div>
@@ -6034,48 +6122,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           <div className="overflow-hidden">
             <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-4 pb-1">
               
-              {/* City Location Filter */}
-              <div className="space-y-1.5">
-                <label className="type-overline text-slate-500 pl-0.5">{t("Filter by City Location", "Filtrovať podľa mesta", "Szűrés város szerint")}</label>
-                <CustomSelect
-                  value={filterCity}
-                  onChange={(v) => setFilterCity(v)}
-                  placeholder={getTranslation(systemLanguage, "clients.filter.city")}
-                  options={[
-                    { value: "", label: getTranslation(systemLanguage, "clients.filter.city") },
-                    ...uniqueCities.map(city => ({ value: city, label: city })),
-                  ]}
-                />
-              </div>
-
-              {/* Account PM Manager Filter */}
-              <div className="space-y-1.5">
-                <label className="type-overline text-slate-500 pl-0.5">{t("Filter by Account Manager (PM)", "Filtrovať podľa manažéra (PM)", "Szűrés ügyfélmenedzser szerint (PM)")}</label>
-                <CustomSelect
-                  value={filterPM}
-                  onChange={(v) => setFilterPM(v)}
-                  placeholder={getTranslation(systemLanguage, "clients.filter.pm")}
-                  options={[
-                    { value: "", label: getTranslation(systemLanguage, "clients.filter.pm") },
-                    ...projectManagers.map(pm => ({ value: pm, label: pm })),
-                  ]}
-                />
-              </div>
-
-              {/* Customer category — a main category also matches its subcategories */}
-              <div className="space-y-1.5">
-                <label className="type-overline text-slate-500 pl-0.5">{t("Filter by Client Category", "Filtrovať podľa kategórie klienta", "Szűrés ügyfélkategória szerint")}</label>
-                <ClientCategorySelect
-                  value={filterClientCategory}
-                  onChange={setFilterClientCategory}
-                  categories={clientCategories}
-                  t={t}
-                  leadingOptions={[
-                    { value: "", label: t("All categories", "Všetky kategórie", "Minden kategória") },
-                    { value: NO_CLIENT_CATEGORY, label: t("Without a category", "Bez kategórie", "Kategória nélkül") },
-                  ]}
-                />
-              </div>
+              {([
+                ["city", t("Filter by City Location", "Filtrovať podľa mesta", "Szűrés város szerint")],
+                ["manager", t("Filter by Account Manager (PM)", "Filtrovať podľa manažéra (PM)", "Szűrés ügyfélmenedzser szerint (PM)")],
+                // A main category also matches its subcategories.
+                ["category", t("Filter by Client Category", "Filtrovať podľa kategórie klienta", "Szűrés ügyfélkategória szerint")],
+              ] as const).map(([id, label]) => (
+                <div key={id} className="space-y-1.5">
+                  <label className="type-overline text-slate-500 pl-0.5">{label}</label>
+                  <FacetedMultiSelect className="h-10 w-full" options={facets.options[id]} selected={facets.selection[id]} onChange={(v) => facets.setSelection(id, v)} allLabel={facets.allLabels[id]} />
+                </div>
+              ))}
 
             </div>
           </div>
@@ -6087,9 +6144,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       <div className="flex flex-col ws-sm:flex-row items-stretch ws-sm:items-center justify-between gap-3">
         {/* Sort Controls (Quick selector, especially powerful on mobile where table headers are hidden) */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 bg-white border-2 border-emerald-100 rounded-2xl px-3.5 py-1.5 text-ui text-slate-700 shadow-sm">
-            <ArrowUpDown className="h-3.5 w-3.5 text-emerald-600 shrink-0 stroke-[2.5]" />
-            <span className="type-overline text-slate-400">
+          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-1.5 text-ui text-gray-700 shadow-2xs">
+            <ArrowUpDown className="h-3.5 w-3.5 text-entity-text shrink-0 stroke-[2]" />
+            <span className="type-overline text-gray-400">
               {t("Sort:", "Zoradiť:", "Rendezés:")}
             </span>
             <select
@@ -6102,7 +6159,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   handleSort(val, true);
                 }
               }}
-              className="bg-transparent text-ui font-bold text-slate-800 focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent text-ui font-semibold text-gray-900 focus:outline-none cursor-pointer pr-1"
             >
               <option value="">{t("Default", "Predvolené", "Alapértelmezett")}</option>
               <option value="name">{getTranslation(systemLanguage, "leads.table.client")}</option>
@@ -6118,7 +6175,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setSortConfig(prev => prev ? { ...prev, direction: prev.direction === "asc" ? "desc" : "asc" } : null)}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer font-bold text-micro"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-entity-subtle text-entity-text border border-entity-border hover:opacity-90 transition-colors cursor-pointer font-semibold text-micro"
                 title={sortConfig.direction === "asc" ? t("Ascending (click to switch to descending)", "Vzostupne (kliknite pre zostupné)", "Növekvő (kattintson a csökkenőhöz)") : t("Descending (click to switch to ascending)", "Zostupne (kliknite pre vzostupné)", "Csökkenő (kattintson a növekvőhöz)")}
               >
                 {sortConfig.direction === "asc" ? (
@@ -6138,7 +6195,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setSortConfig(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
                 title={t("Clear sort", "Zrušiť zoradenie", "Rendezés törlése")}
               >
                 <X className="h-3.5 w-3.5" />
@@ -6148,7 +6205,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         </div>
 
         {/* Active clients or the archive */}
-        <div className="flex items-center gap-1 p-1 w-fit rounded-2xl bg-slate-100 border border-slate-200 select-none self-end ws-sm:self-auto">
+        <div className="flex items-center gap-1 p-1 w-fit rounded-lg bg-gray-100 border border-gray-200 select-none self-end ws-sm:self-auto">
           {([
             { scope: "active" as const, Icon: Users, label: t("Active clients", "Aktívni klienti", "Aktív ügyfelek"), count: clientProfiles.length - archivedClientsCount },
             { scope: "archived" as const, Icon: Archive, label: t("Archived", "Archivovaní", "Archivált"), count: archivedClientsCount },
@@ -6158,13 +6215,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               type="button"
               aria-pressed={clientArchiveScope === scope}
               onClick={() => setClientArchiveScope(scope)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl type-overline transition-all duration-200 active:scale-95 cursor-pointer ${
-                clientArchiveScope === scope ? "bg-white text-emerald-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md type-overline transition-all duration-150 cursor-pointer ${
+                clientArchiveScope === scope ? "bg-white text-entity-text shadow-2xs" : "text-gray-500 hover:text-gray-800"
               }`}
             >
-              <Icon className="h-3.5 w-3.5 stroke-[2.5]" />
+              <Icon className="h-3.5 w-3.5 stroke-[2]" />
               {label}
-              <span className={`px-1.5 py-0.5 rounded-full text-micro tabular-nums ${clientArchiveScope === scope ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
+              <span className={`px-1.5 py-0.5 rounded-md text-micro tabular-nums ${clientArchiveScope === scope ? "bg-entity-subtle text-entity-text" : "bg-gray-200 text-gray-500"}`}>
                 {count}
               </span>
             </button>
@@ -6173,138 +6230,138 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       </div>
 
       {/* 3. Clients Data Grid Table */}
-      <div className="glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-clip">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-clip">
         <div ref={tableWrapRef} className="table-page-wrap scrollbar-thin">
           <table className="w-full border-collapse text-left block ws-lg:table">
             <thead className="hidden ws-lg:table-header-group table-page-sticky-head">
-              <tr className="bg-white text-emerald-700 type-overline select-none">
-                <th
-                  className={`sticky bg-white z-10 py-3.5 px-6 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "name" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
+              <tr className="bg-gray-50/90 text-gray-500 type-overline select-none">
+                <ResizableTh listKey="clients" colKey="name"
+                  className={`sticky bg-gray-50/95 z-10 py-3 px-6 border-b border-gray-200 transition-colors ${sortConfig?.key === "name" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "name" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
                     type="button"
                     onClick={() => handleSort("name")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
-                      sortConfig?.key === "name" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-semibold cursor-pointer transition-colors ${
+                      sortConfig?.key === "name" ? "text-entity-text" : "text-gray-600 hover:text-entity-text"
                     }`}
                   >
                     <span>{getTranslation(systemLanguage, "leads.table.client")}</span>
                     {renderSortIcon("name")}
                   </button>
-                </th>
-                <th
-                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "phone" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="phone"
+                  className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "phone" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "phone" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
                     type="button"
                     onClick={() => handleSort("phone")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
-                      sortConfig?.key === "phone" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-semibold cursor-pointer transition-colors ${
+                      sortConfig?.key === "phone" ? "text-entity-text" : "text-gray-600 hover:text-entity-text"
                     }`}
                   >
                     <span>{t("Contact Phone", "Kontaktný telefón", "Kapcsolattartó telefon")}</span>
                     {renderSortIcon("phone")}
                   </button>
-                </th>
-                <th
-                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "email" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="email"
+                  className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "email" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "email" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
                     type="button"
                     onClick={() => handleSort("email")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
-                      sortConfig?.key === "email" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-semibold cursor-pointer transition-colors ${
+                      sortConfig?.key === "email" ? "text-entity-text" : "text-gray-600 hover:text-entity-text"
                     }`}
                   >
                     <span>{getTranslation(systemLanguage, "login.email")}</span>
                     {renderSortIcon("email")}
                   </button>
-                </th>
-                <th
-                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "city" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="city"
+                  className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "city" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "city" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
                     type="button"
                     onClick={() => handleSort("city")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
-                      sortConfig?.key === "city" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-semibold cursor-pointer transition-colors ${
+                      sortConfig?.key === "city" ? "text-entity-text" : "text-gray-600 hover:text-entity-text"
                     }`}
                   >
                     <span>{getTranslation(systemLanguage, "leads.table.city")}</span>
                     {renderSortIcon("city")}
                   </button>
-                </th>
-                <th
-                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "clientType" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="clientType"
+                  className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "clientType" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "clientType" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
                     type="button"
                     onClick={() => handleSort("clientType")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
-                      sortConfig?.key === "clientType" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-semibold cursor-pointer transition-colors ${
+                      sortConfig?.key === "clientType" ? "text-entity-text" : "text-gray-600 hover:text-entity-text"
                     }`}
                   >
                     <span>{getTranslation(systemLanguage, "leads.table.type")}</span>
                     {renderSortIcon("clientType")}
                   </button>
-                </th>
-                <th
-                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "owner" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="owner"
+                  className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "owner" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "owner" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
                     type="button"
                     onClick={() => handleSort("owner")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
-                      sortConfig?.key === "owner" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-semibold cursor-pointer transition-colors ${
+                      sortConfig?.key === "owner" ? "text-entity-text" : "text-gray-600 hover:text-entity-text"
                     }`}
                   >
                     <span>{getTranslation(systemLanguage, "leads.table.pm")}</span>
                     {renderSortIcon("owner")}
                   </button>
-                </th>
-                <th
-                  className={`sticky bg-white z-10 py-3.5 px-4 text-center border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "leadsCount" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="leadsCount"
+                  className={`sticky bg-gray-50/95 z-10 py-3 px-4 text-center border-b border-gray-200 transition-colors ${sortConfig?.key === "leadsCount" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "leadsCount" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
                     type="button"
                     onClick={() => handleSort("leadsCount")}
-                    className={`group/sort inline-flex items-center justify-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
-                      sortConfig?.key === "leadsCount" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    className={`group/sort inline-flex items-center justify-center gap-1.5 uppercase tracking-wider font-semibold cursor-pointer transition-colors ${
+                      sortConfig?.key === "leadsCount" ? "text-entity-text" : "text-gray-600 hover:text-entity-text"
                     }`}
                   >
                     <span>{getTranslation(systemLanguage, "clients.card.leads_count")}</span>
                     {renderSortIcon("leadsCount")}
                   </button>
-                </th>
-                <th
-                  className={`sticky bg-white z-10 py-3.5 px-6 text-right border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "totalValue" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="totalValue"
+                  className={`sticky bg-gray-50/95 z-10 py-3 px-6 text-right border-b border-gray-200 transition-colors ${sortConfig?.key === "totalValue" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "totalValue" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
                     type="button"
                     onClick={() => handleSort("totalValue")}
-                    className={`group/sort inline-flex items-center justify-end gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
-                      sortConfig?.key === "totalValue" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    className={`group/sort inline-flex items-center justify-end gap-1.5 uppercase tracking-wider font-semibold cursor-pointer transition-colors ${
+                      sortConfig?.key === "totalValue" ? "text-entity-text" : "text-gray-600 hover:text-entity-text"
                     }`}
                   >
                     <span>{getTranslation(systemLanguage, "clients.card.total_value")}</span>
                     {renderSortIcon("totalValue")}
                   </button>
-                </th>
-                <th className="sticky right-0 bg-white z-20 py-3.5 px-4 border-b-2 border-l border-slate-100 w-12">
+                </ResizableTh>
+                <th className="sticky right-0 bg-gray-50/95 z-20 py-3 px-4 border-b border-l border-gray-200 w-12">
                   <span className="sr-only">{t("Actions", "Akcie", "Műveletek")}</span>
                 </th>
               </tr>
             </thead>
 
-            <tbody className="divide-y-0 ws-lg:divide-y ws-lg:divide-emerald-100 text-ui block ws-lg:table-row-group">
+            <tbody className="divide-y-0 ws-lg:divide-y ws-lg:divide-gray-200 text-ui block ws-lg:table-row-group">
               {processedClients.length === 0 ? (
                 <tr className="block ws-lg:table-row">
                   <td colSpan={9} className="py-16 px-6 text-center text-slate-400 block ws-lg:table-cell w-full ws-lg:w-auto">
@@ -6322,11 +6379,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <tr 
                     key={client.name}
                     onClick={() => { window.location.hash = `client-${encodeURIComponent(client.name)}`; }}
-                    className="block ws-lg:table-row border-b-4 border-slate-200/80 ws-lg:border-b ws-lg:border-emerald-50/60 p-4 ws-lg:p-0 hover:bg-emerald-50/40 transition-colors duration-150 cursor-pointer group"
+                    className="block ws-lg:table-row border-b border-gray-200 p-4 ws-lg:p-0 hover:bg-entity-subtle/40 transition-colors duration-150 cursor-pointer group"
                   >
                     
                     {/* Client Name & initials */}
-                    <td className="block ws-lg:table-cell py-1.5 ws-lg:py-3.5 px-0 ws-lg:px-6 font-bold text-slate-900 mb-2 ws-lg:mb-0 w-full ws-lg:w-auto">
+                    <td className="block ws-lg:table-cell py-1.5 ws-lg:py-3.5 px-0 ws-lg:px-6 font-semibold text-gray-900 mb-2 ws-lg:mb-0 w-full ws-lg:w-auto">
                       <div className="flex items-center gap-2.5">
                         <FavoriteHeartButton
                           entityId={`client_${encodeURIComponent(client.name)}`}
@@ -6339,11 +6396,23 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           size="xs"
                           systemLanguage={systemLanguage}
                         />
-                        <div className="h-7 w-7 rounded-lg bg-emerald-600 text-white border border-emerald-700 font-heading font-bold text-micro flex items-center justify-center shrink-0 shadow">
+                        <div className="h-7 w-7 rounded-md bg-entity-solid text-white font-heading font-semibold text-micro flex items-center justify-center shrink-0 shadow-2xs">
                           {getInitials(client.name)}
                         </div>
                         <div className="flex flex-col">
-                          <span className="line-clamp-1 group-hover:text-emerald-700 transition-colors font-bold text-body text-slate-800">{client.name}</span>
+                          <span className="line-clamp-1 group-hover:text-entity-text transition-colors font-semibold text-body text-gray-900">{client.name}</span>
+                          {client.clientType === "person" && client.companyClientId && companyByIdMap.get(client.companyClientId) && (() => {
+                            const tagSummary = resolveContactTags(client.contactTags, client.contactRole).join(", ");
+                            return (
+                              <span className="text-micro text-sky-700 font-semibold flex items-center gap-1 mt-0.5">
+                                <Building2 className="h-3 w-3 shrink-0 text-sky-600" />
+                                <span className="truncate">
+                                  {companyByIdMap.get(client.companyClientId)!.name}
+                                  {tagSummary ? ` (${tagSummary})` : ""}
+                                </span>
+                              </span>
+                            );
+                          })()}
                           {client.categories && client.categories.length > 0 && (
                             <span className="type-overline text-slate-400 line-clamp-1 mt-0.5">
                               {client.categories.join(", ")}
@@ -6389,28 +6458,28 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {/* Client Type badge */}
                     <td className="inline-flex items-center ws-lg:table-cell py-1 ws-lg:py-3.5 px-0 ws-lg:px-4 mr-3.5">
                       {client.clientType === "business" && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline bg-emerald-600 text-white border border-emerald-700 shadow-sm animate-fade-in">
-                          <Briefcase className="h-2.5 w-2.5 text-white" /> {t("Business", "Firma", "Cég")}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md type-overline bg-entity-subtle text-entity-text border border-entity-border animate-fade-in">
+                          <Briefcase className="h-2.5 w-2.5" /> {t("Business", "Firma", "Cég")}
                         </span>
                       )}
                       {client.clientType === "partner" && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline bg-amber-500 text-white border border-amber-600 shadow-sm animate-fade-in">
-                          <Handshake className="h-2.5 w-2.5 text-white" /> {t("Partner", "Partner", "Partner")}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md type-overline bg-amber-50 text-amber-800 border border-amber-200 animate-fade-in">
+                          <Handshake className="h-2.5 w-2.5" /> {t("Partner", "Partner", "Partner")}
                         </span>
                       )}
                       {client.clientType === "person" && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline bg-emerald-500 text-white border border-emerald-600 shadow-sm animate-fade-in">
-                          <User className="h-2.5 w-2.5 text-white" /> {t("Person", "Osoba", "Személy")}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md type-overline bg-entity-subtle text-entity-text border border-entity-border animate-fade-in">
+                          <User className="h-2.5 w-2.5" /> {t("Person", "Osoba", "Személy")}
                         </span>
                       )}
                     </td>
 
                     {/* PM Manager */}
-                    <td className="inline-flex items-center ws-lg:table-cell py-1 ws-lg:py-3.5 px-0 ws-lg:px-4 text-slate-700 font-bold mr-3.5">
+                    <td className="inline-flex items-center ws-lg:table-cell py-1 ws-lg:py-3.5 px-0 ws-lg:px-4 text-gray-700 font-medium mr-3.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="type-overline text-slate-400 ws-lg:hidden">PM:</span>
+                        <span className="type-overline text-gray-400 ws-lg:hidden">PM:</span>
                         <div className="flex items-center gap-1">
-                          <UserCheck className="h-3.5 w-3.5 text-emerald-600 stroke-[2.5]" />
+                          <UserCheck className="h-3.5 w-3.5 text-entity-text" />
                           <span>{client.owner}</span>
                         </div>
                       </div>
@@ -6419,25 +6488,25 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {/* Deals count */}
                     <td className="inline-flex items-center ws-lg:table-cell py-1 ws-lg:py-3.5 px-0 ws-lg:px-4 text-center mr-3.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="type-overline text-slate-400 ws-lg:hidden">{t("Deals", "Obchody", "Üzletek")}:</span>
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-micro font-bold bg-emerald-500 text-white border border-emerald-600 shadow">
-                          <Layers className="h-3 w-3 text-white" /> {client.leadsCount}
+                        <span className="type-overline text-gray-400 ws-lg:hidden">{t("Deals", "Obchody", "Üzletek")}:</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-semibold bg-entity-subtle text-entity-text border border-entity-border">
+                          <Layers className="h-3 w-3" /> {client.leadsCount}
                         </span>
                       </div>
                     </td>
 
                     {/* Total Value */}
-                    <td className="inline-flex items-center ws-lg:table-cell py-1.5 ws-lg:py-3.5 px-0 ws-lg:px-6 font-heading font-bold text-emerald-700 text-body w-full ws-lg:w-auto mt-1 ws-lg:mt-0 pt-2 ws-lg:pt-3.5 border-t border-slate-50 ws-lg:border-t-0">
+                    <td className="inline-flex items-center ws-lg:table-cell py-1.5 ws-lg:py-3.5 px-0 ws-lg:px-6 font-heading font-semibold text-entity-text text-body w-full ws-lg:w-auto mt-1 ws-lg:mt-0 pt-2 ws-lg:pt-3.5 border-t border-gray-100 ws-lg:border-t-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="type-overline text-slate-400 ws-lg:hidden">{t("Worth", "Hodnota", "Érték")}:</span>
-                        <span className="font-heading font-bold text-emerald-700 text-body">
+                        <span className="type-overline text-gray-400 ws-lg:hidden">{t("Worth", "Hodnota", "Érték")}:</span>
+                        <span className="font-heading font-semibold text-entity-text text-body">
                           {money(client.totalValue, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                     </td>
 
                     {/* Archive / restore */}
-                    <td className="inline-flex items-center ws-lg:table-cell py-1.5 ws-lg:py-3.5 px-0 ws-lg:px-4 ws-lg:text-right ws-lg:sticky ws-lg:right-0 ws-lg:z-10 ws-lg:bg-white ws-lg:group-hover:bg-emerald-50 ws-lg:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] ws-lg:border-l ws-lg:border-slate-100/80">
+                    <td className="inline-flex items-center ws-lg:table-cell py-1.5 ws-lg:py-3.5 px-0 ws-lg:px-4 ws-lg:text-right ws-lg:sticky ws-lg:right-0 ws-lg:z-10 ws-lg:bg-white ws-lg:group-hover:bg-entity-subtle/40 ws-lg:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] ws-lg:border-l ws-lg:border-gray-200">
                       {client.archived ? (
                         <button
                           type="button"
@@ -6447,9 +6516,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           }}
                           title={t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása")}
                           aria-label={t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása")}
-                          className="p-2 rounded-xl text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 active:scale-90 transition-all duration-150 cursor-pointer"
+                          className="p-2 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-all duration-150 cursor-pointer"
                         >
-                          <ArchiveRestore className="h-4 w-4 stroke-[2.5]" />
+                          <ArchiveRestore className="h-4 w-4 stroke-[2]" />
                         </button>
                       ) : (
                         <HoldToConfirmButton
@@ -6458,9 +6527,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           what={client.name}
                           onConfirm={() => setClientArchived(client.name, true)}
                           title={t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
-                          className="p-2 rounded-xl text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 active:scale-90 transition-all duration-150"
+                          className="p-2 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-all duration-150"
                         >
-                          <Archive className="h-4 w-4 stroke-[2.5]" />
+                          <Archive className="h-4 w-4 stroke-[2]" />
                         </HoldToConfirmButton>
                       )}
                     </td>
@@ -6528,10 +6597,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         onClick={() => setCurrentPage(pageNum)}
                         aria-current={currentPage === pageNum ? "page" : undefined}
                         className={cn(
-                          "relative inline-flex items-center px-3 py-2 border text-ui font-bold transition-colors",
+                          "relative inline-flex items-center px-3 py-2 border text-ui font-semibold transition-colors cursor-pointer",
                           currentPage === pageNum
-                            ? "z-10 bg-emerald-600 border-emerald-600 text-white shadow-sm"
-                            : "bg-white border-slate-200 text-slate-700 hover:bg-emerald-50/50 hover:text-emerald-700"
+                            ? "z-10 bg-entity-solid border-entity-solid text-white shadow-2xs"
+                            : "bg-white border-gray-200 text-gray-700 hover:bg-entity-subtle hover:text-entity-text"
                         )}
                       >
                         {pageNum}
@@ -6541,10 +6610,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <button
                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(processedClients.length / 50)))}
                     disabled={currentPage === Math.ceil(processedClients.length / 50)}
-                    className="relative inline-flex items-center px-2 py-2 rounded-r-xl border border-slate-200 bg-white text-ui font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-200 bg-white text-ui font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                   >
                     <span className="sr-only">{t("Next", "Ďalšia", "Következő")}</span>
-                    <ChevronRight className="h-4 w-4 text-emerald-600 stroke-[2.5]" aria-hidden="true" />
+                    <ChevronRight className="h-4 w-4 text-entity-text" aria-hidden="true" />
                   </button>
                 </nav>
               </div>
@@ -6552,13 +6621,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </div>
         )}
 
-        <div className="bg-emerald-50/20 border-t-2 border-emerald-100 p-4 flex items-center justify-between type-overline text-slate-500">
+        <div className="bg-gray-50 border-t border-gray-200 p-4 flex items-center justify-between type-overline text-gray-500">
           <div className="flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 text-emerald-600 stroke-[2.5]" />
+            <Clock className="h-3.5 w-3.5 text-entity-text" />
             <span>{t("Click any client row to inspect profile details & timeline logs", "Kliknutím na riadok klienta zobrazíte detaily profilu a záznamy časovej osi", "Kattintson egy ügyfélsorra a profiladatok és az idővonal megtekintéséhez")}</span>
           </div>
           <div>
-            {t("Total", "Spolu", "Összesen")} <strong className="text-emerald-700">{processedClients.length}</strong> {t("unique clients", "jedinečných klientov", "egyedi ügyfél")}
+            {t("Total", "Spolu", "Összesen")} <strong className="text-entity-text">{processedClients.length}</strong> {t("unique clients", "jedinečných klientov", "egyedi ügyfél")}
           </div>
         </div>
       </div>
@@ -6656,19 +6725,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           {/* Backdrop click close */}
           <div className="flex-1" onClick={closeRegisterDrawer} />
           
-          <div className={`w-full max-w-4xl mx-auto bg-white rounded-t-[32px] border-t-2 border-emerald-400 shadow-2xl flex flex-col relative max-h-[85vh] ${isClosingRegisterDrawer ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
+          <div className={`w-full max-w-4xl mx-auto bg-white rounded-t-lg border-t-2 border-t-entity-solid shadow-lg flex flex-col relative max-h-[85vh] ${isClosingRegisterDrawer ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
             {/* Header */}
-            <div className="bg-white border-b border-slate-100 px-6 py-5 rounded-t-[30px] flex items-center justify-between shrink-0">
+            <div className="bg-white border-b border-gray-200 px-6 py-4 rounded-t-lg flex items-center justify-between shrink-0">
               <div className="text-left">
-                <span className="type-overline text-emerald-600">{systemName} CRM System</span>
-                <h3 className="text-body font-heading font-bold text-slate-800">
+                <span className="type-overline text-entity-text">{systemName}</span>
+                <h3 className="text-body font-heading font-semibold text-gray-900">
                   {systemLanguage === "sk" ? "Registrovať Nového Klienta" : systemLanguage === "hu" ? "Új Ügyfél Regisztrálása" : "Register New Client"}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={closeRegisterDrawer}
-                className="text-slate-400 hover:text-slate-600 p-1.5 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -6715,7 +6784,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             name="newClientType"
                             value={opt.id}
                             checked={active}
-                            onChange={() => setNewClientType(opt.id as any)}
+                            onChange={() => { setNewClientType(opt.id as any); setNewClientContact({ firstName: "", lastName: "" }); }}
                             className="sr-only"
                           />
                           <span>{opt.label}</span>
@@ -6789,6 +6858,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                 </div>
 
+                {newClientType === "person" && (
+                  <ContactNameFields
+                    forPerson
+                    lang={systemLanguage}
+                    value={contactNameShown(newClientContact, newClientName, true)}
+                    onChange={setNewClientContact}
+                    inputClassName="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                  />
+                )}
+
                 <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <label className="type-overline text-slate-400 block">
@@ -6823,9 +6902,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <CustomSelect
                       value={newClientOwner}
                       onChange={(v) => setNewClientOwner(v)}
-                      options={projectManagers.map(pm => ({ value: pm, label: pm }))}
+                      options={projectManagerPickerNames(users, newClientOwner).map(pm => ({ value: pm, label: pm }))}
                     />
                   </div>
+                  <ProjectEmployeesField userLanguage={systemLanguage} users={users} value={newClientEmployees} managers={newClientOwner ? [newClientOwner] : []} canEdit onChange={setNewClientEmployees} />
                 </div>
               </div>
 
@@ -6909,10 +6989,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 setNewClientCategories([...newClientCategories, cat]);
                               }
                             }}
-                            className={`px-2.5 py-1 rounded-lg border type-overline transition-all cursor-pointer ${
+                            className={`px-2.5 py-1 rounded-md border type-overline transition-all cursor-pointer ${
                               isSelected
-                                ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
-                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                                ? "bg-entity-solid text-white border-entity-solid shadow-2xs"
+                                : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
                             }`}
                           >
                             {cat}
@@ -6923,6 +7003,36 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Company attachment when registering a Person contact */}
+              {newClientType === "person" && companyClientProfiles.length > 0 && (
+                <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4 bg-sky-50/50 border border-sky-200/70 rounded-2xl p-3.5">
+                  <div className="space-y-1">
+                    <label className="type-overline text-slate-500 block">
+                      {t("Attached Company (optional)", "Priradená firma (voliteľné)", "Kapcsolt cég (opcionális)")}
+                    </label>
+                    <CustomSelect
+                      value={newClientCompanyClientId}
+                      onChange={setNewClientCompanyClientId}
+                      options={[
+                        { value: "", label: t("Independent / No company", "Nezávislá osoba / Bez firmy", "Független / Nincs cég") },
+                        ...companyClientProfiles.map(c => ({ value: c.primaryId, label: c.name })),
+                      ]}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="type-overline text-slate-500 block">
+                      {t("Function tags", "Funkčné štítky", "Funkció címkék")}
+                    </label>
+                    <ContactTagInput
+                      value={newClientContactTags}
+                      onChange={setNewClientContactTags}
+                      suggestions={allContactTags}
+                      placeholder={t("e.g. CEO, Billing", "napr. CEO, Fakturácia", "pl. Ügyvezető, Számlázás")}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Corporate Register Section (Only for Business/Partner) */}
               {newClientType !== "person" && (
@@ -7006,18 +7116,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
 
                   <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="type-overline text-slate-400 block">
-                        {systemLanguage === "sk" ? "Kontaktná osoba" : systemLanguage === "hu" ? "Kapcsolattartó személy" : "Contact Person"}
-                      </label>
-                      <input
-                        type="text"
-                        value={newClientContactPerson}
-                        onChange={(e) => setNewClientContactPerson(e.target.value)}
-                        placeholder={systemLanguage === "sk" ? "napr. Ing. Ján Novák" : systemLanguage === "hu" ? "pl. Kiss János" : "e.g. Ing. Ján Novák"}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
-                      />
-                    </div>
+                    <ContactNameFields
+                      className="contents"
+                      lang={systemLanguage}
+                      value={newClientContact}
+                      onChange={setNewClientContact}
+                      inputClassName="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                    />
                     
                     <div className="space-y-1">
                       <label className="type-overline text-slate-400 block">
@@ -7036,19 +7141,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               )}
 
               {/* Submit Buttons */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
                 <button
                   type="button"
                   onClick={closeRegisterDrawer}
-                  className="px-5 py-2.5 rounded-xl border-2 border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition-all text-ui font-bold cursor-pointer"
+                  className="px-4 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-all text-ui font-semibold cursor-pointer"
                 >
                   {systemLanguage === "sk" ? "Zrušiť" : systemLanguage === "hu" ? "Mégse" : "Cancel"}
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition-all text-ui font-bold flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white shadow-xs transition-all text-ui font-semibold flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Plus className="h-4 w-4 stroke-[2.5]" />
+                  <Plus className="h-4 w-4" />
                   {systemLanguage === "sk" ? "Vytvoriť profil" : systemLanguage === "hu" ? "Profil létrehozása" : "Create Profile"}
                 </button>
               </div>

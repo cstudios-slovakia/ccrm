@@ -4,6 +4,7 @@
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/deleted_records.php';
 
 header('Content-Type: application/json; charset=utf-8');
 ccrm_send_cors('GET, POST, DELETE, OPTIONS');
@@ -93,6 +94,7 @@ switch ($method) {
             $status = $_GET['status'] ?? null;
             $customerType = $_GET['customer_type'] ?? null;
             $clientId = $_GET['client_id'] ?? null;
+            $projectId = $_GET['project_id'] ?? null;
             $search = $_GET['search'] ?? null;
 
             $sql = "SELECT * FROM `orders` WHERE 1=1";
@@ -112,6 +114,10 @@ switch ($method) {
             if ($clientId) {
                 $sql .= " AND `client_id` = ?";
                 $params[] = $clientId;
+            }
+            if ($projectId) {
+                $sql .= " AND `project_id` = ?";
+                $params[] = $projectId;
             }
             if ($search) {
                 $sql .= " AND (`order_number` LIKE ? OR `guest_name` LIKE ? OR `guest_email` LIKE ? OR `billing_name` LIKE ? OR `shipping_tracking_number` LIKE ?)";
@@ -196,6 +202,7 @@ switch ($method) {
                     $ord['billing_country'] ?: ($ord['delivery_country'] ?? 'SK'),
                     (string)($user['name'] ?? $user['email'] ?? '')
                 ]);
+                ccrm_set_contact_parts_from_person($pdo, $newClientId);
 
                 // Link order to the newly created client
                 $updateOrder = $pdo->prepare("UPDATE `orders` SET `customer_type` = 'client', `client_id` = ? WHERE `id` = ?");
@@ -226,7 +233,7 @@ switch ($method) {
         try {
             $upsert = $pdo->prepare("
                 INSERT INTO `orders` (
-                    `id`, `order_number`, `type`, `status`, `customer_type`, `client_id`, `supplier_id`,
+                    `id`, `order_number`, `type`, `status`, `customer_type`, `client_id`, `supplier_id`, `project_id`,
                     `guest_name`, `guest_email`, `guest_phone`, `guest_company`, `guest_ico`, `guest_dic`, `guest_ic_dph`,
                     `delivery_recipient`, `delivery_street`, `delivery_city`, `delivery_zip`, `delivery_country`, `delivery_phone`, `delivery_notes`,
                     `shipping_method`, `shipping_pickup_point_id`, `shipping_tracking_number`,
@@ -236,7 +243,7 @@ switch ($method) {
                     `currency`, `items_net_amount`, `services_net_amount`, `total_net_amount`, `total_tax_amount`, `total_gross_amount`,
                     `order_date`, `requested_delivery_date`, `confirmed_delivery_date`, `warehouse_id`, `notes`, `customer_note`, `created_by`
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?,
@@ -253,6 +260,7 @@ switch ($method) {
                     `customer_type` = VALUES(`customer_type`),
                     `client_id` = VALUES(`client_id`),
                     `supplier_id` = VALUES(`supplier_id`),
+                    `project_id` = VALUES(`project_id`),
                     `guest_name` = VALUES(`guest_name`),
                     `guest_email` = VALUES(`guest_email`),
                     `guest_phone` = VALUES(`guest_phone`),
@@ -306,6 +314,7 @@ switch ($method) {
                 $input['customer_type'] ?? 'client',
                 $input['client_id'] ?? null,
                 $input['supplier_id'] ?? null,
+                $input['project_id'] ?? $input['projectId'] ?? null,
                 $input['guest_name'] ?? null,
                 $input['guest_email'] ?? null,
                 $input['guest_phone'] ?? null,
@@ -409,8 +418,12 @@ switch ($method) {
             echo json_encode(['error' => 'Missing id']);
             exit;
         }
+        $snap = ccrm_deleted_snapshot($pdo, 'orders', (string)$id);
         $del = $pdo->prepare("DELETE FROM `orders` WHERE `id` = ?");
         $del->execute([$id]);
+        if ($del->rowCount() > 0 && $snap) {
+            ccrm_record_deleted($pdo, 'orders', (string)$id, $snap, (string)($user['email'] ?? $user['id'] ?? ''));
+        }
         echo json_encode(['success' => true]);
         break;
 

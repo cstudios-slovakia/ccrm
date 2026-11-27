@@ -95,6 +95,55 @@ function mcp_optional_date(array $args, string $key): ?string {
     return mcp_require_date($args, $key);
 }
 
+/**
+ * A moment filter (created_from, updated_to, ...) as Unix seconds, or null when absent.
+ *
+ * Accepts a date (YYYY-MM-DD) or a date and time (YYYY-MM-DD HH:MM[:SS], a 'T' works
+ * too), read in the app's time zone (config.php) unless it carries Z or +01:00.
+ * A bare date on an upper bound ($upper) means "to the end of that day"; a date and
+ * time on an upper bound is exclusive.
+ *
+ * Callers compare with UNIX_TIMESTAMP(column), never the column itself: a TIMESTAMP
+ * comes back in the MySQL session's time zone, which is not set and is often UTC
+ * on a server, while PHP runs in Europe/Bratislava.
+ *
+ * @return int|null Lower bound: inclusive. Upper bound: exclusive.
+ */
+function mcp_optional_moment(array $args, string $key, bool $upper = false): ?int {
+    if (!isset($args[$key]) || trim((string)$args[$key]) === '') return null;
+    $v = trim((string)$args[$key]);
+    $ok = preg_match('/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?\s*(Z|[+-]\d{2}:?\d{2})?$/i', $v, $m) === 1
+        && checkdate((int)$m[2], (int)$m[3], (int)$m[1])
+        && (!isset($m[4]) || $m[4] === '' || ((int)$m[4] < 24 && (int)$m[5] < 60 && (int)($m[6] ?? 0) < 60));
+    if (!$ok) {
+        throw new \InvalidArgumentException("'{$key}' must be YYYY-MM-DD or YYYY-MM-DD HH:MM (" . date_default_timezone_get() . " time).");
+    }
+    $dateOnly = !isset($m[4]) || $m[4] === '';
+    try {
+        $dt = new \DateTimeImmutable($v);
+    } catch (\Throwable $e) {
+        throw new \InvalidArgumentException("'{$key}' is not a valid date or time.");
+    }
+    // A bare date keeps the old inclusive "whole day" meaning; a time is exclusive, so
+    // back-to-back windows (14:22-16:22, then 16:22-18:22) never report a change twice.
+    if ($dateOnly && $upper) $dt = $dt->modify('+1 day');
+    return $dt->getTimestamp();
+}
+
+/** A UNIX_TIMESTAMP() value as an ISO 8601 moment in the app's time zone, e.g. 2026-11-06T14:44:12+01:00. */
+function mcp_format_moment($unix): ?string {
+    if ($unix === null || $unix === '') return null;
+    return date('c', (int)floor((float)$unix));
+}
+
+/** A task row selected with created_ts/updated_ts: created_at and updated_at become app-time ISO moments. */
+function mcp_task_moments(array $row): array {
+    $row['created_at'] = mcp_format_moment($row['created_ts'] ?? null);
+    $row['updated_at'] = mcp_format_moment($row['updated_ts'] ?? null);
+    unset($row['created_ts'], $row['updated_ts']);
+    return $row;
+}
+
 function mcp_number(array $args, string $key, bool $required = false, ?float $min = null, ?float $max = null): ?float {
     if (!isset($args[$key]) || $args[$key] === '') {
         if ($required) throw new \InvalidArgumentException("'{$key}' is required.");
@@ -225,35 +274,55 @@ function mcp_rec_scheduled(array $rule, string $startIso, string $endIso): array
     $frequency = $rule['recurringFrequency'] ?: 'monthly';
     $dates = [];
     $max = 1000;
+    // recurringInterval + intervalAnchor: every N weeks/months/years, counted
+    // from the first charge on/after the start date (else the issue date).
+    $interval = (int)round((float)($config['interval'] ?? 1));
+    $interval = $interval > 1 ? min($interval, 999) : 1;
+    $anchor = mcp_iso_ok($rule['recurringStartDate'] ?? null) ? $rule['recurringStartDate']
+        : (mcp_iso_ok($rule['issueDate'] ?? null) ? $rule['issueDate'] : '1970-01-01');
+    $mod = fn(int $n, int $m): int => (($n % $m) + $m) % $m;
 
     if ($frequency === 'weekly') {
         $weekday = ((int)($config['dayOfWeek'] ?? 1)) % 7;
-        $cursor = new \DateTimeImmutable($from . ' 00:00:00', new \DateTimeZone('UTC'));
+        $step = 7 * $interval;
+        $utc = new \DateTimeZone('UTC');
+        $cursor = new \DateTimeImmutable(($interval > 1 ? $anchor : $from) . ' 00:00:00', $utc);
         $dow = (int)$cursor->format('w');
         $cursor = $cursor->modify('+' . (($weekday - $dow + 7) % 7) . ' days');
+        if ($interval > 1) {
+            $behind = (int)round(((new \DateTimeImmutable($from . ' 00:00:00', $utc))->getTimestamp() - $cursor->getTimestamp()) / 86400);
+            $jump = (int)ceil($behind / $step) * $step;
+            $cursor = $cursor->modify(($jump >= 0 ? '+' : '') . $jump . ' days');
+        }
         while ($cursor->format('Y-m-d') <= $to && count($dates) < $max) {
             $dates[] = $cursor->format('Y-m-d');
-            $cursor = $cursor->modify('+7 days');
+            $cursor = $cursor->modify('+' . $step . ' days');
         }
         return $dates;
     }
 
     $fy = (int)substr($from, 0, 4); $fm = (int)substr($from, 5, 2) - 1;
     $ty = (int)substr($to, 0, 4);   $tm = (int)substr($to, 5, 2) - 1;
+    $ay = (int)substr($anchor, 0, 4); $am = (int)substr($anchor, 5, 2) - 1;
 
     if ($frequency === 'yearly') {
         $month0 = min(max(((int)($config['month'] ?? 1)) - 1, 0), 11);
+        $yearly = fn(int $y): string => mcp_iso_ymd($y, $month0, mcp_clamp_day($y, $month0, $config['dayOfMonth'] ?? 1));
+        $firstYear = $yearly($ay) < $anchor ? $ay + 1 : $ay;
         for ($year = $fy; $year <= $ty; $year++) {
-            $occ = mcp_iso_ymd($year, $month0, mcp_clamp_day($year, $month0, $config['dayOfMonth'] ?? 1));
+            if ($interval > 1 && $mod($year - $firstYear, $interval) !== 0) continue;
+            $occ = $yearly($year);
             if ($occ >= $from && $occ <= $to) $dates[] = $occ;
         }
         return $dates;
     }
 
+    $firstMonthIndex = $ay * 12 + $am + (mcp_monthly_occurrence($config, $ay, $am) < $anchor ? 1 : 0);
     $year = $fy; $month = $fm;
     while (($year < $ty || ($year === $ty && $month <= $tm)) && count($dates) < $max) {
+        $inCycle = $interval === 1 || $mod($year * 12 + $month - $firstMonthIndex, $interval) === 0;
         $occ = mcp_monthly_occurrence($config, $year, $month);
-        if ($occ >= $from && $occ <= $to) $dates[] = $occ;
+        if ($inCycle && $occ >= $from && $occ <= $to) $dates[] = $occ;
         $month++;
         if ($month > 11) { $month = 0; $year++; }
     }
@@ -288,8 +357,16 @@ function mcp_rec_amount_at(array $rule, string $dateIso): float {
     return $a['amountReal'] > 0 ? $a['amountReal'] : $a['amountPlanned'];
 }
 
-/** recurringCharges: one entry per charge, priced at the amount in force that day. */
+/**
+ * recurringCharges: one entry per charge, priced at the amount in force that day.
+ * Nothing on or before the rule's recurringMaterializedThrough is drawn: those
+ * charges are stored movements (or deliberately absent).
+ */
 function mcp_rec_charges(array $rule, string $startIso, string $endIso): array {
+    $through = $rule['recurringMaterializedThrough'] ?? null;
+    if (mcp_iso_ok($through) && mcp_iso_ok($startIso) && $startIso <= $through) {
+        $startIso = mcp_iso_shift($through, 1);
+    }
     return array_map(
         fn($d) => ['date' => $d, 'amount' => mcp_rec_amount_at($rule, $d)],
         mcp_rec_occurrences($rule, $startIso, $endIso)
@@ -331,6 +408,7 @@ function mcp_fin_record(array $r): array {
         'recurringEndDate' => $r['recurring_end_date'] ?: null,
         'recurringAmountHistory' => is_array($hist) ? $hist : null,
         'recurringSkippedDates' => is_array($skip) ? $skip : null,
+        'recurringMaterializedThrough' => ($r['recurring_materialized_through'] ?? null) ?: null,
         'projectId' => $r['project_id'] ?: null,
         'clientId' => $r['client_id'] ?: null,
         'invoiceNumber' => $r['invoice_number'] ?: null,
@@ -376,10 +454,22 @@ function mcp_fin_recurring_own_row(array $rec): ?array {
     if ($date === '') return null;
     $skipped = $rec['recurringSkippedDates'] ?? null;
     if (is_array($skipped) && in_array($date, $skipped, true)) return null;
-    if (count(mcp_rec_charges($rec, '0000-01-01', $date)) > 0) return null;
+    if (count(mcp_rec_occurrences($rec, '0000-01-01', $date)) > 0) return null;
     [$real, $est] = mcp_fin_split($rec);
     if ($real == 0.0 && $est == 0.0) return null;
     return ['date' => $date, 'real' => $real, 'estimated' => $est];
+}
+
+/**
+ * movementAmounts: what a stored record adds when movements are summed outside the
+ * finance tables. A one-off is split by its status; a recurring rule only through
+ * its own row (a legacy payment the schedule does not account for), never as one
+ * more charge next to the payments it has stored. Real movements in SQL: is_recurring = 0.
+ */
+function mcp_fin_movement_split(array $rec): array {
+    if (empty($rec['isRecurring'])) return mcp_fin_split($rec);
+    $own = mcp_fin_recurring_own_row($rec);
+    return $own ? [(float)$own['real'], (float)$own['estimated']] : [0.0, 0.0];
 }
 
 function mcp_fin_categories(\PDO $pdo): array {
@@ -620,7 +710,7 @@ function mcp_project_value(\PDO $pdo, array $p, array &$ctx): float {
 function mcp_project_billing(float $value, array $incomeRecords): array {
     $received = 0.0; $open = 0.0;
     foreach ($incomeRecords as $r) {
-        [$real, $est] = mcp_fin_split($r);
+        [$real, $est] = mcp_fin_movement_split($r);
         $received += $real;
         $open += $est;
     }
@@ -676,17 +766,7 @@ function mcp_lead_is_closed(string $state, array $groups, array $parents): bool 
 function mcp_ext_fin_tool_definitions(): array {
     $year = ['type' => 'integer', 'description' => 'Calendar year (default: current year)'];
     return [
-        [
-            'name' => 'get_project_billing_summary',
-            'description' => 'How much of each project\'s contract value has come in, is invoiced but unpaid, or is not invoiced yet (the Project page billing block). Same maths as the app: cancelled income rows count as nothing, a partially paid row counts its paid part as received and the rest as invoiced-open. The project value is the first positive of: project value, the project type\'s money attributes, the custom value attribute, the paired lead value (budget is never used).',
-            'inputSchema' => ['type' => 'object', 'properties' => [
-                'project_id' => ['type' => 'string', 'description' => 'One project; omit for all projects'],
-                'status' => ['type' => 'string', 'description' => 'Only projects in this status'],
-                'active_only' => ['type' => 'boolean', 'description' => 'Only projects in an open status group (default false)'],
-                'include_archived' => ['type' => 'boolean', 'description' => 'Include archived projects (default false)'],
-                'limit' => ['type' => 'integer', 'description' => 'Max projects (default 50, max 100)'],
-            ]],
-        ],
+        mcp_money_tool_def('get_project_billing_summary'),
         [
             'name' => 'get_invoicable_summary',
             'description' => 'The "Total Invoicable Active Value" figure: open pipeline value (leads in open stages) plus what can still be invoiced on projects in open statuses. Each project contributes max(0, value − invoiced). Returns groups per stage/status and the grand total. `dashboard_basis_total` reproduces the dashboard tile exactly (which still falls back to project budget and counts cancelled rows); `total` uses the project page maths. Groups you may not see are omitted.',
@@ -703,41 +783,14 @@ function mcp_ext_fin_tool_definitions(): array {
                 'by_month' => ['type' => 'boolean', 'description' => 'Add the monthly split to every category row (default false)'],
             ]],
         ],
-        [
-            'name' => 'list_financial_movements',
-            'description' => 'List ledger movements (income and expenses): invoices, payments, salaries, recurring rules. Each row shows the settled and still-expected amount and the date it is filed under.',
-            'inputSchema' => ['type' => 'object', 'properties' => [
-                'type' => ['type' => 'string', 'enum' => ['income', 'expense']],
-                'status' => ['type' => 'string', 'enum' => ['planned', 'pending', 'paid', 'partially_paid', 'overdue', 'cancelled']],
-                'category_id' => ['type' => 'string'], 'project_id' => ['type' => 'string'], 'client_id' => ['type' => 'string'],
-                'recurring' => ['type' => 'boolean', 'description' => 'true = only recurring rules, false = only one-off movements'],
-                'from' => ['type' => 'string', 'description' => 'Filed on/after (YYYY-MM-DD)'],
-                'to' => ['type' => 'string', 'description' => 'Filed on/before (YYYY-MM-DD)'],
-                'search' => ['type' => 'string'],
-                'limit' => ['type' => 'integer'], 'offset' => ['type' => 'integer'],
-            ]],
-        ],
+        mcp_money_tool_def('list_financial_movements'),
         [
             'name' => 'list_financial_categories',
-            'description' => 'The income and expense category tree used by the ledger.',
+            'description' => 'The income and expense category tree used by the ledger. updated_at is the ISO 8601 moment a category last changed, with the ' . KOPERNIQ_PRODUCT_NAME . ' time-zone offset.',
             'inputSchema' => ['type' => 'object', 'properties' => ['type' => ['type' => 'string', 'enum' => ['income', 'expense']]]],
         ],
-        [
-            'name' => 'list_recurring_movements',
-            'description' => 'Recurring income/expense rules with their schedule, current amount, whether they are paused and the next charge date.',
-            'inputSchema' => ['type' => 'object', 'properties' => [
-                'type' => ['type' => 'string', 'enum' => ['income', 'expense']],
-                'include_paused' => ['type' => 'boolean', 'description' => 'Include rules that have ended or are paused (default false)'],
-            ]],
-        ],
-        [
-            'name' => 'get_cash_flow_forecast',
-            'description' => 'Money that has not moved yet over the next N months: recurring charges, unpaid movements by due date, and scheduled ones. Returns month totals and the individual expected transactions.',
-            'inputSchema' => ['type' => 'object', 'properties' => [
-                'months' => ['type' => 'integer', 'description' => 'Months ahead (default 3, max 24)'],
-                'include_items' => ['type' => 'boolean', 'description' => 'List every expected transaction (default false, max 200)'],
-            ]],
-        ],
+        mcp_money_tool_def('list_recurring_movements'),
+        mcp_money_tool_def('get_cash_flow_forecast'),
         [
             'name' => 'get_invoicing_metrics',
             'description' => 'Invoicing KPIs: total value of price offers, total invoiced value (invoices only), counts by type and status, and the offer win rate over decided offers.',
@@ -775,15 +828,21 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
             if (!empty($args['project_id'])) { $where[] = 'p.id = ?'; $params[] = (string)$args['project_id']; }
             if (!empty($args['status'])) { $where[] = 'p.status = ?'; $params[] = (string)$args['status']; }
             if (empty($args['include_archived'])) $where[] = '(p.archived = 0 OR p.archived IS NULL)';
-            $stmt = $pdo->prepare("SELECT p.*, l.name AS client_name FROM projects p LEFT JOIN leads l ON l.id = COALESCE(p.client_id, p.lead_id) WHERE " . implode(' AND ', $where) . " ORDER BY p.created_at DESC LIMIT " . mcp_limit($args));
-            $stmt->execute($params);
-            $projects = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            if (!empty($args['project_id']) && !$projects) {
-                throw new \Exception('Project not found with ID: ' . $args['project_id']);
-            }
             $open = null;
             if (!empty($args['active_only'])) {
                 $open = array_map(fn($d) => $d['key'], array_filter(ccrm_project_status_defs($pdo), fn($d) => in_array($d['group'], ['new', 'in_progress'], true)));
+                // In SQL, so a page is full: filtering after LIMIT would return short pages.
+                $where[] = $open ? 'p.status IN (' . implode(',', array_fill(0, count($open), '?')) . ')' : '1=0';
+                $params = array_merge($params, array_values($open));
+            }
+            $limit = mcp_limit($args); $offset = max(0, (int)($args['offset'] ?? 0));
+            $stmt = $pdo->prepare("SELECT p.*, l.name AS client_name FROM projects p LEFT JOIN leads l ON l.id = COALESCE(p.client_id, p.lead_id) WHERE " . implode(' AND ', $where) . " ORDER BY p.created_at DESC, p.id ASC LIMIT " . ($limit + 1) . " OFFSET $offset");
+            $stmt->execute($params);
+            $projects = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $truncated = count($projects) > $limit;
+            $projects = array_slice($projects, 0, $limit);
+            if (!empty($args['project_id']) && !$projects && $open === null) {
+                throw new \Exception('Project not found with ID: ' . $args['project_id']);
             }
             $ctx = mcp_projects_ctx();
             $income = mcp_income_by_project($pdo, array_column($projects, 'id'));
@@ -795,7 +854,7 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 foreach ($tot as $k => $_) { $tot[$k] += $b[$k]; }
                 $rows[] = array_merge(['project_id' => $p['id'], 'name' => $p['name'] ?: ($p['client_name'] ?: $p['id']), 'status' => $p['status'], 'client_name' => $p['client_name']], $b);
             }
-            return ['currency' => $currency, 'projects' => $rows, 'totals' => array_map('mcp_round2', $tot)];
+            return ['currency' => $currency, 'projects' => $rows, 'totals' => array_map('mcp_round2', $tot), 'limit' => $limit, 'offset' => $offset, 'truncated' => $truncated];
         }
 
         case 'get_invoicable_summary': {
@@ -930,49 +989,17 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
             ];
         }
 
-        case 'list_financial_movements': {
-            $where = ['1=1']; $params = [];
-            foreach (['type' => ['income', 'expense'], 'status' => ['planned', 'pending', 'paid', 'partially_paid', 'overdue', 'cancelled']] as $k => $allowed) {
-                $v = mcp_enum($args, $k, $allowed);
-                if ($v !== null) { $where[] = "`$k` = ?"; $params[] = $v; }
-            }
-            foreach (['category_id', 'project_id', 'client_id'] as $k) {
-                if (!empty($args[$k])) { $where[] = "`$k` = ?"; $params[] = (string)$args[$k]; }
-            }
-            if (isset($args['recurring'])) $where[] = !empty($args['recurring']) ? 'is_recurring = 1' : 'is_recurring = 0';
-            $from = mcp_optional_date($args, 'from'); $to = mcp_optional_date($args, 'to');
-            $dateExpr = "COALESCE(paid_date, due_date, issue_date)";
-            if ($from) { $where[] = "$dateExpr >= ?"; $params[] = $from; }
-            if ($to) { $where[] = "$dateExpr <= ?"; $params[] = $to; }
-            if (!empty($args['search'])) {
-                $t = '%' . $args['search'] . '%';
-                $where[] = '(title LIKE ? OR description LIKE ? OR invoice_number LIKE ?)';
-                array_push($params, $t, $t, $t);
-            }
-            $limit = mcp_limit($args); $offset = max(0, (int)($args['offset'] ?? 0));
-            $recs = mcp_fin_load($pdo, implode(' AND ', $where), $params, "$dateExpr DESC, id DESC", $limit + $offset);
-            $recs = array_slice($recs, $offset);
-            return array_map(function ($r) {
-                [$real, $est] = mcp_fin_split($r);
-                return [
-                    'id' => $r['id'], 'type' => $r['type'], 'subtype' => $r['subtype'], 'title' => $r['title'],
-                    'status' => $r['status'], 'category_id' => $r['categoryId'], 'project_id' => $r['projectId'], 'client_id' => $r['clientId'],
-                    'invoice_number' => $r['invoiceNumber'], 'currency' => $r['currency'],
-                    'amount_planned' => $r['amountPlanned'], 'amount_real' => $r['amountReal'],
-                    'settled' => mcp_round2($real), 'expected' => mcp_round2($est),
-                    'filed_on' => mcp_fin_date($r), 'issue_date' => $r['issueDate'], 'due_date' => $r['dueDate'], 'paid_date' => $r['paidDate'],
-                    'is_recurring' => $r['isRecurring'], 'recurring_frequency' => $r['recurringFrequency'],
-                ];
-            }, $recs);
-        }
+        case 'list_financial_movements':
+            return mcp_list_financial_movements($pdo, $user, $args);
 
         case 'list_financial_categories': {
             $type = mcp_enum($args, 'type', ['income', 'expense']);
             $byId = mcp_fin_categories($pdo);
+            $moments = mcp_financial_category_moments($pdo);
             $out = [];
             foreach ($byId as $c) {
                 if ($type !== null && $c['type'] !== $type) continue;
-                $out[] = ['id' => $c['id'], 'type' => $c['type'], 'name' => $c['name'], 'parent_id' => mcp_cat_parent($c, $byId), 'level' => (int)$c['level'], 'sort_order' => (int)$c['sort_order'], 'color' => $c['color']];
+                $out[] = ['id' => $c['id'], 'type' => $c['type'], 'name' => $c['name'], 'parent_id' => mcp_cat_parent($c, $byId), 'level' => (int)$c['level'], 'sort_order' => (int)$c['sort_order'], 'color' => $c['color'], 'updated_at' => $moments[$c['id']] ?? null];
             }
             return $out;
         }
@@ -986,12 +1013,13 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 $end = mcp_rec_end_date($r);
                 $paused = $end !== null && $end <= $today;
                 if ($paused && empty($args['include_paused'])) continue;
-                $next = mcp_rec_occurrences($r, mcp_iso_shift($today, 1), mcp_iso_shift($today, 400))[0] ?? null;
+                $next = mcp_rec_occurrences($r, mcp_iso_shift($today, 1), mcp_iso_shift($today, 400 * max(1, (int)($r['recurringConfig']['interval'] ?? 1))))[0] ?? null;
                 $out[] = [
                     'id' => $r['id'], 'type' => $r['type'], 'title' => $r['title'], 'category_id' => $r['categoryId'],
                     'frequency' => $r['recurringFrequency'], 'schedule' => $r['recurringConfig'],
                     'start_date' => $r['recurringStartDate'], 'end_date' => $end, 'paused_or_ended' => $paused,
                     'current_amount' => mcp_round2(mcp_rec_amount_at($r, $today)), 'currency' => $r['currency'],
+                    'amount_history' => $r['recurringAmountHistory'] ?? [],
                     'next_charge' => $next,
                 ];
             }
@@ -1002,7 +1030,7 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
             $months = min(max(1, (int)($args['months'] ?? 3)), 24);
             $today = mcp_today();
             $start = mcp_iso_shift($today, 1); $end = mcp_iso_add_months($today, $months);
-            $moves = [];
+            $moves = []; $past = [];
             foreach (mcp_fin_load($pdo, '1=1') as $rec) {
                 if (!empty($rec['isRecurring'])) {
                     foreach (mcp_rec_charges($rec, $start, $end) as $ch) {
@@ -1013,10 +1041,13 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 }
                 if ($rec['status'] === 'paid' || $rec['status'] === 'cancelled') continue;
                 $date = $rec['dueDate'] ?: $rec['issueDate'];
-                if (!mcp_iso_ok($date) || $date < $start || $date > $end) continue;
+                if (!mcp_iso_ok($date) || $date > $end) continue;
                 [, $est] = mcp_fin_split($rec);
                 if ($est <= 0) continue;
-                $moves[] = ['date' => $date, 'source' => $rec['dueDate'] ? 'due' : 'scheduled', 'type' => $rec['type'], 'amount' => $est, 'rec' => $rec];
+                $move = ['date' => $date, 'source' => $rec['dueDate'] ? 'due' : 'scheduled', 'type' => $rec['type'], 'amount' => $est, 'rec' => $rec];
+                // Dated today or earlier: not in the months (they start tomorrow), reported in the overdue block.
+                if ($date < $start) { $past[] = $move; continue; }
+                $moves[] = $move;
             }
             usort($moves, fn($a, $b) => [$a['date'], $a['rec']['title']] <=> [$b['date'], $b['rec']['title']]);
             $byMonth = [];
@@ -1028,7 +1059,8 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
             }
             ksort($byMonth);
             $out = [
-                'currency' => mcp_currency($pdo), 'from' => $start, 'to' => $end,
+                'currency' => mcp_currency($pdo), 'as_of' => $today, 'from' => $start, 'to' => $end,
+                'overdue' => mcp_forecast_overdue_block($past, $today),
                 'totals' => ['income' => mcp_round2($tot['income']), 'expense' => mcp_round2($tot['expense']), 'net' => mcp_round2($tot['income'] - $tot['expense'])],
                 'months' => array_map(fn($k, $v) => ['month' => $k, 'income' => mcp_round2($v['income'] ?? 0), 'expense' => mcp_round2($v['expense'] ?? 0), 'net' => mcp_round2(($v['income'] ?? 0) - ($v['expense'] ?? 0))], array_keys($byMonth), $byMonth),
             ];

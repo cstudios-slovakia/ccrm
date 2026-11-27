@@ -22,6 +22,29 @@ import { DEFAULT_INVOICE_STATUS_DEFS, isLiveInvoiceStatus, type OfferStatusDef }
 export const invoiceMovementId = (invoiceId: string) => `fr-inv-${invoiceId}`;
 
 /**
+ * Settle an invoice's linked movement: money for it has been received (an
+ * order already paid when the invoice is issued from it). Every entry point
+ * that issues an invoice from a paid order calls this, so "paid" lands in the
+ * ledger, the one place money is recorded (stored-vs-derived audit, finance #8).
+ * A movement that is already settled is left as it is: never re-priced or re-dated.
+ */
+export function markInvoiceMovementPaid(
+  records: FinancialRecord[],
+  invoiceId: string,
+  amount: number,
+  paidDate: string
+): FinancialRecord[] {
+  const id = invoiceMovementId(invoiceId);
+  let changed = false;
+  const next = records.map((r) => {
+    if (r.id !== id || isFullyPaid(r)) return r;
+    changed = true;
+    return { ...r, status: "paid" as const, amountReal: amount, paidDate };
+  });
+  return changed ? next : records;
+}
+
+/**
  * Only a real invoice is expected income — a price offer or a proforma is not —
  * and not one that was withdrawn or turned down. That is read from the status's
  * group (Price offers → Settings → Invoice statuses are configurable), so a
@@ -47,6 +70,28 @@ const normalizeNumber = (value: string | null | undefined) => (value || "").trim
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
 /**
+ * The amount an offer or invoice contributes to Finance / leads / project billing.
+ * In `netMode` (VAT-excluded finance mode), uses `subtotal` (or `totalPrice - vatAmount` when subtotal is omitted).
+ */
+export const effectiveDocumentAmount = (
+  doc: Pick<InvoiceOffer, "subtotal" | "vatAmount" | "totalPrice">,
+  netMode = false
+): number => {
+  const gross = num(doc.totalPrice);
+  if (!netMode) return Math.round(gross * 100) / 100;
+  const sub = num(doc.subtotal);
+  if (sub > 0) return Math.round(sub * 100) / 100;
+  const vat = num(doc.vatAmount);
+  if (gross > 0 && vat > 0) return Math.round(Math.max(0, gross - vat) * 100) / 100;
+  return Math.round(gross * 100) / 100;
+};
+
+export interface ReconcileInvoiceOptions {
+  /** When true, write net (`subtotal`) amounts to `financialRecords.amountPlanned` instead of gross `totalPrice`. */
+  netMode?: boolean;
+}
+
+/**
  * The fields an invoice dictates on its linked movement, split by whether they
  * may still change once the movement is settled (paid/partially paid, or any
  * money recorded against it).
@@ -63,10 +108,10 @@ const invoiceOwnedIdentityFields = (doc: InvoiceOffer) => ({
   invoiceNumber: doc.documentNumber || null
 } satisfies Partial<FinancialRecord>);
 
-const invoiceOwnedSettlementFields = (doc: InvoiceOffer) => {
+const invoiceOwnedSettlementFields = (doc: InvoiceOffer, netMode = false) => {
   const subtotal = num(doc.subtotal);
   return {
-    amountPlanned: Math.round(num(doc.totalPrice) * 100) / 100,
+    amountPlanned: effectiveDocumentAmount(doc, netMode),
     currency: doc.currency || "EUR",
     issueDate: doc.issuedAt,
     dueDate: doc.dueDate || null,
@@ -75,16 +120,16 @@ const invoiceOwnedSettlementFields = (doc: InvoiceOffer) => {
   } satisfies Partial<FinancialRecord>;
 };
 
-const invoiceOwnedFields = (doc: InvoiceOffer) => ({
+const invoiceOwnedFields = (doc: InvoiceOffer, netMode = false) => ({
   ...invoiceOwnedIdentityFields(doc),
-  ...invoiceOwnedSettlementFields(doc)
+  ...invoiceOwnedSettlementFields(doc, netMode)
 });
 
-const newMovement = (doc: InvoiceOffer, now: string): FinancialRecord => ({
+const newMovement = (doc: InvoiceOffer, now: string, netMode = false): FinancialRecord => ({
   id: invoiceMovementId(doc.id),
   type: "income",
   subtype: "invoice",
-  ...invoiceOwnedFields(doc),
+  ...invoiceOwnedFields(doc, netMode),
   categoryId: null,
   categoryPath: null,
   amountReal: 0,
@@ -119,8 +164,10 @@ export function reconcileInvoiceMovements(
   nextDocs: InvoiceOffer[],
   records: FinancialRecord[],
   now: string = new Date().toISOString(),
-  statuses: readonly OfferStatusDef[] = DEFAULT_INVOICE_STATUS_DEFS
+  statuses: readonly OfferStatusDef[] = DEFAULT_INVOICE_STATUS_DEFS,
+  options?: ReconcileInvoiceOptions
 ): FinancialRecord[] {
+  const netMode = Boolean(options?.netMode);
   const prevById = new Map(prevDocs.map(d => [d.id, d]));
   const nextIds = new Set(nextDocs.map(d => d.id));
 
@@ -143,7 +190,7 @@ export function reconcileInvoiceMovements(
     const doc = upserts.get(rec.id);
     if (doc) {
       seen.add(rec.id);
-      const fields = isFullyPaid(rec) ? invoiceOwnedIdentityFields(doc) : invoiceOwnedFields(doc);
+      const fields = isFullyPaid(rec) ? invoiceOwnedIdentityFields(doc) : invoiceOwnedFields(doc, netMode);
       const differs = (Object.keys(fields) as (keyof typeof fields)[]).some(k => rec[k] !== fields[k]);
       if (differs) {
         changed = true;
@@ -169,7 +216,7 @@ export function reconcileInvoiceMovements(
   for (const [id, doc] of upserts) {
     if (seen.has(id)) continue;
     if (doc.documentNumber && handRecorded.has(normalizeNumber(doc.documentNumber))) continue;
-    created.push(newMovement(doc, now));
+    created.push(newMovement(doc, now, netMode));
   }
   if (created.length) changed = true;
 

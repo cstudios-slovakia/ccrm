@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { getStoredLanguage } from "../utils/translations";
+import { PRODUCT_NAME } from "../utils/brand";
 
 // The boundary wraps <App/>, so it cannot read the language from React state —
 // it falls back to the language App mirrored into localStorage.
@@ -56,7 +57,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public handleCopy = () => {
     const errorText = `
-CRM SYSTEM ERROR REPORT
+${PRODUCT_NAME.toUpperCase()} SYSTEM ERROR REPORT
 =======================
 Date: ${new Date().toISOString()}
 URL: ${window.location.href}
@@ -84,7 +85,7 @@ ${this.state.errorInfo?.componentStack || "No Stack Trace"}
       // app down to the full-page fallback and only a reload got it back.
       return (
         <div className="w-full py-16 flex items-center justify-center font-sans">
-          <div className="w-full max-w-2xl bg-white rounded-[28px] border border-rose-100 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-full max-w-2xl bg-white rounded-lg border border-rose-200 shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="bg-gradient-to-r from-rose-500 to-red-600 p-6 text-white flex items-center gap-3.5">
               <span className="text-display select-none">⚠️</span>
               <div>
@@ -93,9 +94,9 @@ ${this.state.errorInfo?.componentStack || "No Stack Trace"}
                 </h2>
                 <p className="type-overline text-rose-100 mt-0.5">
                   {t(
-                    "The rest of the CRM is still working — switch to another tab or retry.",
-                    "Zvyšok CRM funguje ďalej — prepnite na inú záložku alebo to skúste znova.",
-                    "A CRM többi része továbbra is működik — váltson másik fülre, vagy próbálja újra."
+                    `The rest of ${PRODUCT_NAME} is still working — switch to another tab or retry.`,
+                    `Zvyšok ${PRODUCT_NAME} funguje ďalej — prepnite na inú záložku alebo to skúste znova.`,
+                    `A ${PRODUCT_NAME} többi része továbbra is működik — váltson másik fülre, vagy próbálja újra.`
                   )}
                 </p>
               </div>

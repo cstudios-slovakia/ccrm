@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { skipHoldsBaseline, skipIsLostWork, skippedCollection } from "./syncDiff.ts";
+import { baselineOf, diffRecords, omitUnchangedGithubPairing, skipHoldsBaseline, skipIsLostWork, skippedCollection, stockRowId, withStockRowIds } from "./syncDiff.ts";
 
 test("a reason suffix belongs to its collection", () => {
   assert.equal(skippedCollection("users:nameTaken"), "users");
@@ -38,4 +38,91 @@ test("reason suffixes and unknown tags are unsaved work", () => {
   assert.equal(skipIsLostWork("users:delete", { deleted: { users: ["u1"] } }), true);
   assert.equal(skipIsLostWork("users:delete", { users: [{ id: "u1" }] }), false);
   assert.equal(skipIsLostWork("leads:clients:delete", { deleted: { leads: ["l1"] } }), true);
+});
+
+test("an untouched custom-entry map is not unsaved work", () => {
+  // What a restricted role's push carries when it changed nothing (seen on the live demo).
+  assert.equal(skipIsLostWork("unifiedEntriesData", { unifiedEntriesData: {} }), false);
+  assert.equal(skipIsLostWork("unifiedEntriesData", { unifiedEntriesData: { e1: [] } }), false);
+  assert.equal(skipIsLostWork("unifiedEntriesData", { unifiedEntriesData: { e1: [{ id: "r1" }] } }), true);
+  assert.equal(skipIsLostWork("unifiedEntriesData:delete", { deleted: { unifiedEntriesData: { e1: ["r1"] } } }), true);
+  assert.equal(skipIsLostWork("unifiedEntriesData:delete", { deleted: {} }), false);
+});
+
+test("a refused registry counts only when the push changed it", () => {
+  // Every push carries the registry whole, so App.tsx drops it from the payload it
+  // checks when it still matches what the server sent. Without that, a user with no
+  // general_config edit was warned on every push, starting right after login.
+  const registry = [{ id: "e1", name: "Cars" }];
+  assert.equal(skipIsLostWork("unifiedEntries", { unifiedEntries: registry }), true);
+  assert.equal(skipIsLostWork("unifiedEntries", { unifiedEntries: undefined }), false);
+});
+
+// Stored-vs-derived audit W2: stock rows have no id of their own, so every push used
+// to re-send the whole stock table as absolute numbers and revert concurrent changes.
+
+test("an unchanged stock row is not re-sent", () => {
+  // As sync.php returns them: with the synthetic id.
+  const server = [
+    { warehouseId: "wh-1", itemId: "it-1", quantity: 10, reservedQuantity: 0, location: null, id: "wh-1:it-1" },
+    { warehouseId: "wh-1", itemId: "it-2", quantity: 4, reservedQuantity: 0, location: null, id: "wh-1:it-2" },
+  ];
+  const baseline = baselineOf(withStockRowIds(server));
+  // A lead edit elsewhere: the stock list is untouched.
+  assert.deepEqual(diffRecords(withStockRowIds(server), baseline).changed, []);
+  // A receipt on it-2 only.
+  const edited = [server[0], { ...server[1], quantity: 7 }];
+  const { changed } = diffRecords(withStockRowIds(edited), baseline);
+  assert.equal(changed.length, 1);
+  assert.equal(changed[0].itemId, "it-2");
+  assert.equal(changed[0].quantity, 7);
+});
+
+test("a stock row created in this tab gets a stable id and is sent once", () => {
+  const local = { warehouseId: "wh-2", itemId: "it-9", quantity: 3, reservedQuantity: 0 };
+  const first = withStockRowIds([local]);
+  assert.equal(first[0].id, "wh-2:it-9");
+  assert.equal(first[0].id, stockRowId(local));
+  // Same source object, same normalised object: the baseline hash matches next time.
+  assert.equal(withStockRowIds([local])[0], first[0]);
+  const sent = diffRecords(first, new Map());
+  assert.equal(sent.changed.length, 1);
+  assert.deepEqual(diffRecords(withStockRowIds([local]), sent.next).changed, []);
+});
+
+test("a project save carries the GitHub pairing only when this tab changed it", () => {
+  const project = { id: "p1", name: "Shop", githubRepo: "acme/shop", githubBranch: null };
+  const baseline = baselineOf([project]);
+  // Untouched here (a colleague may have changed it meanwhile): both keys are left out.
+  const renamed = { ...project, name: "Shop 2" };
+  const [untouched] = omitUnchangedGithubPairing([renamed], baseline);
+  assert.equal("githubRepo" in untouched, false);
+  assert.equal("githubBranch" in untouched, false);
+  assert.equal(untouched.name, "Shop 2");
+  assert.equal("githubRepo" in renamed, true, "the state object itself is not mutated");
+  // Changed here, including cleared: the key is sent.
+  const [edited] = omitUnchangedGithubPairing([{ ...project, githubRepo: "acme/other" }], baseline);
+  assert.equal(edited.githubRepo, "acme/other");
+  const [cleared] = omitUnchangedGithubPairing([{ ...project, githubRepo: null }], baseline);
+  assert.equal(cleared.githubRepo, null);
+  // "" and null are the same empty value; a project the baseline does not know goes out whole.
+  const [empty] = omitUnchangedGithubPairing([{ ...project, githubBranch: "" }], baseline);
+  assert.equal("githubBranch" in empty, false);
+  const fresh = { id: "p2", githubRepo: "acme/new" };
+  assert.deepEqual(omitUnchangedGithubPairing([fresh], baseline), [fresh]);
+  assert.deepEqual(omitUnchangedGithubPairing([renamed], undefined), [renamed]);
+});
+
+test("an order whose project link is set, changed or cleared goes out in the next push", () => {
+  const server = [
+    { id: "o1", orderNumber: "OBJ-1", projectId: null },
+    { id: "o2", orderNumber: "OBJ-2", projectId: "p1" },
+    { id: "o3", orderNumber: "OBJ-3", projectId: "p1" },
+  ];
+  const baseline = baselineOf(server);
+  // The same moves the order editor and the project's Orders tab make: a spread copy with the new link.
+  const local = [{ ...server[0], projectId: "p2" }, { ...server[1], projectId: null }, server[2]];
+  const { changed, deletedIds } = diffRecords(local, baseline);
+  assert.deepEqual(changed.map((o) => [o.id, o.projectId]), [["o1", "p2"], ["o2", null]]);
+  assert.deepEqual(deletedIds, []);
 });

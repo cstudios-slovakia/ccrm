@@ -95,7 +95,7 @@ test.describe('Price levels', () => {
     await startSession(page);
     await seed(page, { levels: [] });
     const pushed = recordPushes(page);
-    await gotoView(page, '#settings/invoicing');
+    await gotoView(page, '#settings/offers/prices');
     await expect(page.getByTestId('price-level-settings')).toBeVisible();
 
     await page.getByLabel('Nová cenová hladina').fill('Partner');

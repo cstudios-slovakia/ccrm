@@ -23,13 +23,23 @@
  *   node scripts/qa/run-qa.mjs --files src/components/EmailView.tsx
  *   node scripts/qa/run-qa.mjs --pending            # commits made with "QA: pending"
  *
+ * Two tiers. The autonomous crawler ("Deep UI audit": 15 modules, 1-4 min each, ~15% of
+ * a full run's time) is the slow, discovery-style tier. `--files`, `--since`, `--pending`
+ * and the default diff run only the deterministic specs; the crawler joins them for
+ * `--full`, `--module`, `--with-audit` (or QA_AUDIT=1), a harness change, or an edit to
+ * crawler.spec.ts itself. CI runs the crawler in the nightly full run.
+ *
+ *   --plan-json   print {count, shards, ...} as JSON on stdout (logs go to stderr) and
+ *                 start nothing. CI sizes its shard matrix from it: more than
+ *                 QA_SHARD_THRESHOLD (80) tests run as QA_SHARDS (4) parallel jobs.
+ *
  * A selection that would be the FULL suite is refused unless it was asked for
  * (`--full`, `QA_ALLOW_FULL=1`, or CI): plain `npm run test:qa` on a branch with
  * no upstream used to diff against a months-old base and quietly start all 400+
  * tests. Agents pass `--files`.
  *
  * Exit codes: 0 passed or nothing to test, 1 defects or failed tests,
- * 2 not admitted (lock/RAM/port wait timed out), 3 refused a full run.
+ * 2 not admitted (lock held, low RAM or port busy; skipped at once unless QA_WAIT_MIN is set), 3 refused a full run.
  *
  * Only one run per machine. Several editor sessions share this machine and
  * each of them follows the same "test when finished" rule, so runs used to
@@ -47,7 +57,7 @@
  * to playwright untouched — `-- --list` prints the selection without opening a
  * browser.
  */
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -109,7 +119,15 @@ const RULES = [
   [/^src\/components\/(ModuleSetupWizard|VisibleModulesSettings)\./, ['Module setup wizard', 'System Settings']],
   [/^src\/utils\/(moduleCatalog|moduleWizard)\./, ['Module setup wizard', 'System Settings']],
   [/^scripts\/capture-module-screenshots\.mjs$/, ['Module setup wizard']],
-  [/^src\/components\/SettingsView\./, ['System Settings']],
+  /* Time tracking: the module, its provider hooks and the pure helpers behind it. The Settings tab
+     it adds is covered by the same journey spec. */
+  [/^src\/(components\/timeTracking\/|hooks\/useTime|utils\/(timeTracking|timeCost|holidays|timeLinks))/, ['Time tracking', 'Time Tracking']],
+  [/^src\/components\/SettingsView\./, ['System Settings', 'Time tracking']],
+  /* The WhatsApp module: its view, the pure protocol helpers and the spec that stands in for WAAI. */
+  [/^src\/components\/whatsapp\/|^tests\/e2e\/whatsapp(NativeModule|Links)\.spec\./, ['WhatsApp', 'Native WhatsApp module', 'WhatsApp links']],
+  /* The Newsletter module (list, builder, send, results, Settings > Newsletter), its API mock and spec. The
+     title word reaches the journey spec, the crawler's "Newsletter (#newsletter)" and the dark-mode audit. */
+  [/^src\/components\/newsletter\/|^tests\/e2e\/(newsletter\.spec\.ts|helpers\/newsletterMock\.ts)/, ['Newsletter']],
   [/^src\/components\/(SocialMediaView|RagAiView|UnifiedEntryView)\./, ['Shell navigation']],
 
   // --- the frame ---------------------------------------------------------
@@ -135,6 +153,13 @@ const RULES = [
  */
 const FORCES_FULL =
   /^(playwright\.config\.ts$|scripts\/qa\/|tests\/e2e\/(helpers\/|globalSetup\.ts$|globalTeardown\.ts$))/;
+
+/**
+ * The autonomous discovery tier: crawler.spec.ts crawls every module and decides for
+ * itself what to click. Left out of scoped runs unless asked for (see the header).
+ */
+const AUDIT_TITLE = 'Deep UI audit';
+const AUDIT_SPEC = /^tests\/e2e\/crawler\.spec\.ts$/;
 
 /* Describe blocks that expand to one test per module (13 and 19 tests). */
 const LONG_SUITES = ['Deep UI audit', 'Dark mode'];
@@ -172,6 +197,10 @@ const passThrough = passThroughAt === -1 ? [] : argv.slice(passThroughAt + 1);
 const own = passThroughAt === -1 ? argv : argv.slice(0, passThroughAt);
 
 const full = own.includes('--full');
+const withAudit = own.includes('--with-audit') || process.env.QA_AUDIT === '1';
+const planJson = own.includes('--plan-json');
+/* Stdout carries only the JSON in plan mode. */
+if (planJson) console.log = (...a) => console.error(...a);
 const pending = own.includes('--pending');
 const sinceAt = own.indexOf('--since');
 const since = sinceAt === -1 ? null : own[sinceAt + 1];
@@ -427,7 +456,13 @@ const QA_PORT = process.env.QA_PORT ?? '5273';
 
 /* -------------------------------------------------------------------- run */
 
-const { titles, why, files, forced, commits } = selectTitles();
+let { titles, why, files, forced, commits } = selectTitles();
+
+/* The crawler runs for everything that is not a scoped selection (full, forced full), for an
+   explicit module, on request, and when its own spec was edited. */
+const includeAudit =
+  withAudit || titles === null || explicitModule !== null || (files ?? []).some((f) => AUDIT_SPEC.test(f));
+const auditNote = includeAudit ? '' : `  [${AUDIT_TITLE} excluded; --with-audit includes it]`;
 
 const rule = '─'.repeat(72);
 const scope = titles === null ? 'FULL SUITE' : titles.length === 0 ? 'nothing to test' : titles.join(', ');
@@ -436,7 +471,7 @@ console.log(`\n${rule}`);
 console.log('CCRM QA — scoped run');
 console.log(rule);
 console.log(`Scope:    ${scope}`);
-console.log(`Reason:   ${why}`);
+console.log(`Reason:   ${why}${auditNote}`);
 if (files?.length) {
   const shown = files.slice(0, 8).join(', ');
   console.log(`Changed:  ${shown}${files.length > 8 ? ` +${files.length - 8} more` : ''}`);
@@ -463,6 +498,58 @@ if (titles === null && !full && process.env.QA_ALLOW_FULL !== '1' && !process.en
   );
   console.log('');
   process.exit(3);
+}
+
+const cli = path.join(ROOT, 'node_modules', '@playwright', 'test', 'cli.js');
+
+function selectionArgs() {
+  if (titles === null) return [];
+  const a = [`--grep=${titles.map(escapeRe).join('|')}`, '--pass-with-no-tests'];
+  if (!includeAudit) a.push(`--grep-invert=${escapeRe(AUDIT_TITLE)}`);
+  return a;
+}
+
+/** Number of tests a selection matches, or null when playwright could not list it. Opens no browser. */
+function countTests(extra = []) {
+  const r = spawnSync(process.execPath, [cli, 'test', '--list', '--reporter=json', ...selectionArgs(), ...extra], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+    env: { ...process.env, QA_SUITE: titles === null ? 'full' : 'partial' },
+  });
+  try {
+    let n = 0;
+    const walk = (suite) => {
+      for (const spec of suite.specs ?? []) n += (spec.tests ?? []).length;
+      (suite.suites ?? []).forEach(walk);
+    };
+    (JSON.parse(r.stdout).suites ?? []).forEach(walk);
+    return n;
+  } catch {
+    return null;
+  }
+}
+
+const userGrepArg = passThrough.some((a) => a === '-g' || a === '--grep' || a.startsWith('--grep=') || a.startsWith('-g='));
+const countExtra = passThrough.filter((a) => a !== '--list' && !a.startsWith('--shard'));
+
+/* A module with no deterministic spec (Email Hub, Automation, ...) would run nothing once the crawler is
+   left out. A scope that selected tests must still run something, so fall back to the shell smoke tests. */
+if (titles !== null && titles.length > 0 && !includeAudit && !userGrepArg && countTests(countExtra) === 0) {
+  console.log(`Fallback: no deterministic spec covers this scope; running the shell smoke tests (${SHELL.join(', ')}).`);
+  titles = [...SHELL];
+}
+
+if (planJson) {
+  const none = titles !== null && titles.length === 0;
+  const count = none ? 0 : countTests(countExtra);
+  const threshold = Number(process.env.QA_SHARD_THRESHOLD ?? 80);
+  const maxShards = Number(process.env.QA_SHARDS ?? 4);
+  const shards = count !== null && count > threshold ? maxShards : 1;
+  process.stdout.write(
+    JSON.stringify({ count, shards, full: titles === null, audit: includeAudit, scope: titles === null ? 'FULL SUITE' : titles, why }) + '\n',
+  );
+  process.exit(0);
 }
 
 if (titles !== null && titles.length === 0) {
@@ -509,17 +596,27 @@ console.log(`${rule}\n`);
 /* Invoking playwright's CLI directly rather than through `npx`: it skips an npm
    process and a shell, and — the part that matters here — makes the browsers
    direct descendants of a process whose priority we have already lowered. */
-const cli = path.join(ROOT, 'node_modules', '@playwright', 'test', 'cli.js');
 const args = [cli, 'test', `--workers=${workers}`];
 if (titles !== null) {
-  args.push(`--grep=${titles.map(escapeRe).join('|')}`);
+  args.push(...selectionArgs());
   /* A scoped selection can legitimately match nothing — a title that only
      exists in another checkout's suite, or a module this branch has not grown
      yet. "No tests ran" is the correct outcome there, not a failed run. A full
      scan keeps the default, where an empty suite really is a problem. */
-  args.push('--pass-with-no-tests');
 }
 args.push(...passThrough);
+
+/* A `-g` / `--grep` after `--` REPLACES the scope's own title filter: it then picks matching titles from
+   every spec file, not just the ones the changed files map to (one run pulled in 51 tests that way). Name the
+   spec file after `--` too, and the title narrows only that file. */
+const userGrep = userGrepArg;
+const namesSpec = passThrough.some((a) => !a.startsWith('-') && /\.spec\.ts$|[\\/]/.test(a));
+if (userGrep && !namesSpec) {
+  console.warn(
+    'Note:     "-g" replaces the scope filter and matches titles in EVERY spec file. ' +
+      'Add the spec path after "--" (e.g. -- tests/e2e/whatsappDemo.spec.ts -g "Digest") to narrow it to one file.\n',
+  );
+}
 
 const child = spawn(process.execPath, args, {
   cwd: ROOT,

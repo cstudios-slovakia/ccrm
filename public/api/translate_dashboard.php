@@ -6,8 +6,10 @@
  * become readable in every app language instead of staying frozen in
  * whichever language the original prompt happened to use.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -21,7 +23,7 @@ if (php_sapi_name() !== 'cli') {
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -39,12 +41,12 @@ try {
     exit;
 }
 
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
-if (empty($openAiKey)) {
+if (!ccrm_ai_is_configured($pdo, $integrationsConfig)) {
     http_response_code(400);
     echo json_encode([
         'success' => false,
-        'message' => 'OpenAI API Key is not configured. Please configure it in Settings.'
+        'code' => 'ai_key_missing',
+        'message' => 'AI provider is not configured. Please configure it in Settings.'
     ]);
     exit;
 }
@@ -61,7 +63,7 @@ if (!is_array($layout) || !isset($layout['widgets']) || !is_array($layout['widge
     exit;
 }
 
-$systemInstruction = "You translate display text inside a dashboard layout JSON object into English (en), Slovak (sk) and Hungarian (hu).
+$systemInstruction = ("You translate display text inside a dashboard layout JSON object into English (en), Slovak (sk) and Hungarian (hu).
 
 You MUST output ONLY the same JSON object back, with no markdown formatting, no ```json wrapper, and no text outside of the JSON.
 
@@ -73,44 +75,39 @@ Rules:
 - For every tabs widget's `tabs[].label` (and `tabs[].title`, if present), apply the exact same rule — including for tables nested inside a tab, whose `columns[].label` must also be translated.
 - Do NOT change, translate, or remove any other field: `id`, `type`, `size`, `color`, `chartType`, `mapping`, `columns[].key`, `columns[].format`, `query`, `metricValue`, etc. must be returned byte-for-byte identical.
 - Do NOT add, remove, or reorder widgets, tabs or columns.
-- Keep translations concise and consistent with normal CRM/dashboard terminology.";
+- Keep translations concise and consistent with normal " . KOPERNIQ_PRODUCT_NAME . "/dashboard terminology.");
 
 $messages = [
     ['role' => 'system', 'content' => $systemInstruction],
     ['role' => 'user', 'content' => json_encode($layout)]
 ];
 
-$ch = curl_init('https://api.openai.com/v1/chat/completions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    'Authorization: Bearer ' . $openAiKey
-]);
-$payload = [
-    'model' => $model,
-    'messages' => $messages,
-];
-if (ccrm_ai_model_supports_temperature($model)) {
-    $payload['temperature'] = 0.2;
-}
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+$aiRes = ccrm_ai_chat_completion(
+    $pdo,
+    [
+        'model' => $model,
+        'messages' => $messages,
+        'temperature' => 0.2,
+    ],
+    [
+        'feature' => 'dashboard_translate',
+        'timeout' => 60,
+        'integrationsConfig' => $integrationsConfig,
+    ]
+);
 
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
-
-if ($httpCode !== 200) {
-    $errData = json_decode($response, true);
-    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API request failed');
+if (empty($aiRes['ok'])) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'OpenAI Error: ' . $errMsg]);
+    echo json_encode([
+        'success' => false,
+        'code' => $aiRes['code'] ?: 'ai_error',
+        'message' => 'AI Error: ' . ($aiRes['error'] ?: 'AI API request failed'),
+        'providerMessage' => $aiRes['error'] ?? '',
+    ]);
     exit;
 }
 
-$resData = json_decode($response, true);
-$rawText = $resData['choices'][0]['message']['content'] ?? '';
+$rawText = (string)($aiRes['content'] ?? '');
 
 $cleanedText = trim($rawText);
 if (strpos($cleanedText, '```') === 0) {

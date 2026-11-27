@@ -23,6 +23,7 @@
 */
 
 import type { Lead, Project, ProjectStatus, ProjectType } from "../types";
+import { arrangeProjectStatuses, projectStatusDepth } from "./projectStatusTree.ts";
 
 const DAY_MS = 86400000;
 
@@ -262,6 +263,9 @@ export const projectDisplayName = (
               the "active projects" counts and the finish date all ask the
               group, never the key, so an added status behaves like the
               built-in it is grouped with.
+  - `parent` — optional: the key of the status this one sits under (one level
+              only; the sub-status takes its parent's group). See
+              utils/projectStatusTree.ts.
 
   Every helper takes the list as its last argument and falls back to the
   built-ins, so a caller with no settings in reach still gets the stock five.
@@ -282,6 +286,8 @@ export interface ProjectStatusDef {
   label?: string;
   color: string;
   group: ProjectStatusGroup;
+  /** Key of the parent status; set only on a sub-status. */
+  parent?: string;
 }
 
 /** en / sk / hu names of the built-in statuses, in the shape every view's `t()` takes. */
@@ -338,11 +344,14 @@ export const normalizeProjectStatusDefs = (raw: unknown): ProjectStatusDef[] => 
       : builtin?.color ?? NEW_PROJECT_STATUS_COLOR;
     const group = isGroup(rec.group) ? rec.group : builtin?.group ?? "in_progress";
     const label = String(rec.label ?? "").trim();
-    out.push(label ? { key, label, color, group } : { key, color, group });
+    const parent = String(rec.parent ?? "").trim();
+    out.push({ key, ...(label ? { label } : {}), color, group, ...(parent ? { parent } : {}) });
   }
+  // Broken parents dropped, sub-statuses in their parent's group, in tree order.
+  const arranged = arrangeProjectStatuses(out, PROJECT_STATUS_GROUPS);
   // A list with nowhere to start is no list at all.
-  if (!out.some((d) => d.group === "new" || d.group === "in_progress")) return defaults();
-  return PROJECT_STATUS_GROUPS.flatMap((g) => out.filter((d) => d.group === g));
+  if (!arranged.some((d) => d.group === "new" || d.group === "in_progress")) return defaults();
+  return arranged;
 };
 
 /**
@@ -395,12 +404,17 @@ export const projectStatusOrder = (
   statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
 ): ProjectStatus[] => statuses.map((d) => d.key);
 
-/** The whole list as dropdown options, in order. */
+/** The whole list as dropdown options, in order; a sub-status carries `indent: 1` to sit under its parent. */
 export const projectStatusOptions = (
   t: (en: string, sk: string, hu: string) => string,
   statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
-): { value: ProjectStatus; label: string; color: string }[] =>
-  statuses.map((d) => ({ value: d.key, label: projectStatusLabel(d.key, t, statuses), color: projectStatusColor(d.key, statuses) }));
+): { value: ProjectStatus; label: string; color: string; indent?: number }[] =>
+  statuses.map((d) => ({
+    value: d.key,
+    label: projectStatusLabel(d.key, t, statuses),
+    color: projectStatusColor(d.key, statuses),
+    ...(projectStatusDepth(d.key, statuses) ? { indent: 1 } : {}),
+  }));
 
 /** What a status means, or null for one the list does not know. */
 export const projectStatusGroup = (
@@ -520,4 +534,23 @@ export const projectPipelineSegments = (
   }
 
   return segments;
+};
+
+/**
+ * How many projects (archived ones included) use each project type.
+ *
+ * A project type is a template. Deleting it used to delete every project made
+ * from it on the server; the server now refuses to delete a type that still has
+ * projects, and Project settings uses this count to say so before anyone tries.
+ */
+export const projectCountByType = (
+  projects: ReadonlyArray<{ projectTypeId?: string | null }>,
+): Map<string, number> => {
+  const counts = new Map<string, number>();
+  for (const p of projects) {
+    const typeId = p.projectTypeId;
+    if (!typeId) continue;
+    counts.set(typeId, (counts.get(typeId) ?? 0) + 1);
+  }
+  return counts;
 };

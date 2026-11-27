@@ -8,6 +8,7 @@ import {
   PERMISSION_DEFS,
   PERMISSION_SECTIONS,
   PROTECTED_ROLE_NAMES,
+  ROLE_MATRIX_SECTIONS,
   buildAccess,
   employeeRolePermissions,
   findRole,
@@ -18,10 +19,13 @@ import {
   newRolePermissions,
   permissionKeyForRoute,
   resolvePermissionValue,
+  roleMatrixSectionTextKey,
+  roleMatrixTextKey,
   resolveRolePermissions,
   withPermission,
   withSectionGranted,
 } from "./permissions.ts";
+import { LEGACY_WIDGET_DASHBOARD } from "./dashboardSection.ts";
 
 const user = (role: string): UserProfile => ({ name: "U", email: "u@example.com", role, color: "#000" });
 
@@ -116,7 +120,7 @@ test("admin can do everything, even with no role record", () => {
   assert.equal(a.can("system_reset"), true);
   assert.equal(a.canEdit("leads"), true);
   assert.deepEqual(a.module("leads"), { view: true, edit: true, delete: true });
-  assert.equal(a.canOpenRoute("settings/danger"), true);
+  assert.equal(a.canOpenRoute("settings/system/reset"), true);
 });
 
 test("unknown role gets nothing", () => {
@@ -163,7 +167,7 @@ test("settings access opens on any settings category", () => {
   assert.equal(none.canOpenRoute("settings"), false);
   const some = buildAccess(user("R"), [{ name: "R", permissions: { ...newRolePermissions(), pipeline_stages: "view" } }]);
   assert.equal(some.hasSettingsAccess, true);
-  assert.equal(some.canOpenRoute("settings/states"), true);
+  assert.equal(some.canOpenRoute("settings/leads/stages"), true);
   const danger = buildAccess(user("R"), [{ name: "R", permissions: { ...newRolePermissions(), system_reset: "edit" } }]);
   assert.equal(danger.hasSettingsAccess, true);
 });
@@ -176,6 +180,8 @@ test("routes map to their guarding key", () => {
   assert.equal(permissionKeyForRoute("projects?id=1"), "projects");
   assert.equal(permissionKeyForRoute("projects/123"), "projects");
   assert.equal(permissionKeyForRoute("project-123"), "projects");
+  assert.equal(permissionKeyForRoute("task-123"), "tasks");
+  assert.equal(permissionKeyForRoute("tasks/t-1"), "tasks");
   assert.equal(permissionKeyForRoute("my-employment"), "people");
   assert.equal(permissionKeyForRoute("employees/me"), "people");
   assert.equal(permissionKeyForRoute("employees"), "people");
@@ -209,6 +215,7 @@ test("Employee defaults match prompt specification key-by-key", () => {
   assert.equal(defs.tasks, "edit");
   assert.equal(defs["tasks.delete"], "nothing");
   assert.equal(defs["tasks.view_all"], "nothing");
+  assert.equal(defs["tasks.weekly_plan"], "view");
   // No company data
   assert.equal(defs.dashboard, "nothing");
   assert.equal(defs["dashboard.custom"], "nothing");
@@ -355,4 +362,87 @@ test("SAI follows leads: a role with no sales access is not offered it, and it i
   ]);
   assert.equal(employee.canOpenRoute("sai"), false);
   assert.equal(employee.canOpenRoute("tasks"), true);
+});
+
+test("time tracking: everyone who may use the module tracks their own time, in parallel too; team, costs and the salary report are opt-in", () => {
+  const sectionKeys = PERMISSION_SECTIONS.find((sec) => sec.id === "time_tracking")!.permissions.map((p) => p.key);
+  assert.deepEqual(sectionKeys, ["time_tracking", "time_tracking_team", "time_tracking_costs", "time_tracking_salary_report", "time_tracking_parallel", "time_tracking_create_projects"]);
+  // A role stored before the module existed: tracks own time, sees nothing of anyone else's.
+  const legacy = resolveRolePermissions({ name: "Old", permissions: {} });
+  assert.equal(legacy.time_tracking, "edit");
+  assert.equal(legacy.time_tracking_team, "nothing");
+  assert.equal(legacy.time_tracking_costs, "nothing");
+  assert.equal(legacy.time_tracking_salary_report, "nothing");
+  assert.equal(legacy.time_tracking_parallel, "edit");
+  // Creating a project from the picker stays on for a role saved before the toggle existed.
+  assert.equal(legacy.time_tracking_create_projects, "edit");
+  // A role created in the matrix starts with the whole section off.
+  const fresh = newRolePermissions();
+  assert.equal(fresh.time_tracking, "nothing");
+  // The Employee role tracks own time only.
+  const emp = employeeRolePermissions();
+  assert.equal(emp.time_tracking, "edit");
+  assert.equal(emp.time_tracking_team, "nothing");
+  assert.equal(emp.time_tracking_costs, "nothing");
+});
+
+test("time tracking: team and costs mean nothing without the module, and the route maps to the module key", () => {
+  const role: RolePermission = { name: "R", permissions: { ...newRolePermissions(), time_tracking: "nothing", time_tracking_team: "edit", time_tracking_costs: "edit" } };
+  const a = buildAccess(user("R"), [role]);
+  assert.equal(a.can("time_tracking_team"), false);
+  assert.equal(a.can("time_tracking_costs"), false);
+  assert.equal(a.canOpenRoute("time-tracking"), false);
+  const viewer: RolePermission = { name: "V", permissions: { ...newRolePermissions(), time_tracking: "view", time_tracking_costs: "edit" } };
+  const b = buildAccess(user("V"), [viewer]);
+  assert.equal(b.canOpenRoute("time-tracking"), true);
+  assert.equal(b.canOpenRoute("time-tracking/day"), true);
+  assert.equal(b.canEdit("time_tracking"), false);
+  assert.equal(b.can("time_tracking_costs"), true);
+  assert.equal(permissionKeyForRoute("time-tracking/day"), "time_tracking");
+});
+
+test("agency: payroll/billing rates are opt-in and Employee role stays locked out", () => {
+  const sectionKeys = PERMISSION_SECTIONS.find((sec) => sec.id === "agency")!.permissions.map((p) => p.key);
+  assert.deepEqual(sectionKeys, ["agency", "agency.delete", "agency.personal", "agency.payments"]);
+  const emp = employeeRolePermissions();
+  assert.equal(emp.agency, "nothing");
+  assert.equal(emp["agency.payments"], "nothing");
+  assert.equal(permissionKeyForRoute("agency/worker/w1"), "agency");
+});
+
+test("agency: a role saved before the module existed gets nothing, not edit", () => {
+  // A stored role that has never seen the agency keys (every role on an install that updates into it).
+  const before = { tasks: "edit", leads: "edit", employees: "edit", "employees.personal": "edit" };
+  for (const key of ["agency", "agency.delete", "agency.personal", "agency.payments"]) {
+    assert.equal(resolvePermissionValue(before, key), "nothing", key);
+  }
+});
+
+test("the Dashboard section is guarded by the permission of the screen it shows", () => {
+  // The Performance Dashboard (formerly Analytics, `overview`) holds the section unless the widget board is restored.
+  assert.equal(permissionKeyForRoute("dashboard"), LEGACY_WIDGET_DASHBOARD ? "dashboard" : "overview");
+  assert.equal(permissionKeyForRoute("overview"), "overview");
+  const perms = { ...newRolePermissions(), dashboard: "view" as const, overview: "nothing" as const };
+  const access = buildAccess(user("R"), [{ name: "R", permissions: perms }]);
+  assert.equal(access.canOpenRoute("dashboard"), LEGACY_WIDGET_DASHBOARD);
+});
+
+test("the role matrix offers only permissions that guard something visible", () => {
+  const keys = ROLE_MATRIX_SECTIONS.flatMap((s) => s.permissions.map((p) => p.key));
+  const dashboardSection = ROLE_MATRIX_SECTIONS.find((s) => s.id === "dashboard");
+  if (LEGACY_WIDGET_DASHBOARD) {
+    assert.deepEqual(ROLE_MATRIX_SECTIONS, PERMISSION_SECTIONS);
+    return;
+  }
+  // The widget board's key is hidden (its stored values stay). Overview, which now holds the first
+  // menu slot, heads the matrix; what is left of the Dashboard section is the custom dashboards.
+  assert.ok(!keys.includes("dashboard"));
+  assert.equal(ROLE_MATRIX_SECTIONS[0].id, "overview");
+  assert.deepEqual(ROLE_MATRIX_SECTIONS[0].permissions.map((p) => p.key), ["overview"]);
+  assert.deepEqual(dashboardSection?.permissions.map((p) => p.key), ["dashboard.custom"]);
+  assert.equal(roleMatrixTextKey("overview"), "overview_statistics");
+  assert.equal(roleMatrixSectionTextKey("dashboard"), "custom_dashboards");
+  // Every other key is still offered exactly once.
+  const all = PERMISSION_SECTIONS.flatMap((s) => s.permissions.map((p) => p.key)).filter((k) => k !== "dashboard");
+  assert.deepEqual([...keys].sort(), [...all].sort());
 });

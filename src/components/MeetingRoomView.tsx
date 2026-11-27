@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
 import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2, Lock, UserPlus, MicOff } from "lucide-react";
 import type { Lead, UserProfile, Task } from "../types";
 import { cn } from "../utils/cn";
+import { doneTaskState } from "../utils/projectTasks";
+import { isSuggestionConverted, meetingSuggestionTaskId } from "../utils/meetingSuggestions";
+import { hasAiConfigured, hasAudioTranscriptionSource } from "../utils/aiConfig";
 import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
@@ -19,23 +23,15 @@ import { archiveRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
-
-const parseNotesToBlocks = (notes: string): EditorBlock[] => {
-  if (notes.trim().startsWith("[")) {
-    try {
-      return JSON.parse(notes);
-    } catch (e) {}
-  }
-  return notes.split("\n").map((line, idx) => ({
-    id: `b-init-${idx}`,
-    type: "paragraph",
-    content: line.trim() || "<br>"
-  }));
-};
-
-const serializeBlocksToPlainText = (blocks: EditorBlock[]): string => {
-  return blocks.map(b => b.content.replace(/<[^>]*>/g, "")).join("\n");
-};
+import { useLiveTranscription } from "../hooks/useLiveTranscription";
+import { MeetingFocusPanel } from "./meeting/MeetingFocusPanel";
+import { liveSpeakerTimeline, liveTranscriptToText, speakerDisplayName } from "../utils/liveTranscript";
+import { useLiveDocument } from "../hooks/useLiveDocument";
+import { withSpeakerName } from "../utils/focusPanel";
+import { entityAccentStyle } from "../utils/entityAccent";
+import { useUserPref } from "../utils/userPrefs";
+import { openAiSettings } from "../utils/aiConfig";
+import { parseNotesToBlocks, serializeBlocksToPlainText, serializeTaskDescription } from "../utils/blockNotes";
 
 export interface MeetingTask {
   id: string;
@@ -102,6 +98,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   initialView = "list",
   onClearInitialView,
   integrationsConfig,
+  tasks = [],
   setTasks: setTasksRaw,
   taskStates = ["New", "In progress", "Blocked", "Done"]
 }) => {
@@ -217,8 +214,78 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const [newAiSummary, setNewAiSummary] = useState<any>(null);
   const [newAutomatedTasks, setNewAutomatedTasks] = useState<MeetingTask[]>([]);
 
-  const isOpenAiConfigured = !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+  // A manual OpenAI key or a selected LLM connector (Settings -> AI).
+  const isOpenAiConfigured = hasAiConfigured(integrationsConfig);
+  // Soniox transcribes too, and tells speakers apart. Either it or an audio-capable AI source is
+  // enough to transcribe; the AI summary, live document and "Catch me up" need the AI source.
+  const isSonioxConfigured = !!(integrationsConfig?.sonioxApiKey && integrationsConfig.sonioxApiKey.trim() !== "");
+  const isTranscriptionConfigured = hasAudioTranscriptionSource(integrationsConfig) || isSonioxConfigured;
+  // One-time hint in the recorder: without a Soniox key, recordings work but speakers are not
+  // told apart. Dismissed per user (synced), never shown again after that.
+  const [sonioxNoticeDismissed, setSonioxNoticeDismissed] = useUserPref("sonioxNoticeDismissed");
   const transcriptionAvailable = viewState === "new" ? !!newTranscription : !!selectedMeeting?.transcription;
+
+  // Focus helper: a live transcript beside the recording (new-note flow only). Opt-in because it
+  // costs money, remembered per user on this device, and only offered when a transcription key
+  // (OpenAI or Soniox) is configured.
+  const focusHelperKey = `ccrm_focus_helper:${currentUser?.id || currentUser?.email || "me"}`;
+  const [focusHelperOn, setFocusHelperOn] = useState<boolean>(() => {
+    try { return localStorage.getItem(focusHelperKey) === "1"; } catch { return false; }
+  });
+  const toggleFocusHelper = () => {
+    setFocusHelperOn((on) => {
+      try { localStorage.setItem(focusHelperKey, on ? "0" : "1"); } catch { /* private mode */ }
+      return !on;
+    });
+  };
+  const focusHelperAvailable = isTranscriptionConfigured && canEdit && viewState === "new";
+  const recordDurationRef = React.useRef(0);
+  recordDurationRef.current = recordDuration;
+  const liveTranscript = useLiveTranscription({
+    enabled: focusHelperAvailable && focusHelperOn,
+    running: recordingState === "recording",
+    stream: microphoneStream,
+    getElapsed: () => recordDurationRef.current,
+    languages: systemLanguage === "en" ? ["en"] : [systemLanguage, "en"],
+  });
+  const clearLiveTranscript = liveTranscript.clear;
+  const liveDocument = useLiveDocument({
+    enabled: focusHelperAvailable && focusHelperOn && isOpenAiConfigured,
+    segments: liveTranscript.segments,
+    recordingState,
+    language: systemLanguage,
+  });
+  // Renames of "Participant N" (speaker id -> name), shared by the panel and "Use live transcript".
+  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
+  const renameSpeaker = (id: string, name: string) => setSpeakerNames((names) => withSpeakerName(names, id, name));
+  // The official transcription of the saved file failed: the panel then offers the live text.
+  const [officialTranscriptFailed, setOfficialTranscriptFailed] = useState(false);
+  // The transcription field currently holds the live draft, so the official Transcribe stays on offer.
+  const [transcriptIsLiveDraft, setTranscriptIsLiveDraft] = useState(false);
+  // Recording cancelled or note left: the live text goes with it.
+  useEffect(() => {
+    if (recordingState === "none") {
+      clearLiveTranscript();
+      setSpeakerNames({});
+      setOfficialTranscriptFailed(false);
+      setTranscriptIsLiveDraft(false);
+    }
+  }, [recordingState, clearLiveTranscript]);
+  const useLiveTranscriptAsNote = () => {
+    const text = liveTranscriptToText(liveTranscript.segments, true, (id) =>
+      speakerDisplayName(id, speakerNames, systemLanguage),
+    );
+    if (!text) return;
+    const marker = t(
+      "[Live transcript – draft, not the official transcription]",
+      "[Živý prepis – koncept, nie oficiálny prepis]",
+      "[Élő átirat – piszkozat, nem a hivatalos átírás]"
+    );
+    setNewTranscription(`${marker}\n${text}`);
+    setActiveTab("transcription");
+    setOfficialTranscriptFailed(false);
+    setTranscriptIsLiveDraft(true);
+  };
 
   // Visualizer height updater
   useEffect(() => {
@@ -413,7 +480,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
       recorder.onstop = async () => {
         setIsUploadingAudio(true);
-        const ext = mimeType.split("/")[1] || "webm";
+        const ext = mimeType.split(";")[0].split("/")[1] || "webm";
         const blob = new Blob(chunks, { type: mimeType });
         const localUrl = URL.createObjectURL(blob);
         localAudioUrlRef.current = localUrl;
@@ -562,6 +629,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
   const handleTranscribeMeeting = async () => {
     setIsTranscribing(true);
+    setOfficialTranscriptFailed(false);
     const manualNotesText = viewState === "new" 
       ? serializeBlocksToPlainText(newBlocks)
       : serializeBlocksToPlainText(parseNotesToBlocks(selectedMeeting?.notes || ""));
@@ -572,11 +640,39 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           meetingId: viewState === "new" ? currentNoteId : selectedMeeting?.id,
-          manualNotes: manualNotesText
+          manualNotes: manualNotesText,
+          durationSeconds: Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : undefined,
+          // Language hint and the "Participant N" label for a Soniox transcript.
+          language: systemLanguage,
+          // Names given to speakers in the Focus helper, with who spoke when, so the official
+          // transcript can use them (the server matches its speakers to these by time).
+          speakerTimeline: viewState === "new" ? liveSpeakerTimeline(liveTranscript.segments, speakerNames) ?? undefined : undefined
         })
-      });
+      }, 300000); // Soniox runs the transcript as a job the server waits for (up to ~4 min).
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && data.success && data.minutes === false) {
+        // The transcript is here but there is no AI summary: no OpenAI key (a Soniox-only setup)
+        // or the summary call failed. Keep the transcript; the summary can be generated later.
+        if (viewState === "new") {
+          setNewTranscription(data.transcription);
+          clearLiveTranscript();
+          setTranscriptIsLiveDraft(false);
+          setMeetingNotes(prev => prev.map(n => n.id === currentNoteId ? { ...n, transcription: data.transcription } : n));
+        } else if (selectedMeeting) {
+          const updatedNote = { ...selectedMeeting, transcription: data.transcription };
+          setSelectedMeeting(updatedNote);
+          setMeetingNotes(prev => prev.map(m => m.id === selectedMeeting.id ? updatedNote : m));
+        }
+        setActiveTab("transcription");
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast(
+            data.minutesError
+              ? t("Transcript ready. The AI summary failed: ", "Prepis je hotový. AI zhrnutie zlyhalo: ", "Az átirat elkészült. Az AI-összefoglaló sikertelen: ") + data.minutesError
+              : t("Transcript ready.", "Prepis je hotový.", "Az átirat elkészült."),
+            data.minutesError ? "error" : undefined,
+          );
+        }
+      } else if (res.ok && data.success) {
         const extractedTasks: MeetingTask[] = (data.actionItems || []).map((title: string, idx: number) => ({
           id: `task-${Date.now()}-${idx}`,
           title: title,
@@ -596,6 +692,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             actionItems: data.actionItems
           };
           setNewTranscription(data.transcription);
+          // The official transcript is here and replaces any live draft.
+          clearLiveTranscript();
+          setTranscriptIsLiveDraft(false);
           setNewAutomatedNotes(data.automatedNotes);
           setNewSummaryGenerated(true);
           setNewAiSummary(aiSum);
@@ -669,6 +768,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         throw new Error(data.message || t("Transcription failed", "Prepis zlyhal", "Az átírás sikertelen"));
       }
     } catch (err: any) {
+      if (viewState === "new") setOfficialTranscriptFailed(true);
       if (typeof (window as any).showToast === "function") {
         (window as any).showToast(t("Transcription failed: ", "Prepis zlyhal: ", "Az átírás sikertelen: ") + err.message, "error");
       }
@@ -685,11 +785,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         ? t("The audio file is no longer available. The transcript and notes are kept.", "Zvukový súbor už nie je dostupný. Prepis a poznámky zostávajú.", "A hangfájl már nem érhető el. Az átirat és a jegyzetek megmaradnak.")
         : t("No audio attached – transcript only.", "Bez zvukovej nahrávky – iba prepis.", "Nincs csatolt hangfelvétel – csak átirat.");
     return (
-      <div className="w-full max-w-212.5 bg-white/70 backdrop-blur-md border border-slate-200 shadow-sm px-4 py-3 rounded-2xl mb-6 flex items-center gap-3 text-left">
-        <span className="h-7 w-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+      <div className="w-full max-w-212.5 bg-white  border border-gray-200 shadow-sm px-4 py-3 rounded-lg mb-6 flex items-center gap-3 text-left">
+        <span className="h-7 w-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
           <MicOff className="h-3.5 w-3.5" />
         </span>
-        <p className="text-ui text-slate-600 min-w-0">{message}</p>
+        <p className="text-ui text-gray-600 min-w-0">{message}</p>
       </div>
     );
   };
@@ -704,7 +804,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     if (recordingState === "none") return null;
 
     return (
-      <div className="w-full max-w-212.5 bg-white/70 backdrop-blur-md border border-slate-200 shadow-md p-4 rounded-2xl mb-6 flex flex-col ws-sm:flex-row items-center justify-between gap-4 transition-all duration-350 z-20">
+      <div className="w-full max-w-212.5 bg-white  border border-gray-200 shadow-md p-4 rounded-lg mb-6 flex flex-col ws-sm:flex-row items-center justify-between gap-4 transition-all duration-350 z-20">
         <div className="flex items-center gap-3 flex-1">
           {/* Status Indicator Dot */}
           <div className="relative flex h-3.5 w-3.5 shrink-0">
@@ -715,19 +815,19 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               "relative inline-flex rounded-full h-3.5 w-3.5",
               recordingState === "recording" ? "bg-rose-600" :
               recordingState === "paused" ? "bg-amber-500" :
-              recordingState === "stopped" ? "bg-emerald-500" : "bg-slate-300"
+              recordingState === "stopped" ? "bg-emerald-500" : "bg-gray-300"
             )}></span>
           </div>
 
           <div className="text-left min-w-0">
-            <div className="text-ui font-extrabold text-slate-800 truncate">
+            <div className="text-ui font-extrabold text-gray-800 truncate">
               {recordingState === "idle" && t("Ready to Record", "Pripravené na nahrávanie", "Felvételre kész")}
               {recordingState === "recording" && t("Recording...", "Nahrávanie...", "Felvétel...")}
               {recordingState === "paused" && t("Recording Paused", "Nahrávanie pozastavené", "Felvétel szüneteltetve")}
               {recordingState === "stopped" && t("Recording Saved", "Nahrávka pripravená", "Felvétel elmentve")}
             </div>
             {(recordingState === "recording" || recordingState === "paused") && (
-              <div className="type-overline text-slate-500 mt-0.5">
+              <div className="type-overline text-gray-500 mt-0.5">
                 {formatDuration(recordDuration)}
               </div>
             )}
@@ -736,13 +836,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
         {/* Live Soundwave Visualization */}
         {(recordingState === "recording" || recordingState === "paused") && (
-          <div className="flex items-end gap-1 h-9 px-4 border-l border-r border-slate-100/60 mx-2 shrink-0">
+          <div className="flex items-end gap-1 h-9 px-4 border-l border-r border-gray-100/60 mx-2 shrink-0">
             {visualizerBars.map((h, idx) => (
               <div
                 key={idx}
                 className={cn(
                   "w-1 rounded-full transition-all duration-75",
-                  recordingState === "recording" ? "bg-rose-500" : "bg-slate-300"
+                  recordingState === "recording" ? "bg-rose-500" : "bg-gray-300"
                 )}
                 style={{ height: `${h}px` }}
               />
@@ -797,7 +897,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   });
                 }
               }}
-              className="p-2 rounded-full bg-slate-800 hover:bg-slate-900 text-white cursor-pointer transition-all shadow-sm flex items-center justify-center shrink-0"
+              className="p-2 rounded-full bg-gray-800 hover:bg-gray-900 text-white cursor-pointer transition-all shadow-sm flex items-center justify-center shrink-0"
             >
               {isPlaying ? <Pause className="h-3.5 w-3.5 fill-white" /> : <Play className="h-3.5 w-3.5 fill-white" />}
             </button>
@@ -814,21 +914,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     setCurrentTime(audioRef.current.currentTime);
                   }
                 }}
-                className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
               />
-              <div className="flex justify-between type-overline text-slate-400 mt-1">
+              <div className="flex justify-between type-overline text-gray-400 mt-1">
                 <span>{formatDuration(Math.floor(currentTime))}</span>
                 <span>{formatDuration(Math.floor(audioDuration))}</span>
               </div>
             </div>
-            <Volume2 className="h-4 w-4 text-slate-400 shrink-0" />
+            <Volume2 className="h-4 w-4 text-gray-400 shrink-0" />
             {canDelete && (
             <HoldToConfirmButton
                 tone="danger"
                 lang={systemLanguage}
                 what={t("recording", "nahrávku", "felvételt")}
                 onConfirm={removeAudioFile}
-                className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors shrink-0"
+                className="p-1.5 text-gray-400 hover:text-rose-600 transition-colors shrink-0"
                 title={t("Remove recording", "Odstrániť nahrávku", "Felvétel eltávolítása")}
             >
               <Trash2 className="h-4 w-4" />
@@ -839,12 +939,31 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
         {/* Buttons Controls */}
         <div className="flex items-center gap-2 shrink-0">
+          {focusHelperAvailable && (recordingState === "idle" || recordingState === "recording" || recordingState === "paused") && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={focusHelperOn}
+              onClick={toggleFocusHelper}
+              title={t(
+                "Live transcript to catch up when you lose focus. Billed per minute of audio.",
+                "Živý prepis, keď stratíte pozornosť. Účtuje sa za minútu zvuku.",
+                "Élő átirat, ha elveszíti a fonalat. Hangpercenként számlázva."
+              )}
+              className="flex items-center gap-2 px-2 h-9 rounded-md text-ui font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors"
+            >
+              <span className={cn("relative inline-flex h-4.5 w-8 rounded-full transition-colors duration-200", focusHelperOn ? "bg-indigo-600" : "bg-gray-300")}>
+                <span className={cn("absolute top-0.5 left-0.5 size-3.5 rounded-full bg-white shadow transition-transform duration-200", focusHelperOn && "translate-x-3.5")} />
+              </span>
+              {t("Focus helper", "Pomocník sústredenia", "Fókuszsegéd")}
+            </button>
+          )}
           {recordingState === "idle" && (
             <>
               <button
                 type="button"
                 onClick={startRecording}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white type-overline rounded-xl cursor-pointer shadow-md shadow-rose-600/20 flex items-center gap-1.5 transition-all hover:scale-[1.02] active:scale-95"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white type-overline rounded-md cursor-pointer shadow-md shadow-rose-600/20 flex items-center gap-1.5 transition-all"
               >
                 <Mic className="h-3.5 w-3.5 fill-white" />
                 {t("Record", "Nahrávať", "Rögzítés")}
@@ -852,7 +971,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <button
                 type="button"
                 onClick={cancelRecording}
-                className="px-4 py-2 border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800 type-overline rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
+                className="px-4 py-2 border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800 type-overline rounded-md cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
@@ -864,7 +983,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <button
                 type="button"
                 onClick={pauseRecording}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white type-overline rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white type-overline rounded-md cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
                 <Pause className="h-3.5 w-3.5 fill-white" />
                 {t("Pause", "Pozastaviť", "Szünet")}
@@ -872,7 +991,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <button
                 type="button"
                 onClick={stopRecording}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white type-overline rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white type-overline rounded-md cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
                 <Square className="h-3.5 w-3.5 fill-white" />
                 {t("Stop", "Zastaviť", "Leállítás")}
@@ -880,7 +999,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <button
                 type="button"
                 onClick={cancelRecording}
-                className="px-4 py-2 border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800 type-overline rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
+                className="px-4 py-2 border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800 type-overline rounded-md cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
@@ -892,7 +1011,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <button
                 type="button"
                 onClick={resumeRecording}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white type-overline rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white type-overline rounded-md cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
                 <Play className="h-3.5 w-3.5 fill-white" />
                 {t("Resume", "Pokračovať", "Folytatás")}
@@ -900,7 +1019,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <button
                 type="button"
                 onClick={stopRecording}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white type-overline rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white type-overline rounded-md cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
                 <Square className="h-3.5 w-3.5 fill-white" />
                 {t("Stop", "Zastaviť", "Leállítás")}
@@ -908,19 +1027,19 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <button
                 type="button"
                 onClick={cancelRecording}
-                className="px-4 py-2 border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800 type-overline rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
+                className="px-4 py-2 border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800 type-overline rounded-md cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
             </>
           )}
 
-          {recordingState === "stopped" && isOpenAiConfigured && !transcriptionAvailable && (
+          {recordingState === "stopped" && isTranscriptionConfigured && (!transcriptionAvailable || transcriptIsLiveDraft) && (
             <button
               type="button"
               disabled={isTranscribing || isUploadingAudio || !uploadedAudioFile}
               onClick={handleTranscribeMeeting}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white type-overline rounded-xl cursor-pointer shadow-md shadow-indigo-600/10 flex items-center gap-1.5 transition-all hover:scale-[1.02] active:scale-95"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-200 disabled:text-gray-400 text-white type-overline rounded-md cursor-pointer shadow-md shadow-indigo-600/10 flex items-center gap-1.5 transition-all"
             >
               {isTranscribing ? (
                 <>
@@ -929,18 +1048,20 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 </>
               ) : isUploadingAudio ? (
                 <>
-                  <div className="h-3 w-3 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
+                  <div className="h-3 w-3 rounded-full border-2 border-gray-400 border-t-transparent animate-spin" />
                   {t("Uploading...", "Ukladanie...", "Feltöltés...")}
                 </>
               ) : !uploadedAudioFile ? (
                 <>
-                  <div className="h-3 w-3 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
+                  <div className="h-3 w-3 rounded-full border-2 border-gray-400 border-t-transparent animate-spin" />
                   {t("No recording", "Chýba nahrávka", "Nincs felvétel")}
                 </>
               ) : (
                 <>
                   <Sparkles className="h-3.5 w-3.5" />
-                  {t("Transcribe", "Prepísať a zhrnúť", "Átírás és összegzés")}
+                  {isOpenAiConfigured
+                    ? t("Transcribe", "Prepísať a zhrnúť", "Átírás és összegzés")
+                    : t("Transcribe", "Prepísať", "Átírás")}
                 </>
               )}
             </button>
@@ -1050,7 +1171,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   }, [viewState, currentNoteId]);
 
   useEffect(() => {
-    if (initialView && !window.location.hash.includes("/")) {
+    if (!initialView) return;
+    if (!window.location.hash.includes("/")) {
       if (initialView === "record") {
         setViewState(canEdit ? "new" : "list");
         setSelectedMeeting(null);
@@ -1063,9 +1185,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           setSelectedMeeting(null);
         }
       }
-      if (onClearInitialView) {
-        onClearInitialView();
-      }
+    } else if (initialView === "record" && canEdit && window.location.hash.startsWith("#meetings/new")) {
+      setViewState("new");
+      setSelectedMeeting(null);
+      setRecordingState((prev) => (prev === "none" ? "idle" : prev));
+    }
+    if (onClearInitialView) {
+      onClearInitialView();
     }
   }, [initialView, canEdit]);
 
@@ -1074,17 +1200,19 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     window.location.hash = `meetings/${meeting.id}`;
   };
 
-  const updateTaskAssignment = (taskId: string, username: string) => {
-    const targetTask = viewState === "new"
+  const findSuggestion = (taskId: string) =>
+    viewState === "new"
       ? newAutomatedTasks.find(t => t.id === taskId)
       : (selectedMeeting?.automatedTasks || []).find(t => t.id === taskId);
-    
-    if (targetTask && username && !targetTask.assignedUser) {
+
+  /**
+   * Turn a suggestion into a real task assigned to `username`, once: the task id
+   * is derived from the suggestion (meetingSuggestionTaskId), so the "Created"
+   * badge can check that the task exists and a repeat cannot add a second one.
+   */
+  const createTaskFromSuggestion = (targetTask: MeetingTask, username: string) => {
       const mapMeetingTaskStatusToCrmStatus = (status: "todo" | "in_progress" | "done") => {
-        if (status === "done") {
-          const found = taskStates.find(s => s.toLowerCase() === "done");
-          return found || taskStates[taskStates.length - 1] || "Done";
-        }
+        if (status === "done") return doneTaskState(taskStates);
         if (status === "in_progress") {
           const found = taskStates.find(s => s.toLowerCase() === "in progress" || s.toLowerCase() === "in_progress");
           return found || taskStates[1] || "In progress";
@@ -1093,7 +1221,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       };
 
       const newCrmTask: Task = {
-        id: `task-ai-${Date.now()}`,
+        id: meetingSuggestionTaskId(targetTask.id),
         title: targetTask.title,
         description: targetTask.description || `AI extracted suggestion from meeting notes`,
         status: mapMeetingTaskStatusToCrmStatus(targetTask.status),
@@ -1106,11 +1234,17 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         assignedUsers: [username],
         relatedLeadId: (viewState === "new" ? attachedLeads[0] : selectedMeeting?.leadId) || undefined
       };
-      setTasks(prev => [newCrmTask, ...prev]);
-      
+      setTasks(prev => (prev.some(task => task.id === newCrmTask.id) ? prev : [newCrmTask, ...prev]));
+
       if (typeof (window as any).showToast === "function") {
         (window as any).showToast(t(`Task created and assigned to ${username}!`, `Úloha bola vytvorená a priradená používateľovi ${username}!`, `A feladat létrehozva és hozzárendelve ${username} felhasználóhoz!`));
       }
+  };
+
+  const updateTaskAssignment = (taskId: string, username: string) => {
+    const targetTask = findSuggestion(taskId);
+    if (targetTask && username && !isSuggestionConverted(targetTask, tasks)) {
+      createTaskFromSuggestion(targetTask, username);
     }
 
     if (viewState === "new") {
@@ -1137,6 +1271,12 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   };
 
   const handleSaveTaskDetails = (updatedTask: MeetingTask) => {
+    // An assignee set in the drawer creates the task, the same as the inline
+    // picker; before, it only showed the "Created" badge with no task behind it.
+    const before = findSuggestion(updatedTask.id);
+    if (updatedTask.assignedUser && !isSuggestionConverted(before || updatedTask, tasks)) {
+      createTaskFromSuggestion(updatedTask, updatedTask.assignedUser);
+    }
     if (viewState === "new") {
       const updatedTasks = newAutomatedTasks.map(t => 
         t.id === updatedTask.id ? updatedTask : t
@@ -1538,7 +1678,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       case "negative":
         return <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200/50 type-overline">{t("🔴 Critical", "🔴 Kritické", "🔴 Kritikus")}</span>;
       default:
-        return <span className="px-2.5 py-1 rounded-full bg-slate-50 text-slate-700 border border-slate-200/50 type-overline">{t("⚪ Neutral", "⚪ Neutrálne", "⚪ Semleges")}</span>;
+        return <span className="px-2.5 py-1 rounded-full bg-gray-50 text-gray-700 border border-gray-200/50 type-overline">{t("⚪ Neutral", "⚪ Neutrálne", "⚪ Semleges")}</span>;
     }
   };
 
@@ -1571,14 +1711,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     const automatedTasks = meeting.automatedTasks || [];
 
     return (
-      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
+      <div className="bg-white p-6 rounded-lg border border-gray-200/80 shadow-sm space-y-6">
         {/* TOP: MAKE SUMMARY / RESUMMARIZE BUTTON */}
         {summaryGenerated ? (
           <button
             type="button"
             disabled={isGeneratingDetailSummary}
             onClick={() => handleGenerateSummary(meeting)}
-            className="w-full py-3 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-heading type-overline transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-indigo-100"
+            className="w-full py-3 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-heading type-overline transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-indigo-100"
           >
             <Sparkles className="h-4 w-4 text-indigo-600" />
             {isGeneratingDetailSummary ? t("Generating...", "Generuje sa...", "Generálás...") : t("Resummarize Note", "Znova zhrnúť poznámku", "Jegyzet újraösszegzése")}
@@ -1586,9 +1726,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         ) : (
           <button
             type="button"
-            disabled={isGeneratingDetailSummary || !integrationsConfig?.openAiKey || integrationsConfig.openAiKey.trim() === ""}
+            disabled={isGeneratingDetailSummary || !isOpenAiConfigured}
             onClick={() => handleGenerateSummary(meeting)}
-            className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-heading font-bold text-ui transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
+            className="w-full py-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-200 disabled:text-gray-400 text-white font-heading font-bold text-ui transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
           >
             <Sparkles className="h-4 w-4" />
             {isGeneratingDetailSummary ? t("Generating...", "Generuje sa...", "Generálás...") : t("Make AI Summary", "Vytvoriť AI zhrnutie", "AI összefoglaló készítése")}
@@ -1597,49 +1737,49 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
         {/* LOADER */}
         {isGeneratingDetailSummary && (
-          <div className="p-8 flex flex-col items-center justify-center space-y-3 text-center bg-slate-50 border border-slate-100 rounded-2xl">
+          <div className="p-8 flex flex-col items-center justify-center space-y-3 text-center bg-gray-50 border border-gray-100 rounded-lg">
             <div className="h-8 w-8 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
-            <p className="text-ui font-extrabold text-slate-800 animate-pulse">{t("Analyzing note content...", "Analyzuje sa obsah poznámky...", "Jegyzet tartalmának elemzése...")}</p>
-            <p className="text-micro text-slate-400 font-medium">{t("Extracting actions & customer sentiment", "Extrahujú sa akcie a sentiment zákazníka", "Műveletek és ügyfél-hangulat kinyerése")}</p>
+            <p className="text-ui font-extrabold text-gray-800 animate-pulse">{t("Analyzing note content...", "Analyzuje sa obsah poznámky...", "Jegyzet tartalmának elemzése...")}</p>
+            <p className="text-micro text-gray-400 font-medium">{t("Extracting actions & customer sentiment", "Extrahujú sa akcie a sentiment zákazníka", "Műveletek és ügyfél-hangulat kinyerése")}</p>
           </div>
         )}
 
         {/* API Key Hint if not configured */}
-        {!summaryGenerated && (!integrationsConfig?.openAiKey || integrationsConfig.openAiKey.trim() === "") && (
-          <div className="p-4 bg-amber-50/50 border border-amber-200/50 rounded-2xl space-y-2 text-center">
+        {!summaryGenerated && !isOpenAiConfigured && (
+          <div className="p-4 bg-amber-50/50 border border-amber-200/50 rounded-lg space-y-2 text-center">
             <p className="text-ui text-amber-900 font-extrabold leading-relaxed text-micro">
               {t("AI Assistant Inactive", "AI asistent neaktívny", "AI asszisztens inaktív")}
             </p>
             <p className="text-micro text-amber-700 leading-relaxed font-semibold">
-              {t("Please configure your secret OpenAI API Key in settings to enable summary generation, topic tagging, and automated action plans.", "Nastavte si svoj tajný OpenAI API kľúč v nastaveniach, aby ste umožnili generovanie zhrnutí, označovanie tém a automatizované akčné plány.", "Állítsa be a titkos OpenAI API-kulcsát a beállításokban az összefoglalók generálásának, a témacímkézésnek és az automatizált cselekvési terveknek az engedélyezéséhez.")}
+              {t("Please configure an API key or select an LLM connector in settings to enable summary generation, topic tagging, and automated action plans.", "Nastavte si API kľúč alebo vyberte LLM konektor v nastaveniach, aby ste umožnili generovanie zhrnutí, označovanie tém a automatizované akčné plány.", "Állítson be egy API kulcsot vagy válasszon LLM csatlakozót a beállításokban az összefoglalók generálásának, a témacímkézésnek és az automatizált cselekvési terveknek az engedélyezéséhez.")}
             </p>
           </div>
         )}
 
         {/* SUMMARY SECTION */}
         {summaryGenerated && !isGeneratingDetailSummary && meeting.aiSummary && (
-          <div className="space-y-4 border-t border-slate-100 pt-4">
-            <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5">
+          <div className="space-y-4 border-t border-gray-100 pt-4">
+            <h3 className="text-ui font-bold text-gray-400 flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-indigo-500" />
               {t("AI Summary", "AI zhrnutie", "AI összefoglaló")}
             </h3>
             
-            <div className="p-4 bg-indigo-50/40 border border-indigo-100/30 rounded-2xl space-y-2">
-              <p className="text-ui text-slate-700 font-semibold leading-relaxed">
+            <div className="p-4 bg-indigo-50/40 border border-indigo-100/30 rounded-lg space-y-2">
+              <p className="text-ui text-gray-700 font-semibold leading-relaxed">
                 {meeting.aiSummary.summary}
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-ui">
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-1">
-                <div className="type-overline text-slate-400">{t("Sentiment", "Sentiment", "Hangulat")}</div>
+              <div className="p-3 bg-gray-50 border border-gray-100 rounded-md space-y-1">
+                <div className="type-overline text-gray-400">{t("Sentiment", "Sentiment", "Hangulat")}</div>
                 <div className="text-emerald-600 flex items-center gap-1 type-overline">
                   {getSentimentBadge(meeting.aiSummary.sentiment)}
                   {meeting.aiSummary.sentiment}
                 </div>
               </div>
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-1">
-                <div className="type-overline text-slate-400">{t("Topics", "Témy", "Témák")}</div>
+              <div className="p-3 bg-gray-50 border border-gray-100 rounded-md space-y-1">
+                <div className="type-overline text-gray-400">{t("Topics", "Témy", "Témák")}</div>
                 <div className="text-indigo-600 truncate type-overline" title={meeting.aiSummary.topics.join(", ")}>
                   {meeting.aiSummary.topics.slice(0, 2).join(" • ")}
                 </div>
@@ -1650,32 +1790,32 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
         {/* TASK SUGGESTIONS SECTION */}
         {summaryGenerated && !isGeneratingDetailSummary && (
-          <div className="space-y-4 border-t border-slate-100 pt-4">
-            <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5">
+          <div className="space-y-4 border-t border-gray-100 pt-4">
+            <h3 className="text-ui font-bold text-gray-400 flex items-center gap-1.5">
               <CheckSquare className="h-4 w-4 text-indigo-500" />
               {t("Task Suggestions", "Návrhy úloh", "Feladatjavaslatok")}
             </h3>
 
             <div className="space-y-3">
               {automatedTasks.length === 0 ? (
-                <p className="text-micro text-slate-400 italic text-center py-2">{t("No suggestions generated", "Neboli vygenerované žiadne návrhy", "Nincs generált javaslat")}</p>
+                <p className="text-micro text-gray-400 italic text-center py-2">{t("No suggestions generated", "Neboli vygenerované žiadne návrhy", "Nincs generált javaslat")}</p>
               ) : (
                 automatedTasks.map(task => {
                   const isAssigningThis = assigningTaskId === task.id;
-                  const isCreated = !!task.assignedUser;
+                  const isCreated = isSuggestionConverted(task, tasks);
 
                   return (
                     <div key={task.id} className={cn(
-                      "p-3.5 border rounded-2xl space-y-3 relative group/task transition-all",
+                      "p-3.5 border rounded-lg space-y-3 relative group/task transition-all",
                       isCreated 
                         ? "bg-emerald-50/20 border-emerald-100/60 animate-fade-in" 
-                        : "bg-slate-50 border-slate-100"
+                        : "bg-gray-50 border-gray-100"
                     )}>
                       
                       {/* Task details header */}
                       <div className="space-y-1 text-left">
                         <div className="flex items-start justify-between gap-1.5">
-                          <h4 className="text-ui font-extrabold text-slate-800 leading-snug">
+                          <h4 className="text-ui font-extrabold text-gray-800 leading-snug">
                             {task.title}
                           </h4>
                           {isCreated && (
@@ -1684,7 +1824,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                             </span>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-1.5 type-overline text-slate-400">
+                        <div className="flex flex-wrap items-center gap-1.5 type-overline text-gray-400">
                           <span className="flex items-center gap-0.5">
                             <Calendar className="h-3 w-3" />
                             {task.dueDate ? formatDateLocalized(task.dueDate, systemLanguage) : t("No deadline", "Bez termínu", "Nincs határidő")}
@@ -1694,7 +1834,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                             "px-1.5 py-0.5 rounded text-micro",
                             task.priority === "high" && "bg-rose-50 text-rose-700 border border-rose-200/30",
                             task.priority === "medium" && "bg-amber-50 text-amber-700 border border-amber-200/30",
-                            task.priority === "low" && "bg-slate-200 text-slate-700"
+                            task.priority === "low" && "bg-gray-200 text-gray-700"
                           )}>
                             {task.priority}
                           </span>
@@ -1702,7 +1842,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       </div>
 
                       {/* Task Controls: Assign / Details */}
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-100/70 gap-2">
+                      <div className="flex items-center justify-between pt-2 border-t border-gray-100/70 gap-2">
                         {/* Assigned user display / dropdown */}
                         <div className="relative">
                           {isCreated ? (
@@ -1710,7 +1850,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                               <div className="h-5.5 w-5.5 rounded-full bg-emerald-100 border border-emerald-200/40 text-emerald-700 flex items-center justify-center type-overline shrink-0">
                                 {task.assignedUser.substring(0, 2)}
                               </div>
-                              <span className="type-overline text-slate-600">
+                              <span className="type-overline text-gray-600">
                                 {task.assignedUser}
                               </span>
                             </div>
@@ -1718,7 +1858,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setAssigningTaskId(task.id)}
-                              className="type-overline text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-0.5 cursor-pointer bg-indigo-50/50 hover:bg-indigo-50 px-2.5 py-1.5 rounded-xl border border-indigo-100/50"
+                              className="type-overline text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-0.5 cursor-pointer bg-indigo-50/50 hover:bg-indigo-50 px-2.5 py-1.5 rounded-md border border-indigo-100/50"
                             >
                               <Plus className="h-3 w-3" />
                               {t("Assign to Create", "Priradiť a vytvoriť", "Hozzárendelés és létrehozás")}
@@ -1729,7 +1869,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                           {isAssigningThis && (
                             <>
                               <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setAssigningTaskId(null)} />
-                              <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl p-1 w-40 max-h-45 overflow-y-auto">
+                              <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-white border border-gray-200 rounded-md shadow-xl p-1 w-40 max-h-45 overflow-y-auto">
                                 {users.map(u => (
                                   <button
                                     key={u.name}
@@ -1738,7 +1878,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                                       updateTaskAssignment(task.id, u.name);
                                       setAssigningTaskId(null);
                                     }}
-                                    className="w-full text-left px-2.5 py-1.5 hover:bg-slate-50 rounded-lg type-overline text-slate-700 cursor-pointer flex items-center gap-1.5"
+                                    className="w-full text-left px-2.5 py-1.5 hover:bg-gray-50 rounded-lg type-overline text-gray-700 cursor-pointer flex items-center gap-1.5"
                                   >
                                     <div className="h-4.5 w-4.5 rounded-full bg-indigo-50 border border-indigo-200/40 text-indigo-600 flex items-center justify-center text-micro font-bold">
                                       {u.name.substring(0, 2).toUpperCase()}
@@ -1756,13 +1896,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                           <button
                             type="button"
                             onClick={() => setActiveTaskForEdit(task)}
-                            className="type-overline text-slate-500 hover:text-slate-700 transition-colors flex items-center gap-0.5 cursor-pointer bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-200"
+                            className="type-overline text-gray-500 hover:text-gray-700 transition-colors flex items-center gap-0.5 cursor-pointer bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-md border border-gray-200"
                           >
-                            <Settings className="h-3.5 w-3.5 text-slate-500" />
+                            <Settings className="h-3.5 w-3.5 text-gray-500" />
                             {t("Edit Details", "Upraviť detaily", "Részletek szerkesztése")}
                           </button>
                           {!isCreated && (
-                            <span className="text-micro text-slate-400 italic">{t("Suggestion", "Návrh", "Javaslat")}</span>
+                            <span className="text-micro text-gray-400 italic">{t("Suggestion", "Návrh", "Javaslat")}</span>
                           )}
                         </div>
                       </div>
@@ -1783,7 +1923,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       {/* Module header (docs/VIEW-SIZE.md §6.2) */}
       {viewState === "list" && (
         <PageHeader
-          icon={<Sparkles className="text-indigo-500" />}
+          icon={<SectionIcon id="meetings" />}
           title={t("AI Meeting Room & Note Summarizer", "AI Zasadačka a analýza stretnutí", "AI Tárgyaló és megbeszélés elemzés")}
           subtitle={t(
             "Log call/meeting notes, view raw conversations, and let AI automatically extract key take-aways, sentiment analysis, and follow-up actions.",
@@ -1803,7 +1943,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   onClick={() => {
                     window.location.hash = "meetings/new?record=true";
                   }}
-                  className="h-9 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 transition-all font-heading font-semibold text-ui flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
+                  className="h-9 px-3 rounded-md bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 transition-all font-heading font-semibold text-ui flex items-center gap-2 cursor-pointer shrink-0"
                 >
                   <Mic className="size-4" />
                   {t("Record Meeting", "Nahrať stretnutie", "Rögzítés")}
@@ -1812,7 +1952,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               {canEdit && (
                 <button
                   onClick={() => { window.location.hash = "meetings/new"; }}
-                  className="h-9 px-3 rounded-xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-semibold text-ui flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
+                  className="h-9 px-3 rounded-md bg-[#0b1329] text-white hover:bg-gray-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-semibold text-ui flex items-center gap-2 cursor-pointer shrink-0"
                 >
                   <Plus className="size-4" />
                   {t("New Meeting Note", "Nové stretnutie", "Új megbeszélés")}
@@ -1823,13 +1963,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         />
       )}
       {viewState !== "new" && viewState !== "list" && (
-        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
           <>
             <button
                 onClick={() => {
                   window.location.hash = "meetings";
                 }}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 transition-colors text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
+                className="px-4 py-2.5 rounded-md border border-gray-200 bg-white text-gray-600 hover:text-gray-800 transition-colors text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
               >
                 <ArrowLeft className="h-4 w-4" />
                 {systemLanguage === "sk" ? "Späť na zoznam" : systemLanguage === "hu" ? "Vissza a listához" : "Back to List"}
@@ -1848,7 +1988,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                         );
                       }
                     }}
-                    className="px-4 py-2.5 rounded-xl border text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0 transition-all hover:scale-[1.02] border-rose-200 bg-rose-600 text-white hover:bg-rose-700"
+                    className="px-4 py-2.5 rounded-md border text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0 transition-all border-rose-200 bg-rose-600 text-white hover:bg-rose-700"
                   >
                     <Archive className="h-4 w-4" />
                     {systemLanguage === "sk" ? "Obnoviť z archívu" : systemLanguage === "hu" ? "Visszaállítás" : "Restore"}
@@ -1859,7 +1999,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     lang={systemLanguage}
                     what={selectedMeeting.title}
                     onConfirm={() => archiveMeeting(selectedMeeting)}
-                    className="px-4 py-2.5 rounded-xl border text-ui font-heading font-bold flex items-center gap-1.5 shrink-0 transition-all hover:scale-[1.02] border-rose-200 bg-white text-rose-600 hover:bg-rose-50/50 hover:text-rose-700"
+                    className="px-4 py-2.5 rounded-md border text-ui font-heading font-bold flex items-center gap-1.5 shrink-0 transition-all border-rose-200 bg-white text-rose-600 hover:bg-rose-50/50 hover:text-rose-700"
                     icon={<Archive className="h-4 w-4" />}
                   >
                     {systemLanguage === "sk" ? "Archivovať" : systemLanguage === "hu" ? "Archiválás" : "Archive"}
@@ -1875,30 +2015,30 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       {viewState === "list" && (
         <div className="grid grid-cols-1 ws-lg:grid-cols-4 gap-6">
           {/* LEFT COLUMN: SEARCH & FILTERS */}
-          <div className="ws-lg:col-span-1 bg-white/60 backdrop-blur-md p-5 rounded-3xl border border-slate-200/50 shadow-sm space-y-5">
-            <div className="type-overline text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+          <div className="ws-lg:col-span-1 bg-white/60  p-5 rounded-lg border border-gray-200/50 shadow-sm space-y-5">
+            <div className="type-overline text-gray-400 flex items-center gap-1.5 border-b border-gray-100 pb-2">
               <Filter className="h-3.5 w-3.5" />
               {systemLanguage === "sk" ? "Filtrovať Stretnutia" : systemLanguage === "hu" ? "Keresési Szűrők" : "Filter Meeting Logs"}
             </div>
 
             {/* Search Input */}
             <div className="space-y-1.5">
-              <label className="type-overline text-slate-600">{systemLanguage === "sk" ? "Kľúčové slovo" : systemLanguage === "hu" ? "Kulcsszó keresés" : "Text Search"}</label>
+              <label className="type-overline text-gray-600">{systemLanguage === "sk" ? "Kľúčové slovo" : systemLanguage === "hu" ? "Kulcsszó keresés" : "Text Search"}</label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                 <input
                   type="text"
                   placeholder={systemLanguage === "sk" ? "Hľadať v zápisoch..." : systemLanguage === "hu" ? "Keresés a jegyzetekben..." : "Search title or text..."}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
+                  className="w-full pl-9 pr-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-700 focus:outline-none focus:border-indigo-500"
                 />
               </div>
             </div>
 
             {/* Lead filter selection */}
             <div className="space-y-1.5">
-              <label className="type-overline text-slate-600">{systemLanguage === "sk" ? "Klient / Lead" : systemLanguage === "hu" ? "Kapcsolódó Lead" : "Associated Lead"}</label>
+              <label className="type-overline text-gray-600">{systemLanguage === "sk" ? "Klient / Lead" : systemLanguage === "hu" ? "Kapcsolódó Lead" : "Associated Lead"}</label>
               <ClientSelect
                 leads={leads}
                 value={selectedLeadFilter}
@@ -1911,17 +2051,17 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
             {/* Date filter range selection */}
             <div className="space-y-1.5">
-              <label className="type-overline text-slate-600">{systemLanguage === "sk" ? "Časový interval" : systemLanguage === "hu" ? "Időtartomány" : "Time Interval"}</label>
+              <label className="type-overline text-gray-600">{systemLanguage === "sk" ? "Časový interval" : systemLanguage === "hu" ? "Időtartomány" : "Time Interval"}</label>
               <div className="flex flex-col gap-1.5">
                 {(["all", "today", "week", "month"] as const).map((opt) => (
                   <button
                     key={opt}
                     onClick={() => setDateFilter(opt)}
                     className={cn(
-                      "w-full text-left px-3 py-2 rounded-xl text-ui font-semibold transition-all cursor-pointer",
+                      "w-full text-left px-3 py-2 rounded-md text-ui font-semibold transition-all cursor-pointer",
                       dateFilter === opt
                         ? "bg-[#0b1329] text-white"
-                        : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                        : "bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
                     )}
                   >
                     {opt === "all" && (systemLanguage === "sk" ? "Všetko" : systemLanguage === "hu" ? "Minden" : "All Time")}
@@ -1934,8 +2074,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             </div>
 
             {/* Show Archived toggle */}
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-              <label htmlFor="show-archived" className="text-ui font-semibold text-slate-600 cursor-pointer select-none">
+            <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
+              <label htmlFor="show-archived" className="text-ui font-semibold text-gray-600 cursor-pointer select-none">
                 {systemLanguage === "sk" ? "Zobraziť archivované" : systemLanguage === "hu" ? "Archiváltak megjelenítése" : "Show Archived"}
               </label>
               <input
@@ -1943,7 +2083,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 type="checkbox"
                 checked={showArchived}
                 onChange={(e) => setShowArchived(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
               />
             </div>
           </div>
@@ -1951,12 +2091,12 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           {/* RIGHT COLUMN: LIST OF MEETINGS */}
           <div className="ws-lg:col-span-3 space-y-4">
             {filteredMeetings.length === 0 ? (
-              <div className="bg-white/60 backdrop-blur-md p-12 rounded-3xl border border-slate-200/50 shadow-sm text-center max-w-md mx-auto">
-                <AlertCircle className="h-10 w-10 text-slate-400 mx-auto mb-4" />
-                <h3 className="text-body font-bold text-slate-700">
+              <div className="bg-white/60  p-12 rounded-lg border border-gray-200/50 shadow-sm text-center max-w-md mx-auto">
+                <AlertCircle className="h-10 w-10 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-body font-bold text-gray-700">
                   {systemLanguage === "sk" ? "Nenašli sa žiadne stretnutia" : systemLanguage === "hu" ? "Nincs találat" : "No Meeting Logs Found"}
                 </h3>
-                <p className="text-ui text-slate-400 mt-2 font-medium">
+                <p className="text-ui text-gray-400 mt-2 font-medium">
                   {systemLanguage === "sk" 
                     ? "Vyskúšajte zmeniť vyhľadávacie frázy alebo filtre." 
                     : systemLanguage === "hu" 
@@ -1970,15 +2110,15 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   <div
                     key={m.id}
                     onClick={() => handleSelectMeeting(m)}
-                    className="group bg-white border border-slate-200/80 rounded-2xl px-6 py-4 hover:border-slate-800 hover:shadow-md transition-all cursor-pointer flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-4 hover:scale-[1.005]"
+                    className="group bg-white border border-gray-200/80 rounded-lg px-6 py-4 hover:border-gray-800 hover:shadow-md transition-all cursor-pointer flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-4 hover:scale-[1.005]"
                   >
                     <div className="flex items-center gap-4 flex-1 min-w-0">
                       {/* Date Badge */}
-                      <div className="flex flex-col items-center justify-center bg-slate-50 border border-slate-200/60 rounded-xl p-2 w-16 shrink-0 text-center">
-                        <span className="type-overline text-slate-400 leading-none">
+                      <div className="flex flex-col items-center justify-center bg-gray-50 border border-gray-200/60 rounded-md p-2 w-16 shrink-0 text-center">
+                        <span className="type-overline text-gray-400 leading-none">
                           {new Date(m.date).toLocaleString(localeCodeFor(systemLanguage), { month: 'short' })}
                         </span>
-                        <span className="text-title-sm font-heading font-bold text-slate-800 leading-tight">
+                        <span className="text-title-sm font-heading font-bold text-gray-800 leading-tight">
                           {new Date(m.date).getDate()}
                         </span>
                       </div>
@@ -1986,11 +2126,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       {/* Main Details */}
                       <div className="space-y-1 min-w-0 flex-1">
                         <div className="flex items-center gap-3 flex-wrap">
-                          <h4 className="text-body font-bold text-slate-800 group-hover:text-indigo-600 transition-colors truncate">
+                          <h4 className="text-body font-bold text-gray-800 group-hover:text-indigo-600 transition-colors truncate">
                             {m.title}
                           </h4>
-                          <span className="shrink-0 flex items-center gap-1 bg-slate-50 text-slate-500 text-micro font-bold px-2.5 py-0.5 rounded-lg border border-slate-200/60">
-                            <Clock className="h-3 w-3 text-slate-400" />
+                          <span className="shrink-0 flex items-center gap-1 bg-gray-50 text-gray-500 text-micro font-bold px-2.5 py-0.5 rounded-lg border border-gray-200/60">
+                            <Clock className="h-3 w-3 text-gray-400" />
                             {m.duration} min
                           </span>
                           {m.audioFile && (
@@ -2007,16 +2147,16 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                             </button>
                           )}
                         </div>
-                        <p className="text-ui text-slate-400 line-clamp-1 leading-relaxed">
+                        <p className="text-ui text-gray-400 line-clamp-1 leading-relaxed">
                           {m.aiSummary?.summary ?? ""}
                         </p>
                       </div>
                     </div>
 
                     {/* Metadata & Sentiment */}
-                    <div className="flex items-center justify-between ws-md:justify-end gap-6 shrink-0 border-t ws-md:border-t-0 border-slate-100 pt-3 ws-md:pt-0">
-                      <span className="flex items-center gap-1.5 text-ui text-slate-500 font-semibold">
-                        <User className="h-4 w-4 text-slate-400" />
+                    <div className="flex items-center justify-between ws-md:justify-end gap-6 shrink-0 border-t ws-md:border-t-0 border-gray-100 pt-3 ws-md:pt-0">
+                      <span className="flex items-center gap-1.5 text-ui text-gray-500 font-semibold">
+                        <User className="h-4 w-4 text-gray-400" />
                         {m.leadName}
                       </span>
                       <div className="w-24 flex justify-end">
@@ -2036,7 +2176,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                               );
                             }
                           }}
-                          className="shrink-0 w-8 h-8 rounded-xl border flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
+                          className="shrink-0 w-8 h-8 rounded-md border flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
                           title={systemLanguage === "sk" ? "Obnoviť z archívu" : systemLanguage === "hu" ? "Visszaállítás" : "Restore from Archive"}
                         >
                           <Archive className="h-4 w-4" />
@@ -2047,7 +2187,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                           lang={systemLanguage}
                           what={m.title}
                           onConfirm={() => archiveMeeting(m)}
-                          className="shrink-0 w-8 h-8 rounded-xl border flex items-center justify-center transition-all hover:scale-105 active:scale-95 bg-slate-50 border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                          className="shrink-0 w-8 h-8 rounded-md border flex items-center justify-center transition-all hover:scale-105 active:scale-95 bg-gray-50 border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                           title={systemLanguage === "sk" ? "Archivovať" : systemLanguage === "hu" ? "Archiválás" : "Archive"}
                         >
                           <Archive className="h-4 w-4" />
@@ -2068,7 +2208,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           {/* LEFT COLUMN: THE WHOLE A4 PAPER SHEET */}
           <div className="ws-lg:col-span-2 flex flex-col items-center">
             {renderRecordingBar()}
-            <div className="w-full max-w-212.5 bg-white border border-slate-300 shadow-2xl rounded-[2px] px-12 ws-md:px-16 py-12 ws-md:py-16 flex flex-col justify-start transition-all relative min-h-200">
+            <div className="w-full max-w-212.5 bg-white border border-gray-300 shadow-xl rounded-[2px] px-12 ws-md:px-16 py-12 ws-md:py-16 flex flex-col justify-start transition-all relative min-h-200">
               {/* Document Title (Editable inside the A4 Sheet - Seamless and borderless) */}
               <div className="w-full mb-6">
                 <input
@@ -2080,7 +2220,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     setSelectedMeeting(updated);
                     setMeetingNotes((prev) => prev.map((m) => m.id === selectedMeeting.id ? updated : m));
                   }}
-                  className="w-full type-entity-title text-slate-800 placeholder:text-slate-300 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-none p-0 m-0"
+                  className="w-full type-entity-title text-gray-800 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-none p-0 m-0"
                 />
               </div>
 
@@ -2109,18 +2249,19 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       setMeetingNotes((prev) => prev.map((m) => m.id === selectedMeeting.id ? updated : m));
                     }}
                     systemLanguage={systemLanguage}
+                    exportTitle={selectedMeeting.title}
                   />
                 </div>
               )}
 
               {activeTab === "transcription" && (
-                <div className="text-slate-700 text-ui font-medium leading-relaxed bg-slate-50 border border-slate-200/60 p-6 rounded-2xl max-h-125 overflow-y-auto whitespace-pre-wrap select-text text-left">
+                <div className="text-gray-700 text-ui font-medium leading-relaxed bg-gray-50 border border-gray-200/60 p-6 rounded-lg max-h-125 overflow-y-auto whitespace-pre-wrap select-text text-left">
                   {selectedMeeting.transcription || t("No transcription available.", "Žiadny prepis k dispozícii.", "Nincs elérhető átirat.")}
                 </div>
               )}
 
               {activeTab === "automated" && (
-                <div className="prose prose-slate max-w-none text-ui font-medium leading-relaxed bg-indigo-50/20 border border-indigo-100/50 p-6 rounded-2xl max-h-125 overflow-y-auto select-text text-left">
+                <div className="prose prose-slate max-w-none text-ui font-medium leading-relaxed bg-indigo-50/20 border border-indigo-100/50 p-6 rounded-lg max-h-125 overflow-y-auto select-text text-left">
                   <Markdown content={selectedMeeting.automatedNotes || ""} />
                 </div>
               )}
@@ -2142,15 +2283,15 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               const assignedClients = meeting.attachedClients || [];
               const assignedUsers = meeting.attachedUsers || [];
               return (
-                <div className="bg-white/60 backdrop-blur-md p-5 rounded-3xl border border-slate-200/50 shadow-sm space-y-4">
-                  <h3 className="text-ui font-bold text-slate-700 flex items-center gap-2">
+                <div className="bg-white/60  p-5 rounded-lg border border-gray-200/50 shadow-sm space-y-4">
+                  <h3 className="text-ui font-bold text-gray-700 flex items-center gap-2">
                     <Users className="h-4 w-4 text-indigo-600" />
                     {t("Assign", "Priradiť", "Hozzárendelés")}
                   </h3>
 
                   {/* Client assignment */}
                   <div className="space-y-1.5">
-                    <label className="type-overline text-slate-400">
+                    <label className="type-overline text-gray-400">
                       {t("Client", "Klient", "Ügyfél")}
                     </label>
                     <ClientSelect
@@ -2189,7 +2330,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
                   {/* Project manager assignment */}
                   <div className="space-y-1.5">
-                    <label className="type-overline text-slate-400">
+                    <label className="type-overline text-gray-400">
                       {t("Project Manager", "Projektový manažér", "Projektmenedzser")}
                     </label>
                     <CustomSelect
@@ -2233,9 +2374,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
       {/* VIEW STATE 3: CREATE NEW MEETING */}
       {viewState === "new" && (
-        <div className="w-full flex flex-col items-center bg-slate-100/50 -mx-4 px-4 py-6 ws-md:p-8 min-h-screen">
+        <div className="w-full flex flex-col items-center bg-gray-100/50 -mx-4 px-4 py-6 ws-md:p-8 min-h-screen">
           {/* HEADER CARD */}
-          <div className="bg-white border border-slate-200/80 shadow-md rounded-[20px] p-3 mb-8 w-full max-w-5xl flex flex-wrap items-center justify-between gap-4 transition-all">
+          <div className="bg-white border border-gray-200/80 shadow-md rounded-[20px] p-3 mb-8 w-full max-w-5xl flex flex-wrap items-center justify-between gap-4 transition-all">
             {/* Left controls: Back, Date */}
             <div className="flex items-center gap-3">
               <button
@@ -2243,7 +2384,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 onClick={() => {
                   window.location.hash = "meetings";
                 }}
-                className="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-all cursor-pointer shrink-0"
+                className="p-2.5 rounded-md border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:bg-gray-50 transition-all cursor-pointer shrink-0"
                 title={t("Back to list", "Späť na zoznam", "Vissza a listához")}
               >
                 <ArrowLeft className="h-4.5 w-4.5" />
@@ -2251,13 +2392,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               
               <div className="flex items-center gap-1.5">
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                   <input
                     type="date"
                     required
                     value={newDate}
                     onChange={(e) => setNewDate(e.target.value)}
-                    className="pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-ui font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
+                    className="pl-9 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-ui font-bold text-gray-700 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
                   />
                 </div>
                 {recordingState === "none" && (
@@ -2276,8 +2417,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             </div>
 
             {/* Middle controls: Attach dropdowns */}
-            <div className="flex flex-wrap items-center gap-2 text-ui font-semibold text-slate-600">
-              <span className="type-overline text-slate-400 shrink-0 mr-1">
+            <div className="flex flex-wrap items-center gap-2 text-ui font-semibold text-gray-600">
+              <span className="type-overline text-gray-400 shrink-0 mr-1">
                 {t("Attach:", "Priradiť:", "Csatolás:")}
               </span>
 
@@ -2286,14 +2427,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveDropdown(activeDropdown === "leads" ? null : "leads")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-ui text-slate-700 cursor-pointer font-bold transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-md text-ui text-gray-700 cursor-pointer font-bold transition-all"
                 >
                   <Filter className="h-3.5 w-3.5 text-indigo-500" />
                   <span>{t("Leads", "Leady", "Leadek")} ({attachedLeads.length})</span>
-                  <ChevronDown className="h-3 w-3 text-slate-400" />
+                  <ChevronDown className="h-3 w-3 text-gray-400" />
                 </button>
                 {activeDropdown === "leads" && (
-                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col">
+                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden flex flex-col">
                     <DropdownSearchRow
                       autoFocus
                       placeholder={t("Search leads...", "Hľadať leady...", "Leadek keresése...")}
@@ -2309,14 +2450,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     />
                     <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5 p-1.5">
                       {leadsList.filter(l => l.name.toLowerCase().includes(leadSearch.toLowerCase())).length === 0 ? (
-                        <div className="text-caption text-slate-400 p-2 text-center">{t("No leads found", "Nenašli sa žiadne leady", "Nincs találat")}</div>
+                        <div className="text-caption text-gray-400 p-2 text-center">{t("No leads found", "Nenašli sa žiadne leady", "Nincs találat")}</div>
                       ) : (
                         leadsList.filter(l => l.name.toLowerCase().includes(leadSearch.toLowerCase())).map(l => {
                           const isSelected = attachedLeads.includes(l.id);
                           return (
                             <label
                               key={l.id}
-                              className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-caption text-slate-700 font-bold"
+                              className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-gray-50 rounded-lg cursor-pointer text-caption text-gray-700 font-bold"
                             >
                               <input
                                 type="checkbox"
@@ -2326,7 +2467,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                                     isSelected ? prev.filter(x => x !== l.id) : [...prev, l.id]
                                   );
                                 }}
-                                className="rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                                className="rounded text-indigo-600 border-gray-300 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
                               />
                               <span className="truncate">{l.name}</span>
                             </label>
@@ -2343,14 +2484,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveDropdown(activeDropdown === "clients" ? null : "clients")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-ui text-slate-700 cursor-pointer font-bold transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-md text-ui text-gray-700 cursor-pointer font-bold transition-all"
                 >
                   <User className="h-3.5 w-3.5 text-emerald-500" />
                   <span>{t("Clients", "Klienti", "Ügyfelek")} ({attachedClients.length})</span>
-                  <ChevronDown className="h-3 w-3 text-slate-400" />
+                  <ChevronDown className="h-3 w-3 text-gray-400" />
                 </button>
                 {activeDropdown === "clients" && (
-                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col">
+                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden flex flex-col">
                     <DropdownSearchRow
                       autoFocus
                       placeholder={t("Search clients...", "Hľadať klientov...", "Ügyfelek keresése...")}
@@ -2366,14 +2507,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     />
                     <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5 p-1.5">
                       {clientsList.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 ? (
-                        <div className="text-caption text-slate-400 p-2 text-center">{t("No clients found", "Nenašli sa žiadni klienti", "Nincs találat")}</div>
+                        <div className="text-caption text-gray-400 p-2 text-center">{t("No clients found", "Nenašli sa žiadni klienti", "Nincs találat")}</div>
                       ) : (
                         clientsList.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())).map(c => {
                           const isSelected = attachedClients.includes(c.id);
                           return (
                             <label
                               key={c.id}
-                              className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-caption text-slate-700 font-bold"
+                              className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-gray-50 rounded-lg cursor-pointer text-caption text-gray-700 font-bold"
                             >
                               <input
                                 type="checkbox"
@@ -2383,7 +2524,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                                     isSelected ? prev.filter(x => x !== c.id) : [...prev, c.id]
                                   );
                                 }}
-                                className="rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                                className="rounded text-indigo-600 border-gray-300 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
                               />
                               <span className="truncate">{c.name}</span>
                             </label>
@@ -2400,14 +2541,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveDropdown(activeDropdown === "users" ? null : "users")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-ui text-slate-700 cursor-pointer font-bold transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-md text-ui text-gray-700 cursor-pointer font-bold transition-all"
                 >
                   <Users className="h-3.5 w-3.5 text-purple-500" />
                   <span>{t("Team", "Tím", "Csapat")} ({attachedUsers.length})</span>
-                  <ChevronDown className="h-3 w-3 text-slate-400" />
+                  <ChevronDown className="h-3 w-3 text-gray-400" />
                 </button>
                 {activeDropdown === "users" && (
-                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col">
+                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden flex flex-col">
                     <DropdownSearchRow
                       autoFocus
                       placeholder={t("Search users...", "Hľadať používateľov...", "Felhasználók keresése...")}
@@ -2416,14 +2557,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     />
                     <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5 p-1.5">
                       {users.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase())).length === 0 ? (
-                        <div className="text-caption text-slate-400 p-2 text-center">{t("No team members found", "Nenašli sa žiadni členovia tímu", "Nincs találat")}</div>
+                        <div className="text-caption text-gray-400 p-2 text-center">{t("No team members found", "Nenašli sa žiadni členovia tímu", "Nincs találat")}</div>
                       ) : (
                         users.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase())).map(u => {
                           const isSelected = attachedUsers.includes(u.name);
                           return (
                             <label
                               key={u.name}
-                              className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-caption text-slate-700 font-bold"
+                              className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-gray-50 rounded-lg cursor-pointer text-caption text-gray-700 font-bold"
                             >
                               <input
                                 type="checkbox"
@@ -2433,7 +2574,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                                     isSelected ? prev.filter(x => x !== u.name) : [...prev, u.name]
                                   );
                                 }}
-                                className="rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                                className="rounded text-indigo-600 border-gray-300 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
                               />
                               <span className="truncate">{u.name} ({u.role})</span>
                             </label>
@@ -2456,13 +2597,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
             {/* Right controls: Save button */}
             <div className="flex items-center gap-3">
-              <span className="text-micro text-slate-400 font-bold animate-pulse">
+              <span className="text-micro text-gray-400 font-bold animate-pulse">
                 {t("Autosaving...", "Automatické ukladanie...", "Automatikus mentés...")}
               </span>
               <button
                 type="button"
                 onClick={() => handleSaveNewMeeting()}
-                className="px-5 py-1.5 rounded-xl bg-black text-white hover:bg-slate-800 font-heading font-bold text-ui transition-all cursor-pointer flex items-center gap-1.5 hover:scale-[1.01] active:scale-95 shadow-md shadow-black/10"
+                className="px-5 py-1.5 rounded-md bg-black text-white hover:bg-gray-800 font-heading font-bold text-ui transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-black/10"
               >
                 {t("Save Document", "Uložiť", "Dokumentum mentése")}
               </button>
@@ -2470,7 +2611,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
             {/* Attached tags row */}
             {(attachedLeads.length > 0 || attachedClients.length > 0 || attachedUsers.length > 0) && (
-              <div className="w-full flex flex-wrap items-center gap-1.5 border-t border-slate-100/50 pt-2.5 mt-1">
+              <div className="w-full flex flex-wrap items-center gap-1.5 border-t border-gray-100/50 pt-2.5 mt-1">
                 {attachedLeads.map(leadId => {
                   const leadObj = leads.find(l => String(l.id) === leadId);
                   if (!leadObj) return null;
@@ -2528,11 +2669,72 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           {/* Recording Bar */}
           {renderRecordingBar()}
 
+          {/* No Soniox key: recording works the same, only without speaker labels. Shown once. */}
+          {recordingState !== "none" && !isSonioxConfigured && !sonioxNoticeDismissed && (
+            <div
+              role="status"
+              className="w-full max-w-212.5 -mt-3 mb-6 flex items-start gap-3 px-4 py-3 rounded-lg border border-indigo-100 bg-indigo-50/60 text-left animate-fade-in"
+            >
+              <Users className="h-4 w-4 mt-0.5 text-indigo-500 shrink-0" />
+              <p className="flex-1 min-w-0 text-ui text-gray-600">
+                {t(
+                  "Recordings are transcribed either way. To tell speakers apart (Participant 1, 2, …), add a Soniox API key in ",
+                  "Nahrávky sa prepíšu v každom prípade. Aby sa rozlíšili hovoriaci (Účastník 1, 2, …), doplňte API kľúč Soniox v ",
+                  "A felvételek mindenképp átíródnak. A beszélők megkülönböztetéséhez (1., 2. résztvevő, …) adjon meg Soniox API-kulcsot itt: "
+                )}
+                <button
+                  type="button"
+                  onClick={openAiSettings}
+                  className="font-semibold text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
+                >
+                  {t("Settings → AI", "Nastaveniach → AI", "Beállítások → AI")}
+                </button>
+                .
+              </p>
+              <button
+                type="button"
+                onClick={() => setSonioxNoticeDismissed(true)}
+                className="shrink-0 px-2.5 h-7 rounded-lg text-caption font-semibold text-indigo-700 hover:bg-white cursor-pointer transition-colors active:scale-95"
+              >
+                {t("Got it", "Rozumiem", "Értem")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSonioxNoticeDismissed(true)}
+                aria-label={t("Dismiss", "Zavrieť", "Bezárás")}
+                className="shrink-0 -mr-1 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-white cursor-pointer transition-all hover:rotate-90"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Focus helper: live transcript while recording; kept after Stop until the official transcript arrives */}
+          {focusHelperAvailable && focusHelperOn && recordingState !== "none" && !newTranscription && (
+            <MeetingFocusPanel
+              lang={systemLanguage}
+              status={liveTranscript.status}
+              error={liveTranscript.error}
+              segments={liveTranscript.segments}
+              recordingState={recordingState}
+              elapsedSec={recordDuration}
+              onRetry={liveTranscript.retry}
+              officialFailed={officialTranscriptFailed}
+              onUseLive={useLiveTranscriptAsNote}
+              provider={liveTranscript.provider}
+              liveDocument={liveDocument}
+              speakerNames={speakerNames}
+              onRenameSpeaker={renameSpeaker}
+              userKey={String(currentUser?.id || currentUser?.email || "me")}
+              aiText={isOpenAiConfigured}
+            />
+          )}
+
           {newSummaryGenerated ? (
             <div className="grid grid-cols-1 ws-lg:grid-cols-3 gap-6 items-start w-full max-w-7xl">
               {/* LEFT COLUMN: THE WHOLE A4 PAPER SHEET */}
               <div className="ws-lg:col-span-2 flex flex-col items-center">
-                <div className="w-full bg-white border border-slate-300 shadow-2xl rounded-[2px] px-12 ws-md:px-16 py-12 ws-md:py-16 flex flex-col justify-start transition-all relative min-h-200">
+                <div className="w-full bg-white border border-gray-300 shadow-xl rounded-[2px] px-12 ws-md:px-16 py-12 ws-md:py-16 flex flex-col justify-start transition-all relative min-h-200">
                   <div className="space-y-6">
                     {/* Document Title (Editable inside the A4 Sheet - Seamless and borderless) */}
                     <div className="w-full mb-6">
@@ -2541,7 +2743,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                         placeholder={t("Untitled Document...", "Názov dokumentu / stretnutia...", "Névtelen dokumentum...")}
                         value={newTitle}
                         onChange={(e) => setNewTitle(e.target.value)}
-                        className="w-full type-entity-title text-slate-800 placeholder:text-slate-300 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-none p-0 m-0"
+                        className="w-full type-entity-title text-gray-800 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-none p-0 m-0"
                       />
                     </div>
 
@@ -2565,18 +2767,19 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                           initialBlocks={newBlocks}
                           onChange={(blocks) => setNewBlocks(blocks)}
                           systemLanguage={systemLanguage}
+                          exportTitle={newTitle}
                         />
                       </div>
                     )}
 
                     {activeTab === "transcription" && (
-                      <div className="text-slate-700 text-ui font-medium leading-relaxed bg-slate-50 border border-slate-200/60 p-6 rounded-2xl max-h-125 overflow-y-auto whitespace-pre-wrap select-text text-left">
+                      <div className="text-gray-700 text-ui font-medium leading-relaxed bg-gray-50 border border-gray-200/60 p-6 rounded-lg max-h-125 overflow-y-auto whitespace-pre-wrap select-text text-left">
                         {newTranscription || t("No transcription available.", "Žiadny prepis k dispozícii.", "Nincs elérhető átirat.")}
                       </div>
                     )}
 
                     {activeTab === "automated" && (
-                      <div className="prose prose-slate max-w-none text-ui font-medium leading-relaxed bg-indigo-50/20 border border-indigo-100/50 p-6 rounded-2xl max-h-125 overflow-y-auto select-text text-left">
+                      <div className="prose prose-slate max-w-none text-ui font-medium leading-relaxed bg-indigo-50/20 border border-indigo-100/50 p-6 rounded-lg max-h-125 overflow-y-auto select-text text-left">
                         <Markdown content={newAutomatedNotes || ""} />
                       </div>
                     )}
@@ -2591,7 +2794,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             </div>
           ) : (
             /* A4 SHEET WRAPPER (INFINITE GROWING PAPER SHEET) */
-            <div className="w-full max-w-212.5 bg-white border border-slate-300 shadow-2xl rounded-[2px] px-12 ws-md:px-16 py-12 ws-md:py-16 flex flex-col justify-start transition-all relative">
+            <div className="w-full max-w-212.5 bg-white border border-gray-300 shadow-xl rounded-[2px] px-12 ws-md:px-16 py-12 ws-md:py-16 flex flex-col justify-start transition-all relative">
               <div className="space-y-6">
                 {/* Document Title (Editable inside the A4 Sheet - Seamless and borderless) */}
                 <div className="w-full mb-6">
@@ -2600,7 +2803,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     placeholder={t("Untitled Document...", "Názov dokumentu / stretnutia...", "Névtelen dokumentum...")}
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
-                    className="w-full type-entity-title text-slate-800 placeholder:text-slate-300 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-none p-0 m-0"
+                    className="w-full type-entity-title text-gray-800 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-none p-0 m-0"
                   />
                 </div>
 
@@ -2624,18 +2827,19 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       initialBlocks={newBlocks}
                       onChange={(blocks) => setNewBlocks(blocks)}
                       systemLanguage={systemLanguage}
+                      exportTitle={newTitle}
                     />
                   </div>
                 )}
 
                 {activeTab === "transcription" && (
-                  <div className="text-slate-700 text-ui font-medium leading-relaxed bg-slate-50 border border-slate-200/60 p-6 rounded-2xl max-h-125 overflow-y-auto whitespace-pre-wrap select-text text-left">
+                  <div className="text-gray-700 text-ui font-medium leading-relaxed bg-gray-50 border border-gray-200/60 p-6 rounded-lg max-h-125 overflow-y-auto whitespace-pre-wrap select-text text-left">
                     {newTranscription || t("No transcription available.", "Žiadny prepis k dispozícii.", "Nincs elérhető átirat.")}
                   </div>
                 )}
 
                 {activeTab === "automated" && (
-                  <div className="prose prose-slate max-w-none text-ui font-medium leading-relaxed bg-indigo-50/20 border border-indigo-100/50 p-6 rounded-2xl max-h-125 overflow-y-auto select-text text-left">
+                  <div className="prose prose-slate max-w-none text-ui font-medium leading-relaxed bg-indigo-50/20 border border-indigo-100/50 p-6 rounded-lg max-h-125 overflow-y-auto select-text text-left">
                     <Markdown content={newAutomatedNotes || ""} />
                   </div>
                 )}
@@ -2646,21 +2850,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       )}
       {/* TASK DETAILS SLIDEOUT DRAWER */}
       {activeTaskForEdit && createPortal(
-        <>
-          <div className={`fixed inset-0 z-[100000] bg-slate-950/45 backdrop-blur-xs transition-opacity ${isClosingTaskDrawer ? "animate-fade-out" : "animate-fade-in"}`} onClick={closeTaskDrawer} />
-          <div className={`fixed top-0 right-0 bottom-0 z-[100001] w-full max-w-md bg-white shadow-2xl flex flex-col border-l border-slate-200/80 ${isClosingTaskDrawer ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
+        <div style={entityAccentStyle("tasks") as React.CSSProperties}>
+          <div className={`fixed inset-0 z-[100000] bg-gray-950/45 transition-opacity ${isClosingTaskDrawer ? "animate-fade-out" : "animate-fade-in"}`} onClick={closeTaskDrawer} />
+          <div className={`fixed top-0 right-0 bottom-0 z-[100001] w-full max-w-xl bg-white shadow-xl flex flex-col border-l border-gray-200 ${isClosingTaskDrawer ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
             {/* Header */}
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50">
               <div className="space-y-1 text-left">
-                <span className="type-overline bg-indigo-50 border border-indigo-100/10 text-indigo-700 px-2 py-0.5 rounded">
+                <span className="type-overline bg-entity-subtle border border-entity-border text-entity-text px-2 py-0.5 rounded-md">
                   {t("Task Specification", "Špecifikácia úlohy", "Feladat specifikáció")}
                 </span>
-                <h3 className="text-body font-extrabold text-slate-800">{t("Edit Automated Task", "Upraviť automatickú úlohu", "Automatikus feladat szerkesztése")}</h3>
+                <h3 className="text-body font-extrabold text-gray-800">{t("Edit Automated Task", "Upraviť automatickú úlohu", "Automatikus feladat szerkesztése")}</h3>
               </div>
               <button
                 type="button"
                 onClick={closeTaskDrawer}
-                className="p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer"
+                className="p-1.5 hover:bg-gray-200 text-gray-400 hover:text-gray-600 rounded-md transition-colors cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -2670,29 +2874,43 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             <div className="flex-1 p-6 overflow-y-auto space-y-5 text-left">
               {/* Title */}
               <div className="space-y-1.5">
-                <label className="type-overline text-slate-500">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
+                <label className="type-overline text-gray-500">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
                 <input
                   type="text"
                   value={activeTaskForEdit.title}
                   onChange={(e) => setActiveTaskForEdit(prev => prev ? { ...prev, title: e.target.value } : null)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-semibold text-gray-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
                 />
               </div>
 
               {/* Description */}
               <div className="space-y-1.5">
-                <label className="type-overline text-slate-500">{t("Description", "Popis", "Leírás")}</label>
-                <textarea
-                  rows={4}
-                  value={activeTaskForEdit.description}
-                  onChange={(e) => setActiveTaskForEdit(prev => prev ? { ...prev, description: e.target.value } : null)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all leading-relaxed"
-                />
+                <label className="type-overline text-gray-500">{t("Description", "Popis", "Leírás")}</label>
+                <div className="flex flex-col min-h-52 max-h-96 overflow-y-auto px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-md focus-within:border-indigo-500 focus-within:bg-white transition-all cursor-text">
+                  <BlockEditor
+                    key={activeTaskForEdit.id}
+                    compact
+                    fillHeight
+                    initialBlocks={parseNotesToBlocks(activeTaskForEdit.description)}
+                    onChange={(blocks) =>
+                      setActiveTaskForEdit((prev) =>
+                        prev ? { ...prev, description: serializeTaskDescription(blocks) } : null,
+                      )
+                    }
+                    systemLanguage={systemLanguage}
+                    exportTitle={activeTaskForEdit.title}
+                    placeholder={t(
+                      "Write task description... (type '/' for blocks)",
+                      "Napíšte popis úlohy... (napíšte '/' pre bloky)",
+                      "Írja be a feladat leírását... ('/' a blokkokhoz)",
+                    )}
+                  />
+                </div>
               </div>
 
               {/* Assigned User */}
               <div className="space-y-1.5">
-                <label className="type-overline text-slate-500">{t("Assigned Team Member", "Priradený člen tímu", "Hozzárendelt csapattag")}</label>
+                <label className="type-overline text-gray-500">{t("Assigned Team Member", "Priradený člen tímu", "Hozzárendelt csapattag")}</label>
                 <CustomSelect
                   value={activeTaskForEdit.assignedUser}
                   onChange={(v) => setActiveTaskForEdit(prev => prev ? { ...prev, assignedUser: v } : null)}
@@ -2705,30 +2923,30 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
               {/* Start Date */}
               <div className="space-y-1.5">
-                <label className="type-overline text-slate-500">{t("Start Date", "Dátum začatia", "Kezdő dátum")}</label>
+                <label className="type-overline text-gray-500">{t("Start Date", "Dátum začatia", "Kezdő dátum")}</label>
                 <input
                   type="date"
                   value={activeTaskForEdit.startDate || ""}
                   onChange={(e) => setActiveTaskForEdit(prev => prev ? { ...prev, startDate: e.target.value } : null)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-semibold text-gray-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
                 />
               </div>
 
               {/* Due Date */}
               <div className="space-y-1.5">
-                <label className="type-overline text-slate-500">{t("Due Date", "Termín", "Határidő")}</label>
+                <label className="type-overline text-gray-500">{t("Due Date", "Termín", "Határidő")}</label>
                 <input
                   type="date"
                   value={activeTaskForEdit.dueDate}
                   onChange={(e) => setActiveTaskForEdit(prev => prev ? { ...prev, dueDate: e.target.value } : null)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-semibold text-gray-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
                 />
               </div>
 
               {/* Priority & Status Row */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5 text-left">
-                  <label className="type-overline text-slate-500">{t("Priority", "Priorita", "Prioritás")}</label>
+                  <label className="type-overline text-gray-500">{t("Priority", "Priorita", "Prioritás")}</label>
                   <CustomSelect
                      value={activeTaskForEdit.priority}
                      onChange={(v) => setActiveTaskForEdit(prev => prev ? { ...prev, priority: v as any } : null)}
@@ -2741,7 +2959,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 </div>
 
                 <div className="space-y-1.5 text-left">
-                  <label className="type-overline text-slate-500">{t("Status", "Stav", "Állapot")}</label>
+                  <label className="type-overline text-gray-500">{t("Status", "Stav", "Állapot")}</label>
                   <CustomSelect
                     value={activeTaskForEdit.status}
                     onChange={(v) => setActiveTaskForEdit(prev => prev ? { ...prev, status: v as any } : null)}
@@ -2756,24 +2974,24 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             </div>
 
             {/* Actions */}
-            <div className="p-6 border-t border-slate-100 flex gap-3 bg-slate-50">
+            <div className="p-6 border-t border-gray-100 flex gap-3 bg-gray-50">
               <button
                 type="button"
                 onClick={closeTaskDrawer}
-                className="flex-1 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-800 rounded-xl text-ui font-heading font-bold transition-colors cursor-pointer animate-none"
+                className="flex-1 py-2.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-800 rounded-md text-ui font-heading font-bold transition-colors cursor-pointer animate-none"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
               <button
                 type="button"
                 onClick={() => handleSaveTaskDetails(activeTaskForEdit)}
-                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 hover:text-white rounded-xl text-ui font-heading font-bold transition-colors cursor-pointer animate-none"
+                className="flex-1 py-2.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-heading font-bold transition-colors cursor-pointer animate-none"
               >
                 {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
               </button>
             </div>
           </div>
-        </>,
+        </div>,
         document.body
       )}
     </div>

@@ -1,5 +1,7 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import { PRODUCT_NAME } from "../utils/brand";
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import * as Icons from "lucide-react";
+import { AI_MODEL_TERRA } from "../utils/aiModels";
 import {
   LayoutDashboard,
   ChevronLeft,
@@ -17,13 +19,7 @@ import {
   X,
   Sparkles,
   Coins,
-  ListTodo,
-  Plus,
-  Check,
-  Trash2,
-  ChevronUp,
-  ChevronDown,
-  GripVertical
+  ListTodo
 } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -43,9 +39,14 @@ import {
   type MotionValue
 } from "framer-motion";
 import { normalizeSidebarGroups, flattenSidebarGroups, type SidebarGroup } from "../utils/sidebarLayout";
-import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { applySectionVisual } from "../utils/sectionVisuals";
 import { runUndoable } from "../utils/undoable";
-import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
+import { MobileMenuEditor } from "./menuEdit/MobileMenuEditor";
+import { DragGhostLayer } from "./menuEdit/dragGhost";
+import { isInsideMenuEditLayer } from "./menuEdit/primitives";
+import { menuEditStrings } from "./menuEdit/menuEditStrings";
+import { SidebarEditPanel } from "./menuEdit/SidebarEditPanel";
+import { DASHBOARD_SECTION_LABEL_KEY, isRetiredSectionId } from "../utils/dashboardSection";
 
 /**
  * `dashboard` used to BE the task panel — the tasks section was split out of it
@@ -62,6 +63,33 @@ const withTasksSection = (layout: string[]): string[] => {
       next.splice(at + 1, 0, "tasks");
     }
   }
+  // Time tracking arrived after many layouts were saved: slot it in behind Tasks. Admins hide it
+  // for everyone in Settings -> Visible modules, which is what `disabledModules` is for.
+  if (!next.includes("time-tracking")) {
+    next = [...next];
+    const at = next.indexOf("tasks");
+    next.splice(at === -1 ? next.length : at + 1, 0, "time-tracking");
+  }
+  // WhatsApp arrived later still: behind Time tracking. Roles without the `whatsapp` permission never see it
+  // (canOpenRoute), and admins can hide it for everyone in Settings -> Visible modules.
+  if (!next.includes("whatsapp")) {
+    next = [...next];
+    const at = next.indexOf("time-tracking");
+    next.splice(at === -1 ? next.length : at + 1, 0, "whatsapp");
+  }
+  // Unified Communications (`email`) arrived as a top-level channel hub: slot it in behind WhatsApp.
+  if (!next.includes("email")) {
+    next = [...next];
+    const at = next.indexOf("whatsapp");
+    next.splice(at === -1 ? next.length : at + 1, 0, "email");
+  }
+  // Newsletter: behind Mail. Only roles granted the `newsletter` permission see it (canOpenRoute), and admins
+  // can hide it for everyone in Settings -> Visible modules.
+  if (!next.includes("newsletter")) {
+    next = [...next];
+    const at = next.indexOf("email");
+    next.splice(at === -1 ? next.length : at + 1, 0, "newsletter");
+  }
   // My employment used to be its own nav item; it now lives as a tab of People (`employees`).
   if (next.includes("my-employment")) {
     next = next.filter((id) => id !== "my-employment");
@@ -69,6 +97,13 @@ const withTasksSection = (layout: string[]): string[] => {
       const at = next.indexOf("tasks");
       next.splice(at === -1 ? next.length : at + 1, 0, "employees");
     }
+  }
+  // Agency & Workforce Leasing is opt-in (disabledModules includes "agency" by default);
+  // slot it behind Employees so enabling the module shows it without resetting layouts.
+  if (!next.includes("agency")) {
+    next = [...next];
+    const at = next.indexOf("employees");
+    next.splice(at === -1 ? next.length : at + 1, 0, "agency");
   }
   return next;
 };
@@ -84,7 +119,6 @@ const ALL_LUCIDE_ICONS = Object.keys(Icons).filter((key) => {
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  systemName: string;
   showSettings?: boolean;
   onLogout?: () => void;
   systemLanguage: Language;
@@ -101,308 +135,23 @@ interface SidebarProps {
   defaultPage?: string;
   onSaveDefaultPage?: (pageId: string) => void;
   disabledModules?: string[];
+  /** Unread counts by module id (WhatsApp: chats with something unread). */
+  badges?: Record<string, number>;
 }
 
 export const getSidebarItemColors = (item: any, isActive: boolean) => {
-  if (item.isCustomUE || item.isCustomDash) {
-    if (isActive) {
-      return {
-        className: "text-white font-bold shadow-lg",
-        style: {
-          backgroundColor: item.customColor || "#6366f1",
-          borderColor: item.customColor || "#6366f1",
-          boxShadow: `0 10px 15px -3px ${item.customColor || "#6366f1"}4D, 0 4px 6px -4px ${item.customColor || "#6366f1"}4D`
-        },
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-slate-500 hover:bg-slate-100",
-      style: {},
-      iconColor: item.customColor || item.color || "#6366f1"
-    };
-  }
-
-  if (item.isPurpleToGreen) {
-    if (isActive) {
-      return {
-        className: "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-purple-600 hover:text-emerald-600 hover:bg-gradient-to-r hover:from-purple-50/60 hover:to-emerald-50/60",
-      style: {},
-      iconColor: item.color || "#8b5cf6"
-    };
-  }
-
-  if (item.isPurple || item.id === "rag_ai" || item.id === "automation") {
-    if (isActive) {
-      return {
-        className: "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-purple-600 hover:text-purple-700 hover:bg-purple-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-violet-500)"
-    };
-  }
-
-  if (item.isLavender || item.id === "projects") {
-    if (isActive) {
-      return {
-        className: "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-purple-500 hover:text-purple-600 hover:bg-purple-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-purple-500)"
-    };
-  }
-
-  if (item.isNavy || item.id === "warehouse") {
-    if (isActive) {
-      return {
-        className: "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-blue-950 hover:text-blue-900 hover:bg-blue-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-blue-900)"
-    };
-  }
-
-  if (item.isIndigo || item.id === "invoices") {
-    if (isActive) {
-      return {
-        className: "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-indigo-500)"
-    };
-  }  if (item.id === "orders") {
-    if (isActive) {
-      return {
-        className: "bg-sky-600 text-white font-bold shadow-lg shadow-sky-600/30 border border-sky-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-sky-700 hover:text-sky-800 hover:bg-sky-50/50",
-      style: {},
-      iconColor: item.color || "#0284c7"
-    };
-  }
-
-  if (item.isEmerald || item.id === "financial") {
-    if (isActive) {
-      return {
-        className: "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-emerald-500)"
-    };
-  }
-
-  if (item.isSand || item.id === "employees") {
-    if (isActive) {
-      return {
-        className: "bg-[#b58b4c] text-white font-bold shadow-lg shadow-[#b58b4c]/30 border border-[#c29b62]/40",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-[#b58b4c] hover:text-[#9e7638] hover:bg-[#c29b62]/10",
-      style: {},
-      iconColor: item.color || "#c29b62"
-    };
-  }
-
-  if (item.isNightBlue || item.id === "meetings") {
-    if (isActive) {
-      return {
-        className: "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-slate-600 hover:text-slate-900 hover:bg-slate-100/50",
-      style: {},
-      iconColor: item.color || "var(--color-indigo-600)"
-    };
-  }
-
-  if (item.isRose || item.id === "social_media") {
-    if (isActive) {
-      return {
-        className: "bg-rose-600 text-white font-bold shadow-lg shadow-rose-600/30 border border-rose-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-rose-600 hover:text-rose-700 hover:bg-rose-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-rose-500)"
-    };
-  }
-
-  if (item.id === "leads") {
-    if (isActive) {
-      return {
-        className: "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-blue-600 hover:text-blue-700 hover:bg-blue-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-blue-600)"
-    };
-  }
-
-  if (item.id === "clients") {
-    if (isActive) {
-      return {
-        className: "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-emerald-600)"
-    };
-  }
-
-  if (item.id === "tasks") {
-    if (isActive) {
-      return {
-        className: "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-orange-500 hover:text-orange-600 hover:bg-orange-50/50",
-      style: {},
-      iconColor: item.color || "#ff5d00"
-    };
-  }
-
-  if (item.id === "files") {
-    if (isActive) {
-      return {
-        className: "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-amber-700 hover:text-amber-800 hover:bg-amber-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-amber-700)"
-    };
-  }
-
-  if (item.id === "overview") {
-    if (isActive) {
-      return {
-        className: "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-cyan-600)"
-    };
-  }
-
-  if (item.id === "email") {
-    if (isActive) {
-      return {
-        className: "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-pink-600 hover:text-pink-700 hover:bg-pink-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-pink-600)"
-    };
-  }
-
-  if (item.id === "updates") {
-    if (isActive) {
-      return {
-        className: "bg-amber-600 text-white font-bold shadow-lg shadow-amber-600/30 border border-amber-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-amber-600 hover:text-amber-700 hover:bg-amber-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-amber-600)"
-    };
-  }
-
-  if (item.id === "dashboard") {
-    if (isActive) {
-      return {
-        className: "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-indigo-600)"
-    };
-  }
-
+  const color = item.customColor || item.color || "#64748b";
   if (isActive) {
     return {
-      className: "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20",
-      style: {},
-      iconColor: "#ffffff"
+      className: "text-white font-bold shadow-2xs border",
+      style: { backgroundColor: color, borderColor: color },
+      iconColor: "#ffffff",
     };
   }
-
   return {
-    className: "bg-slate-50/70 border-slate-200/90 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50",
+    className: "bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100",
     style: {},
-    iconColor: item.color || "currentColor"
+    iconColor: color,
   };
 };
 
@@ -417,6 +166,8 @@ interface SidebarDockButtonProps {
   isActive: boolean;
   isExpanded: boolean;
   isDockMode: boolean;
+  /** A count on the icon (0 or absent = none). */
+  badge?: number;
   mouseY: MotionValue<number>;
   widthClasses: {
     collapsed: string;
@@ -428,20 +179,10 @@ interface SidebarDockButtonProps {
     headerHeight: string;
   };
   dragOverIndex: number | null;
-  isStartMenuOpen: boolean;
-  startMenuEditMode: boolean;
-  sidebarGroups?: SidebarGroup[];
   onItemClick: (itemId: string) => void;
-  onHoverStart: (itemId: string, rect: DOMRect) => void;
-  onHoverEnd: () => void;
+  onHoverStart: (itemId: string) => void;
   onDrop: (e: React.DragEvent, groupId: string, indexInGroup: number) => void;
   onDragOver: (e: React.DragEvent, indexInGroup: number) => void;
-  onDragStartItem?: (e: React.DragEvent, itemId: string, fromGroupId: string) => void;
-  onDragEndItem?: () => void;
-  onMoveItemInGroup?: (groupId: string, indexInGroup: number, direction: -1 | 1) => void;
-  onMoveItemToGroup?: (itemId: string, targetGroupId: string) => void;
-  onTogglePinItem: (itemId: string) => void;
-  t: (en: string, sk: string, hu: string) => string;
 }
 
 const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
@@ -449,29 +190,18 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
   isActive,
   isExpanded,
   isDockMode,
+  badge,
   mouseY,
   widthClasses,
   dragOverIndex,
-  isStartMenuOpen,
-  startMenuEditMode,
-  sidebarGroups,
   onItemClick,
   onHoverStart,
-  onHoverEnd,
   onDrop,
   onDragOver,
-  onDragStartItem,
-  onDragEndItem,
-  onMoveItemInGroup,
-  onMoveItemToGroup,
-  onTogglePinItem,
-  t,
 }) => {
   const item = entry.item;
   const Icon = item.icon;
   const btnRef = useRef<any>(null);
-  const isEditing = isStartMenuOpen && startMenuEditMode;
-
   // Magic UI Framer Motion distance & physics spring animation
   const distanceCalc = useTransform(mouseY, (val: number) => {
     if (!isDockMode || isExpanded || val === Infinity) return Infinity;
@@ -515,194 +245,44 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
     y: !isExpanded && isDockMode ? springY : 0,
     zIndex: !isExpanded && isDockMode ? zIndexTransform : undefined,
     transformOrigin: "center left" as const,
-    ...(isActive && (item.isCustomUE || item.isCustomDash)
-      ? {
-          backgroundColor: item.customColor,
-          boxShadow: `0 10px 15px -3px ${item.customColor}4D, 0 4px 6px -4px ${item.customColor}4D`
-        }
-      : {})
   };
 
   const commonClass = cn(
-    "w-full flex items-center gap-2 rounded-2xl transition-colors duration-150 group text-left relative select-none",
-    isEditing ? "cursor-grab active:cursor-grabbing hover:bg-slate-50 border border-transparent hover:border-slate-200" : "cursor-pointer",
+    "w-full flex items-center gap-2 rounded-md transition-colors duration-150 group text-left relative select-none",
+    "cursor-pointer",
     widthClasses.itemPad,
     dragOverIndex === entry.indexInGroup && "ring-2 ring-indigo-400 bg-indigo-50/50",
-    item.isCustomUE || item.isCustomDash
-      ? isActive
-        ? "text-white font-bold"
-        : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
-      : item.isPurpleToGreen
-        ? isActive
-          ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
-          : "text-purple-600 hover:text-emerald-600 hover:bg-gradient-to-r hover:from-purple-50/60 hover:to-emerald-50/60"
-        : item.isPurple
-          ? isActive
-            ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
-            : "text-purple-600 hover:text-purple-700 hover:bg-purple-50/50"
-          : item.isLavender
-            ? isActive
-              ? "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20"
-              : "text-purple-500 hover:text-purple-600 hover:bg-purple-50/50"
-            : item.isNavy
-              ? isActive
-                ? "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20"
-                : "text-blue-950 hover:text-blue-900 hover:bg-blue-50/50"
-              : item.isIndigo
-                ? isActive
-                  ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20"
-                  : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50"
-                : item.isEmerald
-                  ? isActive
-                    ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
-                    : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50"
-                  : item.isNightBlue
-                    ? isActive
-                      ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50"
-                    : item.isSand
-                      ? isActive
-                        ? "bg-[#b58b4c] text-white font-bold shadow-lg shadow-[#b58b4c]/30 border border-[#c29b62]/40"
-                        : "text-[#b58b4c] hover:text-[#9e7638] hover:bg-[#c29b62]/10"
-                      : isActive
-                      ? item.id === "leads"
-                        ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
-                        : item.id === "clients"
-                          ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
-                          : item.id === "files"
-                            ? "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20"
-                            : item.id === "overview"
-                              ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
-                              : item.id === "email"
-                                ? "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20"
-                                : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
-                      : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
+    isActive
+      ? "bg-gray-100 text-gray-900 font-semibold ring-1 ring-gray-200"
+      : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
   );
 
   const innerLabel = isExpanded && (
     <span
       className={cn(
-        "font-heading font-medium tracking-wide truncate min-w-0 flex-1",
+        "font-heading font-medium truncate min-w-0 flex-1 normal-case",
         widthClasses.textSize,
-        item.isCustomUE || item.isCustomDash
-          ? isActive
-            ? "text-white font-bold"
-            : "text-slate-500 font-semibold group-hover:text-slate-700"
-          : item.isPurpleToGreen
-            ? isActive
-              ? "text-white font-bold"
-              : "text-transparent bg-clip-text bg-gradient-to-r from-purple-700 to-emerald-600 font-bold"
-            : item.isPurple
-              ? isActive
-                ? "text-white font-bold"
-                : "text-purple-600 font-bold"
-              : item.isLavender
-                ? isActive
-                  ? "text-white font-bold"
-                  : "text-purple-500 font-semibold"
-                : item.isNavy
-                  ? isActive
-                    ? "text-white font-bold"
-                    : "text-blue-950 font-semibold"
-                  : item.isNightBlue
-                    ? isActive
-                      ? "text-white font-bold"
-                      : "text-slate-800 font-semibold"
-                    : item.isSand
-                      ? isActive
-                        ? "text-white font-bold"
-                        : "text-[#b58b4c] font-semibold"
-                      : isActive
-                      ? "text-white font-bold"
-                      : "text-slate-500 font-semibold"
+        isActive ? "text-slate-900 font-semibold" : "text-slate-600"
       )}
     >
       {item.label}
     </span>
   );
 
-  if (!isEditing) {
-    return (
-      <motion.button
-        type="button"
-        ref={btnRef}
-        onClick={() => onItemClick(item.id)}
-        onMouseEnter={() => {
-          if (isDockMode && !isExpanded && btnRef.current) {
-            onHoverStart(item.id, btnRef.current.getBoundingClientRect());
-          }
-        }}
-        onMouseMove={() => {
-          if (isDockMode && !isExpanded && btnRef.current) {
-            onHoverStart(item.id, btnRef.current.getBoundingClientRect());
-          }
-        }}
-        onMouseLeave={() => {
-          if (isDockMode && !isExpanded) {
-            onHoverEnd();
-          }
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          e.dataTransfer.dropEffect = "move";
-          onDragOver(e, entry.indexInGroup);
-        }}
-        onDrop={(e) => {
-          e.stopPropagation();
-          onDrop(e, entry.group.id, entry.indexInGroup);
-        }}
-        style={commonStyle}
-        className={commonClass}
-        title={!isDockMode || isExpanded ? item.label : undefined}
-      >
-        <Icon
-          className={cn(
-            widthClasses.iconSize,
-            "shrink-0 transition-transform duration-200",
-            isActive ? "text-white" : "group-hover:scale-105"
-          )}
-          style={!isActive ? { color: item.color || item.customColor } : undefined}
-        />
-        {innerLabel}
-      </motion.button>
-    );
-  }
+  const badgeStyle =
+    item.id !== "whatsapp" && (item.color || item.customColor)
+      ? { backgroundColor: item.color || item.customColor }
+      : undefined;
+  const badgeText = badge ? (badge > 99 ? "99+" : badge) : null;
 
   return (
-    <motion.div
+    <motion.button
+      type="button"
       ref={btnRef}
-      role="button"
-      tabIndex={0}
-      draggable={true}
-      onDragStart={(e) => {
-        onDragStartItem?.(e as any, item.id, entry.group.id);
-      }}
-      onDragEnd={() => {
-        onDragEndItem?.();
-      }}
-      onClick={() => {
-        onItemClick(item.id);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          onItemClick(item.id);
-        }
-      }}
+      onClick={() => onItemClick(item.id)}
+      data-dock-id={item.id}
       onMouseEnter={() => {
-        if (isDockMode && !isExpanded && btnRef.current) {
-          onHoverStart(item.id, btnRef.current.getBoundingClientRect());
-        }
-      }}
-      onMouseMove={() => {
-        if (isDockMode && !isExpanded && btnRef.current) {
-          onHoverStart(item.id, btnRef.current.getBoundingClientRect());
-        }
-      }}
-      onMouseLeave={() => {
-        if (isDockMode && !isExpanded) {
-          onHoverEnd();
-        }
+        if (isDockMode && !isExpanded) onHoverStart(item.id);
       }}
       onDragOver={(e) => {
         e.preventDefault();
@@ -717,105 +297,44 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
       style={commonStyle}
       className={commonClass}
       title={!isDockMode || isExpanded ? item.label : undefined}
+      aria-current={isActive ? "page" : undefined}
     >
-      {/* Drag Grip Handle in Edit Mode */}
-      {isExpanded && (
-        <div className="shrink-0 text-slate-300 hover:text-slate-600 transition-colors cursor-grab active:cursor-grabbing">
-          <GripVertical className="h-3.5 w-3.5" />
-        </div>
-      )}
-
-      <Icon
-        className={cn(
-          widthClasses.iconSize,
-          "shrink-0 transition-transform duration-200",
-          isActive ? "text-white" : "group-hover:scale-105"
-        )}
-        style={!isActive ? { color: item.color || item.customColor } : undefined}
-      />
-
-      {innerLabel}
-
-      {/* Reorder and Group Actions in Edit Mode */}
-      {isExpanded && (
-        <div className="flex items-center gap-0.5 shrink-0 ml-auto" onClick={(e) => e.stopPropagation()}>
-          {/* Move Up */}
-          <button
-            type="button"
-            disabled={entry.indexInGroup === 0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onMoveItemInGroup?.(entry.group.id, entry.indexInGroup, -1);
-            }}
-            className={cn(
-              "p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
-              entry.indexInGroup === 0 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
-            )}
-            title={t("Move up", "Posunúť nahor", "Mozgatás fel")}
-          >
-            <ChevronUp className="h-3 w-3" />
-          </button>
-
-          {/* Move Down */}
-          <button
-            type="button"
-            disabled={entry.indexInGroup >= entry.totalInGroup - 1}
-            onClick={(e) => {
-              e.stopPropagation();
-              onMoveItemInGroup?.(entry.group.id, entry.indexInGroup, 1);
-            }}
-            className={cn(
-              "p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
-              entry.indexInGroup >= entry.totalInGroup - 1 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
-            )}
-            title={t("Move down", "Posunúť nadol", "Mozgatás le")}
-          >
-            <ChevronDown className="h-3 w-3" />
-          </button>
-
-          {/* Move to another group select dropdown if more than 1 group */}
-          {sidebarGroups && sidebarGroups.length > 1 && (
-            <select
-              value={entry.group.id}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                e.stopPropagation();
-                onMoveItemToGroup?.(item.id, e.target.value);
-              }}
-              className="text-[9px] font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1 py-0.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[60px] truncate"
-              title={t("Move to group", "Presunúť do skupiny", "Áthelyezés csoportba")}
-            >
-              {sidebarGroups.map((g, gIdx) => (
-                <option key={g.id} value={g.id}>
-                  {g.title || `${t("Group", "Skupina", "Csoport")} ${gIdx + 1}`}
-                </option>
-              ))}
-            </select>
+      <span className="relative shrink-0 inline-flex">
+        <Icon
+          className={cn(
+            widthClasses.iconSize,
+            "shrink-0 transition-transform duration-200",
+            "shrink-0"
           )}
-
-          {/* Quick Unpin Button */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onTogglePinItem(item.id);
-            }}
-            className="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-            title={t("Remove from sidebar", "Odstrániť z bočného menu", "Eltávolítás az oldalsávról")}
+          style={{ color: item.color || item.customColor }}
+        />
+        {badgeText && !isExpanded ? (
+          <span
+            aria-label={String(badge)}
+            style={badgeStyle}
+            className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 rounded-full bg-emerald-600 text-white text-micro font-bold leading-4 text-center shadow-sm tabular-nums"
           >
-            <X className="h-3 w-3" />
-          </button>
-        </div>
-      )}
-    </motion.div>
+            {badgeText}
+          </span>
+        ) : null}
+      </span>
+      {innerLabel}
+      {badgeText && isExpanded ? (
+        <span
+          aria-label={String(badge)}
+          style={badgeStyle}
+          className="ml-auto shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-emerald-600 text-white text-micro font-bold leading-5 text-center shadow-2xs tabular-nums"
+        >
+          {badgeText}
+        </span>
+      ) : null}
+    </motion.button>
   );
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
-  systemName,
   showSettings = true,
   onLogout,
   systemLanguage,
@@ -830,16 +349,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSaveCustomDashboards,
   defaultPage,
   onSaveDefaultPage,
-  disabledModules = []
+  disabledModules = [],
+  badges
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
   // Preferences
-  const [sidebarPinned, setSidebarPinned] = useUserPref("sidebarPinned");
+  const [sidebarPinned] = useUserPref("sidebarPinned");
+  const [sidebarPinnedCollapsed, setSidebarPinnedCollapsed] = useUserPref("sidebarPinnedCollapsed");
   const [sidebarCompactness] = useUserPref("sidebarCompactness");
   const [sidebarUnpinnedStyle] = useUserPref("sidebarUnpinnedStyle");
   const [storedSidebarGroups] = useUserPref("sidebarGroups");
+  const [storedDefaultPage, setStoredDefaultPage] = useUserPref("defaultPage");
 
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isStartMenuOpen, setIsStartMenuOpen] = useState(false);
@@ -852,7 +374,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Magic UI Dynamic Dock states
   const dockMouseY = useMotionValue(Infinity);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
-  const [hoveredItemPos, setHoveredItemPos] = useState<{ top: number; left: number } | null>(null);
+  const dockTipRef = useRef<HTMLDivElement>(null);
 
   // Drag states
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -917,6 +439,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return [
       "dashboard",
       "tasks",
+      "time-tracking",
+      "whatsapp",
+      "email",
+      "newsletter",
       "overview",
       "projects",
       "tickets",
@@ -929,11 +455,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "warehouse",
       "financial",
       "employees",
+      "agency",
       "meetings",
       ...dynamicUeItems.map((item) => item.id),
       ...dynamicDashItems.map((item) => item.id),
       "files",
-      "email",
       "automation",
       "social_media",
       "updates"
@@ -968,32 +494,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const allPossibleItems = useMemo(() => {
     return [
-      { id: "dashboard", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: LayoutDashboard, color: "var(--color-indigo-600)" },
+      { id: "dashboard", label: getTranslation(systemLanguage, DASHBOARD_SECTION_LABEL_KEY), icon: LayoutDashboard, color: "var(--color-indigo-600)" },
       { id: "tasks", label: getTranslation(systemLanguage, "sidebar.tasks"), icon: ListTodo, color: "#ff5d00" },
+      { id: "time-tracking", label: systemLanguage === "sk" ? "Evidencia času" : systemLanguage === "hu" ? "Időkövetés" : "Time tracking", icon: Icons.Timer || ListTodo, color: "#0d9488" },
+      { id: "whatsapp", label: "WhatsApp", icon: Icons.MessageCircle || Mail, color: "#16a34a" },
       { id: "overview", label: getTranslation(systemLanguage, "sidebar.analytics"), icon: BarChart3, color: "var(--color-cyan-600)" },
-      { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)", isLavender: true },
-      { id: "tickets", label: getTranslation(systemLanguage, "sidebar.tickets"), icon: Icons.LifeBuoy || Icons.Ticket || LayoutDashboard, color: "#6366f1", isIndigo: true },
-      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "var(--color-violet-500)", isPurple: true },
-      { id: "sai", label: "SAI", icon: FlockIcon, color: "#8b5cf6", isPurpleToGreen: true },
+      { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)" },
+      { id: "tickets", label: getTranslation(systemLanguage, "sidebar.tickets"), icon: Icons.LifeBuoy || Icons.Ticket || LayoutDashboard, color: "#6366f1" },
+      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "var(--color-violet-500)" },
+      { id: "sai", label: "SAI", icon: FlockIcon, color: "#8b5cf6" },
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "var(--color-blue-600)" },
       { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "var(--color-emerald-600)" },
-      { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky" : systemLanguage === "hu" ? "Árajánlatok" : "Price Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)", isIndigo: true },
+      { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky" : systemLanguage === "hu" ? "Árajánlatok" : "Price Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)" },
       { id: "orders", label: systemLanguage === "sk" ? "Objednávky" : systemLanguage === "hu" ? "Rendelések" : "Orders", icon: Icons.ShoppingCart || Coins, color: "#0284c7" },
-      { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)", isNavy: true },
-      { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)", isEmerald: true },
-      { id: "employees", label: getTranslation(systemLanguage, "sidebar.employees"), icon: EmployeeTieIcon, color: "#c29b62", isSand: true },
-      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "var(--color-indigo-600)", isNightBlue: true },
+      { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)" },
+      { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)" },
+      { id: "employees", label: getTranslation(systemLanguage, "sidebar.employees"), icon: EmployeeTieIcon, color: "#c29b62" },
+      { id: "agency", label: systemLanguage === "sk" ? "Personálna agentúra" : systemLanguage === "hu" ? "Munkaerő-közvetítés" : "Agency", icon: Icons.UserCheck || Users, color: "#5c6f28" },
+      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "var(--color-indigo-600)" },
       ...dynamicUeItems,
       ...dynamicDashItems,
       { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "var(--color-amber-700)" },
-      { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "var(--color-pink-600)" },
-      { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "var(--color-purple-800)", isPurple: true },
-      { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "var(--color-rose-500)", isRose: true },
+      { id: "email", label: systemLanguage === "sk" ? "Komunikácia" : systemLanguage === "hu" ? "Kommunikáció" : "Communications", icon: Mail, color: "var(--color-pink-600)" },
+      { id: "newsletter", label: systemLanguage === "hu" ? "Hírlevél" : "Newsletter", icon: Icons.Send || Mail, color: "#0284c7" },
+      { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "var(--color-purple-800)" },
+      { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "var(--color-rose-500)" },
       { id: "updates", label: systemLanguage === "sk" ? "Novinky" : systemLanguage === "hu" ? "Újdonságok" : "Updates", icon: Sparkles, color: "var(--color-amber-600)" }
-    ];
+    ].filter((item) => !isRetiredSectionId(item.id)).map(applySectionVisual);
   }, [systemLanguage, dynamicUeItems, dynamicDashItems]);
 
   const isItemVisibleInSystem = (id: string) => {
+    if (isRetiredSectionId(id)) return false;
     if (disabledModules.includes(id)) return false;
     if (!canOpenRoute(id)) return false;
     // RAG AI and Mail used to vanish until their setup was done, which left no
@@ -1020,24 +551,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Dimensions & Density Tokens
   const compactness = sidebarCompactness || "comfortable";
   const isPinned = sidebarPinned === true;
+  const isPinnedRail = isPinned && sidebarPinnedCollapsed === true;
   const isDockMode = !isPinned && sidebarUnpinnedStyle === "dock";
-  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
-  const [addModuleGroupId, setAddModuleGroupId] = useState<string | null>(null);
 
-  // Close module picker on outside click
-  useEffect(() => {
-    if (!addModuleGroupId) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && target.closest("[data-module-picker]")) return;
-      setAddModuleGroupId(null);
+  const isEditing = isStartMenuOpen && startMenuEditMode;
+
+  // When pinned (and not narrowed to a rail) or editing navigation, sidebar stays expanded
+  const isExpanded = (isPinned && !isPinnedRail) || (!isPinned && !isCollapsed) || (isStartMenuOpen && startMenuEditMode);
+
+  // The dock label follows the magnified icon on the animation frame, without
+  // re-rendering the sidebar on every mouse move and without fading in again
+  // each time the pointer crosses onto the next button.
+  useLayoutEffect(() => {
+    if (!hoveredItemId || !isDockMode || isExpanded) return;
+    const place = () => {
+      const btn = navRef.current?.querySelector<HTMLElement>(`[data-dock-id="${hoveredItemId}"]`);
+      const tip = dockTipRef.current;
+      if (!btn || !tip) return;
+      const rect = btn.getBoundingClientRect();
+      tip.style.top = `${rect.top + rect.height / 2}px`;
+      tip.style.left = `${rect.right + 14}px`;
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [addModuleGroupId]);
-
-  // When pinned or editing navigation, sidebar stays expanded
-  const isExpanded = isPinned || !isCollapsed || (isStartMenuOpen && startMenuEditMode);
+    place();
+    let frame = requestAnimationFrame(function loop() {
+      place();
+      frame = requestAnimationFrame(loop);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hoveredItemId, isDockMode, isExpanded]);
 
   const widthClasses = {
     compact: {
@@ -1077,6 +618,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       if (isStartMenuOpen && startMenuEditMode) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.closest("[data-start-menu]") || target.closest("[data-module-picker]"))) return;
+      if (isInsideMenuEditLayer(event.target)) return;
       if (!isCollapsed && sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
         setIsCollapsed(true);
       }
@@ -1173,7 +715,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const currentHidden = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
     const newHidden = currentHidden.filter((id: string) => id !== itemId);
     onSaveUserLayout(newActiveLayout, newHidden, nextGroups);
-    setAddModuleGroupId(null);
   };
 
   // Move entire group up or down in sidebar
@@ -1206,7 +747,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setDraggedItemId(null);
     (window as any).__draggedModuleId = null;
     setDragOverIndex(null);
-    setDragOverGroupId(null);
+  };
+
+  /**
+   * Put `itemId` into a group at an index (pinning it if it was not pinned).
+   * Shared by the desktop drop handler and the mobile editor's touch drag.
+   */
+  const handleInsertItem = (itemId: string, targetGroupId?: string, targetIndex?: number) => {
+    if (!isItemVisibleInSystem(itemId)) return;
+    const currentGroups = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
+    const grpId = targetGroupId || currentGroups[0]?.id || "group_main";
+
+    const nextGroups = currentGroups.map((g) => ({
+      ...g,
+      items: g.items.filter((id) => id !== itemId)
+    }));
+
+    const targetGrp = nextGroups.find((g) => g.id === grpId);
+    if (targetGrp) {
+      let insertAt = targetIndex !== undefined && targetIndex >= 0 ? targetIndex : targetGrp.items.length;
+      if (insertAt > targetGrp.items.length) insertAt = targetGrp.items.length;
+      targetGrp.items.splice(insertAt, 0, itemId);
+    } else if (nextGroups.length > 0) {
+      nextGroups[0].items.push(itemId);
+    }
+
+    const newActiveLayout = flattenSidebarGroups(nextGroups);
+    const currentHidden = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
+    const newHidden = currentHidden.filter((id: string) => id !== itemId);
+    onSaveUserLayout(newActiveLayout, newHidden, nextGroups);
   };
 
   // Drag & Drop onto sidebar
@@ -1231,36 +800,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
       setDraggedItemId(null);
       (window as any).__draggedModuleId = null;
       setDragOverIndex(null);
-      setDragOverGroupId(null);
       return;
     }
 
-    const currentGroups = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
-    const grpId = targetGroupId || currentGroups[0]?.id || "group_main";
-
-    const nextGroups = currentGroups.map((g) => ({
-      ...g,
-      items: g.items.filter((id) => id !== droppedId)
-    }));
-
-    const targetGrp = nextGroups.find((g) => g.id === grpId);
-    if (targetGrp) {
-      let insertAt = targetIndex !== undefined && targetIndex >= 0 ? targetIndex : targetGrp.items.length;
-      if (insertAt > targetGrp.items.length) insertAt = targetGrp.items.length;
-      targetGrp.items.splice(insertAt, 0, droppedId);
-    } else if (nextGroups.length > 0) {
-      nextGroups[0].items.push(droppedId);
-    }
-
-    const newActiveLayout = flattenSidebarGroups(nextGroups);
-    const currentHidden = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
-    const newHidden = currentHidden.filter((id: string) => id !== droppedId);
-    onSaveUserLayout(newActiveLayout, newHidden, nextGroups);
+    handleInsertItem(droppedId, targetGroupId, targetIndex);
 
     setDraggedItemId(null);
     (window as any).__draggedModuleId = null;
     setDragOverIndex(null);
-    setDragOverGroupId(null);
+  };
+
+  const handleStartClick = () => {
+    if (isStartMenuOpen) {
+      setIsStartMenuOpen(false);
+      setStartMenuEditMode(false);
+      if (!isPinned) setIsCollapsed(true);
+    } else {
+      setStartMenuEditMode(false);
+      setIsStartMenuOpen(true);
+    }
   };
 
   const handleCreateDashboard = () => {
@@ -1289,7 +847,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       color: dashColor,
       prompts: [],
       layout: { widgets: [] },
-      activeModel: "gpt-5.6-terra",
+      activeModel: AI_MODEL_TERRA,
       archived: false
     };
 
@@ -1362,8 +920,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       onSaveUserLayout(flattenSidebarGroups(groups), undefined, groups);
     };
     runUndoable({
-      message: singleMessage(asLang(systemLanguage), "group", "delete", toDelete.title),
-      undoLabel: undoLabel(asLang(systemLanguage)),
+      message: menuEditStrings(systemLanguage).groupDeleted,
+      undoLabel: menuEditStrings(systemLanguage).undo,
       apply: () => write(remaining),
       revert: () => write(current),
     });
@@ -1375,7 +933,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       | { type: "item"; item: any; group: SidebarGroup; indexInGroup: number; totalInGroup: number }
       | { type: "header"; title: string; groupId: string; groupIndex: number }
       | { type: "divider"; groupId: string }
-      | { type: "dropzone"; groupId: string }
     > = [];
 
     sidebarGroups.forEach((group, gIdx) => {
@@ -1383,33 +940,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         .map((id) => allPossibleItems.find((i) => i.id === id))
         .filter(Boolean) as any[];
 
-      if (groupItemObjs.length === 0 && !(isStartMenuOpen && startMenuEditMode)) return;
+      if (groupItemObjs.length === 0) return;
 
       if (!isExpanded && gIdx > 0) {
         list.push({ type: "divider", groupId: group.id });
       }
 
-      const displayTitle =
-        group.title ||
-        (isStartMenuOpen && startMenuEditMode && sidebarGroups.length > 1
-          ? `${t("Group", "Skupina", "Csoport")} ${gIdx + 1}`
-          : "");
-
-      if (isExpanded && displayTitle) {
-        list.push({ type: "header", title: displayTitle, groupId: group.id, groupIndex: gIdx });
+      if (isExpanded && group.title) {
+        list.push({ type: "header", title: group.title, groupId: group.id, groupIndex: gIdx });
       }
 
       groupItemObjs.forEach((item, iIdx) => {
         list.push({ type: "item", item, group, indexInGroup: iIdx, totalInGroup: groupItemObjs.length });
       });
-
-      if (isStartMenuOpen && startMenuEditMode) {
-        list.push({ type: "dropzone", groupId: group.id });
-      }
     });
 
     return list;
-  }, [sidebarGroups, allPossibleItems, isExpanded, isStartMenuOpen, startMenuEditMode, systemLanguage]);
+  }, [sidebarGroups, allPossibleItems, isExpanded]);
 
   return (
     <>
@@ -1418,8 +965,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           - If Unpinned: Matches the collapsed width, allowing sidebar to float over content on hover. */}
       <div
         className={cn(
-          "h-screen shrink-0 select-none hidden lg:block transition-all duration-300",
-          isPinned ? widthClasses.expanded : widthClasses.collapsed
+          "view-size-fixed h-screen shrink-0 select-none hidden lg:block transition-all duration-300",
+          isPinned && !isPinnedRail ? widthClasses.expanded : widthClasses.collapsed
         )}
       />
 
@@ -1454,14 +1001,58 @@ export const Sidebar: React.FC<SidebarProps> = ({
           "view-size-fixed h-screen fixed left-0 top-0 bg-white flex flex-col transition-all duration-300 select-none shrink-0 hidden lg:flex",
           isStartMenuOpen ? "z-[100001]" : "z-[1000]",
           isDockMode && !isExpanded && "overflow-visible",
-          isExpanded ? widthClasses.expanded : widthClasses.collapsed,
-          isPinned
-            ? "shadow-[inset_-10px_0_16px_-6px_rgba(0,0,0,0.08)] border-r border-slate-200/90"
-            : isCollapsed && !(isStartMenuOpen && startMenuEditMode)
-              ? "shadow-none border-r border-slate-200/80"
-              : "shadow-[10px_0_30px_rgba(0,0,0,0.06)] border-r-transparent"
+          isEditing ? "w-66" : isExpanded ? widthClasses.expanded : widthClasses.collapsed,
+          isEditing
+            ? "shadow-none border-r border-gray-200"
+            : isPinned
+            ? "border-r border-gray-200 shadow-xs"
+            : isCollapsed
+              ? "shadow-none border-r border-gray-200"
+              : "shadow-xl border-r border-gray-200"
         )}
       >
+        {isEditing ? (
+          <SidebarEditPanel
+            language={systemLanguage}
+            groups={sidebarGroups}
+            allItems={allPossibleItems as any[]}
+            availableModules={allPossibleItems
+              .filter((i) => isItemVisibleInSystem(i.id))
+              .map((i) => ({
+                id: i.id,
+                label: i.label,
+                icon: i.icon,
+                color: (i as any).color || (i as any).customColor,
+                kind: (i as any).isCustomDash ? ("dashboard" as const) : (i as any).isCustomUE ? ("table" as const) : undefined
+              }))}
+            onStartClick={handleStartClick}
+            renamingId={editingGroupId}
+            renameValue={editingGroupTitle}
+            onRenameValue={setEditingGroupTitle}
+            onStartRename={(id, title) => {
+              setEditingGroupId(id);
+              setEditingGroupTitle(title);
+            }}
+            onCancelRename={() => setEditingGroupId(null)}
+            onSaveRename={handleRenameSidebarGroup}
+            onMoveGroup={handleMoveSidebarGroup}
+            onDeleteGroup={handleDeleteSidebarGroup}
+            onAddGroup={() => handleAddNewSidebarGroup()}
+            onMoveItem={handleMoveItemInGroup}
+            onMoveItemToGroup={handleMoveItemToGroup}
+            onUnpin={handleTogglePinItem}
+            onAddItem={handleAddItemToGroup}
+            onSetDefault={(id) => {
+              onSaveDefaultPage?.(id);
+              setStoredDefaultPage(id);
+            }}
+            onCreateDashboard={() => setIsDashModalOpen(true)}
+            onItemDragStart={handleItemDragStart}
+            onItemDragEnd={handleItemDragEnd}
+            onDrop={handleDropOnSidebar}
+          />
+        ) : (
+        <>
         {/* Brand Header / Start Menu Launcher */}
         <div
           className={cn(
@@ -1475,14 +1066,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              if (isStartMenuOpen) {
-                setIsStartMenuOpen(false);
-                setStartMenuEditMode(false);
-                if (!isPinned) setIsCollapsed(true);
-              } else {
-                setStartMenuEditMode(false);
-                setIsStartMenuOpen(true);
-              }
+              handleStartClick();
             }}
             className={cn(
               "flex items-center gap-3 p-2 rounded-2xl bg-slate-50 border border-slate-200/90 shadow-xs hover:border-slate-300 hover:bg-slate-100 active:scale-[0.98] transition-all cursor-pointer group mx-auto focus:outline-none focus:ring-2 focus:ring-indigo-500/30",
@@ -1502,17 +1086,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="h-2 w-2 rounded-full bg-emerald-500 transition-transform" />
                 <span className="h-2 w-2 rounded-full bg-indigo-500 transition-transform" />
               </div>
-              <span className="text-[7.5px] font-black tracking-widest text-slate-600 group-hover:text-slate-800 transition-colors uppercase leading-none">
-                START
+              <span className="text-[7.5px] font-semibold text-slate-600 group-hover:text-slate-800 transition-colors leading-none">
+                Start
               </span>
             </div>
 
             {isExpanded && (
               <div className="flex flex-col animate-in fade-in duration-300 min-w-0 flex-1">
-                <span className="font-heading font-bold text-sm leading-snug text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
-                  {systemName}
+                <span className="font-heading font-bold text-sm leading-snug text-slate-800 truncate group-hover:text-slate-950 transition-colors">
+                  {PRODUCT_NAME}
                 </span>
-                <span className="text-[10px] text-slate-500 tracking-wider font-semibold uppercase mt-0.5 truncate">
+                <span className="text-[10px] text-slate-500 font-medium mt-0.5 truncate">
                   {getTranslation(systemLanguage, "sidebar.command_center")}
                 </span>
               </div>
@@ -1550,50 +1134,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             widthClasses.spacing
           )}
         >
-          {/* Editing Navigation Mode Indicator Banner */}
-          {isStartMenuOpen && startMenuEditMode && (
-            <div className="p-3 mb-2 rounded-2xl bg-indigo-50 border border-indigo-200/90 flex flex-col gap-2 animate-in fade-in duration-200 select-none">
-              <div className="flex items-center justify-between">
-                <span className="text-[10.5px] font-black uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
-                  <Pencil className="h-3.5 w-3.5 text-indigo-600" />
-                  {t("Edit Navigation", "Úprava menu", "Menü szerkesztése")}
-                </span>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsStartMenuOpen(false);
-                    setStartMenuEditMode(false);
-                    if (!isPinned) setIsCollapsed(true);
-                  }}
-                  className="px-2 py-0.5 rounded-lg bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs"
-                >
-                  {t("Done", "Hotovo", "Kész")}
-                </button>
-              </div>
-              <p className="text-[10px] text-indigo-600/90 leading-snug">
-                {t(
-                  "Use up/down arrows or drag items to reorder. Click '+ Add' on any group to insert modules.",
-                  "Použite šípky hore/dole alebo presuňte položky. Kliknite '+ Pridať' pre pridanie modulu.",
-                  "Használja a nyilakat vagy húzza az elemeket. Kattintson a '+ Hozzáadás' gombra a modulok beszúrásához."
-                )}
-              </p>
-              <button
-                type="button"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleAddNewSidebarGroup();
-                }}
-                className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100/70 text-[11px] font-bold transition-all shadow-xs cursor-pointer active:scale-[0.98]"
-              >
-                <Plus className="h-3.5 w-3.5 text-indigo-600" />
-                <span>{t("New Group", "Nová skupina", "Új csoport")}</span>
-              </button>
-            </div>
-          )}
-
           {flattenedNavItems.map((entry, idx) => {
             if (entry.type === "divider") {
               return (
@@ -1605,317 +1145,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }
 
             if (entry.type === "header") {
-              const isGroupEditing = editingGroupId === entry.groupId;
-              const isPickerOpenForThisGroup = addModuleGroupId === entry.groupId;
               return (
-                <div key={`hdr_wrap_${entry.groupId}_${idx}`} className="flex flex-col">
-                  <div
-                    className="px-3 pt-3 pb-1 flex items-center justify-between gap-1 group/header select-none"
-                  >
-                    {isGroupEditing ? (
-                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                        <input
-                          type="text"
-                          value={editingGroupTitle}
-                          onChange={(e) => setEditingGroupTitle(e.target.value)}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          placeholder={t("Group Title", "Názov skupiny", "Csoport neve")}
-                          className="flex-1 min-w-0 px-2 py-0.5 rounded-md bg-white border border-indigo-400 text-slate-800 text-[11px] font-bold focus:outline-none shadow-xs"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            e.stopPropagation();
-                            if (e.key === "Enter") handleRenameSidebarGroup(entry.groupId, editingGroupTitle);
-                            if (e.key === "Escape") setEditingGroupId(null);
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRenameSidebarGroup(entry.groupId, editingGroupTitle);
-                          }}
-                          className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs shrink-0"
-                          title={t("Save", "Uložiť", "Mentés")}
-                        >
-                          <Check className="h-3 w-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingGroupId(null);
-                          }}
-                          className="p-1 rounded-md text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
-                          title={t("Cancel", "Zrušiť", "Mégse")}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate flex-1 min-w-0">
-                          {entry.title}
-                        </span>
-                        {isStartMenuOpen && startMenuEditMode && (
-                          <div className="flex items-center gap-0.5 shrink-0 opacity-80 group-hover/header:opacity-100 transition-opacity">
-                            {/* Add Module to this group */}
-                            <button
-                              type="button"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAddModuleGroupId(isPickerOpenForThisGroup ? null : entry.groupId);
-                              }}
-                              className={cn(
-                                "flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer",
-                                isPickerOpenForThisGroup
-                                  ? "bg-indigo-600 text-white shadow-xs"
-                                  : "text-indigo-600 hover:bg-indigo-50 border border-indigo-200"
-                              )}
-                              title={t("Add module to this group", "Pridať modul do tejto skupiny", "Modul hozzáadása ehhez a csoporthoz")}
-                            >
-                              <Plus className="h-3 w-3" />
-                              <span>{t("Add", "Pridať", "Hozzáadás")}</span>
-                            </button>
-
-                            {/* Move Group Up */}
-                            {sidebarGroups.length > 1 && (
-                              <button
-                                type="button"
-                                disabled={entry.groupIndex === 0}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMoveSidebarGroup(entry.groupId, -1);
-                                }}
-                                className={cn(
-                                  "p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
-                                  entry.groupIndex === 0 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
-                                )}
-                                title={t("Move group up", "Posunúť skupinu nahor", "Csoport mozgatása fel")}
-                              >
-                                <ChevronUp className="h-3 w-3" />
-                              </button>
-                            )}
-
-                            {/* Move Group Down */}
-                            {sidebarGroups.length > 1 && (
-                              <button
-                                type="button"
-                                disabled={entry.groupIndex === sidebarGroups.length - 1}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMoveSidebarGroup(entry.groupId, 1);
-                                }}
-                                className={cn(
-                                  "p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
-                                  entry.groupIndex === sidebarGroups.length - 1 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
-                                )}
-                                title={t("Move group down", "Posunúť skupinu nadol", "Csoport mozgatása le")}
-                              >
-                                <ChevronDown className="h-3 w-3" />
-                              </button>
-                            )}
-
-                            {/* Rename */}
-                            <button
-                              type="button"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingGroupId(entry.groupId);
-                                setEditingGroupTitle(entry.title);
-                              }}
-                              className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-                              title={t("Rename group", "Premenovať skupinu", "Csoport átnevezése")}
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </button>
-
-                            {/* Delete Group */}
-                            {sidebarGroups.length > 1 && (
-                              <HoldToConfirmButton
-                                  tone="danger"
-                                  lang={asLang(systemLanguage)}
-                                  what={entry.title}
-                                  onConfirm={() => {
-                                  handleDeleteSidebarGroup(entry.groupId);
-                                }}
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                                  title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </HoldToConfirmButton>
-                            )}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-
-                  {/* Inline Module Picker Popover when "+ Add" is clicked on group header */}
-                  {isPickerOpenForThisGroup && (
-                    <div
-                      data-module-picker="true"
-                      className="view-size-fixed mx-2 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
-                    >
-                      <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
-                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                          {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAddModuleGroupId(null);
-                          }}
-                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {allPossibleItems
-                          .filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id))
-                          .map((mod) => {
-                            const ModIcon = mod.icon;
-                            return (
-                              <button
-                                key={mod.id}
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAddItemToGroup(mod.id, entry.groupId);
-                                }}
-                                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-left transition-colors cursor-pointer group"
-                              >
-                                <div
-                                  className="p-1 rounded-md shrink-0"
-                                  style={{ backgroundColor: `${(mod as any).color || '#6366f1'}15`, color: (mod as any).color || '#6366f1' }}
-                                >
-                                  <ModIcon className="h-3.5 w-3.5" />
-                                </div>
-                                <span className="text-xs font-medium truncate flex-1">{mod.label}</span>
-                                <Plus className="h-3 w-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
-                              </button>
-                            );
-                          })}
-                        {allPossibleItems.filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id)).length === 0 && (
-                          <p className="text-[11px] text-slate-400 text-center py-2">
-                            {t("All available modules added", "Všetky moduly sú už pridané", "Minden elérhető modul hozzáadva")}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                <div key={`hdr_${entry.groupId}_${idx}`} className="px-3 pt-3 pb-1 select-none">
+                  <span className="text-[10px] font-semibold text-slate-500 truncate block">{entry.title}</span>
                 </div>
               );
             }
 
-            if (entry.type === "dropzone") {
-              const isPickerOpenForThisDropzone = addModuleGroupId === entry.groupId;
-              return (
-                <div key={`dropzone_${entry.groupId}_${idx}`} className="flex flex-col">
-                  <div
-                    onClick={() => setAddModuleGroupId(isPickerOpenForThisDropzone ? null : entry.groupId)}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      e.dataTransfer.dropEffect = "move";
-                      setDragOverIndex(-1);
-                      setDragOverGroupId(entry.groupId);
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverGroupId === entry.groupId) setDragOverGroupId(null);
-                    }}
-                    onDrop={(e) => {
-                      e.stopPropagation();
-                      handleDropOnSidebar(e, entry.groupId);
-                      setDragOverGroupId(null);
-                    }}
-                    className={cn(
-                      "p-2.5 my-1.5 rounded-xl border-2 border-dashed transition-all text-center flex items-center justify-center gap-1.5 select-none cursor-pointer",
-                      dragOverGroupId === entry.groupId
-                        ? "border-indigo-500 bg-indigo-50/90 text-indigo-700 font-bold scale-[1.02]"
-                        : "border-slate-200/90 hover:border-indigo-300 text-slate-400 hover:text-indigo-600 bg-slate-50/50"
-                    )}
-                    title={t("Click to add module or drag module here", "Kliknite pre pridanie modulu alebo presuňte modul sem", "Kattintson modul hozzáadásához vagy húzza ide")}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span className="text-[10px] font-bold">
-                      {t("+ Add or Drop module here", "+ Pridať alebo presunúť modul sem", "+ Modul hozzáadása vagy áthúzása ide")}
-                    </span>
-                  </div>
-
-                  {/* Inline Module Picker Popover when Dropzone is clicked */}
-                  {isPickerOpenForThisDropzone && (
-                    <div
-                      data-module-picker="true"
-                      className="view-size-fixed mx-1 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
-                    >
-                      <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
-                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                          {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAddModuleGroupId(null);
-                          }}
-                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {allPossibleItems
-                          .filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id))
-                          .map((mod) => {
-                            const ModIcon = mod.icon;
-                            return (
-                              <button
-                                key={mod.id}
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAddItemToGroup(mod.id, entry.groupId);
-                                }}
-                                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-left transition-colors cursor-pointer group"
-                              >
-                                <div
-                                  className="p-1 rounded-md shrink-0"
-                                  style={{ backgroundColor: `${(mod as any).color || '#6366f1'}15`, color: (mod as any).color || '#6366f1' }}
-                                >
-                                  <ModIcon className="h-3.5 w-3.5" />
-                                </div>
-                                <span className="text-xs font-medium truncate flex-1">{mod.label}</span>
-                                <Plus className="h-3 w-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
-                              </button>
-                            );
-                          })}
-                        {allPossibleItems.filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id)).length === 0 && (
-                          <p className="text-[11px] text-slate-400 text-center py-2">
-                            {t("All available modules added", "Všetky moduly sú už pridané", "Minden elérhető modul hozzáadva")}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            }
 
             const item = entry.item;
             const isActive =
               activeTab === item.id ||
               activeTab.startsWith(item.id + "/") ||
               activeTab.startsWith(item.id + "?") ||
-              (item.id === "clients" && activeTab.startsWith("client-"));
+              (item.id === "clients" && activeTab.startsWith("client-")) ||
+              (item.id === "tasks" && activeTab.startsWith("task-"));
 
             return (
               <SidebarDockButton
@@ -1924,30 +1168,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 isActive={isActive}
                 isExpanded={isExpanded}
                 isDockMode={isDockMode}
+                badge={badges?.[item.id]}
                 mouseY={dockMouseY}
                 widthClasses={widthClasses}
                 dragOverIndex={dragOverIndex}
-                isStartMenuOpen={isStartMenuOpen}
-                startMenuEditMode={startMenuEditMode}
-                sidebarGroups={sidebarGroups}
                 onItemClick={(id) => {
                   setActiveTab(id);
                   if (!isPinned) setIsCollapsed(true);
                 }}
-                onHoverStart={(id, rect) => {
+                onHoverStart={(id) => {
                   setHoveredItemId(id);
-                  setHoveredItemPos({
-                    top: rect.top + rect.height / 2,
-                    left: rect.left + rect.width + 16
-                  });
                 }}
-                onHoverEnd={() => {
-                  setHoveredItemId(null);
-                }}
-                onDragStartItem={handleItemDragStart}
-                onDragEndItem={handleItemDragEnd}
-                onMoveItemInGroup={handleMoveItemInGroup}
-                onMoveItemToGroup={handleMoveItemToGroup}
                 onDragOver={(e, indexInGrp) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -1958,37 +1189,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   e.stopPropagation();
                   handleDropOnSidebar(e, grpId, indexInGrp);
                 }}
-                onTogglePinItem={(id) => {
-                  handleTogglePinItem(id);
-                }}
-                t={t}
               />
             );
           })}
 
-          {/* New Group Button (at bottom of nav list during edit mode) */}
-          {isStartMenuOpen && startMenuEditMode && (
-            <div className="pt-2 pb-1">
-              <button
-                type="button"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleAddNewSidebarGroup();
-                }}
-                className="w-full py-2 px-3 rounded-xl border border-dashed border-indigo-300 hover:border-indigo-400 bg-indigo-50/40 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>{t("New Group", "Nová skupina", "Új csoport")}</span>
-              </button>
-            </div>
-          )}
-
           {/* Dynamic Dock Floating Tooltip */}
-          {hoveredItemId && hoveredItemPos && isDockMode && !isExpanded && (
+          {hoveredItemId && isDockMode && !isExpanded && (
             <div
-              className="fixed z-[3000] px-3.5 py-2 rounded-xl bg-slate-900/95 text-white text-xs font-bold shadow-2xl border border-white/10 pointer-events-none -translate-y-1/2 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md whitespace-nowrap"
-              style={{ top: hoveredItemPos.top, left: hoveredItemPos.left }}
+              ref={dockTipRef}
+              className="fixed z-[3000] px-3.5 py-2 rounded-xl bg-slate-900/95 text-white text-xs font-semibold shadow-2xl border border-white/10 pointer-events-none -translate-y-1/2 flex items-center gap-2 whitespace-nowrap"
             >
               {(() => {
                 const item = allPossibleItems.find((i) => i.id === hoveredItemId);
@@ -2009,15 +1218,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
 
           {/* Bottom Actions Footer (sibling of the scrolling nav, so it is always visible) */}
-          <div className="p-3 flex flex-col gap-1.5 shrink-0 border-t border-slate-100/80 bg-slate-50 relative z-10">
+          <div className="p-3 flex flex-col gap-1 shrink-0 border-t border-gray-200 bg-gray-50/80 relative z-10">
             {/* Collapse/Expand Toggle Caret Button (in place of Pin) */}
             <button
               type="button"
               onClick={() => {
-                if (isPinned) setSidebarPinned(false);
-                setIsCollapsed(!isCollapsed);
+                // Pinned: only narrow/widen the column, the pin mode stays as the user set it.
+                if (isPinned) setSidebarPinnedCollapsed(!isPinnedRail);
+                else setIsCollapsed(!isCollapsed);
               }}
-              className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl transition-all duration-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50 text-left cursor-pointer group"
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 text-gray-500 hover:text-gray-900 hover:bg-gray-100 text-left cursor-pointer group"
               aria-label={t("Toggle Navigation Sidebar", "Prepnúť navigačný panel", "Navigációs oldalsáv váltása")}
               title={
                 !isExpanded
@@ -2116,6 +1326,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             </button>
           </div>
+        </>
+        )}
       </aside>
 
       {/* MOBILE BOTTOM DOCK */}
@@ -2145,7 +1357,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 activeTab === item.id ||
                 activeTab.startsWith(item.id + "/") ||
                 activeTab.startsWith(item.id + "?") ||
-                (item.id === "clients" && activeTab.startsWith("client-"));
+                (item.id === "clients" && activeTab.startsWith("client-")) ||
+                (item.id === "tasks" && activeTab.startsWith("task-"));
 
               const colorInfo = getSidebarItemColors(item, isActive);
 
@@ -2206,6 +1419,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
+      {/* Mobile "Upraviť menu" (below lg): edits the sidebar / bottom bar groups */}
+      <MobileMenuEditor
+        open={isStartMenuOpen && startMenuEditMode}
+        language={systemLanguage}
+        groups={sidebarGroups}
+        items={allPossibleItems
+          .filter((i) => isItemVisibleInSystem(i.id))
+          .map((i) => ({
+            id: i.id,
+            label: i.label,
+            icon: i.icon,
+            color: (i as any).color || (i as any).customColor,
+            kind: (i as any).isCustomDash ? ("dashboard" as const) : (i as any).isCustomUE ? ("table" as const) : undefined
+          }))}
+        defaultPage={defaultPage || storedDefaultPage || "dashboard"}
+        onSetDefaultPage={(id) => {
+          onSaveDefaultPage?.(id);
+          setStoredDefaultPage(id);
+        }}
+        onDone={() => {
+          setIsStartMenuOpen(false);
+          setStartMenuEditMode(false);
+        }}
+        onMoveItemInGroup={handleMoveItemInGroup}
+        onMoveItemToGroup={handleMoveItemToGroup}
+        onInsertItem={(itemId, groupId, index) => handleInsertItem(itemId, groupId, index)}
+        onUnpinItem={handleTogglePinItem}
+        onAddItemToGroup={handleAddItemToGroup}
+        onAddGroup={() => handleAddNewSidebarGroup()}
+        onRenameGroup={handleRenameSidebarGroup}
+        onMoveGroup={handleMoveSidebarGroup}
+        onDeleteGroup={handleDeleteSidebarGroup}
+        onCreateCustomDashboard={() => setIsDashModalOpen(true)}
+      />
+
+      {/* The card that follows the pointer while a module is dragged (Start menu dialog -> sidebar) */}
+      <DragGhostLayer pinLabel={menuEditStrings(systemLanguage).pin} />
+
       {/* Start Menu Modal Launcher */}
       <StartMenu
         isOpen={isStartMenuOpen}
@@ -2219,7 +1470,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           setActiveTab(tabId);
           if (!isPinned) setIsCollapsed(true);
         }}
-        systemName={systemName}
         systemLanguage={systemLanguage}
         currentUser={currentUser}
         roles={roles}
@@ -2240,14 +1490,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* New Custom Dashboard Modal */}
       {isDashModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100000] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[32px] shadow-2xl border border-slate-200/80 w-full max-w-md overflow-hidden flex flex-col p-6 space-y-6 animate-in zoom-in-95 duration-200 text-left">
+        <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[100000] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-lg shadow-2xl border border-gray-200 w-full max-w-md overflow-hidden flex flex-col p-6 space-y-5 animate-in zoom-in-95 duration-200 text-left">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
                   <Brain className="h-4.5 w-4.5 animate-pulse" />
                 </div>
-                <span className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                <span className="text-sm font-semibold text-slate-800">
                   {t("Create New Dashboard", "Vytvoriť nový panel", "Új irányítópult létrehozása")}
                 </span>
               </div>
@@ -2262,7 +1512,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
                   {t("Dashboard Name", "Názov panela", "Irányítópult neve")}
                 </label>
                 <input
@@ -2275,7 +1525,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
                   {t("Select Icon", "Vybrať ikonu", "Ikon kiválasztása")}
                 </label>
                 <div className="flex items-center gap-3">
@@ -2296,7 +1546,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                <label className="block text-[10px] font-semibold text-slate-500 mb-2">
                   {t("Select Color", "Vybrať farbu", "Szín kiválasztása")}
                 </label>
                 <div className="grid grid-cols-8 gap-2">
@@ -2320,18 +1570,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
 
-            <div className="flex gap-3 pt-3 border-t border-slate-100">
+            <div className="flex gap-2.5 pt-3 border-t border-gray-200">
               <button
                 type="button"
                 onClick={() => setIsDashModalOpen(false)}
-                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 text-xs font-bold text-slate-500 uppercase tracking-wider transition-colors cursor-pointer"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-2xs transition-colors cursor-pointer"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
               <button
                 type="button"
                 onClick={handleCreateDashboard}
-                className="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
+                className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-all shadow-2xs cursor-pointer"
               >
                 {t("Create", "Vytvoriť", "Létrehozás")}
               </button>
@@ -2346,7 +1596,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col text-left overflow-hidden m-4 animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                <h3 className="text-sm font-semibold text-slate-800">
                   {t("Select Icon", "Výber ikony", "Ikon kiválasztása")}
                 </h3>
                 <p className="text-[10px] font-bold text-slate-400 mt-0.5">

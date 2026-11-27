@@ -162,7 +162,7 @@ export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
         transform: `translate3d(${pos.x}px, ${pos.y}px, 0)`,
         touchAction: "none"
       }}
-      className={`fixed top-0 left-0 z-[9990] select-none cursor-grab active:cursor-grabbing transition-transform ${
+      className={`fixed top-0 left-0 z-[9990] [html[data-start-menu-open]_&]:hidden select-none cursor-grab active:cursor-grabbing transition-transform ${
         isDragging ? "duration-0 scale-105" : "duration-300 ease-out"
       }`}
       role="button"

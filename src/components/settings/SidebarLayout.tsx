@@ -1,0 +1,197 @@
+import React from "react";
+import { cn } from "../../utils/cn";
+import { getTranslation } from "../../utils/translations";
+import type { Language } from "../../utils/translations";
+import {
+  SETTINGS_TINTS, categoryKey, groupLabelKey, sectionKey, settingsPath,
+} from "./settingsRegistry.ts";
+import type { SettingsGroupId, VisibleCategory } from "./settingsRegistry.ts";
+import type { SearchEntry } from "./settingsSearch.ts";
+import { SectionPanel, openSectionTab, scrollToSettingsSection, sectionAtScrollTop } from "./SectionList";
+import { SettingsNavSearch } from "./SettingsSearchCard";
+import { SettingsHeader } from "./SettingsHome";
+import type { SettingsLayout } from "./SettingsHome";
+import { RelatedList } from "./CategoryPage";
+import { ScrollFade } from "./ScrollFade";
+
+/**
+ * The sidebar layout (wide screens): a grouped navigation on the left — search on top,
+ * the active category expanded with its sections as sub-links — and every section of
+ * that category stacked on the right. A sub-link scrolls to its section.
+ */
+export const SidebarLayout: React.FC<{
+  lang: Language;
+  groups: { id: SettingsGroupId; categories: VisibleCategory[] }[];
+  catalog: VisibleCategory[];
+  category: VisibleCategory;
+  /** The section named in the address. The highlight follows what is on screen. */
+  activeId: string;
+  /** Every section of the category, in registry order. All of them stay mounted. */
+  sections: { id: string; body: React.ReactNode }[];
+  layout: SettingsLayout;
+  onLayoutChange: (next: SettingsLayout) => void;
+  query: string;
+  setQuery: (q: string) => void;
+  searchRef: React.RefObject<HTMLInputElement | null>;
+  canSee: (ref: string) => boolean;
+  onOpenSearchHit: (entry: SearchEntry) => void;
+  onOpenRef: (ref: string) => void;
+  onOpenCategory: (categoryId: string) => void;
+}> = ({
+  lang, groups, catalog, category, activeId, sections, layout, onLayoutChange, query, setQuery, searchRef,
+  canSee, onOpenSearchHit, onOpenRef, onOpenCategory,
+}) => {
+  const t = (k: string) => getTranslation(lang, k);
+  const def = category.def;
+  const tint = SETTINGS_TINTS[def.tint];
+  const Icon = def.icon;
+  const sectionIds = sections.map((s) => s.id).join("|");
+  const [shownId, setShownId] = React.useState(activeId);
+  // While a click or a deep link is scrolling, the highlight stays on the target
+  // instead of chasing every section the animation passes.
+  const scrollLock = React.useRef(false);
+  const prevCategory = React.useRef("");
+
+  React.useEffect(() => {
+    setShownId(activeId);
+    const sameCategory = prevCategory.current === def.id;
+    prevCategory.current = def.id;
+    const behavior: ScrollBehavior = sameCategory ? "smooth" : "auto";
+    // Opening a category lands on its first section. Keep the category heading in
+    // view. A later section, or a sub-link in the category you are already in, scrolls.
+    const leadWithHeader = !sameCategory && sectionIds.split("|")[0] === activeId;
+    scrollLock.current = true;
+    const frame = requestAnimationFrame(() => {
+      if (leadWithHeader) document.querySelector<HTMLElement>("main.workspace")?.scrollTo({ top: 0, behavior: "auto" });
+      else scrollToSettingsSection(def.id, activeId, behavior);
+    });
+    const release = window.setTimeout(() => {
+      scrollLock.current = false;
+    }, behavior === "smooth" ? 700 : 50);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(release);
+    };
+  }, [def.id, activeId, sectionIds]);
+
+  React.useEffect(() => {
+    const main = document.querySelector<HTMLElement>("main.workspace");
+    if (!main) return undefined;
+    const ids = sectionIds.split("|").filter(Boolean);
+    let frame = 0;
+    const onScroll = () => {
+      if (scrollLock.current) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setShownId(sectionAtScrollTop(def.id, ids, main)));
+    };
+    main.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      main.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
+  }, [def.id, sectionIds]);
+
+  return (
+    <div className="flex flex-col gap-7" data-testid="settings-sidebar-layout">
+      <SettingsHeader lang={lang} layout={layout} onLayoutChange={onLayoutChange} phone={false} />
+
+      <div className="flex flex-wrap items-start gap-7">
+        <nav
+          aria-label={t("settings.nav.ui.categories_nav")}
+          data-testid="settings-nav"
+          className="flex min-w-60 max-w-75 flex-[1_1_16.5rem] flex-col rounded-lg border border-gray-200 bg-white p-3.5 shadow-xs ws-lg:sticky ws-lg:top-[calc(0.5rem_-_var(--gutter))]"
+        >
+          <SettingsNavSearch lang={lang} catalog={catalog} query={query} setQuery={setQuery} inputRef={searchRef} onOpen={onOpenSearchHit}>
+            <ScrollFade axis="y" className="max-h-[calc(100vh_-_14rem)]">
+              <div className="flex flex-col gap-0.5">
+                {groups.map((group) => (
+                  <div key={group.id} className="flex flex-col gap-0.5">
+                    <span className="type-overline px-3 pb-1 pt-3.5 text-gray-500 first:pt-1.5">{t(groupLabelKey(group.id))}</span>
+                    {group.categories.map((c) => {
+                      const on = c.def.id === def.id;
+                      const CIcon = c.def.icon;
+                      const ctint = SETTINGS_TINTS[c.def.tint];
+                      return (
+                        <React.Fragment key={c.def.id}>
+                          <a
+                            href={"#" + settingsPath(c.def.id)}
+                            aria-current={on ? "page" : undefined}
+                            onClick={() => onOpenCategory(c.def.id)}
+                            data-testid={`settings-nav-${c.def.id}`}
+                            className={cn(
+                              "flex min-h-10.5 items-center gap-3 rounded-md px-3 text-body font-semibold no-underline transition-colors",
+                              on ? "bg-entity-solid text-white shadow-xs " : "text-gray-700 hover:bg-gray-100 hover:text-gray-900",
+                            )}
+                          >
+                            <CIcon className={cn("size-4.5 shrink-0", on ? "text-white" : ctint.fg)} aria-hidden="true" />
+                            {t(categoryKey(c.def.id, "title"))}
+                          </a>
+                          {on && c.sections.length > 1 && (
+                            <ul className="mb-1.5 ml-5.5 mt-1 flex flex-col gap-px border-l-2 border-entity-border pl-3">
+                              {c.sections.map((s) => {
+                                const cur = shownId === s.id;
+                                return (
+                                  <li key={s.id}>
+                                    <a
+                                      href={"#" + settingsPath(c.def.id, s.id)}
+                                      aria-current={cur ? "true" : undefined}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        onOpenRef(`${c.def.id}/${s.id}`);
+                                        const same = window.location.hash === "#" + settingsPath(c.def.id, s.id);
+                                        openSectionTab(c.def.id, s.id);
+                                        // Already on this address: the effect will not scroll again.
+                                        if (same) {
+                                          setShownId(s.id);
+                                          scrollLock.current = true;
+                                          scrollToSettingsSection(c.def.id, s.id, "smooth");
+                                          window.setTimeout(() => {
+                                            scrollLock.current = false;
+                                          }, 700);
+                                        }
+                                      }}
+                                      className={cn(
+                                        "flex min-h-8.5 items-center rounded-lg px-2.5 text-ui no-underline transition-colors",
+                                        cur ? "bg-entity-soft font-bold text-entity-text" : "font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                                      )}
+                                    >
+                                      {t(sectionKey(c.def.id, s.id, "title"))}
+                                    </a>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </ScrollFade>
+          </SettingsNavSearch>
+        </nav>
+
+        <div className="flex min-w-0 flex-[999_1_36rem] flex-col gap-6" data-testid="settings-category" data-category={def.id}>
+          <div className="flex items-center gap-3.5">
+            <span className={cn("flex size-12 shrink-0 items-center justify-center rounded-lg", tint.bg, tint.fg)}>
+              <Icon className="size-6" aria-hidden="true" />
+            </span>
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <h2 className="type-page-title text-gray-900">{t(categoryKey(def.id, "title"))}</h2>
+              <p className="type-body text-gray-500">{t(categoryKey(def.id, "subtitle"))}</p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-8" data-testid="settings-section-stack">
+            {sections.map((s) => (
+              <SectionPanel key={s.id} lang={lang} categoryId={def.id} sectionId={s.id} asTab={false}>
+                {s.body}
+              </SectionPanel>
+            ))}
+          </div>
+          <RelatedList lang={lang} category={category} canSee={canSee} onOpen={onOpenRef} variant="list" />
+        </div>
+      </div>
+    </div>
+  );
+};

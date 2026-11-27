@@ -1,0 +1,14 @@
+# Scenario S1, second step: WAAI on a domain of its own (https://<WAAI_DOMAIN>), next to the CRM.
+# Use it only once the DNS record for WAAI_DOMAIN points at this server; the WhatsApp module itself
+# works without it (docker-compose.waai.yml). Both overlays together:
+#   docker compose -f docker-compose.yml -f docker-compose.waai.yml -f docker-compose.waai-standalone.yml up -d
+#
+# WAAI_DOMAIN and WAAI_EMBED_ORIGINS have no default here on purpose: a wrong default would make
+# Caddy ask for a certificate for a name that is not yours.
+services:
+  caddy:
+    environment:
+      WAAI_DOMAIN: ${WAAI_DOMAIN:?set WAAI_DOMAIN in .env}
+      WAAI_EMBED_ORIGINS: ${WAAI_EMBED_ORIGINS:-}
+    volumes:
+      - ./Caddyfile.waai-standalone:/etc/caddy/sites/waai.caddy:ro

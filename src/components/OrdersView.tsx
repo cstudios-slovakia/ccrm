@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { contactPartsOfPerson } from "../utils/contactName";
+import { SectionIcon } from "./icons/SectionIcon";
+import { applyOrderFulfillment, buildOrderFulfillmentMovement, planOrderFulfillment } from "../utils/orderFulfillment";
 import type { PriceLevel } from "../utils/priceLevels";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
-  ShoppingCart,
   Search,
   Plus,
   Sliders,
@@ -13,7 +15,6 @@ import {
   UserCheck,
   User,
   Truck,
-  ExternalLink,
   Copy,
   Check,
   Edit2,
@@ -28,6 +29,7 @@ import {
 import type {
   Order,
   Lead,
+  Project,
   WarehouseItem,
   Warehouse,
   WarehouseMovement,
@@ -51,14 +53,22 @@ import { OrderDetailView } from "./OrderDetailView";
 import { getDefaultVatRate } from "../utils/vat";
 import { issuedInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import { isClientRecord } from "../utils/clientRecord";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { entityAccentStyle } from "../utils/entityAccent";
 import { contactDetailsFor, resolveLinkedClient } from "../utils/leadClient";
 import { formatMoney } from "../utils/currency";
 import { formatDateLocalized, todayLocal, todayLocalPlusDays, nowLocalStamp } from "../utils/localTime";
-import { invoiceMovementId } from "../utils/invoiceFinanceBridge";
-import { PageHeader, StatGrid, StatTile, Tabs, EmptyState } from "./layout";
+import { markInvoiceMovementPaid } from "../utils/invoiceFinanceBridge";
+import { nextDocumentNumber } from "../utils/documentNumbering";
+import { PageHeader, StatGrid, StatTile, EmptyState } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
-import { useListFilter } from "../hooks/useListFilter";
+import { useOrderFacets } from "./orders/useOrderFacets";
+import { FacetedMultiSelect } from "./ui/FacetedMultiSelect";
+import { PinnedFilterChips } from "./ui/PinnedFilterChips";
+import { PRODUCT_NAME, getSystemTitle } from "../utils/brand";
+import { OrderProjectBadge } from "./orders/OrderProjectLink";
 
+import { ResizableTh } from "./ui/ResizableTh";
 export interface OrdersViewProps {
   orders: Order[];
   setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
@@ -68,6 +78,7 @@ export interface OrdersViewProps {
   /** The configured price levels: a product is priced on the customer's level. */
   priceLevels?: PriceLevel[];
   warehouses?: Warehouse[];
+  warehouseMovements?: WarehouseMovement[];
   setWarehouseMovements?: React.Dispatch<React.SetStateAction<WarehouseMovement[]>>;
   invoicesOffers?: InvoiceOffer[];
   setInvoicesOffers?: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
@@ -88,23 +99,26 @@ export interface OrdersViewProps {
    * Open the editor on a new draft for a customer (`#orders/new?customer=…&from=…`).
    * `key` identifies the request so the draft is built once, not on every sync poll.
    */
-  newOrderRequest?: { customerId: string | null; from: string | null; key: string };
+  newOrderRequest?: { customerId: string | null; projectId?: string | null; from: string | null; key: string };
+  /** Offers the order editor's "Project" field and shows an order's project in the list. */
+  projects?: Project[];
 }
 
 /** Where a new order may send the user back to: a client or lead page, nothing else. */
 const safeReturnRoute = (from: string | null | undefined): string | null =>
-  from && /^(clients\/|client-|leads\/|lead-)/.test(from) ? from : null;
+  from && /^(clients\/|client-|leads\/|lead-|projects\/|project-)/.test(from) ? from : null;
 
 export const OrdersView: React.FC<OrdersViewProps> = ({
   orders,
   setOrders,
   leads,
   setLeads,
+  warehouseMovements = [],
   warehouseItems = [],
   priceLevels = [],
   warehouses = [],
   setWarehouseMovements,
-  invoicesOffers: _invoicesOffers = [],
+  invoicesOffers = [],
   invoiceStatuses,
   setInvoicesOffers,
   financialRecords: _financialRecords = [],
@@ -118,7 +132,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   onOpenSettings,
   companyBillingSettings,
   initialSelectedOrderId,
-  newOrderRequest
+  newOrderRequest,
+  projects
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -128,9 +143,6 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const canDelete = canEdit && getPermission("orders.delete") === "edit";
 
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
-  const [activeGroupFilter, setActiveGroupFilter] = useListFilter<string>("orders.group", "all");
-  const [customerTypeFilter, setCustomerTypeFilter] = useListFilter<string>("orders.customerType", "all");
-  const [paymentStatusFilter, setPaymentStatusFilter] = useListFilter<string>("orders.paymentStatus", "all");
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
 
@@ -147,7 +159,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   // then would wipe what the user has typed.
   useEffect(() => {
     if (!newOrderRequest || !canEdit || handledNewOrderKeyRef.current === newOrderRequest.key) return;
-    const { customerId, from, key } = newOrderRequest;
+    const { customerId, projectId, from, key } = newOrderRequest;
     const origin = customerId ? leads.find(l => l.id === customerId) ?? null : null;
     // The record may simply not have loaded yet; only give up on it once leads exist.
     if (customerId && !origin && leads.length === 0) return;
@@ -169,7 +181,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     });
     newOrderOriginRef.current = { orderId: draft.id, originId: origin?.id ?? null };
     setReturnRoute(safeReturnRoute(from));
-    setEditingOrder(draft);
+    setEditingOrder(projectId ? { ...draft, projectId } : draft);
   }, [newOrderRequest, canEdit, leads, orders, orderStatuses, companyBillingSettings, systemCurrency]);
 
   // Auto-open order if requested via deep link / initialSelectedOrderId
@@ -179,6 +191,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         o => o.id === initialSelectedOrderId || o.orderNumber === initialSelectedOrderId
       );
       if (match) {
+        // `#orders/<id>?from=<page>`: closing the order goes back to that page (a project's Orders tab).
+        setReturnRoute(safeReturnRoute(new URLSearchParams(window.location.hash.split("?")[1] || "").get("from")));
         setEditingOrder(JSON.parse(JSON.stringify(match)));
       }
     }
@@ -194,7 +208,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   // Convert guest to client
   const handleConvertGuest = async (order: Order) => {
     if (!canEdit || order.customerType !== "guest") return;
-    if (!confirm(t("Convert this guest to a registered CRM client?", "Vytvoriť z tohto hosťa nového klienta v CRM?", "Létrehozza ebből a vendégből az új CRM ügyfelet?"))) return;
+    if (!confirm(t(`Convert this guest to a registered ${PRODUCT_NAME} client?`, `Vytvoriť z tohto hosťa nového klienta v ${PRODUCT_NAME}?`, `Létrehozza ebből a vendégből az új ${PRODUCT_NAME} ügyfelet?`))) return;
 
     try {
       const res = await fetch("/api/orders.php?action=convert_guest_to_client", {
@@ -213,6 +227,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             id: data.client_id,
             name: order.billing?.name || order.guest?.company || order.guest?.name || t("New Client", "Nový klient", "Új ügyfél"),
             contactPerson: order.guest?.name || "",
+            ...contactPartsOfPerson(order.guest?.name),
             email: order.guest?.email || "",
             phone: order.guest?.phone || "",
             clientType: "business",
@@ -248,43 +263,41 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   // Convert order products into outward warehouse movement
   const handleFulfillWarehouse = (order: Order) => {
     if (!canEdit || !setWarehouseMovements) return;
-    const physicalItems = (order.items || []).filter(i => i.itemType === "product" && i.quantity > 0);
-    if (physicalItems.length === 0) {
-      alert(t("This order contains no physical products to fulfill.", "Táto objednávka neobsahuje žiadne fyzické produkty na vyskladnenie.", "Ez a rendelés nem tartalmaz fizikai termékeket."));
+    const plan = planOrderFulfillment(order, warehouseItems);
+    if (plan.lines.length === 0) {
+      if (plan.alreadyFulfilled.length > 0 && plan.skippedNonCatalog.length === 0) {
+        alert(t("All products of this order have already been issued from the warehouse.", "Všetky produkty tejto objednávky už boli vyskladnené.", "A rendelés összes terméke már ki lett adva a raktárból."));
+      } else if (plan.skippedNonCatalog.length > 0) {
+        alert(t("The remaining products of this order are not warehouse items, so they cannot be put on a delivery note.", "Zvyšné produkty tejto objednávky nie sú skladové položky, preto ich nemožno vyskladniť.", "A rendelés többi terméke nem raktári tétel, ezért nem adható ki."));
+      } else {
+        alert(t("This order contains no physical products to fulfill.", "Táto objednávka neobsahuje žiadne fyzické produkty na vyskladnenie.", "Ez a rendelés nem tartalmaz fizikai termékeket."));
+      }
+      return;
+    }
+    const warehouseId = order.warehouseId || warehouses[0]?.id || "";
+    if (!warehouseId) {
+      alert(t("Create a warehouse first.", "Najprv vytvorte sklad.", "Először hozzon létre egy raktárt."));
       return;
     }
 
-    if (!confirm(t(`Create warehouse delivery note (výdajka) for ${physicalItems.length} products?`, `Vystaviť výdajku zo skladu pre ${physicalItems.length} produktov?`, `Kiállítja a raktári kiadási bizonylatot ${physicalItems.length} termékre?`))) return;
+    const count = plan.lines.length;
+    const skipped = plan.skippedNonCatalog.length;
+    const skippedNote = skipped > 0
+      ? t(` (${skipped} non-warehouse products are left out)`, ` (${skipped} neskladových produktov sa vynechá)`, ` (${skipped} nem raktári termék kimarad)`)
+      : "";
+    if (!confirm(t(`Create warehouse delivery note (výdajka) for ${count} products?`, `Vystaviť výdajku zo skladu pre ${count} produktov?`, `Kiállítja a raktári kiadási bizonylatot ${count} termékre?`) + skippedNote)) return;
 
-    const warehouseId = order.warehouseId || (warehouses[0]?.id ?? "wh-default");
-    const newMovement: WarehouseMovement = {
-      id: `mov_${Date.now()}`,
-      documentNumber: `VYD-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-      type: "outward",
-      status: "confirmed",
-      warehouseId,
-      leadId: order.clientId || undefined,
-      totalCostValue: 0,
-      totalSellValue: order.itemsNetAmount,
-      totalProfitValue: 0,
-      createdBy: currentUser?.name || "System",
-      note: `${t("Order fulfillment", "Vyskladnenie k objednávke", "Rendelés teljesítése")}: ${order.orderNumber}`,
-      issuedAt: new Date().toISOString().split("T")[0],
-      createdAt: new Date().toISOString(),
-      items: physicalItems.map(item => ({
-        id: `mov_item_${Date.now()}_${Math.random()}`,
-        itemId: item.itemId || item.id,
-        quantity: item.quantity,
-        unitPurchasePrice: 0,
-        unitSellPrice: item.unitPrice,
-        totalPrice: item.totalNetAmount,
-        note: item.name
-      }))
-    };
-
-    setWarehouseMovements(prev => [newMovement, ...prev]);
+    const note = `${t("Order fulfillment", "Vyskladnenie k objednávke", "Rendelés teljesítése")}: ${order.orderNumber}`;
+    const createdBy = currentUser?.name || "System";
+    const now = new Date();
+    // The VYD number and the movement id follow what is already on file.
+    const movement = buildOrderFulfillmentMovement(order, plan, { existingMovements: warehouseMovements, warehouseId, createdBy, note, now });
+    const documentNumber = movement.documentNumber;
+    setWarehouseMovements(prev => [movement, ...prev]);
+    // What was issued is stored on the order lines, so a second click issues nothing.
+    setOrders(prev => prev.map(o => (o.id === order.id ? applyOrderFulfillment(o, plan) : o)));
     const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
-    toast?.(t(`Delivery note ${newMovement.documentNumber} created!`, `Výdajka ${newMovement.documentNumber} bola úspešne vytvorená!`, `A(z) ${newMovement.documentNumber} kiadási bizonylat elkészült!`));
+    toast?.(t(`Delivery note ${documentNumber} created!`, `Výdajka ${documentNumber} bola úspešne vytvorená!`, `A(z) ${documentNumber} kiadási bizonylat elkészült!`));
   };
 
   // Convert order into invoice
@@ -316,9 +329,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
     const nowIso = new Date().toISOString();
     const newInvoiceId = `inv_${Date.now()}`;
-    const newInvoiceNumber = `FA-${new Date().getFullYear()}-${String(
-      Math.floor(Math.random() * 9000) + 1000
-    )}`;
+    // The next number of the invoice series, as MCP issues it (mcp_next_document_number,
+    // FA, 3 digits): a random number could collide with one already issued.
+    const newInvoiceNumber = nextDocumentNumber(
+      invoicesOffers.map((io) => io.documentNumber),
+      "FA",
+      new Date().getFullYear(),
+      3
+    );
 
     // Resolve attached client
     let targetLead = order.clientId ? leads.find(l => l.id === order.clientId) : null;
@@ -393,18 +411,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
     // 2. If order was already paid, ensure financial record is marked paid
     if (order.paymentStatus === "paid" && setFinancialRecords) {
-      const recId = invoiceMovementId(newInvoiceId);
+      const paidAmt = companyBillingSettings?.financeNetMode ? order.totalNetAmount : order.totalGrossAmount;
       setFinancialRecords(prev =>
-        prev.map(r =>
-          r.id === recId
-            ? {
-                ...r,
-                status: "paid",
-                amountReal: order.totalGrossAmount,
-                paidDate: order.paidAt || order.orderDate || todayLocal()
-              }
-            : r
-        )
+        markInvoiceMovementPaid(prev, newInvoiceId, paidAmt, order.paidAt || order.orderDate || todayLocal())
       );
     }
 
@@ -439,7 +448,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           `A(z) ${newInvoiceNumber} számla kiállítva a(z) ${order.orderNumber} rendelésből ${formatMoney(order.totalGrossAmount, order.currency, userLanguage)} összegben.`
         ),
         amount: order.totalGrossAmount,
-        author: currentUser?.name || "CCRM"
+        author: currentUser?.name || getSystemTitle()
       };
 
       if (onAddTimelineEvent) {
@@ -487,40 +496,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     setOrders(prev => prev.map(o => o.id === order.id ? updated : o));
   };
 
-  // Filtered orders list
-  const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-      // Group filter
-      if (activeGroupFilter !== "all") {
-        const def = orderStatuses.find(s => s.key === order.status);
-        if (!def || def.group !== activeGroupFilter) return false;
-      }
-
-      // Customer filter
-      if (customerTypeFilter === "client" && order.customerType !== "client") return false;
-      if (customerTypeFilter === "guest" && order.customerType !== "guest") return false;
-
-      // Payment filter
-      if (paymentStatusFilter === "paid" && order.paymentStatus !== "paid") return false;
-      if (paymentStatusFilter === "unpaid" && order.paymentStatus === "paid") return false;
-
-      // Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const num = (order.orderNumber || "").toLowerCase();
-        const clientName = (order.billing?.name || order.guest?.name || order.guest?.company || "").toLowerCase();
-        const email = (order.guest?.email || "").toLowerCase();
-        const phone = (order.guest?.phone || order.delivery?.phone || "").toLowerCase();
-        const tracking = (order.shippingTrackingNumber || "").toLowerCase();
-        const city = (order.delivery?.city || "").toLowerCase();
-
-        const fullStr = `${num} ${clientName} ${email} ${phone} ${tracking} ${city}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (!fullStr.includes(q)) return false;
-      }
-
-      return true;
-    });
-  }, [orders, activeGroupFilter, customerTypeFilter, paymentStatusFilter, searchQuery, orderStatuses]);
+  // Status, customer, payment and project: multi-select and faceted (see orders/useOrderFacets.ts).
+  const facets = useOrderFacets({ orders, orderStatuses, projects, searchQuery, t, productName: PRODUCT_NAME });
+  const filteredOrders = facets.filteredOrders;
 
   // Key metrics
   const stats = useMemo(() => {
@@ -675,9 +653,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         canDelete={canDelete}
         onOpenClient={onOpenClient}
         companyBillingSettings={companyBillingSettings}
+        projects={projects}
         backLabel={returnRoute
           ? returnRoute.startsWith("lead")
             ? t("Back to lead", "Späť na lead", "Vissza a leadhez")
+            : returnRoute.startsWith("project")
+            ? t("Back to project", "Späť na projekt", "Vissza a projekthez")
             : t("Back to client", "Späť na klienta", "Vissza az ügyfélhez")
           : undefined}
       />
@@ -688,7 +669,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     <div className="space-y-6 pb-16 font-sans animate-fade-in text-left">
       {/* 1. SECTION HEADER & COMMAND BAR */}
       <PageHeader
-        icon={<ShoppingCart className="h-6 w-6 text-indigo-600" />}
+        icon={<SectionIcon id="orders" />}
         title={t("Orders & Fulfillment", "Objednávky a expedícia", "Rendelések és kiszolgálás")}
         subtitle={t(
           "Manage customer orders, track fulfillment stages, warehouse dispatching and payments.",
@@ -709,9 +690,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               <button
                 type="button"
                 onClick={onOpenSettings}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-ui font-semibold rounded-2xl shadow-sm transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                className="flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 hover:border-entity-border text-gray-700 text-ui font-semibold rounded-md shadow-2xs transition-all cursor-pointer"
               >
-                <Sliders className="h-4 w-4 text-indigo-500" />
+                <Sliders className="h-4 w-4 text-entity-text" />
                 <span>{t("Order settings", "Nastavenia objednávok", "Rendelés beállítások")}</span>
               </button>
             )}
@@ -719,7 +700,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               <button
                 type="button"
                 onClick={handleOpenCreate}
-                className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-semibold rounded-2xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                className="flex items-center gap-2 px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold rounded-md shadow-xs transition-all cursor-pointer"
               >
                 <Plus className="h-4 w-4" />
                 <span>{t("New order", "Nová objednávka", "Új rendelés")}</span>
@@ -732,8 +713,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       {/* 2. KPI OVERVIEW STRIP */}
       <StatGrid count={4}>
         <StatTile
-          icon={<ShoppingCart className="h-6 w-6" />}
-          tone="bg-indigo-50 text-indigo-600"
+          icon={<SectionIcon id="orders" className="h-6 w-6" />}
+          tone="bg-entity-subtle text-entity-text"
           label={t("Total orders", "Všetky objednávky", "Összes rendelés")}
           value={String(stats.totalCount)}
           delta={
@@ -769,35 +750,29 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         />
       </StatGrid>
 
-      {/* 3. LIFECYCLE TABS */}
-      <Tabs
-        value={activeGroupFilter}
-        onChange={setActiveGroupFilter}
-        items={[
-          { key: "all", label: t("All orders", "Všetky objednávky", "Minden rendelés"), count: orders.length },
-          { key: "new", label: t("New", "Nové", "Új"), count: stats.newCount },
-          { key: "processing", label: t("Processing", "Príprava", "Feldolgozás"), count: stats.processingCount },
-          { key: "shipped", label: t("Shipped", "V preprave", "Úton"), count: stats.shippedCount },
-          { key: "delivered", label: t("Delivered", "Doručené", "Kézbesítve"), count: stats.deliveredCount },
-          { key: "cancelled", label: t("Cancelled", "Storno", "Törölve"), count: stats.cancelledCount }
-        ]}
+      {/* 3. PINNED STATUSES (star in the status dropdown) as one-click chips */}
+      <PinnedFilterChips
+        options={facets.options.status}
+        pinned={facets.pinnedStatuses}
+        selected={facets.selection.status}
+        onChange={next => facets.setSelection("status", next)}
       />
 
       {/* 4. SEARCH & FILTERS BAR */}
-      <div className="bg-white p-3 ws-sm:p-4 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col ws-xl:flex-row gap-2.5 ws-sm:gap-3 ws-xl:items-center ws-xl:justify-between">
+      <div className="bg-white p-3 ws-sm:p-4 rounded-lg border border-gray-200 shadow-xs flex flex-col ws-xl:flex-row gap-2.5 ws-sm:gap-3 ws-xl:items-center ws-xl:justify-between">
         <div className="relative w-full ws-xl:w-80">
-          <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
             type="text"
             placeholder={t("Search order, client, tracking or city…", "Hľadať objednávku, klienta, trasovanie alebo mesto…", "Rendelés, ügyfél, szám keresése…")}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition-all"
+            className="w-full pl-10 pr-9 py-2 bg-white border border-gray-300 rounded-md text-ui text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid transition-all"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
               title={t("Clear search", "Zmazať hľadanie", "Keresés törlése")}
             >
               <X className="w-3.5 h-3.5" />
@@ -805,49 +780,39 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           )}
         </div>
 
-        <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-2 w-full ws-xl:w-auto">
-          <CustomSelect
-            size="sm"
-            value={customerTypeFilter}
-            onChange={setCustomerTypeFilter}
-            className="w-full"
-            options={[
-              { value: "all", label: t("All customers", "Všetci zákazníci", "Minden vevő") },
-              { value: "client", label: t("Registered clients only", "Iba klienti CRM", "Csak CRM ügyfelek") },
-              { value: "guest", label: t("Guests only (E-shop)", "Iba hostia (E-shop)", "Csak vendég vásárlók") }
-            ]}
-          />
-          <CustomSelect
-            size="sm"
-            value={paymentStatusFilter}
-            onChange={setPaymentStatusFilter}
-            className="w-full"
-            options={[
-              { value: "all", label: t("All payments", "Všetky platby", "Minden fizetés") },
-              { value: "paid", label: t("Paid only", "Iba zaplatené", "Csak fizetett") },
-              { value: "unpaid", label: t("Unpaid only", "Iba nezaplatené", "Csak kifizetetlen") }
-            ]}
-          />
+        <div className="grid grid-cols-1 ws-sm:grid-cols-4 gap-2 w-full ws-xl:w-auto">
+          {(["status", "customerType", "payment", "project"] as const).map(id => (
+            <FacetedMultiSelect
+              key={id}
+              className="h-10 w-full"
+              options={facets.options[id]}
+              selected={facets.selection[id]}
+              onChange={next => facets.setSelection(id, next)}
+              allLabel={facets.allLabels[id]}
+              pinned={id === "status" ? facets.pinnedStatuses : undefined}
+              onTogglePin={id === "status" ? facets.togglePinnedStatus : undefined}
+            />
+          ))}
         </div>
       </div>
 
       {/* 5. ORDERS TABLE */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-clip">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-clip">
         <div ref={tableWrapRef} className="table-page-wrap">
           <table className="w-full text-left text-ui border-collapse min-w-220">
             <thead className="table-page-sticky-head">
-              <tr className="bg-slate-50 text-slate-500 type-overline border-b border-slate-200">
-                <th className="p-4">{t("Order no.", "Číslo objednávky", "Rendelésszám")}</th>
-                <th className="p-4">{t("Customer", "Zákazník", "Ügyfél")}</th>
-                <th className="p-4">{t("Delivery & Tracking", "Doprava a trasovanie", "Szállítás és nyomon követés")}</th>
-                <th className="p-4">{t("Items", "Položky", "Tételek")}</th>
-                <th className="p-4">{t("Payment", "Platba", "Fizetés")}</th>
-                <th className="p-4 text-right">{t("Total gross", "Celkom s DPH", "Összesen")}</th>
-                <th className="p-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+              <tr className="bg-gray-50 text-gray-500 type-overline border-b border-gray-200">
+                <ResizableTh listKey="orders" colKey="order-no." className="p-4">{t("Order no.", "Číslo objednávky", "Rendelésszám")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="customer" className="p-4">{t("Customer", "Zákazník", "Ügyfél")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="delivery-tracking" className="p-4">{t("Delivery & Tracking", "Doprava a trasovanie", "Szállítás és nyomon követés")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="items" className="p-4">{t("Items", "Položky", "Tételek")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="payment" className="p-4">{t("Payment", "Platba", "Fizetés")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="total-gross" className="p-4 text-right">{t("Total gross", "Celkom s DPH", "Összesen")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="status" className="p-4 text-center">{t("Status", "Stav", "Állapot")}</ResizableTh>
                 <th className="p-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-gray-200">
               {filteredOrders.length > 0 ? (
                 filteredOrders.map(order => {
                   const statusColor = orderStatusColor(order.status, orderStatuses);
@@ -856,26 +821,27 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   const customerDisplayName = order.customerType === "client"
                     ? (clientMatch?.name || order.billing?.name || t("Registered Client", "Registrovaný klient", "Regisztrált ügyfél"))
                     : (order.guest?.name || order.guest?.company || order.billing?.name || t("Guest Customer", "Hosť", "Vendég vásárló"));
+                  const customerEntity = clientMatch && !isClientRecord(clientMatch) ? "leads" : "clients";
 
                   const productCount = (order.items || []).filter(i => i.itemType === "product").length;
                   const serviceCount = (order.items || []).filter(i => i.itemType === "service").length;
                   const totalItemsCount = (order.items || []).reduce((acc, it) => acc + (it.quantity || 1), 0);
 
                   return (
-                    <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={order.id} className="hover:bg-entity-subtle/40 transition-colors">
                       {/* 1. Order no. & date */}
                       <td className="p-4 align-top whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(order)}
-                            className="font-mono font-bold text-ui text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer transition-colors text-left"
+                            className="font-mono font-bold text-ui text-entity-text hover:underline cursor-pointer transition-colors text-left"
                             title={t("Open order detail", "Otvoriť detail objednávky", "Rendelés megnyitása")}
                           >
                             {order.orderNumber}
                           </button>
                         </div>
-                        <div className="text-caption text-slate-400 font-sans mt-0.5">
+                        <div className="text-caption text-gray-400 font-sans mt-0.5">
                           {formatDateLocalized(order.orderDate, userLanguage)}
                         </div>
                       </td>
@@ -883,28 +849,29 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       {/* 2. Customer */}
                       <td className="p-4 align-top">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-bold text-slate-900 truncate max-w-50" title={customerDisplayName}>
-                            {customerDisplayName}
-                          </span>
-                          {order.customerType === "client" && order.clientId && onOpenClient && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenClient(order.clientId!)}
-                              className="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition-colors cursor-pointer"
-                              title={t("View client in CRM", "Zobraziť klienta v CRM", "Ügyfél megtekintése")}
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </button>
+                          {order.customerType === "client" ? (
+                            <EntityBadge
+                              entity={customerEntity}
+                              label={customerDisplayName}
+                              showIcon
+                              onClick={order.clientId && onOpenClient ? () => onOpenClient(order.clientId!) : undefined}
+                            />
+                          ) : (
+                            <span className="font-semibold text-gray-900 truncate max-w-50" title={customerDisplayName}>
+                              {customerDisplayName}
+                            </span>
                           )}
                         </div>
+                        <OrderProjectBadge order={order} projects={projects} leads={leads} language={userLanguage} />
                         <div className="flex items-center gap-1.5 mt-1">
                           {order.customerType === "client" ? (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <UserCheck className="h-3 w-3" />
-                              {t("Client", "Klient", "Ügyfél")}
-                            </span>
+                            <EntityBadge
+                              entity={customerEntity}
+                              label={customerEntity === "leads" ? t("Lead", "Lead", "Lead") : t("Client", "Klient", "Ügyfél")}
+                              size="sm"
+                            />
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-micro font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                               <User className="h-3 w-3" />
                               {t("Guest", "Hosť", "Vendég")}
                             </span>
@@ -912,18 +879,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           {order.customerType === "guest" && canEdit && (
                             <button
                               type="button"
+                              style={entityAccentStyle("clients")}
                               onClick={() => handleConvertGuest(order)}
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-micro font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors cursor-pointer"
-                              title={t("Convert guest to CRM client", "Vytvoriť z hosťa klienta", "Vendégből ügyfél")}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-micro font-semibold bg-entity-subtle hover:bg-entity-muted text-entity-text border border-entity-border transition-colors cursor-pointer"
+                              title={t(`Convert guest to ${PRODUCT_NAME} client`, "Vytvoriť z hosťa klienta", "Vendégből ügyfél")}
                             >
                               <UserCheck className="h-3 w-3" />
-                              <span>{t("To client", "+ Do CRM", "+ Ügyfél")}</span>
+                              <span>{t("To client", `+ Do ${PRODUCT_NAME}`, "+ Ügyfél")}</span>
                             </button>
                           )}
                         </div>
                         {order.delivery?.city && (
-                          <div className="text-caption text-slate-400 mt-1 flex items-center gap-1">
-                            <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                          <div className="text-caption text-gray-400 mt-1 flex items-center gap-1">
+                            <MapPin className="h-3 w-3 text-gray-400 shrink-0" />
                             <span className="truncate max-w-45">{order.delivery.city}</span>
                           </div>
                         )}
@@ -932,21 +900,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       {/* 3. Delivery & Tracking */}
                       <td className="p-4 align-top">
                         {order.shippingMethod ? (
-                          <div className="flex items-center gap-1.5 text-ui font-medium text-slate-700">
-                            <Truck className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <div className="flex items-center gap-1.5 text-ui font-medium text-gray-700">
+                            <Truck className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                             <span>{order.shippingMethod}</span>
                           </div>
                         ) : (
-                          <span className="text-caption text-slate-400">—</span>
+                          <span className="text-caption text-gray-400">—</span>
                         )}
                         {order.shippingTrackingNumber && (
                           <div className="mt-1">
-                            <span className="inline-flex items-center gap-1 font-mono text-micro bg-slate-100 px-2 py-0.5 rounded-md text-slate-700 border border-slate-200">
+                            <span className="inline-flex items-center gap-1 font-mono text-micro bg-gray-100 px-2 py-0.5 rounded-md text-gray-700 border border-gray-200">
                               <span>{order.shippingTrackingNumber}</span>
                               <button
                                 type="button"
                                 onClick={() => handleCopyTracking(order.shippingTrackingNumber!, order.id)}
-                                className="hover:text-indigo-600 transition-colors p-0.5 cursor-pointer"
+                                className="hover:text-entity-text transition-colors p-0.5 cursor-pointer"
                                 title={t("Copy tracking number", "Kopírovať číslo zásielky", "Szám másolása")}
                               >
                                 {copiedTrackingId === order.id ? (
@@ -962,10 +930,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
                       {/* 4. Items */}
                       <td className="p-4 align-top">
-                        <div className="font-semibold text-slate-800">
+                        <div className="font-semibold text-gray-800">
                           {totalItemsCount} {t("pcs", "ks", "db")}
                         </div>
-                        <div className="text-caption text-slate-400 flex items-center gap-1.5 mt-0.5">
+                        <div className="text-caption text-gray-400 flex items-center gap-1.5 mt-0.5">
                           <span>{productCount} {t("prod.", "prod.", "term.")}</span>
                           <span>•</span>
                           <span>{serviceCount} {t("serv.", "služ.", "szolg.")}</span>
@@ -976,29 +944,28 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       <td className="p-4 align-top">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {order.paymentStatus === "paid" ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               <Check className="h-3 w-3" />
                               {t("Paid", "Zaplatené", "Fizetve")}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                               <Clock className="h-3 w-3" />
                               {t("Unpaid", "K úhrade", "Fizetésre vár")}
                             </span>
                           )}
                           {order.invoiceNumber && (
-                            <span
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-mono"
-                              title={t("Invoice created", "Faktúra vystavená", "Számla kiállítva")}
-                            >
-                              <FileCheck className="h-3 w-3 text-emerald-600" />
-                              {order.invoiceNumber}
-                            </span>
+                            <EntityBadge
+                              entity="invoices"
+                              label={order.invoiceNumber}
+                              showIcon
+                              size="sm"
+                            />
                           )}
                         </div>
                         {order.paymentMethod && (
-                          <div className="text-caption text-slate-500 mt-1 flex items-center gap-1">
-                            <CreditCard className="h-3 w-3 text-slate-400 shrink-0" />
+                          <div className="text-caption text-gray-500 mt-1 flex items-center gap-1">
+                            <CreditCard className="h-3 w-3 text-gray-400 shrink-0" />
                             <span className="truncate max-w-35">{order.paymentMethod}</span>
                           </div>
                         )}
@@ -1006,10 +973,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
                       {/* 6. Total gross */}
                       <td className="p-4 align-top text-right whitespace-nowrap">
-                        <div className="font-mono font-bold text-slate-900">
+                        <div className="font-mono font-bold text-gray-900 tabular-nums">
                           {money(order.totalGrossAmount)}
                         </div>
-                        <div className="text-caption text-slate-400 font-sans mt-0.5">
+                        <div className="text-caption text-gray-400 font-sans mt-0.5 tabular-nums">
                           {money(order.totalNetAmount)} {t("excl. VAT", "bez DPH", "áfa nélkül")}
                         </div>
                       </td>
@@ -1024,12 +991,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                             onChange={next => handleChangeStatus(order, next)}
                             options={orderStatusOptions}
                             unstyled
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full type-overline border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 shadow-sm cursor-pointer transition-all hover:brightness-95"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md type-overline border border-gray-200 bg-white hover:bg-gray-50 text-gray-800 shadow-2xs cursor-pointer transition-all"
                             style={{ borderLeftColor: statusColor, borderLeftWidth: "4px" }}
                           />
                         ) : (
                           <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full type-overline border border-slate-200 bg-white text-slate-800"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md type-overline border border-gray-200 bg-white text-gray-800"
                             style={{ borderLeftColor: statusColor, borderLeftWidth: "4px" }}
                           >
                             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: statusColor }} />
@@ -1043,9 +1010,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         <div className="flex items-center justify-end gap-1">
                           <button
                             type="button"
+                            style={entityAccentStyle("warehouse")}
                             onClick={() => handleFulfillWarehouse(order)}
                             disabled={!canEdit}
-                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="p-2 text-gray-500 hover:text-entity-text hover:bg-entity-subtle rounded-md transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                             title={t("Fulfill with warehouse delivery note", "Vyskladniť výdajkou zo skladu", "Kiadás raktárból")}
                           >
                             <Package className="h-4 w-4" />
@@ -1053,12 +1021,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
                           <button
                             type="button"
+                            style={entityAccentStyle("invoices")}
                             onClick={() => handleCreateInvoice(order)}
                             disabled={!canEdit}
-                            className={`p-2 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                            className={`p-2 rounded-md transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                               order.invoiceNumber
-                                ? "text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200/70 shadow-xs"
-                                : "text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"
+                                ? "text-entity-text bg-entity-subtle hover:bg-entity-muted border border-entity-border shadow-2xs"
+                                : "text-gray-500 hover:text-entity-text hover:bg-entity-subtle"
                             }`}
                             title={
                               order.invoiceNumber
@@ -1072,7 +1041,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(order)}
-                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                            className="p-2 text-gray-500 hover:text-entity-text hover:bg-entity-subtle rounded-md transition-all cursor-pointer"
                             title={t("Edit order", "Upraviť objednávku", "Rendelés szerkesztése")}
                           >
                             <Edit2 className="h-4 w-4" />
@@ -1082,7 +1051,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleDeleteOrder(order)}
-                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+                              className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-all cursor-pointer"
                               title={t("Delete order", "Zmazať objednávku", "Rendelés törlése")}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -1097,7 +1066,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 <tr>
                   <td colSpan={8} className="p-12 text-center">
                     <EmptyState
-                      icon={<ShoppingCart className="h-10 w-10 text-slate-300" />}
+                      icon={<SectionIcon id="orders" className="h-10 w-10" />}
                       title={t("No orders found", "Žiadne objednávky sa nenašli", "Nem található rendelés")}
                       body={t(
                         "Create a new commercial or e-shop order to begin tracking fulfillment, deliveries and payments.",
@@ -1109,7 +1078,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           <button
                             type="button"
                             onClick={handleOpenCreate}
-                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-semibold rounded-2xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold rounded-md shadow-xs transition-all cursor-pointer"
                           >
                             <Plus className="h-4 w-4" />
                             <span>{t("New order", "Nová objednávka", "Új rendelés")}</span>

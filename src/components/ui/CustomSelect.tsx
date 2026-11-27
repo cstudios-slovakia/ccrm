@@ -16,6 +16,8 @@ export interface DropdownOption {
    */
   color?: string;
   disabled?: boolean;
+  /** Nesting level — a sub-status or sub-stage sits indented under its parent. */
+  indent?: number;
   /** Text the search box matches against — needed when `label` is not a plain string. */
   searchText?: string;
   /** Section this option belongs to — an id from the `groups` prop. Left out, it sits above every section. */
@@ -438,19 +440,19 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         className={
           unstyled
             ? `flex items-center transition-all duration-150 cursor-pointer ${disabled ? "opacity-50 cursor-not-allowed" : "active:scale-[0.98]"} ${className}`
-            : `${fitLabel ? "w-max max-w-none whitespace-nowrap" : "w-full"} flex items-center justify-between rounded-xl border font-semibold text-left transition-all duration-150 cursor-pointer ${sizeClasses} ${
+            : `${fitLabel ? "w-max max-w-none whitespace-nowrap" : "w-full"} flex items-center justify-between rounded-md border font-medium text-left shadow-2xs transition-all duration-150 cursor-pointer ${sizeClasses} ${
                 disabled
-                  ? "opacity-50 cursor-not-allowed bg-slate-50 border-slate-200 text-slate-400"
+                  ? "opacity-50 cursor-not-allowed bg-gray-100 border-gray-300 text-gray-400"
                   : isOpen
-                  ? "bg-white border-accent ring-2 ring-accent/20 text-slate-800"
-                  : "bg-white border-slate-200 text-slate-700 hover:border-slate-300 active:scale-[0.98]"
+                  ? "bg-white border-entity-solid ring-2 ring-entity-ring text-gray-900"
+                  : "bg-white border-gray-300 text-gray-800 hover:bg-gray-50 active:scale-[0.99]"
               } ${className}`
         }
       >
         <span className={`flex items-center gap-1.5 ${fitLabel ? "whitespace-nowrap" : "min-w-0 truncate"}`}>
           {icon ?? selected?.icon ?? (selected?.color ? <ColorDot color={selected.color} /> : null)}
           <span
-            className={`${fitLabel ? "whitespace-nowrap" : "truncate"} ${!selected ? "text-slate-400 font-medium" : ""} ${
+            className={`${fitLabel ? "whitespace-nowrap" : "truncate"} ${!selected ? "text-gray-400 font-normal" : ""} ${
               capitals && selected ? "uppercase tracking-wide" : ""
             }`}
           >
@@ -459,7 +461,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         </span>
         <ChevronDown
           className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${
-            isOpen ? "rotate-180 text-accent" : "text-slate-400"
+            isOpen ? "rotate-180 text-entity-text" : "text-gray-400"
           }`}
         />
       </button>
@@ -469,6 +471,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           isOpen ? (
               <motion.div
                 ref={panelRef}
+                data-dropdown-panel=""
                 initial={{ opacity: 0, scale: 0.97, y: coords?.openUp ? 6 : -6 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
@@ -485,7 +488,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                   transformOrigin: coords?.openUp ? "bottom" : "top",
                   visibility: coords ? "visible" : "hidden",
                 }}
-                className={`flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl ring-4 ring-slate-900/[0.03] ${panelClassName}`}
+                className={`flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl ${panelClassName}`}
               >
                 {showSearch && (
                   <DropdownSearchRow
@@ -532,7 +535,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                         e.stopPropagation();
                         create();
                       }}
-                      className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-body font-semibold text-accent transition-colors hover:bg-accent/10 cursor-pointer"
+                      className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-body font-semibold text-entity-text transition-colors hover:bg-entity-subtle cursor-pointer"
                     >
                       <Plus className="h-3.5 w-3.5 shrink-0" />
                       <span className="flex-1 truncate">{copy.use.replace("{q}", creatable)}</span>
@@ -546,19 +549,20 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                         role="option"
                         aria-selected={opt.value === value}
                         disabled={opt.disabled}
+                        style={opt.indent ? { paddingLeft: `${0.875 + opt.indent * 1.25}rem` } : undefined}
                         onMouseEnter={() => setHighlighted(i)}
                         onClick={(e) => {
                           e.stopPropagation();
                           pick(opt);
                         }}
-                        className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-body font-medium transition-colors cursor-pointer ${
+                        className={`w-full flex items-center gap-2 px-3.5 py-2 text-left text-body font-medium transition-colors cursor-pointer ${
                           opt.disabled
                             ? "opacity-40 cursor-not-allowed"
                             : opt.value === value
-                            ? "bg-accent/10 text-accent"
+                            ? "bg-entity-subtle text-entity-text font-semibold"
                             : i === highlighted
-                            ? "bg-slate-50 text-slate-800"
-                            : "text-slate-700"
+                            ? "bg-gray-50 text-gray-900"
+                            : "text-gray-700"
                         }`}
                       >
                         {opt.icon ?? (opt.color ? <ColorDot color={opt.color} /> : null)}
@@ -569,7 +573,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                         >
                           {opt.label}
                         </span>
-                        {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                        {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-entity-text" />}
                       </button>
                     );
                     if (!sections) return opts.map((opt, i) => renderOption(opt, i));

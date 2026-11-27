@@ -1,64 +1,60 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
-  AlignLeft,
   Archive as ArchiveIcon,
-  ArrowUpRight,
   Calendar,
   Check,
   ChevronDown,
   Clock,
-  CornerDownLeft,
+  CornerDownRight,
+  Eye,
   Filter,
   ListTodo,
   Lock,
   Pencil,
-  Plus,
   RotateCcw,
-  Ticket as TicketIcon,
   Trash2,
 } from "lucide-react";
 import type { Lead, Project, Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
-import { CustomSelect } from "./ui/CustomSelect";
-import { TaskEditDrawer } from "./TaskEditDrawer";
+import { LinkedTaskDrawer } from "./LinkedTaskDrawer";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { TaskPillText } from "./TaskPillText";
-import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
+import { TaskWhatsAppMarks } from "./WhatsAppChip";
+import { QuickTaskModal, type ComposerOrigin } from "./QuickTaskModal";
+import { TaskComposerBar } from "./TaskComposerBar";
+import { ClickUpTaskBadge } from "./projects/ClickUpTaskBadge";
+import { groupTasksWithSubtasks, isClickUpTask, type GroupedTaskRow } from "../utils/clickupTasks";
 import {
-  buildProjectTasks,
   computeTaskDateRange,
   getTaskCreationDate,
+  doneTaskState,
   isDoneTaskState,
-  localDateStr,
   localStampStr,
-  parseTaskLines,
   splitFilteredTasks,
   toggleTaskDone,
   type TaskDateBasis,
   type TaskDateFilter,
 } from "../utils/projectTasks";
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
-import { archiveTasksWithUndo, deleteTasksWithUndo } from "../utils/taskActions";
+import { deleteTasksWithUndo } from "../utils/taskActions";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { TaskRecurringMark } from "./TaskRecurringMark";
+import { useRecurringTemplates } from "../hooks/useRecurringTemplates";
+import { TaskDescriptionMark } from "./TaskDescriptionMark";
+import { TaskActivityMarks } from "./tasks/TaskActivityMarks";
+import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
+import { entityAccentStyle } from "../utils/entityAccent";
+import { EntityBadge } from "./tremor/EntityBadge";
 import {
-  canArchiveTask,
   canDeleteTask,
   canEditTask,
   isOnPersonalDashboard,
-  resolveAssigneeName,
   type TaskAccess,
 } from "../utils/taskSelectors";
 
-const toast = (message: string) => {
-  const show = (window as any).showToast;
-  if (typeof show === "function") show(message);
-};
-
-const QUICK_ADD_DEADLINE_TIME = "";
-
 export interface EntityTasksPanelProps {
-  entityType: "project" | "lead" | "client";
+  entityType: "project" | "lead" | "client" | "agency_worker";
   entityId: string;
   entityName?: string;
   /** Not saved yet: its tasks would point at an entity that may never exist. */
@@ -77,12 +73,14 @@ export interface EntityTasksPanelProps {
   mailConfigured?: boolean;
   relatedLeadId?: string;
   relatedProjectId?: string;
+  relatedAgencyWorkerId?: string;
+  agencyEnabled?: boolean;
   clientAssociatedLeadIds?: string[];
   accentColor?: "indigo" | "orange" | "blue" | "violet";
 }
 
 /**
- * Unified Tasks panel for Projects, Leads, and Clients.
+ * Unified Tasks panel for Projects, Leads, Clients, and Agency Workers.
  * Supports quick multi-line task creation, voice action bar, TaskEditDrawer,
  * and a date interval filter (All, Last week, Last month, Last quarter, Last year to date, Custom).
  * In all filter modes, completed tasks are displayed with strikethrough.
@@ -105,29 +103,28 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   mailConfigured,
   relatedLeadId,
   relatedProjectId,
+  relatedAgencyWorkerId,
+  agencyEnabled = false,
   clientAssociatedLeadIds,
-  accentColor = entityType === "project"
-    ? "indigo"
-    : entityType === "client"
-      ? "orange"
-      : "blue",
 }) => {
   const t: Translate = (en, sk, hu) => (userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en);
+  const recurringTemplates = useRecurringTemplates();
   const locale = userLanguage === "sk" ? "sk-SK" : userLanguage === "hu" ? "hu-HU" : "en-US";
 
   const userNames = users.map((u) => u.name).filter(Boolean);
   const myName = currentUser?.name || userNames[0] || "";
 
-  const [draft, setDraft] = useState("");
-  const [deadline, setDeadline] = useState(() => localDateStr(new Date()));
-  const [assignee, setAssignee] = useState(() => resolveAssigneeName(myName, myName, userNames));
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerOrigin, setComposerOrigin] = useState<ComposerOrigin | undefined>(undefined);
+  const [composerDictate, setComposerDictate] = useState(false);
+  const [composerReturned, setComposerReturned] = useState(false);
   const [showFinished, setShowFinished] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
+  const [collapsedParents, setCollapsedParents] = useState<Set<string>>(() => new Set());
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   // Completing a task that requires a conclusion asks for it first.
   const { ask: askConclusion, dialog: conclusionDialog } = useTaskConclusionPrompt(userLanguage);
   const [recentIds, setRecentIds] = useState<Set<string>>(() => new Set());
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Date interval filter state
   const [dateFilter, setDateFilter] = useState<TaskDateFilter>("all");
@@ -143,6 +140,9 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     }
     if (entityType === "lead") {
       return tasks.filter((t) => t.relatedLeadId === entityId);
+    }
+    if (entityType === "agency_worker") {
+      return tasks.filter((t) => t.relatedAgencyWorkerId === entityId);
     }
     if (entityType === "client") {
       const leadIds = clientAssociatedLeadIds || [];
@@ -180,6 +180,14 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   const completed = useMemo(() => finished.filter((task) => !task.archived), [finished]);
   const archived = useMemo(() => finished.filter((task) => task.archived), [finished]);
 
+  const openGroups = useMemo(() => groupTasksWithSubtasks(open, entityTasks), [open, entityTasks]);
+  const completedGroups = useMemo(() => groupTasksWithSubtasks(completed, entityTasks), [completed, entityTasks]);
+  const archivedGroups = useMemo(() => groupTasksWithSubtasks(archived, entityTasks), [archived, entityTasks]);
+  const multipleClickUpLists = useMemo(
+    () => new Set(entityTasks.filter(isClickUpTask).map((tk) => tk.clickupMeta?.listId).filter(Boolean)).size > 1,
+    [entityTasks],
+  );
+
   const activeRange = useMemo(() => {
     if (dateFilter === "all") return null;
     if (dateFilter === "custom") {
@@ -201,8 +209,27 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     return `${formatPart(range.start)} – ${formatPart(range.end)}`;
   };
 
-  const pendingTitles = parseTaskLines(draft);
   const canCreate = taskAccess.create && !isNew;
+  const defaultLeadId =
+    entityType === "lead"
+      ? entityId
+      : entityType === "client"
+        ? (relatedLeadId || entityId)
+        : (relatedLeadId || undefined);
+  const defaultProjectId = entityType === "project" ? entityId : (relatedProjectId || undefined);
+  const defaultWorkerId = entityType === "agency_worker" ? entityId : (relatedAgencyWorkerId || undefined);
+
+  const openComposer = (origin?: ComposerOrigin, dictate = false) => {
+    setComposerOrigin(origin);
+    setComposerDictate(dictate);
+    setComposerReturned(false);
+    setComposerOpen(true);
+  };
+  const closeComposer = () => {
+    setComposerOpen(false);
+    setComposerDictate(false);
+    setComposerReturned(true);
+  };
 
   // Picker project list
   const projectsForPicker = useMemo(() => {
@@ -222,47 +249,10 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     return projects;
   }, [projects, entityType, entityId, entityName]);
 
-  const addTasks = () => {
-    if (!canCreate || pendingTitles.length === 0) return;
-    const today = localDateStr(new Date());
-    const created = buildProjectTasks(pendingTitles, {
-      projectId: entityType === "project" ? entityId : (relatedProjectId || ""),
-      status: taskStates[0] || "New",
-      deadline: deadline || today,
-      deadlineTime: QUICK_ADD_DEADLINE_TIME,
-      assignee,
-      createdBy: myName,
-      startDate: today,
-    }).map((task) => ({
-      ...task,
-      relatedLeadId:
-        entityType === "lead"
-          ? entityId
-          : entityType === "client"
-            ? (relatedLeadId || entityId)
-            : (relatedLeadId || undefined),
-      relatedProjectId: entityType === "project" ? entityId : (relatedProjectId || undefined),
-    }));
-
-    setTasks((prev) => [...created, ...prev]);
-    setDraft("");
-    setRecentIds(new Set(created.map((task) => task.id)));
-    if (created.length > 1) {
-      toast(
-        t(
-          `${created.length} tasks added`,
-          `Pridané úlohy: ${created.length}`,
-          `${created.length} feladat hozzáadva`,
-        ),
-      );
-    }
-    inputRef.current?.focus();
-  };
-
   const toggleDone = async (task: Task) => {
-    if (!canEditTask(task, currentUser, taskAccess)) return;
+    if (isClickUpTask(task) || !canEditTask(task, currentUser, taskAccess)) return;
     let conclusion: string | undefined;
-    if (needsConclusionToFinish(task, taskStates[taskStates.length - 1] || "Done", taskStates)) {
+    if (needsConclusionToFinish(task, doneTaskState(taskStates), taskStates)) {
       const written = await askConclusion(task);
       if (written === null) return;
       conclusion = written;
@@ -279,7 +269,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   // Hold-to-confirm already asked; the Undo toast is the safety net. The server
   // delete is deferred until the undo window closes (see deleteTasksWithUndo).
   const deleteTask = (task: Task): Promise<boolean> => {
-    if (!canDeleteTask(task, currentUser, taskAccess)) return Promise.resolve(false);
+    if (isClickUpTask(task) || !canDeleteTask(task, currentUser, taskAccess)) return Promise.resolve(false);
     deleteTasksWithUndo({ allTasks: tasks, targets: [task], setTasks, lang: userLanguage });
     return Promise.resolve(true);
   };
@@ -318,59 +308,30 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     );
   }
 
-  // Accent styling tokens
-  const accentClasses = {
-    indigo: {
-      btn: "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20 text-white",
-      badge: "bg-indigo-50 text-indigo-700 border-indigo-200",
-      activeTab: "bg-indigo-600 text-white shadow-sm border-indigo-700",
-      text: "text-indigo-600",
-      focusBorder: "focus-within:border-indigo-300",
-      focusInput: "focus:border-indigo-400",
-    },
-    orange: {
-      btn: "bg-orange-600 hover:bg-orange-700 shadow-orange-600/20 text-white",
-      badge: "bg-orange-50 text-orange-700 border-orange-200",
-      activeTab: "bg-orange-600 text-white shadow-sm border-orange-700",
-      text: "text-orange-600",
-      focusBorder: "focus-within:border-orange-300",
-      focusInput: "focus:border-orange-400",
-    },
-    blue: {
-      btn: "bg-blue-600 hover:bg-blue-700 shadow-blue-600/20 text-white",
-      badge: "bg-blue-50 text-blue-700 border-blue-200",
-      activeTab: "bg-blue-600 text-white shadow-sm border-blue-700",
-      text: "text-blue-600",
-      focusBorder: "focus-within:border-blue-300",
-      focusInput: "focus:border-blue-400",
-    },
-    violet: {
-      btn: "bg-violet-600 hover:bg-violet-700 shadow-violet-600/20 text-white",
-      badge: "bg-violet-50 text-violet-700 border-violet-200",
-      activeTab: "bg-violet-600 text-white shadow-sm border-violet-700",
-      text: "text-violet-600",
-      focusBorder: "focus-within:border-violet-300",
-      focusInput: "focus:border-violet-400",
-    },
-  }[accentColor];
-
-  const renderRow = (task: Task) => {
-    const mayEdit = canEditTask(task, currentUser, taskAccess);
-    const mayDelete = canDeleteTask(task, currentUser, taskAccess);
+  const renderRow = (
+    task: Task,
+    opts?: { orphanParentTitle?: string; subtaskCount?: number; isSubtask?: boolean },
+  ) => {
+    const isClickUp = isClickUpTask(task);
+    const mayEdit = !isClickUp && canEditTask(task, currentUser, taskAccess);
+    const mayDelete = !isClickUp && canDeleteTask(task, currentUser, taskAccess);
     const done = isDoneTaskState(task.status, taskStates);
     const closed = done || Boolean(task.archived);
     const overdue = !closed && `${task.deadline} ${task.deadlineTime || "23:59"}` < nowStamp;
     const stateColor = taskStateColors[task.status];
     const hasHexColor = typeof stateColor === "string" && /^#[0-9a-f]{6}$/i.test(stateColor);
+    const subtaskCount = opts?.subtaskCount ?? 0;
+    const isCollapsed = collapsedParents.has(task.id);
 
     return (
       <li
         key={task.id}
-        className={`group flex items-start gap-3 px-3.5 py-3 rounded-2xl border transition-all ${
+        data-task-id={task.id}
+        className={`group flex items-start gap-3 px-3.5 py-2.5 rounded-lg border transition-all ${
           closed
-            ? "bg-slate-50/80 border-slate-200/80 opacity-80 hover:opacity-100"
-            : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm"
-        } ${recentIds.has(task.id) ? "border-indigo-400 animate-in fade-in slide-in-from-top-1 duration-300" : ""}`}
+            ? "bg-gray-50 border-gray-200 opacity-80 hover:opacity-100"
+            : "bg-white border-gray-200 hover:border-gray-300 shadow-2xs"
+        } ${opts?.isSubtask ? "bg-slate-50/70" : ""} ${recentIds.has(task.id) ? "border-entity-border animate-in fade-in slide-in-from-top-1 duration-300" : ""}`}
       >
         <button
           type="button"
@@ -379,16 +340,18 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           disabled={!mayEdit || Boolean(task.archived)}
           onClick={() => toggleDone(task)}
           title={
-            !mayEdit
-              ? t("Read-only access — you cannot change this task.", "Iba na čítanie — túto úlohu nemôžete meniť.", "Csak olvasható — ez a feladat nem módosítható.")
-              : done
-                ? t("Reopen task", "Znovu otvoriť úlohu", "Feladat újranyitása")
-                : t("Mark as done", "Označiť ako hotové", "Megjelölés készként")
+            isClickUp
+              ? t("Managed in ClickUp (read-only)", "Spravované v ClickUpe (iba na čítanie)", "ClickUpban kezelve (csak olvasható)")
+              : !mayEdit
+                ? t("Read-only access — you cannot change this task.", "Iba na čítanie — túto úlohu nemôžete meniť.", "Csak olvasható — ez a feladat nem módosítható.")
+                : done
+                  ? t("Reopen task", "Znovu otvoriť úlohu", "Feladat újranyitása")
+                  : t("Mark as done", "Označiť ako hotové", "Megjelölés készként")
           }
-          className={`mt-0.5 h-5 w-5 shrink-0 rounded-lg border-2 flex items-center justify-center transition-all active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+          className={`mt-0.5 h-5 w-5 shrink-0 rounded-md border flex items-center justify-center transition-all active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
             done
-              ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
-              : "bg-white border-slate-300 hover:border-emerald-500 cursor-pointer"
+              ? "bg-emerald-600 border-emerald-600 text-white shadow-2xs"
+              : "bg-white border-gray-300 hover:border-emerald-500 cursor-pointer"
           }`}
         >
           {done && <Check className="h-3.5 w-3.5 stroke-[3]" />}
@@ -399,36 +362,80 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           onClick={() => setEditingTask(task)}
           className="flex-1 min-w-0 text-left cursor-pointer rounded-md focus-visible:outline-2 focus-visible:outline-offset-2"
         >
+          {opts?.orphanParentTitle && (
+            <span className="mb-0.5 flex items-center gap-1 text-micro font-semibold text-violet-600 truncate">
+              <CornerDownRight className="h-3 w-3 shrink-0" />
+              <span className="truncate">{opts.orphanParentTitle}</span>
+            </span>
+          )}
           <span
-            className={`block text-ui font-bold truncate transition-colors ${
-              done ? "text-slate-400 line-through" : closed ? "text-slate-500" : "text-slate-800 group-hover:text-indigo-600"
+            className={`block text-ui font-semibold truncate transition-colors ${
+              done ? "text-gray-400 line-through" : closed ? "text-gray-500" : "text-gray-900 group-hover:text-entity-text"
             }`}
           >
             <TaskPillText text={task.title} />
           </span>
-          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-micro font-bold">
+          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-micro font-semibold">
+            <ClickUpTaskBadge task={task} showListName={multipleClickUpLists} userLanguage={userLanguage} />
+            {subtaskCount > 0 && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCollapsedParents((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(task.id)) next.delete(task.id);
+                    else next.add(task.id);
+                    return next;
+                  });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setCollapsedParents((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(task.id)) next.delete(task.id);
+                      else next.add(task.id);
+                      return next;
+                    });
+                  }
+                }}
+                className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50/70 px-1.5 py-0.5 text-micro font-bold text-violet-700 hover:bg-violet-100"
+                title={t("Toggle subtasks", "Zobraziť / skryť podúlohy", "Alfeladatok megjelenítése / elrejtése")}
+              >
+                <ChevronDown className={`h-2.5 w-2.5 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+                {subtaskCount}{" "}
+                {subtaskCount === 1
+                  ? t("subtask", "podúloha", "alfeladat")
+                  : t("subtasks", "podúloh", "alfeladat")}
+              </span>
+            )}
             <span
               className={`inline-flex items-center gap-1 ${
-                task.priority === "high" ? "text-rose-600" : task.priority === "low" ? "text-slate-400" : "text-amber-600"
+                task.priority === "high" ? "text-rose-600" : task.priority === "low" ? "text-gray-400" : "text-amber-600"
               }`}
             >
               <span
                 className={`h-1.5 w-1.5 rounded-full ${
-                  task.priority === "high" ? "bg-rose-500" : task.priority === "low" ? "bg-slate-400" : "bg-amber-500"
+                  task.priority === "high" ? "bg-rose-500" : task.priority === "low" ? "bg-gray-400" : "bg-amber-500"
                 }`}
               />
               {taskPriorityLabel(task.priority, t)}
             </span>
-            <span
-              className="px-1.5 py-0.5 rounded-md border bg-slate-50 text-slate-600 border-slate-200"
-              style={hasHexColor ? { backgroundColor: `${stateColor}1A`, color: stateColor, borderColor: `${stateColor}40` } : undefined}
-            >
-              {taskStateLabel(task.status, t)}
-            </span>
+            {!isClickUp && (
+              <span
+                className="px-1.5 py-0.5 rounded-md border bg-gray-50 text-gray-600 border-gray-200"
+                style={hasHexColor ? { backgroundColor: `${stateColor}1A`, color: stateColor, borderColor: `${stateColor}40` } : undefined}
+              >
+                {taskStateLabel(task.status, t)}
+              </span>
+            )}
             {dateBasis === "created" ? (
               <>
                 <span
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums bg-sky-50 text-sky-700 font-semibold border border-sky-200/60"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums bg-sky-50 text-sky-700 font-semibold border border-sky-200"
                   title={t("Creation date", "Dátum vytvorenia", "Létrehozás dátuma")}
                 >
                   <Calendar className="h-2.5 w-2.5 text-sky-500" />
@@ -437,7 +444,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 {task.deadline && (
                   <span
                     className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums ${
-                      overdue ? "bg-rose-50 text-rose-600 font-extrabold" : "bg-slate-100 text-slate-600"
+                      overdue ? "bg-rose-50 text-rose-600 font-bold" : "bg-gray-100 text-gray-600"
                     }`}
                     title={t("Due date", "Termín", "Határidő")}
                   >
@@ -449,7 +456,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             ) : (
               <span
                 className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums ${
-                  overdue ? "bg-rose-50 text-rose-600 font-extrabold" : "bg-slate-100 text-slate-600"
+                  overdue ? "bg-rose-50 text-rose-600 font-bold" : "bg-gray-100 text-gray-600"
                 }`}
                 title={t("Due date", "Termín", "Határidő")}
               >
@@ -457,38 +464,42 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 {formatDue(task)}
               </span>
             )}
+            <TaskRecurringMark task={task} templates={recurringTemplates} language={userLanguage} t={t} />
+            <TaskWhatsAppMarks task={task} userLanguage={userLanguage} />
             {(() => {
               const titleMatch = (task.title || "").match(/\[(TCK-[A-Za-z0-9_-]+)\]/i);
               const tckId = task.relatedTicketId || (titleMatch ? titleMatch[1].toUpperCase() : "");
               if (!tckId) return null;
               const label = titleMatch ? titleMatch[1].toUpperCase() : tckId;
               return (
-                <a
+                <EntityBadge
+                  entity="tickets"
+                  label={label}
                   href={`#tickets/${encodeURIComponent(tckId)}`}
+                  showIcon
                   onClick={(e) => e.stopPropagation()}
                   title={`${t("Open ticket", "Otvoriť tiket", "Jegy megnyitása")}: ${label}`}
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/80 hover:bg-indigo-100 hover:text-indigo-900 font-mono font-extrabold transition-colors"
-                >
-                  <TicketIcon className="h-2.5 w-2.5 shrink-0 text-indigo-600" />
-                  <span>{label}</span>
-                  <ArrowUpRight className="h-2.5 w-2.5 shrink-0" />
-                </a>
+                />
               );
             })()}
             {task.assignedUsers?.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 truncate max-w-35">
+              <span className="px-1.5 py-0.5 rounded-md bg-entity-subtle text-entity-text border border-entity-border truncate max-w-35">
                 {task.assignedUsers.join(", ")}
               </span>
             )}
-            {task.description && (
-              <AlignLeft
-                className="h-3 w-3 text-slate-400"
-                aria-label={t("Has a description", "Má popis", "Van leírása")}
-              />
-            )}
+            <TaskDescriptionMark
+              description={task.description}
+              label={t("Has a description", "Má popis", "Van leírása")}
+            />
+            <TaskActivityMarks
+              task={task}
+              onClick={() => setEditingTask(task)}
+              title={t("Open activity & chat", "Otvoriť aktivitu a chat", "Aktivitás és csevegés megnyitása")}
+            />
+            <DeadlinePostponedBadge task={task} language={userLanguage} t={t} compact />
             {task.isLocking && <Lock className="h-3 w-3 text-violet-500" />}
             {task.archived && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500">
                 <ArchiveIcon className="h-2.5 w-2.5" />
                 {t("Archived", "Archivované", "Archivált")}
               </span>
@@ -501,9 +512,9 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             type="button"
             onClick={() => setEditingTask(task)}
             title={mayEdit ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése") : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
+            className="p-1.5 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle active:scale-95 transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <Pencil className="h-3.5 w-3.5" />
+            {mayEdit ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
           </button>
           {mayDelete && (
             <HoldToConfirmButton
@@ -512,7 +523,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
               what={task.title}
               onConfirm={() => void deleteTask(task)}
               title={t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:scale-95 transition-all"
+              className="p-1.5 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 active:scale-95 transition-all"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </HoldToConfirmButton>
@@ -521,6 +532,22 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
       </li>
     );
   };
+
+  const renderGroupRow = (row: GroupedTaskRow) => (
+    <React.Fragment key={row.task.id}>
+      {renderRow(row.task, {
+        orphanParentTitle: row.orphanParentTitle,
+        subtaskCount: row.subtasks.length,
+      })}
+      {row.subtasks.length > 0 && !collapsedParents.has(row.task.id) && (
+        <li key={`${row.task.id}-subtasks`} className="list-none pl-5 ml-2.5 border-l-2 border-violet-200/80">
+          <ul className="flex flex-col gap-1.5">
+            {row.subtasks.map((sub) => renderRow(sub, { isSubtask: true }))}
+          </ul>
+        </li>
+      )}
+    </React.Fragment>
+  );
 
   const filterButtons: { id: TaskDateFilter; label: string }[] = [
     { id: "all", label: t("All", "Všetky", "Mind") },
@@ -532,127 +559,62 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   ];
 
   return (
-    <div className="flex-1 min-h-0 ws-lg:overflow-y-auto flex flex-col gap-4 pr-0 ws-lg:pr-1">
-      {/* Quick Add Card */}
+    <div style={entityAccentStyle("tasks")} className="flex-1 min-h-0 ws-lg:overflow-y-auto flex flex-col gap-4 pr-0 ws-lg:pr-1">
+      {/* Task Composer */}
       {taskAccess.create && (
-        <div className={`shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 transition-all ${accentClasses.focusBorder} focus-within:bg-white focus-within:shadow-sm`}>
+        <div className="shrink-0">
           {isNew ? (
-            <p className="px-1 py-2 text-ui font-semibold text-slate-500">
-              {t(
-                "Save this entity first, then add its tasks here.",
-                "Najprv túto položku uložte, potom sem pridajte jej úlohy.",
-                "Először mentse el az entitást, utána adja hozzá a feladatait.",
-              )}
-            </p>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3.5">
+              <p className="px-1 py-2 text-ui font-medium text-gray-500">
+                {t(
+                  "Save this entity first, then add its tasks here.",
+                  "Najprv túto položku uložte, potom sem pridajte jej úlohy.",
+                  "Először mentse el az entitást, utána adja hozzá a feladatait.",
+                )}
+              </p>
+            </div>
+          ) : composerOpen ? (
+            <QuickTaskModal
+              inline
+              compact
+              tasks={tasks}
+              leads={leads}
+              projects={projectsForPicker}
+              users={users}
+              taskStates={taskStates}
+              systemLanguage={userLanguage}
+              currentUserName={myName}
+              mailConfigured={mailConfigured}
+              agencyEnabled={agencyEnabled}
+              initialRelatedLeadId={defaultLeadId}
+              initialRelatedProjectId={defaultProjectId}
+              initialRelatedAgencyWorkerId={defaultWorkerId}
+              origin={composerOrigin}
+              startDictation={composerDictate}
+              onCreate={(created) => {
+                setTasks((prev) => [...created, ...prev]);
+                setRecentIds(new Set(created.map((tk) => tk.id)));
+              }}
+              onClose={closeComposer}
+            />
           ) : (
-            <>
-              <div className="flex items-start gap-2">
-                <Plus className={`h-4 w-4 mt-2.5 shrink-0 ${accentClasses.text}`} />
-                <textarea
-                  ref={inputRef}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      addTasks();
-                    }
-                  }}
-                  rows={Math.min(Math.max(draft.split("\n").length, 1), 6)}
-                  aria-label={t("New tasks, one per line", "Nové úlohy, jedna na riadok", "Új feladatok, soronként egy")}
-                  placeholder={t(
-                    "Write a task and press Enter",
-                    "Napíšte úlohu a stlačte Enter",
-                    "Írjon egy feladatot és nyomjon Entert",
-                  )}
-                  className="flex-1 min-w-0 resize-none bg-transparent py-2 text-ui font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="mt-2 pt-2 border-t border-slate-200/70 flex flex-wrap items-center gap-x-4 gap-y-2 text-micro font-bold text-slate-500">
-                <label className="flex items-center gap-1.5">
-                  <span className="uppercase tracking-wider">{t("Due", "Termín", "Határidő")}</span>
-                  <input
-                    type="date"
-                    value={deadline}
-                    onChange={(e) => setDeadline(e.target.value)}
-                    className={`px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 font-bold ${accentClasses.focusInput} focus:outline-none`}
-                  />
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <span className="uppercase tracking-wider">{t("Assignee", "Zodpovedný", "Felelős")}</span>
-                  <div className="w-44">
-                    <CustomSelect
-                      size="sm"
-                      value={assignee}
-                      onChange={setAssignee}
-                      options={[
-                        { value: "", label: t("-- Unassigned --", "-- Nepriradený --", "-- Kijelöletlen --") },
-                        ...userNames.map((name) => ({ value: name, label: name })),
-                      ]}
-                    />
-                  </div>
-                </div>
-                <span className="ml-auto hidden ws-md:inline text-slate-400 font-semibold">
-                  {t(
-                    "One task per line · Shift+Enter new line",
-                    "Každý riadok je úloha · Shift+Enter nový riadok",
-                    "Soronként egy feladat · Shift+Enter új sor",
-                  )}
-                </span>
-              </div>
-
-              <div className="mt-2.5 pt-2.5 border-t border-slate-200/70">
-                <VoiceTaskActionBar
-                  canCreate={canCreate}
-                  systemLanguage={userLanguage}
-                  currentUser={currentUser}
-                  users={users}
-                  defaultAssignee={assignee}
-                  defaultStatus={taskStates[0] || "New"}
-                  relatedProjectId={entityType === "project" ? entityId : (relatedProjectId || undefined)}
-                  relatedLeadId={
-                    entityType === "lead"
-                      ? entityId
-                      : entityType === "client"
-                        ? (relatedLeadId || entityId)
-                        : (relatedLeadId || undefined)
-                  }
-                  manualButtonText={
-                    pendingTitles.length > 1
-                      ? t(`Add ${pendingTitles.length} Tasks`, `Pridať ${pendingTitles.length} úloh`, `${pendingTitles.length} feladat hozzáadása`)
-                      : t("Add Task", "Pridať úlohu", "Feladat hozzáadása")
-                  }
-                  manualButtonIcon={<CornerDownLeft className="h-3.5 w-3.5" />}
-                  manualButtonClassName={`py-2 px-3 rounded-xl ${accentClasses.btn} type-overline shadow-sm transition-all duration-300 ease-in-out hover:scale-[1.01] cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed`}
-                  voiceButtonClassName="w-[20%] py-2 px-3 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white rounded-xl type-overline shadow-sm hover:scale-[1.01] transition-all duration-300 ease-in-out cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                  onManualCreateClick={addTasks}
-                  onTasksCreated={(createdTasks) => {
-                    const mapped = createdTasks.map((t) => ({
-                      ...t,
-                      relatedLeadId:
-                        entityType === "lead"
-                          ? entityId
-                          : entityType === "client"
-                            ? (relatedLeadId || entityId)
-                            : (relatedLeadId || undefined),
-                      relatedProjectId: entityType === "project" ? entityId : (relatedProjectId || undefined),
-                    }));
-                    setTasks((prev) => [...mapped, ...prev]);
-                    setRecentIds(new Set(mapped.map((tk) => tk.id)));
-                  }}
-                />
-              </div>
-            </>
+            <TaskComposerBar
+              compact
+              canCreate={canCreate}
+              systemLanguage={userLanguage}
+              returned={composerReturned}
+              onCreate={(origin) => openComposer(origin, false)}
+              onDictate={(origin) => openComposer(origin, true)}
+            />
           )}
         </div>
       )}
 
       {/* FILTER BAR: All, Last week, Last month, Last quarter, Last year to date, Custom interval */}
-      <div className="rounded-2xl border border-slate-200/90 bg-slate-50/70 p-2.5 flex flex-col gap-2">
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5 flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 type-overline text-slate-500">
+            <div className="flex items-center gap-1.5 type-overline text-gray-500">
               <Filter className="h-3 w-3" />
               <span>{t("Filter tasks", "Filtrovať úlohy", "Feladatok szűrése")}</span>
             </div>
@@ -661,17 +623,17 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             <div
               role="radiogroup"
               aria-label={t("Filter by date type", "Filtrovať podľa typu dátumu", "Szűrés dátumtípus szerint")}
-              className="inline-flex items-center p-0.5 rounded-xl bg-slate-200/80 border border-slate-300/70 shadow-inner"
+              className="inline-flex items-center p-0.5 rounded-md bg-gray-200/80 border border-gray-300"
             >
               <button
                 type="button"
                 role="radio"
                 aria-checked={dateBasis === "due"}
                 onClick={() => setDateBasis("due")}
-                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg type-overline transition-all duration-150 cursor-pointer ${
+                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-md type-overline transition-all duration-150 cursor-pointer ${
                   dateBasis === "due"
-                    ? "bg-white text-slate-900 shadow-xs"
-                    : "text-slate-500 hover:text-slate-800"
+                    ? "bg-white text-gray-900 shadow-2xs"
+                    : "text-gray-500 hover:text-gray-800"
                 }`}
               >
                 <Clock className="w-2.5 h-2.5" />
@@ -682,10 +644,10 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 role="radio"
                 aria-checked={dateBasis === "created"}
                 onClick={() => setDateBasis("created")}
-                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg type-overline transition-all duration-150 cursor-pointer ${
+                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-md type-overline transition-all duration-150 cursor-pointer ${
                   dateBasis === "created"
-                    ? "bg-white text-slate-900 shadow-xs"
-                    : "text-slate-500 hover:text-slate-800"
+                    ? "bg-white text-gray-900 shadow-2xs"
+                    : "text-gray-500 hover:text-gray-800"
                 }`}
               >
                 <Calendar className="w-2.5 h-2.5" />
@@ -694,7 +656,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             </div>
 
             {activeRange && (
-              <span className="hidden ws-sm:inline-block px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700 text-micro font-bold">
+              <span className="hidden ws-sm:inline-block px-2 py-0.5 rounded-md bg-gray-200/80 text-gray-700 text-micro font-semibold">
                 {formatDateRangeLabel(activeRange)}
               </span>
             )}
@@ -707,7 +669,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 setCustomStart("");
                 setCustomEnd("");
               }}
-              className="text-micro font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-slate-200/60 transition-colors cursor-pointer"
+              className="text-micro font-semibold text-gray-500 hover:text-gray-800 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-gray-200/60 transition-colors cursor-pointer"
             >
               <RotateCcw className="h-2.5 w-2.5" />
               {t("Reset filter", "Zrušiť filter", "Szűrő visszaállítása")}
@@ -724,10 +686,10 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 key={btn.id}
                 type="button"
                 onClick={() => setDateFilter(btn.id)}
-                className={`px-2.5 py-1 rounded-xl type-overline transition-all duration-150 cursor-pointer border ${
+                className={`px-2.5 py-1 rounded-md type-overline transition-all duration-150 cursor-pointer border ${
                   isSelected
-                    ? `${accentClasses.activeTab} shadow-xs`
-                    : "bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100/90 border-slate-200"
+                    ? "bg-entity-solid text-white border-entity-solid shadow-2xs"
+                    : "bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border-gray-200"
                 }`}
               >
                 {btn.label}
@@ -738,27 +700,27 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
 
         {/* Custom interval date inputs */}
         {dateFilter === "custom" && (
-          <div className="mt-1 pt-2 border-t border-slate-200/60 flex flex-wrap items-center gap-3 text-micro font-bold animate-in fade-in duration-200">
+          <div className="mt-1 pt-2 border-t border-gray-200 flex flex-wrap items-center gap-3 text-micro font-semibold animate-in fade-in duration-200">
             <label className="flex items-center gap-1.5">
-              <span className="text-slate-500 uppercase">{t("From", "Od", "Tól")}:</span>
+              <span className="text-gray-500 uppercase">{t("From", "Od", "Tól")}:</span>
               <input
                 type="date"
                 value={customStart}
                 onChange={(e) => setCustomStart(e.target.value)}
-                className={`px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 ${accentClasses.focusInput} focus:outline-none`}
+                className="px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-700 focus:border-entity-solid focus:outline-none"
               />
             </label>
             <label className="flex items-center gap-1.5">
-              <span className="text-slate-500 uppercase">{t("To", "Do", "Ig")}:</span>
+              <span className="text-gray-500 uppercase">{t("To", "Do", "Ig")}:</span>
               <input
                 type="date"
                 value={customEnd}
                 onChange={(e) => setCustomEnd(e.target.value)}
-                className={`px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 ${accentClasses.focusInput} focus:outline-none`}
+                className="px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-700 focus:border-entity-solid focus:outline-none"
               />
             </label>
             {(customStart || customEnd) && (
-              <span className="text-micro text-slate-400 font-semibold">
+              <span className="text-micro text-gray-400 font-medium">
                 {t("Showing tasks matching interval", "Zobrazujú sa úlohy zodpovedajúce intervalu", "Az időszaknak megfelelő feladatok megjelenítése")}
               </span>
             )}
@@ -768,15 +730,15 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
 
       {/* OPEN TASKS SECTION */}
       <div className="flex flex-col gap-2">
-        <span className="flex items-center gap-1.5 type-overline text-slate-400">
+        <span className="flex items-center gap-1.5 type-overline text-gray-500">
           <ListTodo className="h-3.5 w-3.5" />
           {t("Open tasks", "Otvorené úlohy", "Nyitott feladatok")}
-          <span className="px-1.5 rounded-full bg-slate-100 text-slate-600 font-extrabold">{open.length}</span>
+          <span className="px-1.5 rounded-md bg-gray-100 text-gray-700 font-bold">{open.length}</span>
         </span>
         {open.length > 0 ? (
-          <ul className="flex flex-col gap-2">{open.map(renderRow)}</ul>
+          <ul className="flex flex-col gap-2">{openGroups.map(renderGroupRow)}</ul>
         ) : (
-          <div className="rounded-2xl border-2 border-dashed border-slate-200 px-4 py-6 text-center text-ui font-semibold text-slate-400">
+          <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-ui font-medium text-gray-400">
             {allFiltered.length === 0 && dateFilter !== "all"
               ? dateBasis === "created"
                 ? t(
@@ -815,7 +777,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           </button>
           {showFinished && (
             <ul className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
-              {completed.map(renderRow)}
+              {completedGroups.map(renderGroupRow)}
             </ul>
           )}
         </div>
@@ -836,7 +798,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           </button>
           {showArchived && (
             <ul className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
-              {archived.map(renderRow)}
+              {archivedGroups.map(renderGroupRow)}
             </ul>
           )}
         </div>
@@ -846,28 +808,20 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
 
       {/* Task Edit Drawer */}
       {editingTask && (
-        <TaskEditDrawer
-          key={editingTask.id}
+        <LinkedTaskDrawer
           task={editingTask}
+          tasks={tasks}
+          setTasks={setTasks}
           leads={leads}
           projects={projectsForPicker}
           users={users}
+          language={userLanguage}
           taskStates={taskStates}
           taskStateColors={taskStateColors}
-          systemLanguage={userLanguage}
+          taskAccess={taskAccess}
           currentUser={currentUser}
-          currentUserName={myName}
           mailConfigured={mailConfigured}
-          canEdit={canEditTask(editingTask, currentUser, taskAccess)}
-          canArchive={taskAccess.edit && canArchiveTask(editingTask, currentUser)}
-          canDelete={canDeleteTask(editingTask, currentUser, taskAccess)}
-          onSave={(next) => setTasks((prev) => prev.map((tk) => (tk.id === next.id ? next : tk)))}
-          onToggleArchive={(next) =>
-            next.archived
-              ? setTasks((prev) => prev.map((tk) => (tk.id === next.id ? { ...tk, archived: false } : tk)))
-              : archiveTasksWithUndo({ targets: [next], setTasks, lang: userLanguage })
-          }
-          onDelete={deleteTask}
+          agencyEnabled={agencyEnabled || entityType === "agency_worker"}
           onClose={() => setEditingTask(null)}
         />
       )}

@@ -28,7 +28,7 @@ interface ExternalOfferFormProps {
 }
 
 const compactInput =
-  "w-full min-w-0 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-ui font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/40";
+  "w-full min-w-0 p-1.5 bg-white border border-gray-300 rounded-md text-ui font-semibold focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid";
 
 const parseNumber = (raw: string) => {
   const n = parseFloat(raw);
@@ -63,7 +63,7 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
   const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 ws-sm:p-5 space-y-5" data-offer-external-form>
+    <div className="rounded-lg border border-gray-200 bg-white p-4 ws-sm:p-5 space-y-5 shadow-xs" data-offer-external-form>
       <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
         <div>
           <label className={labelClass}>{t("Accounting service", "Účtovná služba", "Könyvelő szolgáltatás")}</label>
@@ -90,7 +90,7 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
             onChange={e => patch({ issuedAt: e.target.value })}
             className={inputClass}
           />
-          <p className="text-caption text-slate-500 mt-1">
+          <p className="text-caption text-gray-500 mt-1">
             {t(
               "The offer is valid for 30 days from this date.",
               "Ponuka platí 30 dní od tohto dátumu.",
@@ -103,7 +103,7 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
       <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
         <div>
           <label className={labelClass}>{t("Client / lead (required)", "Klient / lead (povinné)", "Ügyfél / lead (kötelező)")}</label>
-          <span data-offer-client-picker className="inline-flex items-center gap-1.5 rounded-lg">
+          <span data-offer-client-picker className="inline-flex items-center gap-1.5 rounded-md">
             {clientPicker}
           </span>
         </div>
@@ -121,14 +121,14 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
 
       <div className="space-y-2.5">
         <div className="flex items-center justify-between gap-3">
-          <h4 className="type-card-title text-slate-900">
+          <h4 className="type-card-title text-gray-900">
             {t("Scope of delivery & work", "Rozsah dodávky a prác", "Szállítás és munka terjedelme")}
           </h4>
           <button
             type="button"
             data-offer-add-item
             onClick={addItem}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-bold transition-all cursor-pointer active:scale-[0.98]"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-semibold transition-all cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
             {t("Custom item", "Vlastná položka", "Saját tétel")}
@@ -141,11 +141,11 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
             {...(sectionAlert === "items" ? { "data-offer-items": "" } : {})}
             className={
               sectionAlert === "items"
-                ? `p-5 text-center border border-dashed border-slate-200 rounded-2xl ${OFFER_SECTION_ALERT_CLASS}`
-                : "p-5 text-center border border-dashed border-slate-200 rounded-2xl"
+                ? `p-5 text-center border border-dashed border-gray-300 rounded-lg ${OFFER_SECTION_ALERT_CLASS}`
+                : "p-5 text-center border border-dashed border-gray-300 rounded-lg"
             }
           >
-            <p className="text-ui text-slate-500">
+            <p className="text-ui text-gray-500">
               {t(
                 "No line items yet — pick one from the warehouse or add a custom item.",
                 "Zatiaľ žiadne položky — vyberte tovar zo skladu alebo pridajte vlastnú položku.",
@@ -159,21 +159,21 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
           const rate = Number(item.vatRate) || 0;
           const rates = vatRates.includes(rate) ? vatRates : [rate, ...vatRates].sort((a, b) => b - a);
           return (
-            <div key={item.id} className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2 hover:border-slate-300 transition-all">
+            <div key={item.id} className="p-3 bg-white rounded-lg border border-gray-200 space-y-2 hover:border-entity-border transition-all shadow-2xs">
               <div className="flex items-center gap-2">
                 <input
                   type="text"
                   value={item.name}
                   onChange={e => updateItem(item.id, { name: e.target.value })}
                   placeholder={t("Item name", "Názov položky", "Tétel neve")}
-                  className="font-bold text-ui text-slate-900 bg-transparent flex-1 min-w-0 border-b border-transparent hover:border-slate-200 focus:border-indigo-500 focus:outline-none transition-colors py-1"
+                  className="font-semibold text-ui text-gray-900 bg-transparent flex-1 min-w-0 border-b border-transparent hover:border-gray-200 focus:border-entity-solid focus:outline-none transition-colors py-1"
                 />
                 <button
                   type="button"
                   onClick={() => removeItem(item.id)}
                   title={t("Remove item", "Odstrániť položku", "Tétel eltávolítása")}
                   aria-label={t("Remove item", "Odstrániť položku", "Tétel eltávolítása")}
-                  className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 cursor-pointer transition-all"
+                  className="text-gray-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 cursor-pointer transition-all"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -183,11 +183,11 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
                 value={item.description || ""}
                 onChange={e => updateItem(item.id, { description: e.target.value })}
                 placeholder={t("Detailed specification", "Podrobná špecifikácia", "Részletes leírás")}
-                className="w-full text-ui text-slate-500 bg-transparent border-b border-slate-100 focus:border-indigo-400 focus:outline-none transition-colors py-1"
+                className="w-full text-ui text-gray-500 bg-transparent border-b border-gray-100 focus:border-entity-solid focus:outline-none transition-colors py-1"
               />
               <div className="grid grid-cols-2 ws-sm:grid-cols-5 gap-2">
                 <div>
-                  <label className="type-overline text-slate-400">{t("Qty", "Množstvo", "Menny.")}</label>
+                  <label className="type-overline text-gray-400">{t("Qty", "Množstvo", "Menny.")}</label>
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
@@ -202,12 +202,12 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
                       value={item.unit}
                       aria-label={t("Unit", "Jednotka", "Egység")}
                       onChange={e => updateItem(item.id, { unit: e.target.value })}
-                      className="w-12 shrink-0 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-ui text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                      className="w-12 shrink-0 p-1.5 bg-white border border-gray-300 rounded-md text-ui text-center focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="type-overline text-slate-400">
+                  <label className="type-overline text-gray-400">
                     {t("Unit price", "Jedn. cena", "Egységár")} ({currencySymbol})
                   </label>
                   <input
@@ -219,7 +219,7 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="type-overline text-slate-400">{t("Discount", "Zľava", "Kedvezmény")} %</label>
+                  <label className="type-overline text-gray-400">{t("Discount", "Zľava", "Kedvezmény")} %</label>
                   <input
                     type="number"
                     min="0"
@@ -231,7 +231,7 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="type-overline text-slate-400">{t("VAT", "DPH", "ÁFA")} %</label>
+                  <label className="type-overline text-gray-400">{t("VAT", "DPH", "ÁFA")} %</label>
                   <CustomSelect
                     size="sm"
                     value={String(rate)}
@@ -240,8 +240,8 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
                   />
                 </div>
                 <div className="text-right self-end">
-                  <label className="type-overline text-slate-400 block">{t("Line total", "Spolu", "Összesen")}</label>
-                  <span className="font-bold text-ui text-slate-900 mt-1 block whitespace-nowrap">{money(item.totalPrice)}</span>
+                  <label className="type-overline text-gray-400 block">{t("Line total", "Spolu", "Összesen")}</label>
+                  <span className="font-bold text-ui text-gray-900 tabular-nums mt-1 block whitespace-nowrap">{money(item.totalPrice)}</span>
                 </div>
               </div>
             </div>
@@ -249,10 +249,10 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
         })}
       </div>
 
-      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-        <div className="type-overline text-slate-500">{t("Total incl. VAT", "Celková cena s DPH", "Végösszeg ÁFÁ-val")}</div>
-        <div className="type-metric text-slate-900 mt-0.5">{money(totals.grandTotal)}</div>
-        <div className="text-caption text-slate-500 font-medium">
+      <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+        <div className="type-overline text-gray-500">{t("Total incl. VAT", "Celková cena s DPH", "Végösszeg ÁFÁ-val")}</div>
+        <div className="type-metric text-gray-900 tabular-nums mt-0.5">{money(totals.grandTotal)}</div>
+        <div className="text-caption text-gray-500 font-medium">
           {t("Net", "Základ", "Nettó")}: {money(totals.subtotal)} · {t("VAT", "DPH", "ÁFA")}: {money(totals.vatAmount)}
         </div>
       </div>

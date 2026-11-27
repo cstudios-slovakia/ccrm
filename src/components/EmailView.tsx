@@ -1,28 +1,66 @@
 import { PageHeader } from "./layout";
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
-import {
-  Send, Trash2, Search, Mail, Plus, X, Loader2,
-  Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
-  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw, Lock, MailOpen,
-  Type, MessagesSquare, Inbox, Paperclip, UserPlus, ExternalLink, History, Download, FolderPlus,
-  FileSpreadsheet, FileImage, ArrowUpRight, ArrowDownLeft
-} from "lucide-react";
-import type { Lead, Task, UserProfile } from "../types";
+import { Plus, CheckCircle2, CircleAlert, RefreshCw, Lock } from "lucide-react";
+import { useEmailPresentation } from "./email/useEmailPresentation";
+import { EmailAccountsSidebar } from "./email/EmailAccountsSidebar";
+import { EmailMessagingLayout } from "./email/EmailMessagingLayout";
+import { EmailAgentLayout } from "./email/EmailAgentLayout";
+import { EmailMailLayout } from "./email/EmailMailLayout";
+import { EmailComposerDrawer } from "./email/EmailComposerDrawer";
+import { EmailTimelineSlideout } from "./email/EmailTimelineSlideout";
+import { EmailClientSlideout } from "./email/EmailClientSlideout";
+import type { Lead, Task, Ticket, TicketStatusDef, UserProfile } from "../types";
+import { useEmailTicketLinks } from "./email/useEmailTicketLinks";
 import type { ModuleAccess } from "../utils/permissions";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import { formatBytes } from "../utils/formatBytes";
-import { nowLocalStamp, localeCodeFor, formatTimestampLocalized, todayLocalPlusDays } from "../utils/localTime";
-import { getTranslation } from "../utils/translations";
-import { CustomSelect } from "./ui/CustomSelect";
-import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
-import { TimelineCollapsible } from "./TimelineCollapsible";
+import { nowLocalStamp, todayLocalPlusDays } from "../utils/localTime";
+import { hasAiConfigured } from "../utils/aiConfig";
 import { isOutgoingMail } from "../utils/mailTimeline";
-import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
+import { PRODUCT_NAME } from "../utils/brand";
+import {
+  cancelAgentFollowup,
+  clearAgentChatHistory,
+  deleteAgentArtifact,
+  deleteAgentSubagent,
+  deleteAgentTask,
+  deleteAgentTrigger,
+  getAgentConnectorState,
+  getWhatsAppChats,
+  inferConnectorType,
+  isAgentConnector,
+  isEmailConnector,
+  isMessagingConnector,
+  listMyConnectors,
+  pollWhatsAppDirectQr,
+  resyncWhatsAppChats,
+  runAgentTaskNow,
+  runSubscriptionAgent,
+  saveAgentArtifact,
+  saveAgentAutonomousConfig,
+  saveAgentMemory,
+  saveAgentSubagent,
+  saveAgentTask,
+  saveAgentTrigger,
+  sendWhatsAppChatMessage,
+  setWhatsAppChatAgentTakeover,
+  startWhatsAppDirectQr,
+  testAgentTrigger,
+  type AgentChatMessage,
+  type AgentConnectorState,
+  type AgentEventTrigger,
+  type AgentSubagent,
+  type CompanyMailbox,
+  type ConnectorType,
+  type WhatsAppChatSummary,
+  type WhatsAppConnectorState,
+} from "../utils/companyMailboxes";
 
 interface EmailViewProps {
   currentUser: any;
@@ -35,36 +73,14 @@ interface EmailViewProps {
   setTasks: (newTasks: Task[] | ((prev: Task[]) => Task[])) => void;
   users: UserProfile[];
   taskStates?: string[];
+  tickets?: Ticket[];
+  setTickets?: React.Dispatch<React.SetStateAction<Ticket[]>>;
+  ticketStatuses?: TicketStatusDef[];
   /** Role access for the email module. `edit: false` makes the client read-only:
       mail can be read, searched and attachments opened, but nothing is sent,
       created or written into the CRM. */
   access?: ModuleAccess;
 }
-
-// Geometric Icon component from AuroraMail
-const GeometricIcon: React.FC<{ emailString?: string }> = ({ emailString }) => {
-  if (!emailString) return null;
-  let hash = 0;
-  for (let i = 0; i < emailString.length; i++) {
-    hash = emailString.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  hash = Math.abs(hash);
-  
-  const hue = hash % 360;
-  const color = `hsl(${hue}, 70%, 60%)`;
-  const shapes = ['circle', 'square', 'triangle', 'diamond', 'hexagon'];
-  const shape = shapes[hash % shapes.length];
-
-  return (
-    <svg width="12" height="12" viewBox="0 0 20 20" style={{ marginRight: '6px', flexShrink: 0 }}>
-      {shape === 'circle' && <circle cx="10" cy="10" r="9" fill={color} />}
-      {shape === 'square' && <rect x="2" y="2" width="16" height="16" rx="4" fill={color} />}
-      {shape === 'triangle' && <polygon points="10,2 18,18 2,18" fill={color} strokeLinejoin="round" />}
-      {shape === 'diamond' && <polygon points="10,2 18,10 10,18 2,10" fill={color} />}
-      {shape === 'hexagon' && <polygon points="10,1 18,5 18,15 10,19 2,15 2,5" fill={color} />}
-    </svg>
-  );
-};
 
 export const EmailView: React.FC<EmailViewProps> = ({
   currentUser,
@@ -77,6 +93,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
   setTasks,
   users,
   taskStates = ["New", "In progress", "Blocked", "Done"],
+  tickets = [],
+  setTickets,
+  ticketStatuses,
   access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -92,8 +111,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [selectedEmail, setSelectedEmail] = useState<any | null>(null);
   const [threadBodies, setThreadBodies] = useState<Record<string, any>>({});
   
-  // Thread mode configurations
-  const [isThreadedMode, setIsThreadedMode] = useState(false);
+  // Thread mode configurations (enabled by default so incoming & sent emails stay grouped in conversation threads)
+  const [isThreadedMode, setIsThreadedMode] = useState(true);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [expandedEmailUids, setExpandedEmailUids] = useState<Record<string, boolean>>({});
 
@@ -141,10 +160,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // Composers and notifications
   const [composers, setComposers] = useState<any[]>([]);
   const [notification, setNotification] = useState<any | null>(null);
+  // A Microsoft 365 mailbox whose sign-in ran out: the server answers every mail request
+  // with `reconnect`, and only the owner can fix it (Personal settings → E-mail).
+  const [mailboxNeedsReconnect, setMailboxNeedsReconnect] = useState(false);
 
   // AI Email & Flow Summary States
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [loadingSummaries, setLoadingSummaries] = useState<Record<string, boolean>>({});
+  const [problemsMap, setProblemsMap] = useState<Record<string, string[]>>({});
   const [actionItemsMap, setActionItemsMap] = useState<Record<string, string[]>>({});
   const [assigningActionItem, setAssigningActionItem] = useState<{ item: string; emailUid: string } | null>(null);
   const [isLargeFont, setIsLargeFont] = useState(false);
@@ -181,12 +204,34 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [clientFormCity, setClientFormCity] = useState("");
   const [clientFormPhone, setClientFormPhone] = useState("");
   const [clientFormType, setClientFormType] = useState<"person" | "business" | "partner">("person");
+  const [pendingChatLinkKey, setPendingChatLinkKey] = useState("");
+  const [chatClientLinks, setChatClientLinks] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("ccrm_chat_client_links") || "{}");
+    } catch {
+      return {};
+    }
+  });
+
+  const saveChatClientLink = (chatKey: string, leadId: string) => {
+    setChatClientLinks((prev) => {
+      const next = { ...prev };
+      if (leadId) next[chatKey] = leadId;
+      else delete next[chatKey];
+      try {
+        localStorage.setItem("ccrm_chat_client_links", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   // formatBytes is imported from ../utils/formatBytes
 
   const handleDownloadAttachment = async (uid: string, folder: string, att: any) => {
     try {
-      const res = await fetch(`/api/mail_broker.php?action=get_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}`, {
+      const res = await fetch(`/api/mail_broker.php?action=get_attachment&folder=${encodeURIComponent(folder)}&uid=${encodeURIComponent(uid)}&part=${encodeURIComponent(att.part_num)}&name=${encodeURIComponent(att.name)}${mbParam}`, {
         headers: {
           "X-User-Email": currentUser.email
         }
@@ -215,7 +260,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       if (typeof (window as any).showToast === "function") {
         (window as any).showToast(t("Adding attachment to documents database...", "Pridáva sa príloha do databázy dokumentov...", "Melléklet hozzáadása a dokumentum-adatbázishoz..."));
       }
-      const res = await fetch(`/api/mail_broker.php?action=save_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}&eventId=${eventId}`, {
+      const res = await fetch(`/api/mail_broker.php?action=save_attachment&folder=${encodeURIComponent(folder)}&uid=${encodeURIComponent(uid)}&part=${encodeURIComponent(att.part_num)}&name=${encodeURIComponent(att.name)}&eventId=${eventId}${mbParam}`, {
         method: "POST",
         headers: {
           "X-User-Email": currentUser.email
@@ -279,7 +324,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   const isOpenAiKeySet = useMemo(() => {
-    return !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+    return hasAiConfigured(integrationsConfig);
   }, [integrationsConfig]);
 
   // Parse into an INERT document rather than assigning to a live element's
@@ -299,8 +344,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }
   };
 
-  const fetchSummary = async (emailUid: string, folder: string, subject: string, body: string, isThread: boolean = false) => {
-    if (summaries[emailUid] || loadingSummaries[emailUid]) return;
+  const fetchSummary = async (emailUid: string, folder: string, subject: string, body: string, isThread: boolean = false, force: boolean = false) => {
+    if ((!force && summaries[emailUid]) || loadingSummaries[emailUid]) return;
     setLoadingSummaries(prev => ({ ...prev, [emailUid]: true }));
     try {
       const res = await fetchWithTimeout("/api/summarize_email.php", {
@@ -314,12 +359,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
           folder,
           subject,
           body,
-          is_thread: isThread
+          is_thread: isThread,
+          force
         })
       });
       const data = await res.json();
       if (data.success && data.summary) {
         setSummaries(prev => ({ ...prev, [emailUid]: data.summary }));
+        if (Array.isArray(data.problems)) {
+          setProblemsMap(prev => ({ ...prev, [emailUid]: data.problems }));
+        }
         if (data.actionItems) {
           setActionItemsMap(prev => ({ ...prev, [emailUid]: data.actionItems }));
         }
@@ -358,17 +407,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const handleCreateClientSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEdit) return;
-    if (!clientFormName.trim() || !clientFormEmail.trim() || !clientFormCity.trim()) return;
+    if (!clientFormName.trim()) return;
     
+    const newLeadId = `client-${Date.now()}`;
     const newLead: Lead = {
-      id: `client-${Date.now()}`,
-      name: clientFormName,
-      email: clientFormEmail,
-      phone: clientFormPhone,
-      city: clientFormCity,
+      id: newLeadId,
+      name: clientFormName.trim(),
+      email: clientFormEmail.trim(),
+      phone: clientFormPhone.trim(),
+      city: clientFormCity.trim(),
       clientType: clientFormType,
       status: "accepted",
-      source: "email",
+      source: isMessagingConnector(selectedChannelType) ? selectedChannelType : "email",
       owner: currentUser?.name || "",
       value: 0,
       createdAt: new Date().toISOString().split("T")[0],
@@ -376,6 +426,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
     };
     
     setLeads((prev: any) => [...prev, newLead]);
+    if (pendingChatLinkKey) {
+      saveChatClientLink(pendingChatLinkKey, newLeadId);
+      setPendingChatLinkKey("");
+    }
     closeClientSlideout();
     
     if (typeof (window as any).showToast === "function") {
@@ -407,9 +461,195 @@ export const EmailView: React.FC<EmailViewProps> = ({
     return null;
   }, [currentUser]);
 
+  const [availableAccounts, setAvailableAccounts] = useState<
+    Array<{
+      id: string;
+      name: string;
+      address: string;
+      connectorType: ConnectorType;
+      isPersonal?: boolean;
+      settings?: CompanyMailbox["settings"];
+      subagents?: AgentSubagent[];
+      triggers?: AgentEventTrigger[];
+    }>
+  >([]);
+  const [selectedMailboxId, setSelectedMailboxId] = useState<string>("");
+
+  // WhatsApp & Subscription AI Agent workspace state
+  const [waSelectedLeadId, setWaSelectedLeadId] = useState<string>("");
+  const [waSearchQuery, setWaSearchQuery] = useState<string>("");
+  const [waDraftMessage, setWaDraftMessage] = useState<string>("");
+  const [waState, setWaState] = useState<WhatsAppConnectorState | null>(null);
+  const [waLoading, setWaLoading] = useState<boolean>(false);
+  const [waSending, setWaSending] = useState<boolean>(false);
+  const [waInlineQrOpen, setWaInlineQrOpen] = useState<boolean>(false);
+  const [waInlineQrUrl, setWaInlineQrUrl] = useState<string | null>(null);
+  const [waFilterType, setWaFilterType] = useState<"all" | "groups" | "contacts">("all");
+  const waMessagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const agentChatScrollRef = useRef<HTMLDivElement | null>(null);
+  const emailThreadScrollRef = useRef<HTMLDivElement | null>(null);
+  const [agentChats, setAgentChats] = useState<Record<string, AgentChatMessage[]>>({});
+  const [agentStates, setAgentStates] = useState<Record<string, AgentConnectorState>>({});
+  const [agentPrompt, setAgentPrompt] = useState<string>("");
+  const [isAgentRunning, setIsAgentRunning] = useState<boolean>(false);
+  const [activeChatSubagentId, setActiveChatSubagentId] = useState<string>("");
+  // Right-sidebar selected artifact key: null = full-width chat; "memory:main" | "artifact:<id>" | "subagent:<id>" | "task:<id>" = 50/50 split with Content Editor
+  const [selectedArtifactKey, setSelectedArtifactKey] = useState<string | null>(null);
+  const [memoryDraft, setMemoryDraft] = useState<string>("");
+  const [artifactTitleDraft, setArtifactTitleDraft] = useState<string>("");
+  const [subPromptDraft, setSubPromptDraft] = useState<string>("");
+  const [isMemoryDirty, setIsMemoryDirty] = useState<boolean>(false);
+  const [isSavingMemory, setIsSavingMemory] = useState<boolean>(false);
+  const [newArtifactOpen, setNewArtifactOpen] = useState<boolean>(false);
+  const [newArtifactName, setNewArtifactName] = useState<string>("");
+  const [newSubagentOpen, setNewSubagentOpen] = useState<boolean>(false);
+  const [newSubName, setNewSubName] = useState<string>("");
+  const [newSubRole, setNewSubRole] = useState<string>("");
+  const [newSubPrompt, setNewSubPrompt] = useState<string>("");
+  const [newSubHeartbeat, setNewSubHeartbeat] = useState<boolean>(false);
+  const [newTaskOpen, setNewTaskOpen] = useState<boolean>(false);
+  const [newTaskTitle, setNewTaskTitle] = useState<string>("");
+  const [newTaskPrompt, setNewTaskPrompt] = useState<string>("");
+  const [newTaskInterval, setNewTaskInterval] = useState<string>("60");
+  const [newTaskSubagentId, setNewTaskSubagentId] = useState<string>("");
+
+  // Visual Trigger Studio & Event-Driven Routing State
+  const [visualTriggersOpen, setVisualTriggersOpen] = useState<boolean>(false);
+  const [triggerModalOpen, setTriggerModalOpen] = useState<boolean>(false);
+  const [triggerDraftId, setTriggerDraftId] = useState<string>("");
+  const [triggerDraftName, setTriggerDraftName] = useState<string>("");
+  const [triggerDraftSourceType, setTriggerDraftSourceType] = useState<"whatsapp" | "email" | "crm_event">("whatsapp");
+  const [triggerDraftSourceConnectorId, setTriggerDraftSourceConnectorId] = useState<string>("");
+  const [triggerDraftTargetSubagentId, setTriggerDraftTargetSubagentId] = useState<string>("");
+  const [triggerDraftChatMatch, setTriggerDraftChatMatch] = useState<string>("");
+  const [triggerDraftOnlyGroup, setTriggerDraftOnlyGroup] = useState<boolean>(false);
+  const [triggerDraftOnlyDirect, setTriggerDraftOnlyDirect] = useState<boolean>(false);
+  const [triggerDraftSubjectContains, setTriggerDraftSubjectContains] = useState<string>("");
+  const [triggerDraftFromContains, setTriggerDraftFromContains] = useState<string>("");
+  const [triggerDraftKeywordContains, setTriggerDraftKeywordContains] = useState<string>("");
+  const [triggerDraftEventType, setTriggerDraftEventType] = useState<string>("lead_created");
+  const [triggerDraftInstructions, setTriggerDraftInstructions] = useState<string>("");
+  const [triggerDraftAutoReply, setTriggerDraftAutoReply] = useState<boolean>(true);
+  const [triggerDraftProactiveEnabled, setTriggerDraftProactiveEnabled] = useState<boolean>(false);
+  const [triggerDraftProactiveAfterMinutes, setTriggerDraftProactiveAfterMinutes] = useState<number>(120);
+  const [triggerDraftProactiveMaxAttempts, setTriggerDraftProactiveMaxAttempts] = useState<number>(1);
+  const [triggerDraftProactiveInstructions, setTriggerDraftProactiveInstructions] = useState<string>("");
+  const [triggerDraftEnabled, setTriggerDraftEnabled] = useState<boolean>(true);
+  const [isTestingTriggerId, setIsTestingTriggerId] = useState<string | null>(null);
+  const [waTakeoverBusyChatId, setWaTakeoverBusyChatId] = useState<string | null>(null);
+
+  const loadAuthorizedAccounts = useCallback(async () => {
+    const mergedMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        address: string;
+        connectorType: ConnectorType;
+        isPersonal?: boolean;
+        settings?: CompanyMailbox["settings"];
+        subagents?: AgentSubagent[];
+        triggers?: AgentEventTrigger[];
+      }
+    >();
+
+    // 1. Personal mailbox from user metadata if configured
+    if (userEmailSettings?.imapHost || userEmailSettings?.smtpHost) {
+      mergedMap.set("personal", {
+        id: "personal",
+        name: currentUser?.name ? `${currentUser.name} (Personal)` : "Personal Mailbox",
+        address: currentUser?.email || "",
+        connectorType: inferConnectorType(userEmailSettings, currentUser?.email || "", "smtp"),
+        isPersonal: true,
+      });
+    }
+
+    // 2. Shared connectors authorized for this user (email, whatsapp, claude, antigravity, chatgpt)
+    try {
+      const my = await listMyConnectors();
+      for (const box of my.mailboxes ?? my.connectors ?? []) {
+        const cType = inferConnectorType(box.settings, box.address, box.connectorType);
+        mergedMap.set(box.id, {
+          id: box.id,
+          name: box.name || box.address,
+          address: box.address,
+          connectorType: cType,
+          isPersonal: box.id === "personal",
+          settings: box.settings,
+          subagents: box.subagents,
+          triggers: box.triggers,
+        });
+      }
+    } catch {
+      /* ignore if offline or mocked */
+    }
+
+    // 3. Fallback / merge from mail_broker accounts
+    if (currentUser?.email) {
+      try {
+        const res = await fetch("/api/mail_broker.php?action=accounts", {
+          headers: { "X-User-Email": currentUser.email },
+        });
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.accounts)) {
+          for (const acc of data.accounts) {
+            if (!mergedMap.has(acc.id)) {
+              mergedMap.set(acc.id, {
+                id: acc.id,
+                name: acc.name || acc.address,
+                address: acc.address,
+                connectorType: inferConnectorType(undefined, acc.address, acc.connectorType),
+                isPersonal: Boolean(acc.isPersonal),
+              });
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const list = Array.from(mergedMap.values());
+    setAvailableAccounts(list);
+    const hashParams = new URLSearchParams((window.location.hash.split("?")[1] || ""));
+    const reqChannel = hashParams.get("channel") || "";
+    const reqChat = hashParams.get("chat") || "";
+    if (reqChat) {
+      setWaSelectedLeadId(reqChat);
+    }
+    setSelectedMailboxId((prev) => {
+      if (reqChannel && list.some((a) => a.id === reqChannel)) return reqChannel;
+      if (prev && list.some((a) => a.id === prev)) return prev;
+      return list[0]?.id || "";
+    });
+  }, [currentUser?.email, currentUser?.name, userEmailSettings]);
+
+  useEffect(() => {
+    void loadAuthorizedAccounts();
+    const onUpdated = () => {
+      void loadAuthorizedAccounts();
+    };
+    window.addEventListener("ccrm:connectors-updated", onUpdated);
+    return () => window.removeEventListener("ccrm:connectors-updated", onUpdated);
+  }, [loadAuthorizedAccounts]);
+
+  const selectedAccount = useMemo(
+    () => availableAccounts.find((a) => a.id === selectedMailboxId) ?? availableAccounts[0] ?? null,
+    [availableAccounts, selectedMailboxId],
+  );
+  const selectedChannelType: ConnectorType = selectedAccount?.connectorType ?? "smtp";
+  const isSelectedEmailChannel = isEmailConnector(selectedChannelType);
+
+  const hasMailAccount =
+    Boolean(userEmailSettings) || availableAccounts.some((a) => isEmailConnector(a.connectorType));
+  const mbParam =
+    selectedMailboxId && selectedMailboxId !== "personal" && isSelectedEmailChannel
+      ? `&mailbox_id=${encodeURIComponent(selectedMailboxId)}`
+      : "";
+
   // Load timeline emails for the slideout lead
   useEffect(() => {
-    if (!slideoutLead || !slideoutLead.email || !userEmailSettings || !userEmailSettings.isValidated) {
+    if (!slideoutLead || !slideoutLead.email || !hasMailAccount) {
       setSlideoutEmails([]);
       return;
     }
@@ -418,7 +658,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       setIsLoadingSlideoutEmails(true);
       try {
         const inboxRes = await fetch(
-          `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(slideoutLead.email || "")}`,
+          `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(slideoutLead.email || "")}${mbParam}`,
           { headers: { "X-User-Email": currentUser.email } }
         );
         const inboxData = await inboxRes.json();
@@ -426,7 +666,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
         let sentEmails: any[] = [];
         try {
           const sentRes = await fetch(
-            `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(slideoutLead.email || "")}`,
+            `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(slideoutLead.email || "")}${mbParam}`,
             { headers: { "X-User-Email": currentUser.email } }
           );
           const sentData = await sentRes.json();
@@ -468,7 +708,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     };
 
     fetchLeadMails();
-  }, [slideoutLead, userEmailSettings, currentUser]);
+  }, [slideoutLead, hasMailAccount, mbParam, currentUser]);
 
   const slideoutTimelineEvents = useMemo(() => {
     if (!slideoutLead) return [];
@@ -489,15 +729,51 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // Load Emails headers list
   // silent = background refresh: keep the current list visible instead of swapping it for the spinner
   const loadEmails = async (currPage = 1, currFilter = filter, silent = false) => {
-    if (!userEmailSettings) return;
-    if (!silent) setIsLoadingEmails(true);
+    if (!hasMailAccount) return;
+    let showedCached = false;
+    if (!silent) {
+      try {
+        const [cachedInboxRes, cachedSentRes] = await Promise.all([
+          fetch(`/api/mail_broker.php?action=get_emails&folder=INBOX&page=${currPage}&filter=${currFilter}&cached_only=1${mbParam}`, {
+            headers: { "X-User-Email": currentUser.email }
+          }),
+          fetch(`/api/mail_broker.php?action=get_emails&folder=Sent&page=${currPage}&filter=${currFilter}&cached_only=1${mbParam}`, {
+            headers: { "X-User-Email": currentUser.email }
+          })
+        ]);
+        const [cachedInbox, cachedSent] = await Promise.all([
+          cachedInboxRes.json().catch(() => ({})),
+          cachedSentRes.json().catch(() => ({}))
+        ]);
+        const cInboxMails = cachedInbox?.success && Array.isArray(cachedInbox.emails)
+          ? cachedInbox.emails.map((m: any) => ({ ...m, isSent: false }))
+          : [];
+        const cSentMails = cachedSent?.success && Array.isArray(cachedSent.emails)
+          ? cachedSent.emails.map((m: any) => ({ ...m, isSent: true }))
+          : [];
+        const cachedCombined = [...cInboxMails, ...cSentMails].sort((a: any, b: any) => {
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
+        });
+        if (cachedCombined.length > 0) {
+          setEmails(hiddenEmailKeysRef.current.size ? cachedCombined.filter((m: any) => !hiddenEmailKeysRef.current.has(emailKey(m))) : cachedCombined);
+          setIsLoadingEmails(false);
+          showedCached = true;
+        }
+      } catch {
+        // Ignore cache probe error and fall back to live IMAP fetch
+      }
+      if (!showedCached) {
+        setIsLoadingEmails(true);
+      }
+    }
     setIsSyncingEmails(true);
     try {
       // Fetch Inbox folder emails
-      const resInbox = await fetch(`/api/mail_broker.php?action=get_emails&folder=INBOX&page=${currPage}&filter=${currFilter}`, {
+      const resInbox = await fetch(`/api/mail_broker.php?action=get_emails&folder=INBOX&page=${currPage}&filter=${currFilter}${mbParam}`, {
         headers: { "X-User-Email": currentUser.email }
       });
       const dataInbox = await resInbox.json();
+      setMailboxNeedsReconnect(dataInbox?.reconnect === true);
       
       let inboxMails: any[] = [];
       if (dataInbox.success && Array.isArray(dataInbox.emails)) {
@@ -507,7 +783,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       // Fetch Sent folder emails
       let sentMails: any[] = [];
       try {
-        const resSent = await fetch(`/api/mail_broker.php?action=get_emails&folder=Sent&page=${currPage}&filter=${currFilter}`, {
+        const resSent = await fetch(`/api/mail_broker.php?action=get_emails&folder=Sent&page=${currPage}&filter=${currFilter}${mbParam}`, {
           headers: { "X-User-Email": currentUser.email }
         });
         const dataSent = await resSent.json();
@@ -523,10 +799,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
         return new Date(b.date).getTime() - new Date(a.date).getTime();
       });
 
-      setEmails(hiddenEmailKeysRef.current.size ? combined.filter((m: any) => !hiddenEmailKeysRef.current.has(emailKey(m))) : combined);
+      if (combined.length > 0 || !showedCached) {
+        setEmails(hiddenEmailKeysRef.current.size ? combined.filter((m: any) => !hiddenEmailKeysRef.current.has(emailKey(m))) : combined);
+      }
       setLastSyncAt(new Date());
     } catch (err) {
-      notify(t("Mail server unreachable", "Poštový server je nedostupný", "A levelezőszerver nem elérhető"), "error");
+      if (!showedCached) {
+        notify(t("Mail server unreachable", "Poštový server je nedostupný", "A levelezőszerver nem elérhető"), "error");
+      }
     } finally {
       setIsLoadingEmails(false);
       setIsSyncingEmails(false);
@@ -546,7 +826,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const setSeenFlag = async (email: any, seen: boolean): Promise<boolean> => {
     const folderToUse = email.isSent ? "Sent" : activeFolder;
     try {
-      const res = await fetch("/api/mail_broker.php?action=set_seen", {
+      const res = await fetch(`/api/mail_broker.php?action=set_seen${mbParam}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-User-Email": currentUser.email },
         body: JSON.stringify({ uid: email.uid, folder: folderToUse, seen })
@@ -584,7 +864,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     setIsLoadingDetail(true);
     const folderToUse = email.isSent ? "Sent" : activeFolder;
     try {
-      const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}`, {
+      const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${encodeURIComponent(email.uid)}&folder=${encodeURIComponent(folderToUse)}${mbParam}`, {
         headers: { "X-User-Email": currentUser.email }
       });
       const data = await res.json();
@@ -607,7 +887,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   // Initial loads
   useEffect(() => {
-    if (!userEmailSettings) return;
+    if (!hasMailAccount || !isSelectedEmailChannel) return;
 
     loadEmails(1, filter);
 
@@ -616,7 +896,902 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }, 60000); // UI updates every 60 seconds
 
     return () => clearInterval(interval);
-  }, [userEmailSettings, filter]);
+  }, [hasMailAccount, isSelectedEmailChannel, selectedMailboxId, filter]);
+
+  const syncSelectedArtifactDraft = useCallback(
+    (state: AgentConnectorState, key: string | null) => {
+      if (!key) return;
+      if (key === "memory:main") {
+        setMemoryDraft(state.memoryMd ?? "");
+        setArtifactTitleDraft("memory.md");
+      } else if (key === "cron:main") {
+        setMemoryDraft(
+          state.autonomousMode?.instructions ??
+            "Review your memory.md, artifacts, and CCRM state via MCP. Execute any pending autonomous goals, follow-ups, or subagent delegations recorded in memory.md. Update memory.md with your progress. If no autonomous actions are needed right now, reply with [IDLE].",
+        );
+        setArtifactTitleDraft("Autonomous Cron (cron.php)");
+      } else if (key.startsWith("artifact:")) {
+        const artId = key.slice("artifact:".length);
+        const found = (state.artifacts ?? []).find((a) => a.id === artId);
+        if (found) {
+          setMemoryDraft(found.content ?? "");
+          setArtifactTitleDraft(found.title || found.id);
+        }
+      } else if (key.startsWith("subagent:")) {
+        const subId = key.slice("subagent:".length);
+        const found = (state.subagents ?? []).find((s) => s.id === subId);
+        if (found) {
+          setMemoryDraft(found.memoryMd ?? "");
+          setSubPromptDraft(found.systemPrompt ?? "");
+          setArtifactTitleDraft(`${found.name} (${found.id})`);
+        }
+      } else if (key.startsWith("task:")) {
+        const taskId = key.slice("task:".length);
+        const found = (state.tasks ?? []).find((tk) => tk.id === taskId);
+        if (found) {
+          setMemoryDraft(found.prompt ?? "");
+          setArtifactTitleDraft(found.title || found.id);
+        }
+      }
+    },
+    [],
+  );
+
+  const applyAgentState = useCallback(
+    (accId: string, state: AgentConnectorState, overrideKey?: string | null, subIdOverride?: string) => {
+      setAgentStates((prev) => ({ ...prev, [accId]: state }));
+      const effectiveSubId = subIdOverride !== undefined ? subIdOverride : (state.activeAgentId && state.activeAgentId !== "main" ? state.activeAgentId : activeChatSubagentId);
+      const chatKey = effectiveSubId ? `${accId}:${effectiveSubId}` : accId;
+      if (Array.isArray(state.chatHistory)) {
+        setAgentChats((prev) => ({ ...prev, [chatKey]: state.chatHistory }));
+      }
+      // Keep sidebar subagents & triggers in sync
+      setAvailableAccounts((prev) =>
+        prev.map((a) =>
+          a.id === accId
+            ? {
+                ...a,
+                subagents: state.subagents ?? a.subagents,
+                triggers: state.triggers ?? a.triggers,
+              }
+            : a,
+        ),
+      );
+      const keyToUse = overrideKey !== undefined ? overrideKey : selectedArtifactKey;
+      if (!isMemoryDirty && keyToUse) {
+        syncSelectedArtifactDraft(state, keyToUse);
+      }
+    },
+    [activeChatSubagentId, isMemoryDirty, selectedArtifactKey, syncSelectedArtifactDraft],
+  );
+
+  // Load persistent agent state (memory.md, artifacts, subagents, triggers, autonomous tasks, scoped chat history)
+  // & poll read-only state every 15s to display work executed by the server cronjob (`cron.php`) or reactive triggers.
+  useEffect(() => {
+    if (!selectedAccount || !isAgentConnector(selectedChannelType)) return;
+    const accId = selectedAccount.id;
+    const subId = activeChatSubagentId || undefined;
+    const chatKey = subId ? `${accId}:${subId}` : accId;
+    let cancelled = false;
+
+    setIsMemoryDirty(false);
+
+    void getAgentConnectorState(accId, subId)
+      .then((st) => {
+        if (cancelled) return;
+        setAgentStates((prev) => ({ ...prev, [accId]: st }));
+        if (Array.isArray(st.chatHistory)) {
+          setAgentChats((prev) => ({ ...prev, [chatKey]: st.chatHistory }));
+        }
+        setAvailableAccounts((prev) =>
+          prev.map((a) =>
+            a.id === accId
+              ? {
+                  ...a,
+                  subagents: st.subagents ?? a.subagents,
+                  triggers: st.triggers ?? a.triggers,
+                }
+              : a,
+          ),
+        );
+        if (!selectedArtifactKey) {
+          setMemoryDraft(subId ? (st.subagentMemoryMd ?? "") : (st.memoryMd ?? ""));
+        } else {
+          syncSelectedArtifactDraft(st, selectedArtifactKey);
+        }
+      })
+      .catch(() => {
+        /* ignore offline/mock */
+      });
+
+    const syncInterval = setInterval(() => {
+      void getAgentConnectorState(accId, subId)
+        .then((st) => {
+          if (!cancelled) applyAgentState(accId, st, undefined, subId || "");
+        })
+        .catch(() => {
+          /* ignore */
+        });
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(syncInterval);
+    };
+  }, [selectedAccount?.id, selectedChannelType, activeChatSubagentId]);
+
+  // Preload sibling WhatsApp / BotMan chats when in Agent Workspace so the Trigger Studio dropdown has live groups/chats
+  useEffect(() => {
+    if (!isAgentConnector(selectedChannelType)) return;
+    const waAcc = availableAccounts.find((a) => isMessagingConnector(a.connectorType));
+    if (!waAcc || waState) return;
+    void getWhatsAppChats(waAcc.id)
+      .then((st) => setWaState(st))
+      .catch(() => {
+        /* ignore */
+      });
+  }, [selectedChannelType, availableAccounts, waState]);
+
+  const handleSelectArtifact = (key: string | null) => {
+    if (!selectedAccount) return;
+    if (key === null || key === selectedArtifactKey) {
+      setSelectedArtifactKey(null);
+      setIsMemoryDirty(false);
+      return;
+    }
+    setSelectedArtifactKey(key);
+    setIsMemoryDirty(false);
+    const st = agentStates[selectedAccount.id];
+    if (st) {
+      syncSelectedArtifactDraft(st, key);
+    }
+  };
+
+  const handleSaveSelectedArtifact = async () => {
+    if (!selectedAccount || !selectedArtifactKey || isSavingMemory) return;
+    setIsSavingMemory(true);
+    try {
+      let st: AgentConnectorState;
+      if (selectedArtifactKey === "memory:main") {
+        st = await saveAgentMemory({
+          id: selectedAccount.id,
+          memoryMd: memoryDraft,
+        });
+      } else if (selectedArtifactKey === "cron:main") {
+        const autoCfg = agentStates[selectedAccount.id]?.autonomousMode;
+        st = await saveAgentAutonomousConfig({
+          id: selectedAccount.id,
+          enabled: autoCfg?.enabled ?? false,
+          intervalMinutes: autoCfg?.intervalMinutes ?? 15,
+          instructions: memoryDraft,
+        });
+      } else if (selectedArtifactKey.startsWith("artifact:")) {
+        const artId = selectedArtifactKey.slice("artifact:".length);
+        st = await saveAgentArtifact({
+          id: selectedAccount.id,
+          name: artId,
+          title: artifactTitleDraft || artId,
+          content: memoryDraft,
+        });
+      } else if (selectedArtifactKey.startsWith("subagent:")) {
+        const subId = selectedArtifactKey.slice("subagent:".length);
+        const existingSub = (agentStates[selectedAccount.id]?.subagents ?? []).find((s) => s.id === subId);
+        st = await saveAgentSubagent({
+          id: selectedAccount.id,
+          subagentId: subId,
+          name: existingSub?.name || subId,
+          role: existingSub?.role || "Subagent",
+          systemPrompt: subPromptDraft || existingSub?.systemPrompt || "",
+          memoryMd: memoryDraft,
+          heartbeatEnabled: existingSub?.heartbeatEnabled ?? false,
+          heartbeatIntervalMinutes: existingSub?.heartbeatIntervalMinutes ?? 15,
+          heartbeatInstructions: existingSub?.heartbeatInstructions ?? "",
+          reactiveEnabled: existingSub?.reactiveEnabled ?? true,
+        });
+      } else if (selectedArtifactKey.startsWith("task:")) {
+        const taskId = selectedArtifactKey.slice("task:".length);
+        const existingTask = (agentStates[selectedAccount.id]?.tasks ?? []).find((tk) => tk.id === taskId);
+        st = await saveAgentTask({
+          id: selectedAccount.id,
+          title: artifactTitleDraft || existingTask?.title || taskId,
+          prompt: memoryDraft,
+          intervalMinutes: existingTask?.intervalMinutes || 60,
+          subagentId: existingTask?.subagentId || undefined,
+          enabled: existingTask?.enabled ?? true,
+        });
+      } else {
+        return;
+      }
+      setIsMemoryDirty(false);
+      applyAgentState(selectedAccount.id, st, selectedArtifactKey);
+      notify(
+        t(
+          "Artifact saved — the agent will use the updated content immediately.",
+          "Artefakt uložený — agent okamžite použije aktualizovaný obsah.",
+          "Artefaktum mentve — az ügynök azonnal használja a frissített tartalmat.",
+        ),
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setIsSavingMemory(false);
+    }
+  };
+
+  const handleUpdateAutonomousCron = async (patch: { enabled?: boolean; intervalMinutes?: number }) => {
+    if (!selectedAccount) return;
+    try {
+      const autoCfg = agentStates[selectedAccount.id]?.autonomousMode;
+      const st = await saveAgentAutonomousConfig({
+        id: selectedAccount.id,
+        enabled: patch.enabled ?? autoCfg?.enabled ?? false,
+        intervalMinutes: patch.intervalMinutes ?? autoCfg?.intervalMinutes ?? 15,
+        instructions: selectedArtifactKey === "cron:main" ? memoryDraft : autoCfg?.instructions,
+      });
+      applyAgentState(selectedAccount.id, st, selectedArtifactKey);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleToggleSubagentHeartbeat = async (sub: AgentSubagent, patch: { heartbeatEnabled?: boolean; heartbeatIntervalMinutes?: number }) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await saveAgentSubagent({
+        id: selectedAccount.id,
+        subagentId: sub.id,
+        name: sub.name,
+        role: sub.role,
+        systemPrompt: sub.systemPrompt,
+        memoryMd: sub.memoryMd,
+        heartbeatEnabled: patch.heartbeatEnabled ?? !(sub.heartbeatEnabled ?? false),
+        heartbeatIntervalMinutes: patch.heartbeatIntervalMinutes ?? (sub.heartbeatIntervalMinutes ?? 15),
+        heartbeatInstructions: sub.heartbeatInstructions,
+        reactiveEnabled: sub.reactiveEnabled ?? true,
+      });
+      applyAgentState(selectedAccount.id, st, selectedArtifactKey);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleCreateArtifact = async () => {
+    if (!selectedAccount || !newArtifactName.trim()) return;
+    const raw = newArtifactName.trim();
+    const fileName = raw.includes(".") ? raw : `${raw.toLowerCase().replace(/[^a-z0-9_-]/g, "-")}.md`;
+    try {
+      const initialContent = `# ${raw}\n\n`;
+      const st = await saveAgentArtifact({
+        id: selectedAccount.id,
+        name: fileName,
+        title: raw,
+        content: initialContent,
+      });
+      const newKey = `artifact:${fileName}`;
+      setSelectedArtifactKey(newKey);
+      setIsMemoryDirty(false);
+      applyAgentState(selectedAccount.id, st, newKey);
+      setNewArtifactName("");
+      setNewArtifactOpen(false);
+      notify(t("Artifact created!", "Artefakt vytvorený!", "Artefaktum létrehozva!"));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleDeleteArtifact = async (artId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await deleteAgentArtifact(selectedAccount.id, artId);
+      const nextKey = selectedArtifactKey === `artifact:${artId}` ? null : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleCreateSubagent = async () => {
+    if (!selectedAccount || !newSubName.trim() || !newSubRole.trim()) return;
+    try {
+      const st = await saveAgentSubagent({
+        id: selectedAccount.id,
+        name: newSubName.trim(),
+        role: newSubRole.trim(),
+        systemPrompt:
+          newSubPrompt.trim() ||
+          `You are ${newSubName.trim()} (${newSubRole.trim()}), a specialized CCRM agent.`,
+        heartbeatEnabled: newSubHeartbeat,
+        heartbeatIntervalMinutes: 15,
+        reactiveEnabled: true,
+      });
+      const createdSub = st.subagent ?? (st.subagents ?? [])[st.subagents.length - 1];
+      if (createdSub) {
+        setActiveChatSubagentId(createdSub.id);
+      }
+      const nextKey = createdSub ? `subagent:${createdSub.id}` : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey, createdSub?.id || "");
+      setNewSubName("");
+      setNewSubRole("");
+      setNewSubPrompt("");
+      setNewSubHeartbeat(false);
+      setNewSubagentOpen(false);
+      notify(t("Agent created!", "Agent vytvorený!", "Ügynök létrehozva!"));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleDeleteSubagent = async (subagentId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await deleteAgentSubagent(selectedAccount.id, subagentId);
+      if (activeChatSubagentId === subagentId) setActiveChatSubagentId("");
+      const nextKey = selectedArtifactKey === `subagent:${subagentId}` ? null : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey, "");
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const openNewTriggerModal = (opts?: {
+    sourceType?: "whatsapp" | "email" | "crm_event";
+    sourceConnectorId?: string;
+    targetSubagentId?: string;
+  }) => {
+    const defaultWa = availableAccounts.find((a) => isMessagingConnector(a.connectorType));
+    const defaultEmail = availableAccounts.find((a) => isEmailConnector(a.connectorType));
+    const sType = opts?.sourceType ?? (defaultWa ? "whatsapp" : defaultEmail ? "email" : "crm_event");
+    const sConnId =
+      opts?.sourceConnectorId ??
+      (sType === "whatsapp" ? defaultWa?.id || "" : sType === "email" ? defaultEmail?.id || "" : "");
+
+    setTriggerDraftId("");
+    setTriggerDraftName("");
+    setTriggerDraftSourceType(sType);
+    setTriggerDraftSourceConnectorId(sConnId);
+    setTriggerDraftTargetSubagentId(opts?.targetSubagentId ?? activeChatSubagentId ?? "");
+    setTriggerDraftChatMatch("");
+    setTriggerDraftOnlyGroup(false);
+    setTriggerDraftOnlyDirect(false);
+    setTriggerDraftSubjectContains("");
+    setTriggerDraftFromContains("");
+    setTriggerDraftKeywordContains("");
+    setTriggerDraftEventType("lead_created");
+    setTriggerDraftInstructions("");
+    setTriggerDraftAutoReply(true);
+    setTriggerDraftProactiveEnabled(false);
+    setTriggerDraftProactiveAfterMinutes(120);
+    setTriggerDraftProactiveMaxAttempts(1);
+    setTriggerDraftProactiveInstructions("");
+    setTriggerDraftEnabled(true);
+    setTriggerModalOpen(true);
+  };
+
+  const openEditTriggerModal = (trig: AgentEventTrigger) => {
+    setTriggerDraftId(trig.id);
+    setTriggerDraftName(trig.name || "");
+    setTriggerDraftSourceType(trig.sourceType || "whatsapp");
+    setTriggerDraftSourceConnectorId(trig.sourceConnectorId || "");
+    setTriggerDraftTargetSubagentId(trig.targetSubagentId || "");
+    setTriggerDraftChatMatch(trig.filter?.chatMatch || "");
+    setTriggerDraftOnlyGroup(Boolean(trig.filter?.onlyGroup));
+    setTriggerDraftOnlyDirect(Boolean(trig.filter?.onlyDirect));
+    setTriggerDraftSubjectContains(trig.filter?.subjectContains || "");
+    setTriggerDraftFromContains(trig.filter?.fromContains || "");
+    setTriggerDraftKeywordContains(trig.filter?.keywordContains || "");
+    setTriggerDraftEventType(trig.filter?.eventType || "lead_created");
+    setTriggerDraftInstructions(trig.instructions || "");
+    setTriggerDraftAutoReply(trig.autoReply ?? true);
+    setTriggerDraftProactiveEnabled(Boolean(trig.proactiveEnabled));
+    setTriggerDraftProactiveAfterMinutes(trig.proactiveAfterMinutes ?? 120);
+    setTriggerDraftProactiveMaxAttempts(trig.proactiveMaxAttempts ?? 1);
+    setTriggerDraftProactiveInstructions(trig.proactiveInstructions || "");
+    setTriggerDraftEnabled(trig.enabled ?? true);
+    setTriggerModalOpen(true);
+  };
+
+  const handleSaveTriggerDraft = async () => {
+    if (!selectedAccount) return;
+    const selectedSourceAcc = availableAccounts.find((a) => a.id === triggerDraftSourceConnectorId);
+    const sourceDisplayName =
+      selectedSourceAcc?.name ||
+      (triggerDraftSourceType === "whatsapp" ? "Messaging" : triggerDraftSourceType === "email" ? "Email" : "CRM Event");
+    const autoName =
+      triggerDraftName.trim() ||
+      (triggerDraftSourceType === "whatsapp"
+        ? `${sourceDisplayName} ${triggerDraftChatMatch ? `(${triggerDraftChatMatch})` : "Auto-Responder"}`
+        : triggerDraftSourceType === "email"
+          ? `${sourceDisplayName} ${triggerDraftSubjectContains || triggerDraftFromContains || "Auto-Responder"}`
+          : `CRM Event (${triggerDraftEventType})`);
+    try {
+      const st = await saveAgentTrigger({
+        id: selectedAccount.id,
+        triggerId: triggerDraftId || undefined,
+        name: autoName,
+        sourceType: triggerDraftSourceType,
+        sourceConnectorId: triggerDraftSourceConnectorId,
+        targetSubagentId: triggerDraftTargetSubagentId || null,
+        filter: {
+          chatMatch: triggerDraftChatMatch.trim(),
+          onlyGroup: triggerDraftOnlyGroup,
+          onlyDirect: triggerDraftOnlyDirect,
+          subjectContains: triggerDraftSubjectContains.trim(),
+          fromContains: triggerDraftFromContains.trim(),
+          keywordContains: triggerDraftKeywordContains.trim(),
+          eventType: triggerDraftEventType,
+        },
+        instructions: triggerDraftInstructions.trim(),
+        autoReply: triggerDraftAutoReply,
+        proactiveEnabled: triggerDraftProactiveEnabled,
+        proactiveAfterMinutes: triggerDraftProactiveAfterMinutes,
+        proactiveMaxAttempts: triggerDraftProactiveMaxAttempts,
+        proactiveInstructions: triggerDraftProactiveInstructions.trim(),
+        enabled: triggerDraftEnabled,
+      });
+      applyAgentState(selectedAccount.id, st);
+      setTriggerModalOpen(false);
+      notify(
+        t(
+          "Reactive event trigger saved! Zero-cost idle mode is active.",
+          "Reaktívny spúšťač uložený! Režim nulových nákladov v nečinnosti je aktívny.",
+          "Reaktív eseményindító mentve! Nulla költségű üresjárati mód aktív.",
+        ),
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleToggleTriggerEnabled = async (trig: AgentEventTrigger) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await saveAgentTrigger({
+        id: selectedAccount.id,
+        triggerId: trig.id,
+        name: trig.name,
+        sourceType: trig.sourceType,
+        sourceConnectorId: trig.sourceConnectorId,
+        targetSubagentId: trig.targetSubagentId,
+        filter: trig.filter,
+        instructions: trig.instructions,
+        autoReply: trig.autoReply,
+        proactiveEnabled: trig.proactiveEnabled,
+        proactiveAfterMinutes: trig.proactiveAfterMinutes,
+        proactiveMaxAttempts: trig.proactiveMaxAttempts,
+        proactiveInstructions: trig.proactiveInstructions,
+        enabled: !trig.enabled,
+      });
+      applyAgentState(selectedAccount.id, st);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleCancelFollowup = async (followupId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await cancelAgentFollowup(selectedAccount.id, followupId);
+      applyAgentState(selectedAccount.id, st);
+      notify(t("Scheduled follow-up cancelled.", "Naplánovaný follow-up zrušený.", "Ütemezett utánkövetés törölve."));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleDeleteTrigger = async (triggerId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await deleteAgentTrigger(selectedAccount.id, triggerId);
+      applyAgentState(selectedAccount.id, st);
+      notify(t("Trigger removed.", "Spúšťač odstránený.", "Indító eltávolítva."));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleTestTrigger = async (triggerId: string) => {
+    if (!selectedAccount || isTestingTriggerId) return;
+    setIsTestingTriggerId(triggerId);
+    try {
+      const res = await testAgentTrigger(selectedAccount.id, triggerId);
+      applyAgentState(selectedAccount.id, res);
+      if (res.testResult?.ok) {
+        const alreadyMsg = (res.testResult as { alreadyReplied?: boolean; text?: string }).alreadyReplied
+          ? (res.testResult as { text?: string }).text
+          : null;
+        notify(
+          alreadyMsg ||
+            t(
+              "Trigger test executed with 50-msg / 5-day context!",
+              "Test spúšťača vykonaný s kontextom 50 správ / 5 dní!",
+              "Indító teszt végrehajtva 50 üzenet / 5 nap kontextussal!",
+            ),
+        );
+      } else {
+        notify(res.testResult?.error || t("Trigger test failed.", "Test spúšťača zlyhal.", "Indító teszt sikertelen."), "error");
+      }
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setIsTestingTriggerId(null);
+    }
+  };
+
+  const handleCreateTask = async () => {
+    if (!selectedAccount || !newTaskTitle.trim() || !newTaskPrompt.trim()) return;
+    try {
+      const st = await saveAgentTask({
+        id: selectedAccount.id,
+        title: newTaskTitle.trim(),
+        prompt: newTaskPrompt.trim(),
+        intervalMinutes: Math.max(1, parseInt(newTaskInterval, 10) || 60),
+        subagentId: newTaskSubagentId || undefined,
+        enabled: true,
+      });
+      const createdTask = (st.tasks ?? [])[st.tasks.length - 1];
+      const nextKey = createdTask ? `task:${createdTask.id}` : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey);
+      setNewTaskTitle("");
+      setNewTaskPrompt("");
+      setNewTaskInterval("60");
+      setNewTaskSubagentId("");
+      setNewTaskOpen(false);
+      notify(t("Autonomous task scheduled!", "Autonómna úloha naplánovaná!", "Autonóm feladat ütemezve!"));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleToggleTask = async (task: {
+    id: string;
+    title: string;
+    prompt: string;
+    intervalMinutes: number;
+    subagentId?: string | null;
+    enabled: boolean;
+  }) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await saveAgentTask({
+        id: selectedAccount.id,
+        title: task.title,
+        prompt: task.prompt,
+        intervalMinutes: task.intervalMinutes,
+        subagentId: task.subagentId || undefined,
+        enabled: !task.enabled,
+      });
+      applyAgentState(selectedAccount.id, st);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await deleteAgentTask(selectedAccount.id, taskId);
+      const nextKey = selectedArtifactKey === `task:${taskId}` ? null : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleRunTaskNow = async (taskId?: string) => {
+    if (!selectedAccount || isAgentRunning) return;
+    setIsAgentRunning(true);
+    try {
+      const st = await runAgentTaskNow(selectedAccount.id, taskId);
+      applyAgentState(selectedAccount.id, st);
+      notify(t("Autonomous task executed!", "Autonómna úloha vykonaná!", "Autonóm feladat végrehajtva!"));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setIsAgentRunning(false);
+    }
+  };
+
+  const handleClearAgentChat = async () => {
+    if (!selectedAccount) return;
+    try {
+      const st = await clearAgentChatHistory(selectedAccount.id, activeChatSubagentId || undefined);
+      applyAgentState(selectedAccount.id, st);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleSendAgentMessage = async (promptText?: string) => {
+    const text = (promptText ?? agentPrompt).trim();
+    if (!text || !selectedAccount || isAgentRunning) return;
+    const accId = selectedAccount.id;
+    const subId = activeChatSubagentId || "";
+    const chatKey = subId ? `${accId}:${subId}` : accId;
+    const userMsg: AgentChatMessage = {
+      id: `u-${Date.now()}`,
+      role: "user",
+      subagentId: subId || null,
+      text,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+    setAgentChats((prev) => ({
+      ...prev,
+      [chatKey]: [...(prev[chatKey] ?? []), userMsg],
+    }));
+    if (!promptText) setAgentPrompt("");
+    setIsAgentRunning(true);
+    try {
+      const res = await runSubscriptionAgent({
+        id: accId,
+        prompt: text,
+        subagentId: subId || undefined,
+      });
+      if (res.memoryMd !== undefined) {
+        applyAgentState(accId, res, undefined, subId);
+      } else {
+        const botMsg: AgentChatMessage = {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          subagentId: subId || null,
+          text: res.text || "Completed via CCRM MCP.",
+          steps: res.steps ?? [],
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        setAgentChats((prev) => ({
+          ...prev,
+          [chatKey]: [...(prev[chatKey] ?? []), botMsg],
+        }));
+      }
+    } catch (e: unknown) {
+      const errMsg: AgentChatMessage = {
+        id: `e-${Date.now()}`,
+        role: "assistant",
+        text: `⚠️ ${e instanceof Error ? e.message : String(e)}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setAgentChats((prev) => ({
+        ...prev,
+        [chatKey]: [...(prev[chatKey] ?? []), errMsg],
+      }));
+    } finally {
+      setIsAgentRunning(false);
+    }
+  };
+
+  // Load & poll live WhatsApp / BotMan chats/groups/messages when a Messaging connector is active
+  useEffect(() => {
+    if (!selectedAccount || !isMessagingConnector(selectedChannelType)) return;
+    let cancelled = false;
+    setWaLoading(true);
+
+    const fetchChats = () => {
+      void getWhatsAppChats(selectedAccount.id)
+        .then((st) => {
+          if (cancelled) return;
+          setWaState(st);
+          if (st.qr && st.status === "pending_qr") {
+            setWaInlineQrUrl(st.qr);
+            setWaInlineQrOpen(true);
+          } else if (st.status === "connected") {
+            setWaInlineQrOpen(false);
+            setWaInlineQrUrl(null);
+          }
+        })
+        .catch(() => {
+          /* ignore */
+        })
+        .finally(() => {
+          if (!cancelled) setWaLoading(false);
+        });
+    };
+
+    fetchChats();
+    const timer = setInterval(fetchChats, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [selectedAccount?.id, selectedChannelType]);
+
+  // Auto-scroll WhatsApp / BotMan conversation pane to the newest message at the bottom
+  const activeWaChatId = waSelectedLeadId || waState?.chats?.[0]?.id || "";
+  const activeWaMsgCount = activeWaChatId ? (waState?.messages?.[activeWaChatId]?.length ?? 0) : 0;
+  useEffect(() => {
+    if (!isMessagingConnector(selectedChannelType)) return;
+    const scrollToBottom = () => {
+      const el = waMessagesScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    };
+    scrollToBottom();
+    const raf = requestAnimationFrame(scrollToBottom);
+    const timer = setTimeout(scrollToBottom, 60);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [selectedAccount?.id, selectedChannelType, activeWaChatId, activeWaMsgCount]);
+
+  // Auto-scroll AI Agent chat pane to the newest message at the bottom by default
+  const activeAgentChatKey = selectedAccount
+    ? activeChatSubagentId
+      ? `${selectedAccount.id}:${activeChatSubagentId}`
+      : selectedAccount.id
+    : "";
+  const activeAgentMsgCount = activeAgentChatKey ? (agentChats[activeAgentChatKey]?.length ?? 0) : 0;
+  useEffect(() => {
+    if (!isAgentConnector(selectedChannelType) || visualTriggersOpen) return;
+    const scrollToBottom = () => {
+      const el = agentChatScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    };
+    scrollToBottom();
+    const raf = requestAnimationFrame(scrollToBottom);
+    const timer = setTimeout(scrollToBottom, 60);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [selectedAccount?.id, selectedChannelType, activeChatSubagentId, visualTriggersOpen, activeAgentMsgCount, isAgentRunning]);
+
+  const handleToggleWaChatAgentTakeover = async (
+    chat: WhatsAppChatSummary,
+    nextMode: "active" | "paused" | "auto",
+    preferredAgentId?: string,
+    preferredSubagentId?: string | null,
+  ) => {
+    if (!selectedAccount || waTakeoverBusyChatId === chat.id) return;
+    setWaTakeoverBusyChatId(chat.id);
+    try {
+      const st = await setWhatsAppChatAgentTakeover({
+        id: selectedAccount.id,
+        chatId: chat.id,
+        chatName: chat.name,
+        mode: nextMode,
+        agentConnectorId: preferredAgentId,
+        subagentId: preferredSubagentId,
+      });
+      setWaState(st);
+      if (nextMode === "auto") {
+        notify(
+          t(
+            `Visual Trigger automation resumed for "${chat.name}".`,
+            `Automatizácia vizuálneho spúšťača obnovená pre „${chat.name}“.`,
+            `Vizuális trigger automatizáció visszaállítva a(z) „${chat.name}” beszélgetéshez.`,
+          ),
+        );
+      } else if (nextMode === "active") {
+        notify(
+          t(
+            `AI Agent took over "${chat.name}" for this session.`,
+            `AI Agent prevzal konverzáciu „${chat.name}“ pre túto reláciu.`,
+            `Az AI ügynök átvette a(z) „${chat.name}” beszélgetést erre a munkamenetre.`,
+          ),
+        );
+      } else {
+        notify(
+          t(
+            `AI Agent turned off for "${chat.name}" in this session.`,
+            `AI Agent bol pre konverzáciu „${chat.name}“ v tejto relácii vypnutý.`,
+            `Az AI ügynök kikapcsolva a(z) „${chat.name}” beszélgetésben erre a munkamenetre.`,
+          ),
+        );
+      }
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setWaTakeoverBusyChatId(null);
+    }
+  };
+
+  const handleResyncWhatsApp = async (chatId?: string) => {
+    if (!selectedAccount || waLoading) return;
+    setWaLoading(true);
+    try {
+      const st = await resyncWhatsAppChats(selectedAccount.id, chatId);
+      setWaState(st);
+      notify(
+        t(
+          `Synced ${st.chats?.length ?? 0} WhatsApp chats & groups.`,
+          `Synchronizovaných ${st.chats?.length ?? 0} WhatsApp konverzácií a skupín.`,
+          `${st.chats?.length ?? 0} WhatsApp beszélgetés és csoport szinkronizálva.`,
+        ),
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
+  const handleStartInlineWaQr = async () => {
+    if (!selectedAccount) return;
+    setWaInlineQrOpen(true);
+    setWaInlineQrUrl(null);
+    try {
+      const started = await startWhatsAppDirectQr({
+        id: selectedAccount.id,
+        accountId: selectedAccount.settings?.waAccountId || waState?.accountId || `wa-${selectedAccount.id}`,
+        reset: true,
+      });
+      if (started.qr) {
+        setWaInlineQrUrl(started.qr);
+      }
+      const accId = started.accountId;
+      const pollTimer = setInterval(async () => {
+        try {
+          const p = await pollWhatsAppDirectQr({ id: selectedAccount.id, accountId: accId });
+          if (p.qr) setWaInlineQrUrl(p.qr);
+          if (p.status === "connected") {
+            clearInterval(pollTimer);
+            setWaInlineQrOpen(false);
+            setWaInlineQrUrl(null);
+            notify(
+              t(
+                "WhatsApp linked! Syncing chats & groups…",
+                "WhatsApp prepojený! Synchronizujem konverzácie a skupiny…",
+                "WhatsApp összekapcsolva! Beszélgetések szinkronizálása…",
+              ),
+            );
+            void handleResyncWhatsApp();
+          }
+        } catch {
+          clearInterval(pollTimer);
+        }
+      }, 1800);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleSendWhatsAppMessage = async (
+    targetChat: WhatsAppChatSummary,
+    matchedLead: Lead | null,
+  ) => {
+    const text = waDraftMessage.trim();
+    if (!text || !selectedAccount || waSending) return;
+    setWaDraftMessage("");
+    setWaSending(true);
+
+    // Log to CRM lead timeline if matched
+    if (matchedLead && canEdit) {
+      const newEvent = {
+        id: `wa-${Date.now()}`,
+        type: "note" as const,
+        timestamp: nowLocalStamp(),
+        title: `WhatsApp (${selectedAccount?.name || "WhatsApp"})`,
+        content: `📤 WhatsApp → ${matchedLead.phone || matchedLead.name}:\n${text}`,
+        author: currentUser?.name || "",
+      };
+      setLeads((prev: Lead[]) =>
+        prev.map((l) => (l.id === matchedLead.id ? { ...l, timeline: [newEvent, ...(l.timeline || [])] } : l)),
+      );
+    }
+
+    try {
+      const nextState = await sendWhatsAppChatMessage({
+        id: selectedAccount.id,
+        chatId: targetChat.id,
+        text,
+      });
+      setWaState(nextState);
+      notify(
+        t(
+          "WhatsApp message sent!",
+          "WhatsApp správa odoslaná!",
+          "WhatsApp üzenet elküldve!",
+        ),
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setWaSending(false);
+    }
+  };
 
   // Compose a new email
   const openNewComposer = (defaultTo = "", defaultSubject = "", defaultBody = "") => {
@@ -635,7 +1810,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     if (!canEdit) return;
     setIsSending(true);
     try {
-      const res = await fetch("/api/mail_broker.php?action=send_email", {
+      const res = await fetch(`/api/mail_broker.php?action=send_email${mbParam}`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -699,7 +1874,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       },
       failureMessage: t("Failed to remove email", "Nepodarilo sa odstrániť e-mail", "Az e-mail eltávolítása nem sikerült"),
       onCommit: async () => {
-        const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${uid}&folder=${encodeURIComponent(folder)}`, {
+        const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${encodeURIComponent(uid)}&folder=${encodeURIComponent(folder)}${mbParam}`, {
           method: "DELETE",
           headers: { "X-User-Email": currentUser.email }
         });
@@ -728,20 +1903,51 @@ export const EmailView: React.FC<EmailViewProps> = ({
     });
 
     const threadsMap: Record<string, any[]> = {};
-    
-    filtered.forEach(email => {
-      // Strips Re:, Fwd:, etc.
-      let normSubject = (email.subject || "")
-        .replace(/^(re|fwd|fw|odp|odpověď|rehg|ref|odpověd|odp):\s*/i, "")
-        .trim();
-      if (!normSubject) {
-        normSubject = t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)");
+    const msgIdToThreadKey: Record<string, string> = {};
+
+    const normalizeSubject = (raw: string) => {
+      let s = (raw || "").trim();
+      const prefixRe = /^(?:(?:re|fwd|fw|odp|odpověď|rehg|ref|odpověd|válasz|aw|wg|sv|vs)(?:\[\d+\])?:\s*)+/i;
+      while (prefixRe.test(s)) {
+        s = s.replace(prefixRe, "").trim();
       }
-      
-      if (!threadsMap[normSubject]) {
-        threadsMap[normSubject] = [];
+      return s || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)");
+    };
+
+    // Sort oldest to newest first so `in_reply_to` / `references` can link to earlier messages' `message_id`
+    const chronological = [...filtered].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+
+    chronological.forEach((email) => {
+      const normSubj = normalizeSubject(email.subject || "");
+      let threadKey = "";
+
+      const inReplyTo = (email.in_reply_to || "").trim();
+      if (inReplyTo && msgIdToThreadKey[inReplyTo]) {
+        threadKey = msgIdToThreadKey[inReplyTo];
       }
-      threadsMap[normSubject].push(email);
+      if (!threadKey && email.references) {
+        const refs = String(email.references).split(/\s+/).filter(Boolean);
+        for (let i = refs.length - 1; i >= 0; i--) {
+          if (msgIdToThreadKey[refs[i]]) {
+            threadKey = msgIdToThreadKey[refs[i]];
+            break;
+          }
+        }
+      }
+      if (!threadKey) {
+        threadKey = normSubj;
+      }
+
+      if (email.message_id) {
+        msgIdToThreadKey[String(email.message_id).trim()] = threadKey;
+      }
+
+      if (!threadsMap[threadKey]) {
+        threadsMap[threadKey] = [];
+      }
+      threadsMap[threadKey].push(email);
     });
     
     const threadsList = Object.keys(threadsMap).map(subject => {
@@ -778,6 +1984,25 @@ export const EmailView: React.FC<EmailViewProps> = ({
     return threadedEmails.find(t => t.id === selectedThreadId) || null;
   }, [isThreadedMode, selectedThreadId, threadedEmails]);
 
+  // Auto-scroll Email Thread conversation pane to the newest message at the bottom by default
+  const activeThreadEmailCount = activeThread?.emails?.length ?? 0;
+  const latestThreadUid = activeThread?.latestEmail?.uid;
+  const latestThreadBodyLoaded = Boolean(latestThreadUid && threadBodies[latestThreadUid]);
+  useEffect(() => {
+    if (!isSelectedEmailChannel || !isThreadedMode || !activeThread) return;
+    const scrollToBottom = () => {
+      const el = emailThreadScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    };
+    scrollToBottom();
+    const raf = requestAnimationFrame(scrollToBottom);
+    const timer = setTimeout(scrollToBottom, 60);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [isSelectedEmailChannel, isThreadedMode, activeThread?.id, activeThreadEmailCount, latestThreadBodyLoaded]);
+
   // Toggle expand/collapse inside conversation flow and load detail inline lazily
   const toggleEmailExpand = async (email: any) => {
     const isExpanded = !expandedEmailUids[email.uid];
@@ -787,7 +2012,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       setIsLoadingDetail(true);
       const folderToUse = email.isSent ? "Sent" : activeFolder;
       try {
-        const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}`, {
+        const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${encodeURIComponent(email.uid)}&folder=${encodeURIComponent(folderToUse)}${mbParam}`, {
           headers: { "X-User-Email": currentUser.email }
         });
         const data = await res.json();
@@ -862,6 +2087,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // Sync initial summaries from fetched emails list payload
   useEffect(() => {
     const initialSummaries: Record<string, string> = {};
+    const initialProblems: Record<string, string[]> = {};
     const initialActionItems: Record<string, string[]> = {};
     emails.forEach(e => {
       if (e.summary) {
@@ -869,6 +2095,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
           if (e.summary.trim().startsWith('{')) {
             const parsed = JSON.parse(e.summary);
             initialSummaries[e.uid] = parsed.summary || '';
+            if (Array.isArray(parsed.problems)) {
+              initialProblems[e.uid] = parsed.problems;
+            }
             initialActionItems[e.uid] = parsed.actionItems || [];
           } else {
             initialSummaries[e.uid] = e.summary;
@@ -879,6 +2108,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       }
     });
     setSummaries(prev => ({ ...initialSummaries, ...prev }));
+    setProblemsMap(prev => ({ ...initialProblems, ...prev }));
     setActionItemsMap(prev => ({ ...initialActionItems, ...prev }));
   }, [emails]);
 
@@ -906,547 +2136,65 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }
   }, [emails, isThreadedMode, isOpenAiKeySet, threadedEmails, filteredIndividualEmails]);
 
-  // --- Presentation helpers -------------------------------------------------
+  const { getLinkedTickets, handleLinkEmailToTicket, handleUnlinkEmailFromTicket } = useEmailTicketLinks({
+    tickets, setTickets, canEdit, selectedMailboxId, setSelectedMailboxId, availableAccounts,
+    isSelectedEmailChannel, isLoadingEmails, emails, lastSyncAt, isThreadedMode, setIsThreadedMode,
+    threadedEmails, setSelectedThreadId, setExpandedEmailUids, setSelectedEmail, setThreadBodies,
+    setIsLoadingDetail, expandThreadMessage, activeFolder, mbParam, userEmail: currentUser?.email || "", notify, t,
+  });
 
-  const locale = localeCodeFor(systemLanguage);
-
-  const plural = (n: number, en: [string, string], sk: [string, string, string], hu: string) => {
-    if (systemLanguage === "sk") return `${n} ${n === 1 ? sk[0] : n >= 2 && n <= 4 ? sk[1] : sk[2]}`;
-    if (systemLanguage === "hu") return `${n} ${hu}`;
-    return `${n} ${n === 1 ? en[0] : en[1]}`;
-  };
-
-  // The other party of a message: whoever wrote it, or whoever it went to when we sent it.
-  const counterpartOf = (email: any) =>
-    email.isSent
-      ? { name: email.to?.name || email.to?.address || t("Unknown", "Neznámy", "Ismeretlen"), address: email.to?.address || "" }
-      : { name: email.from?.name || email.from?.address || t("Unknown", "Neznámy", "Ismeretlen"), address: email.from?.address || "" };
-
-  // A thread's contact is the newest person who wrote to us, falling back to
-  // whoever we last wrote to — never ourselves.
-  const threadContactOf = (thread: any) => {
-    for (let i = thread.emails.length - 1; i >= 0; i--) {
-      if (!thread.emails[i].isSent) return counterpartOf(thread.emails[i]);
-    }
-    return counterpartOf(thread.latestEmail);
-  };
-
-  const findLead = (address?: string) =>
-    address ? leads.find(l => l.email && l.email.toLowerCase() === address.toLowerCase()) || null : null;
-
-  const initialsOf = (name: string) => {
-    const words = (name || "").replace(/@.*$/, "").split(/[\s._-]+/).filter(w => /^\p{L}/u.test(w));
-    if (words.length === 0) return (name || "?").charAt(0).toUpperCase();
-    return words.slice(0, 2).map(w => w.charAt(0).toUpperCase()).join("");
-  };
-
-  const formatListDate = (value: string) => {
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return "";
-    const now = new Date();
-    const dayStart = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-    const diffDays = Math.round((dayStart(now) - dayStart(d)) / 86400000);
-    if (diffDays === 0) return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
-    if (diffDays === 1) return t("Yesterday", "Včera", "Tegnap");
-    if (d.getFullYear() === now.getFullYear()) return d.toLocaleDateString(locale, { day: "numeric", month: "numeric" });
-    return d.toLocaleDateString(locale);
-  };
-
-  const formatFullDate = (value: string) => {
-    const d = new Date(value);
-    return isNaN(d.getTime()) ? "" : d.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
-  };
-
-  const isClientLead = (lead: Lead) => lead.status === "accepted";
-
-  const iconButtonClass = "h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95 cursor-pointer";
-  const secondaryButtonClass = "px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-body font-bold flex items-center gap-2 transition-all shadow-2xs active:scale-95 cursor-pointer";
-  const primaryButtonClass = "px-4 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-body font-bold flex items-center gap-2 transition-all shadow active:scale-95 cursor-pointer";
-
-  const renderLeadChip = (lead: Lead | null) =>
-    lead ? (
-      <span
-        title={`${t("CRM Match:", "Zhoda CRM:", "CRM egyezés:")} ${lead.name}`}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border ${
-          isClientLead(lead) ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-200"
-        }`}
-      >
-        🤝 {isClientLead(lead) ? t("Client", "Klient", "Ügyfél") : t("Lead", "Záujemca", "Érdeklődő")}
-      </span>
-    ) : null;
-
-  const openCreateClient = (address: string, name: string) => {
-    setClientFormEmail(address);
-    setClientFormName(name);
-    setClientFormCity("");
-    setClientFormPhone("");
-    setClientFormType("person");
-    setIsClientSlideoutOpen(true);
-  };
-
-  // CRM actions for the conversation's contact: timeline + profile when matched,
-  // "create client" when the sender is not in the CRM yet.
-  const renderCrmActions = (lead: Lead | null, contact: { name: string; address: string }) =>
-    lead ? (
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            setSlideoutLead(lead);
-            setIsTimelineSlideoutOpen(true);
-          }}
-          className={secondaryButtonClass}
-        >
-          <History size={16} /> {t("View Timeline", "Zobraziť časovú os", "Idővonal megtekintése")}
-        </button>
-        <button
-          type="button"
-          onClick={() => { window.location.hash = `client-${encodeURIComponent(lead.name)}`; }}
-          className={secondaryButtonClass}
-          title={lead.name}
-        >
-          <ExternalLink size={16} /> {t("Open Client", "Otvoriť klienta", "Ügyfél megnyitása")}
-        </button>
-      </div>
-    ) : canEdit && contact.address ? (
-      <button type="button" onClick={() => openCreateClient(contact.address, contact.name === contact.address ? "" : contact.name)} className={secondaryButtonClass}>
-        <UserPlus size={16} /> {t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}
-      </button>
-    ) : null;
-
-  // Sender line under the subject: avatar chip, address, date, CRM state.
-  const renderPartyMeta = (email: any, lead: Lead | null) => {
-    const party = counterpartOf(email);
-    return (
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-body text-slate-500">
-        <span className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-bold max-w-full">
-          <span className="h-6 w-6 rounded-lg bg-white border border-slate-200 text-slate-600 text-caption font-bold flex items-center justify-center shrink-0">
-            {initialsOf(party.name)}
-          </span>
-          {email.isSent && <span className="text-slate-400 font-semibold">{t("To:", "Komu:", "Címzett:")}</span>}
-          <span className="truncate">{party.name}</span>
-        </span>
-        {party.address && party.address !== party.name && <span className="truncate">{party.address}</span>}
-        <span className="text-slate-300" aria-hidden>|</span>
-        <span>{formatFullDate(email.date)}</span>
-        {lead ? (
-          renderLeadChip(lead)
-        ) : (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border bg-white text-slate-500 border-slate-200">
-            👤 {t("Not in CRM", "Nie je v CRM", "Nincs a CRM-ben")}
-          </span>
-        )}
-      </div>
-    );
-  };
-
-  const attachmentVisual = (name: string) => {
-    const ext = (name.split(".").pop() || "").toLowerCase();
-    if (ext === "pdf") return { Icon: FileText, cls: "bg-rose-50 text-rose-600" };
-    if (["xls", "xlsx", "csv", "ods"].includes(ext)) return { Icon: FileSpreadsheet, cls: "bg-emerald-50 text-emerald-600" };
-    if (["png", "jpg", "jpeg", "gif", "webp", "svg", "heic"].includes(ext)) return { Icon: FileImage, cls: "bg-sky-50 text-sky-600" };
-    return { Icon: Paperclip, cls: "bg-amber-50 text-amber-700" };
-  };
-
-  const renderAttachments = (email: any, bodyObj: any, lead: Lead | null) => {
-    const attachments: any[] = bodyObj?.attachments || [];
-    if (attachments.length === 0) return null;
-    const folder = email.isSent ? "Sent" : activeFolder;
-    return (
-      <div className="shrink-0">
-        <div className="text-ui font-bold text-slate-500 mb-2 flex items-center gap-1.5">
-          <Paperclip size={14} /> {t("Attachments", "Prílohy", "Mellékletek")} · {attachments.length}
-        </div>
-        <div className="flex flex-wrap gap-2.5">
-          {attachments.map((att: any, attIdx: number) => {
-            const { Icon, cls } = attachmentVisual(att.name || "");
-            return (
-              <div key={attIdx} className="flex items-center gap-3 pl-2.5 pr-1.5 py-2 bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm rounded-2xl transition-all">
-                <span className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${cls}`}>
-                  <Icon size={18} />
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleDownloadAttachment(email.uid, folder, att)}
-                  className="min-w-0 text-left cursor-pointer"
-                  title={t("Download", "Stiahnuť", "Letöltés")}
-                >
-                  <span className="block text-body font-bold text-slate-800 truncate max-w-50">{att.name}</span>
-                  <span className="block text-ui text-slate-500">{formatBytes(att.size)}</span>
-                </button>
-                <div className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => handleDownloadAttachment(email.uid, folder, att)}
-                    className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-800 transition-all active:scale-95 cursor-pointer"
-                    title={t("Download", "Stiahnuť", "Letöltés")}
-                    aria-label={t("Download", "Stiahnuť", "Letöltés")}
-                  >
-                    <Download size={16} />
-                  </button>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => handleAddAttachmentToDocs(email.uid, folder, att, lead)}
-                      className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-emerald-50 hover:text-emerald-700 transition-all active:scale-95 cursor-pointer"
-                      title={t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
-                      aria-label={t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
-                    >
-                      <FolderPlus size={16} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-  const renderMailFrame = (bodyObj: any, title: string, className: string) => (
-    <iframe
-      className={className}
-      title={title}
-      sandbox=""
-      srcDoc={`
-        <html>
-          <head>
-            <style>
-              body {
-                font-family: system-ui, -apple-system, sans-serif;
-                color: #0f172a;
-                background-color: transparent;
-                line-height: 1.6;
-                font-size: ${isLargeFont ? "17px" : "14px"};
-                margin: 0;
-                padding: 2px;
-              }
-              a { color: #db2777; text-decoration: none; }
-              a:hover { text-decoration: underline; }
-              blockquote { border-left: 3px solid #cbd5e1; padding-left: 12px; color: #64748b; margin: 12px 0; }
-            </style>
-          </head>
-          <body>
-            ${bodyObj.html || bodyObj.text || ""}
-          </body>
-        </html>
-      `}
-    />
-  );
-
-  // AI digest: hidden behind a brain icon; hovering previews it, clicking pins it open.
-  const clearDigestHide = () => {
-    if (digestHideTimer.current !== null) {
-      window.clearTimeout(digestHideTimer.current);
-      digestHideTimer.current = null;
-    }
-  };
-  const scheduleDigestHide = () => {
-    clearDigestHide();
-    digestHideTimer.current = window.setTimeout(() => {
-      setDigest(d => (d && !d.pinned ? null : d));
-    }, 180);
-  };
-  const closeDigest = () => {
-    clearDigestHide();
-    setDigest(null);
-    setAssigningActionItem(null);
-  };
-
-  // IMAP uids arrive as numbers; the digest key must be a string (the popover
-  // tells threads from single mails with key.startsWith("thread-")).
-  const renderDigestButton = (rawKey: string | number, lead: Lead | null, size: "sm" | "md" = "md") => {
-    if (!isOpenAiKeySet) return null;
-    const key = String(rawKey);
-    const isActive = digest?.key === key;
-    const iconSize = size === "sm" ? 15 : 17;
-    return (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          clearDigestHide();
-          const rect = e.currentTarget.getBoundingClientRect();
-          if (digest?.key === key && digest.pinned) {
-            closeDigest();
-          } else {
-            setAssigningActionItem(null);
-            setDigest({ key, lead, rect, pinned: true });
-          }
-        }}
-        onMouseEnter={(e) => {
-          if (digest?.pinned) return;
-          clearDigestHide();
-          setDigest({ key, lead, rect: e.currentTarget.getBoundingClientRect(), pinned: false });
-        }}
-        onMouseLeave={() => {
-          if (!digest?.pinned) scheduleDigestHide();
-        }}
-        title={t("AI summary", "AI súhrn", "AI összefoglaló")}
-        aria-label={t("AI summary", "AI súhrn", "AI összefoglaló")}
-        aria-expanded={isActive}
-        className={`${size === "sm" ? "h-8 w-8" : "h-9 w-9"} shrink-0 rounded-xl flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
-          isActive ? "bg-purple-100 text-purple-700" : "text-purple-500 hover:bg-purple-50 hover:text-purple-700"
-        }`}
-      >
-        {loadingSummaries[key] ? <Loader2 size={iconSize} className="animate-spin" /> : <Brain size={iconSize} />}
-      </button>
-    );
-  };
-
-  const renderDigestPopover = () => {
-    if (!digest) return null;
-    const { key, lead, rect, pinned } = digest;
-    const width = Math.min(380, window.innerWidth - 16);
-    const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
-    const openUp = rect.bottom + 340 > window.innerHeight && rect.top > 340;
-    const position: React.CSSProperties = openUp
-      ? { left, width, bottom: window.innerHeight - rect.top + 6 }
-      : { left, width, top: rect.bottom + 6 };
-    const isThread = key.startsWith("thread-");
-    const items = actionItemsMap[key] || [];
-
-    return (
-      <>
-        {pinned && <div className="fixed inset-0 z-40 bg-transparent" onClick={closeDigest} />}
-        <div
-          role="dialog"
-          aria-label={t("AI summary", "AI súhrn", "AI összefoglaló")}
-          style={position}
-          onMouseEnter={clearDigestHide}
-          onMouseLeave={() => { if (!pinned) scheduleDigestHide(); }}
-          className="fixed z-50 max-h-[min(440px,70vh)] overflow-y-auto bg-white border border-purple-200 rounded-2xl shadow-2xl p-4 text-left animate-fade-in select-text"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="h-7 w-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
-                <Brain size={15} />
-              </span>
-              <span className="text-body font-bold text-purple-950">
-                {isThread ? t("AI Flow Summary", "AI súhrn toku", "AI folyam összefoglaló") : t("AI Mail Summary", "AI súhrn e-mailu", "AI e-mail összefoglaló")}
-              </span>
-            </div>
-            {pinned && (
-              <button
-                type="button"
-                onClick={closeDigest}
-                className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
-                aria-label={t("Close", "Zavrieť", "Bezárás")}
-              >
-                <X size={15} />
-              </button>
-            )}
-          </div>
-
-          <div className="mt-3">
-            {loadingSummaries[key] ? (
-              <div className="flex items-center gap-2 text-body text-purple-700 font-semibold">
-                <Loader2 size={15} className="animate-spin" />
-                {isThread
-                  ? t("Analyzing conversation flow...", "Analyzuje sa tok konverzácie...", "Beszélgetés folyamának elemzése...")
-                  : t("Analyzing email content...", "Analyzuje sa obsah e-mailu...", "E-mail tartalmának elemzése...")}
-              </div>
-            ) : summaries[key] ? (
-              <p className="text-body text-slate-700 leading-relaxed">{summaries[key]}</p>
-            ) : (
-              <p className="text-body text-slate-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</p>
-            )}
-          </div>
-
-          {items.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-purple-100 space-y-2">
-              <div className="text-ui font-bold text-purple-900 flex items-center gap-1.5">
-                <CheckCircle2 size={14} className="text-purple-600" />
-                {t("Suggested Tasks", "Navrhované úlohy", "Javasolt feladatok")}
-              </div>
-              <ul className="space-y-1.5">
-                {items.map((item, idx) => {
-                  const matchingTask = tasks.find(task => task.title === item);
-                  const assignedUser = matchingTask?.assignedUsers?.[0] || null;
-                  const isAssigning = assigningActionItem?.item === item && assigningActionItem?.emailUid === key;
-                  return (
-                    <li key={idx} className="rounded-xl bg-purple-50/60 border border-purple-100 px-3 py-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-body text-slate-800">{item}</span>
-                        {matchingTask ? (
-                          <span className="shrink-0 text-ui font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg" title={assignedUser || undefined}>
-                            {assignedUser ? `✓ ${assignedUser.substring(0, 2).toUpperCase()}` : "✓"}
-                          </span>
-                        ) : canEdit ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDigest(d => (d ? { ...d, pinned: true } : d));
-                              setAssigningActionItem(isAssigning ? null : { item, emailUid: key });
-                            }}
-                            className="shrink-0 text-ui font-bold text-purple-700 hover:text-white bg-white hover:bg-purple-600 border border-purple-200 px-2 py-0.5 rounded-lg transition-all cursor-pointer"
-                          >
-                            + {t("Assign", "Priradiť", "Hozzárendel")}
-                          </button>
-                        ) : null}
-                      </div>
-                      {isAssigning && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {users.map(u => (
-                            <button
-                              key={u.name}
-                              type="button"
-                              onClick={() => {
-                                handleAddEmailActionItemAsTask(item, key, lead, u.name);
-                                setAssigningActionItem(null);
-                              }}
-                              className="inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-ui font-bold text-slate-700 cursor-pointer transition-all"
-                            >
-                              <span className="h-5 w-5 rounded-full bg-indigo-50 border border-indigo-200/40 text-indigo-600 flex items-center justify-center text-micro font-bold shrink-0">
-                                {u.name.substring(0, 2).toUpperCase()}
-                              </span>
-                              {u.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          {!pinned && (
-            <p className="mt-3 text-ui text-slate-400">{t("Click the icon to keep it open.", "Kliknutím na ikonu ho necháte otvorený.", "Kattintson az ikonra, hogy nyitva maradjon.")}</p>
-          )}
-        </div>
-      </>
-    );
-  };
-
-  const unreadCount = isThreadedMode
-    ? threadedEmails.filter(th => !th.seen).length
-    : filteredIndividualEmails.filter(e => !e.seen).length;
-  const shownCount = isThreadedMode ? visibleThreads.length : visibleIndividualEmails.length;
-
-  const onListScroll = () => {
-    if (digest) closeDigest();
-  };
-
-  // One row of the conversation list. Same shape for a single message and a thread.
-  const renderListRow = (opts: {
-    key: string;
-    email: any;
-    subject: string;
-    unread: boolean;
-    selected: boolean;
-    count?: number;
-    digestKey: string;
-    onOpen: () => void;
-  }) => {
-    const party = counterpartOf(opts.email);
-    const lead = findLead(party.address);
-    return (
-      <div
-        key={opts.key}
-        role="button"
-        tabIndex={0}
-        onClick={opts.onOpen}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            opts.onOpen();
-          }
-        }}
-        className={`relative flex gap-3 px-4 py-3.5 border-b border-slate-100 text-left cursor-pointer transition-colors outline-none focus-visible:bg-slate-50 ${
-          opts.selected ? "bg-pink-50/40" : "hover:bg-slate-50/80"
-        }`}
-      >
-        {opts.selected && <span className="absolute left-0 top-0 bottom-0 w-0.75 bg-pink-600 rounded-r" aria-hidden />}
-        <span className="h-9 w-9 rounded-xl bg-slate-100 text-slate-600 text-ui font-bold flex items-center justify-center shrink-0">
-          {initialsOf(party.name)}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <span className={`flex items-center min-w-0 text-ui font-medium ${opts.unread ? "text-slate-700" : "text-slate-500"}`}>
-              <GeometricIcon emailString={party.address} />
-              {opts.email.isSent && <span className="text-slate-400 font-semibold mr-1 shrink-0">{t("To:", "Komu:", "Címzett:")}</span>}
-              <span className="truncate">{party.name}</span>
-            </span>
-            <span className={`text-ui shrink-0 ${opts.unread ? "text-pink-600 font-bold" : "text-slate-500"}`}>{formatListDate(opts.email.date)}</span>
-          </div>
-          <div className={`mt-0.5 text-title-sm font-bold truncate ${opts.unread ? "text-slate-900" : "text-slate-700"}`}>
-            {opts.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
-          </div>
-          {opts.email.preview && (
-            <p className="mt-0.5 text-body text-slate-500 line-clamp-2 break-words">{opts.email.preview}</p>
-          )}
-          <div className="mt-2 flex items-center gap-1.5 min-h-6">
-            {opts.email.attachment_count > 0 && (
-              <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold bg-amber-50 text-amber-700 border border-amber-100"
-                title={plural(opts.email.attachment_count, ["attachment", "attachments"], ["príloha", "prílohy", "príloh"], "melléklet")}
-              >
-                <Paperclip size={12} /> {opts.email.attachment_count}
-              </span>
-            )}
-            {opts.email.isSent ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold bg-slate-50 text-slate-500 border border-slate-200">
-                <ArrowUpRight size={12} /> {t("Sent", "Odoslané", "Elküldve")}
-              </span>
-            ) : null}
-            {opts.count !== undefined && opts.count > 1 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold bg-pink-50 text-pink-700 border border-pink-100">
-                <MessagesSquare size={12} /> {opts.count}
-              </span>
-            )}
-            {renderLeadChip(lead)}
-            <span className="flex-1" />
-            {renderDigestButton(opts.digestKey, lead, "sm")}
-            {opts.unread && <span className="h-2 w-2 rounded-full bg-pink-600 shrink-0" aria-label={t("Unread", "Neprečítané", "Olvasatlan")} />}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const readToggleButton = (seen: boolean, onToggle: () => void) => {
-    const label = seen
-      ? t("Mark as unread", "Označiť ako neprečítané", "Megjelölés olvasatlanként")
-      : t("Mark as read", "Označiť ako prečítané", "Megjelölés olvasottként");
-    return (
-      <button type="button" onClick={onToggle} className={iconButtonClass} title={label} aria-label={label}>
-        {seen ? <Mail size={17} /> : <MailOpen size={17} />}
-      </button>
-    );
-  };
-
-  const emptyPane = (text: string) => (
-    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 px-6 text-center">
-      <span className="h-14 w-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center">
-        <Mail size={26} className="stroke-[1.5] text-slate-300" />
-      </span>
-      <span className="text-body font-semibold text-slate-500">{text}</span>
-    </div>
-  );
+  const {
+    locale, primaryButtonClass, initialsOf, formatListDate, emptyPane, renderCrmActions,
+    renderInlineAiSummaryBanner, unreadCount, closeDigest, onListScroll, shownCount, renderListRow, plural,
+    threadContactOf, findLead, renderLeadChip, renderDigestButton, readToggleButton, counterpartOf,
+    formatFullDate, renderMailFrame, renderAttachments, renderPartyMeta, renderDigestPopover,
+  } = useEmailPresentation({
+    systemLanguage, t, leads, setClientFormEmail, setClientFormName, setClientFormCity, setClientFormPhone,
+    setClientFormType, setIsClientSlideoutOpen, setSlideoutLead, setIsTimelineSlideoutOpen, canEdit,
+    activeFolder, handleDownloadAttachment, handleAddAttachmentToDocs, isLargeFont, digestHideTimer, setDigest,
+    setAssigningActionItem, isOpenAiKeySet, digest, problemsMap, loadingSummaries, summaries, actionItemsMap,
+    tasks, users, handleAddEmailActionItemAsTask, currentUser, assigningActionItem, isThreadedMode,
+    threadedEmails, filteredIndividualEmails, visibleThreads, visibleIndividualEmails, getLinkedTickets,
+  });
 
   return (
-    <div className="space-y-5 select-none animate-fade-in text-slate-800">
+    <div className="space-y-5 select-none animate-fade-in text-gray-800">
     {/* Module header (docs/VIEW-SIZE.md §6.2) */}
     <PageHeader
-      icon={<Mail className="text-pink-600" />}
+      icon={<SectionIcon id="email" />}
       title={t("Email Inbox", "Emailová schránka", "E-mail postafiók")}
-      subtitle={t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
+      subtitle={t(`Unified SMTP / IMAP inbox connected to your ${PRODUCT_NAME} contacts`, `Jednotná SMTP / IMAP schránka prepojená s kontaktmi ${PRODUCT_NAME}`, `Egységes SMTP / IMAP postafiók a ${PRODUCT_NAME} kapcsolatokhoz`)}
       actions={
         <>
+          {availableAccounts.length > 1 && (
+            <select
+              value={selectedMailboxId || availableAccounts[0]?.id || ""}
+              onChange={(e) => {
+                setSelectedMailboxId(e.target.value);
+                setSelectedEmail(null);
+                setSelectedThreadId(null);
+              }}
+              aria-label={t("Active mailbox", "Aktívna schránka", "Aktív postafiók")}
+              className="px-3.5 py-2 rounded-md bg-white border border-gray-200 text-body font-semibold text-gray-700 shadow-2xs cursor-pointer focus:outline-none focus:border-entity-border"
+            >
+              {availableAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name} ({acc.address})
+                </option>
+              ))}
+            </select>
+          )}
           {!canEdit && (
             <span
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-body font-bold shrink-0"
-              title={t("Your role can read mail but not send it or write into the CRM from here.", "Vaša rola môže poštu čítať, ale nie odosielať ani odtiaľto zapisovať do CRM.", "A szerepköre olvashatja a leveleket, de nem küldhet, és innen nem írhat a CRM-be.")}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-body font-bold shrink-0"
+              title={t(`Your role can read mail but not send it or write into ${PRODUCT_NAME} from here.`, `Vaša rola môže poštu čítať, ale nie odosielať ani odtiaľto zapisovať do ${PRODUCT_NAME}.`, `A szerepköre olvashatja a leveleket, de nem küldhet, és innen nem írhat a ${PRODUCT_NAME}-be.`)}
             >
               <Lock className="h-4 w-4" />
               {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
             </span>
           )}
-          <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-body font-semibold text-slate-600 shadow-2xs">
-            <span className={`h-2 w-2 rounded-full shrink-0 ${isSyncingEmails ? "bg-pink-500 animate-pulse" : "bg-emerald-500"}`} />
+          <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-md bg-white border border-gray-200 text-body font-semibold text-gray-600 shadow-2xs">
+            <span className={`h-2 w-2 rounded-full shrink-0 ${isSyncingEmails ? "bg-entity-solid animate-pulse" : "bg-emerald-500"}`} />
             {isSyncingEmails
               ? t("Syncing with mailbox...", "Synchronizuje sa so schránkou...", "Szinkronizálás a postafiókkal...")
               : lastSyncAt
@@ -1463,7 +2211,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 : t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")
             }
             aria-label={t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")}
-            className="h-10 w-10 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 text-slate-600 hover:text-pink-600 rounded-xl transition-all flex items-center justify-center shadow-2xs shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+            className="h-10 w-10 bg-white hover:bg-gray-50 active:scale-95 border border-gray-200 text-gray-600 hover:text-entity-text rounded-md transition-all flex items-center justify-center shadow-2xs shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
           >
             <RefreshCw size={16} className={isSyncingEmails ? "animate-spin" : ""} />
           </button>
@@ -1476,7 +2224,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       }
     />
 
-    <div className={`grid grid-cols-1 ws-lg:grid-cols-12 gap-5 select-none h-[calc(100vh-280px)] min-h-130 items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
+    <div className={`flex flex-col ws-lg:flex-row gap-4 select-none h-[calc(100vh-280px)] min-h-130 items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
       <style>{`
         /* Large-text mode lifts the role tokens for this subtree only (docs/VIEW-SIZE.md). */
         .email-view-large {
@@ -1489,7 +2237,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       `}</style>
       {/* Notifications banner */}
       {notification && (
-        <div className={`fixed bottom-4 right-4 z-50 px-5 py-3.5 rounded-2xl flex items-center gap-3 border shadow-2xl ${
+        <div className={`fixed bottom-4 right-4 z-50 px-5 py-3.5 rounded-lg flex items-center gap-3 border shadow-xl ${
           notification.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-rose-50 border-rose-200 text-rose-900"
         }`}>
           {notification.type === "success" ? <CheckCircle2 size={16} /> : <CircleAlert size={16} />}
@@ -1497,659 +2245,165 @@ export const EmailView: React.FC<EmailViewProps> = ({
         </div>
       )}
 
-      {/* COLUMN 1: Conversation list */}
-      <div className="ws-lg:col-span-5 ws-xl:col-span-4 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
-        {/* Search & filters */}
-        <div className="p-4 space-y-3 border-b border-slate-100 shrink-0">
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder={t("Search conversations...", "Hľadať konverzácie...", "Beszélgetések keresése...")}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-700 focus:outline-none focus:bg-white focus:border-pink-300 transition-colors"
-            />
-          </div>
+      {/* SECOND SIDEBAR: Authorized Communication Accounts */}
+      <EmailAccountsSidebar
+        t={t} availableAccounts={availableAccounts} selectedAccount={selectedAccount}
+        agentStates={agentStates} setSelectedMailboxId={setSelectedMailboxId}
+        setActiveChatSubagentId={setActiveChatSubagentId} setSelectedEmail={setSelectedEmail}
+        setSelectedThreadId={setSelectedThreadId} setNewSubagentOpen={setNewSubagentOpen}
+        setVisualTriggersOpen={setVisualTriggersOpen} activeChatSubagentId={activeChatSubagentId}
+        visualTriggersOpen={visualTriggersOpen}
+      />
 
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50" role="tablist" aria-label={t("Mailbox filter", "Filter schránky", "Postafiók szűrő")}>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={filter === "all"}
-                onClick={() => setFilter("all")}
-                className={`px-3.5 py-1.5 rounded-lg text-body font-bold transition-all cursor-pointer ${filter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-              >
-                {t("All", "Všetky", "Összes")}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={filter === "unread"}
-                onClick={() => setFilter("unread")}
-                className={`px-3.5 py-1.5 rounded-lg text-body font-bold transition-all flex items-center gap-1.5 cursor-pointer ${filter === "unread" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-              >
-                {t("Unread", "Neprečítané", "Olvasatlan")}
-                {unreadCount > 0 && (
-                  <span className="min-w-5 h-5 px-1.5 rounded-full bg-pink-600 text-white text-ui font-bold flex items-center justify-center">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setIsLargeFont(prev => !prev)}
-                aria-pressed={isLargeFont}
-                title={isLargeFont
-                  ? t("Font size: large (click for normal)", "Veľkosť písma: veľké (kliknite pre normálne)", "Betűméret: nagy (kattintson a normálhoz)")
-                  : t("Font size: normal (click for large)", "Veľkosť písma: normálne (kliknite pre veľké)", "Betűméret: normál (kattintson a nagyhoz)")}
-                aria-label={t("Font size", "Veľkosť písma", "Betűméret")}
-                className={`h-9 w-9 rounded-xl border flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
-                  isLargeFont ? "bg-pink-50 border-pink-200 text-pink-700" : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                }`}
-              >
-                <Type size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsThreadedMode(prev => !prev);
-                  setSelectedEmail(null);
-                  setSelectedThreadId(null);
-                  setExpandedEmailUids({});
-                  closeDigest();
-                }}
-                aria-pressed={isThreadedMode}
-                title={isThreadedMode
-                  ? t("Flow Mode: on — messages grouped into threads", "Režim toku: zapnutý — správy zoskupené do vlákien", "Folyam mód: be — üzenetek szálakba csoportosítva")
-                  : t("Flow Mode: off — click to group messages into threads", "Režim toku: vypnutý — kliknite pre zoskupenie do vlákien", "Folyam mód: ki — kattintson a szálakba csoportosításhoz")}
-                aria-label={t("Flow Mode", "Režim toku", "Folyam mód")}
-                className={`h-9 w-9 rounded-xl border flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
-                  isThreadedMode ? "bg-pink-50 border-pink-200 text-pink-700" : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                }`}
-              >
-                <MessagesSquare size={16} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Conversation rows */}
-        <div className="flex-1 overflow-y-auto" onScroll={onListScroll}>
-          {isLoadingEmails ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
-              <Loader2 className="animate-spin text-pink-500" size={24} />
-              <span className="text-body font-semibold">{t("Syncing Envelopes...", "Synchronizácia obálok...", "Borítékok szinkronizálása...")}</span>
-            </div>
-          ) : shownCount === 0 ? (
-            <div className="text-center py-12 px-4 text-slate-400 text-body font-semibold">
-              {filter === "unread"
-                ? t("No unread messages.", "Žiadne neprečítané správy.", "Nincs olvasatlan üzenet.")
-                : isThreadedMode
-                  ? t("No threads found.", "Nenašli sa žiadne vlákna.", "Nincs találat a szálakra.")
-                  : t("No conversations found.", "Nenašli sa žiadne konverzácie.", "Nincs találat a beszélgetésekre.")}
-            </div>
-          ) : isThreadedMode ? (
-            visibleThreads.map(thread =>
-              renderListRow({
-                key: thread.id,
-                email: thread.latestEmail,
-                subject: thread.subject,
-                unread: !thread.seen,
-                selected: selectedThreadId === thread.id,
-                count: thread.emails.length,
-                digestKey: `thread-${thread.id}`,
-                onOpen: () => {
-                  setSelectedThreadId(thread.id);
-                  setExpandedEmailUids({ [thread.latestEmail.uid]: true });
-                  // Load details for latest message
-                  toggleEmailExpand(thread.latestEmail);
-                },
-              })
-            )
-          ) : (
-            visibleIndividualEmails.map(email =>
-              renderListRow({
-                key: String(email.uid),
-                email,
-                subject: email.subject,
-                unread: !email.seen,
-                selected: selectedEmail?.uid === email.uid,
-                digestKey: email.uid,
-                onOpen: () => expandThreadMessage(email),
-              })
-            )
-          )}
-        </div>
-
-        {/* List footer */}
-        <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-2 text-body text-slate-500 shrink-0">
-          <span>
-            {isThreadedMode
-              ? plural(shownCount, ["conversation", "conversations"], ["konverzácia", "konverzácie", "konverzácií"], "beszélgetés")
-              : plural(shownCount, ["message", "messages"], ["správa", "správy", "správ"], "üzenet")}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Inbox size={15} /> {t("Inbox & Sent", "Doručené a odoslané", "Beérkezett és elküldött")}
-          </span>
-        </div>
-      </div>
-
-      {/* COLUMN 2: Mail detail / conversation flow */}
-      <div className="ws-lg:col-span-7 ws-xl:col-span-8 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
-        {isThreadedMode ? (
-          activeThread ? (() => {
-            const contact = threadContactOf(activeThread);
-            const threadLead = findLead(contact.address);
-            const threadKey = `thread-${activeThread.id}`;
-            return (
-              <div className="h-full flex flex-col overflow-hidden">
-                {/* Thread header */}
-                <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0 text-left">
-                  <div className="min-w-0">
-                    <h3 className="text-title font-heading font-extrabold text-slate-900 tracking-tight break-words">{activeThread.subject}</h3>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-body text-slate-500">
-                      <span className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-bold max-w-full">
-                        <span className="h-6 w-6 rounded-lg bg-white border border-slate-200 text-slate-600 text-caption font-bold flex items-center justify-center shrink-0">
-                          {initialsOf(contact.name)}
-                        </span>
-                        <span className="truncate">{contact.name}</span>
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <MessagesSquare size={15} />
-                        {plural(activeThread.emails.length, ["message", "messages"], ["správa", "správy", "správ"], "üzenet")}
-                      </span>
-                      {threadLead ? renderLeadChip(threadLead) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border bg-white text-slate-500 border-slate-200">
-                          👤 {t("Not in CRM", "Nie je v CRM", "Nincs a CRM-ben")}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {renderDigestButton(threadKey, threadLead)}
-                    {readToggleButton(activeThread.seen, () => setThreadSeen(activeThread, !activeThread.seen))}
-                  </div>
-                </div>
-
-                {/* Messages, oldest first */}
-                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3 scrollbar-thin" onScroll={onListScroll}>
-                  {activeThread.emails.map((email) => {
-                    const isExpanded = !!expandedEmailUids[email.uid];
-                    const bodyObj = threadBodies[email.uid];
-                    const party = counterpartOf(email);
-                    const msgLead = findLead(party.address);
-
-                    return (
-                      <div
-                        key={email.uid}
-                        className={`border rounded-2xl overflow-hidden transition-all duration-200 text-left ${
-                          isExpanded ? "border-slate-200 shadow-sm" : "border-slate-100 hover:border-slate-200 bg-white"
-                        }`}
-                      >
-                        {/* Message header line */}
-                        <div
-                          onClick={() => toggleEmailExpand(email)}
-                          className={`px-4 py-3 flex items-center justify-between gap-3 cursor-pointer select-none ${
-                            isExpanded ? "bg-slate-50 border-b border-slate-200/80" : "bg-transparent"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 ${
-                              email.isSent ? "bg-pink-100 text-pink-700" : "bg-indigo-100 text-indigo-700"
-                            }`}>
-                              {email.isSent ? <ArrowUpRight size={16} /> : <ArrowDownLeft size={16} />}
-                            </span>
-                            <div className="min-w-0">
-                              <span className="text-body font-bold text-slate-800 truncate block">
-                                {email.isSent ? `${t("To:", "Komu:", "Címzett:")} ${party.name}` : party.name}
-                              </span>
-                              <span className="text-ui text-slate-500 block mt-0.5 truncate">
-                                {formatFullDate(email.date)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                            {isExpanded && bodyObj && renderDigestButton(email.uid, msgLead, "sm")}
-                            {isExpanded && canEdit && (
-                              <button
-                                type="button"
-                                onClick={() => openNewComposer(party.address, `Re: ${email.subject}`)}
-                                className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95 cursor-pointer"
-                                title={t("Reply", "Odpovedať", "Válasz")}
-                                aria-label={t("Reply", "Odpovedať", "Válasz")}
-                              >
-                                <Reply size={15} />
-                              </button>
-                            )}
-                            {isExpanded && canDelete && (
-                              <HoldToConfirmButton
-                                  tone="danger"
-                                  lang={systemLanguage}
-                                  what={email.subject}
-                                  onConfirm={() => handleDeleteEmail(email.uid)}
-                                  className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95"
-                                  title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
-                              >
-                                <Trash2 size={15} />
-                              </HoldToConfirmButton>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => toggleEmailExpand(email)}
-                              className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
-                              aria-label={isExpanded ? t("Collapse", "Zbaliť", "Összecsukás") : t("Expand", "Rozbaliť", "Kibontás")}
-                            >
-                              {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Message body */}
-                        {isExpanded && (
-                          <div className="p-4 bg-white space-y-4">
-                            {isLoadingDetail && !bodyObj ? (
-                              <div className="flex items-center justify-center py-6 gap-2 text-slate-400">
-                                <Loader2 className="animate-spin text-pink-500" size={16} />
-                                <span className="text-body font-semibold">{t("Decoding part...", "Dekódovanie časti...", "Rész dekódolása...")}</span>
-                              </div>
-                            ) : bodyObj ? (
-                              renderMailFrame(bodyObj, `Thread body ${email.uid}`, "w-full min-h-55 max-h-105 border-0 bg-transparent")
-                            ) : (
-                              <div className="text-center py-6 text-body font-semibold text-slate-400">
-                                {t("Content not found.", "Obsah sa nenašiel.", "A tartalom nem található.")}
-                              </div>
-                            )}
-                            {renderAttachments(email, bodyObj, msgLead)}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Thread footer */}
-                <div className="px-6 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
-                  {canEdit ? (
-                    <button
-                      type="button"
-                      onClick={() => openNewComposer(contact.address, `Re: ${activeThread.subject}`)}
-                      className={primaryButtonClass}
-                    >
-                      <Reply size={16} /> {t("Reply Thread", "Odpovedať na vlákno", "Válasz a szálra")}
-                    </button>
-                  ) : <span />}
-                  {renderCrmActions(threadLead, contact)}
-                </div>
-              </div>
-            );
-          })() : emptyPane(t("Select a threaded conversation flow", "Vyberte tok vlákna konverzácie", "Válasszon egy beszélgetésszálat"))
-        ) : (
-          isLoadingDetail ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400">
-              <Loader2 className="animate-spin text-pink-500" size={32} />
-              <span className="text-body font-semibold">{t("Decoding Message...", "Dekódovanie správy...", "Üzenet dekódolása...")}</span>
-            </div>
-          ) : selectedEmail ? (() => {
-            const bodyObj = threadBodies[selectedEmail.uid];
-            // `selectedEmail` is the row as it was when clicked; the read flag
-            // lives in `emails`, which the toggle and the refresh keep current.
-            const isSeen = emails.find(e => e.uid === selectedEmail.uid)?.seen ?? selectedEmail.seen;
-            const party = counterpartOf(selectedEmail);
-            const lead = findLead(party.address);
-
-            return (
-              <div className="h-full flex flex-col overflow-hidden">
-                {/* Header */}
-                <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0 text-left">
-                  <div className="min-w-0">
-                    <h3 className="text-title font-heading font-extrabold text-slate-900 tracking-tight break-words">
-                      {selectedEmail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
-                    </h3>
-                    {renderPartyMeta(selectedEmail, lead)}
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {bodyObj && renderDigestButton(selectedEmail.uid, lead)}
-                    {readToggleButton(isSeen, () => setSeenFlag(selectedEmail, !isSeen))}
-                    {canDelete && (
-                      <HoldToConfirmButton
-                          tone="danger"
-                          lang={systemLanguage}
-                          what={selectedEmail.subject}
-                          onConfirm={() => handleDeleteEmail(selectedEmail.uid)}
-                          className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95"
-                          title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
-                      >
-                        <Trash2 size={17} />
-                      </HoldToConfirmButton>
-                    )}
-                  </div>
-                </div>
-
-                {/* Body + attachments */}
-                <div className="flex-1 min-h-0 flex flex-col gap-5 px-6 py-5">
-                  {bodyObj ? (
-                    renderMailFrame(bodyObj, t("Parsed mail content", "Spracovaný obsah pošty", "Feldolgozott levéltartalom"), "w-full flex-1 min-h-50 border-0 bg-transparent")
-                  ) : (
-                    <div className="flex-1 text-center text-slate-400 py-12 text-body font-semibold">
-                      {t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
-                    </div>
-                  )}
-                  {renderAttachments(selectedEmail, bodyObj, lead)}
-                </div>
-
-                {/* Footer actions */}
-                <div className="px-6 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
-                  {canEdit ? (
-                    <button
-                      type="button"
-                      onClick={() => openNewComposer(party.address, `Re: ${selectedEmail.subject}`)}
-                      className={primaryButtonClass}
-                    >
-                      <Reply size={16} /> {t("Reply", "Odpovedať", "Válasz")}
-                    </button>
-                  ) : <span />}
-                  {renderCrmActions(lead, party)}
-                </div>
-              </div>
-            );
-          })() : emptyPane(t("Select a conversation thread", "Vyberte vlákno konverzácie", "Válasszon egy beszélgetésszálat"))
-        )}
-      </div>
+      {/* RIGHT WORKSPACE: Dynamic Layout Depending on Selected Communication Channel */}
+      {isMessagingConnector(selectedChannelType) ? (
+        /* WHATSAPP & BOTMAN MESSAGING LAYOUT */
+        <EmailMessagingLayout
+        waState={waState} selectedChannelType={selectedChannelType} leads={leads} waFilterType={waFilterType}
+        waSearchQuery={waSearchQuery} waSelectedLeadId={waSelectedLeadId} selectedAccount={selectedAccount}
+        chatClientLinks={chatClientLinks} availableAccounts={availableAccounts} agentStates={agentStates}
+        t={t} handleResyncWhatsApp={handleResyncWhatsApp} waLoading={waLoading}
+        handleStartInlineWaQr={handleStartInlineWaQr} waInlineQrOpen={waInlineQrOpen}
+        setWaInlineQrOpen={setWaInlineQrOpen} waInlineQrUrl={waInlineQrUrl}
+        setWaSearchQuery={setWaSearchQuery} setWaFilterType={setWaFilterType}
+        setWaSelectedLeadId={setWaSelectedLeadId} initialsOf={initialsOf} formatListDate={formatListDate}
+        emptyPane={emptyPane} waTakeoverBusyChatId={waTakeoverBusyChatId}
+        handleToggleWaChatAgentTakeover={handleToggleWaChatAgentTakeover} canEdit={canEdit}
+        setPendingChatLinkKey={setPendingChatLinkKey} setClientFormName={setClientFormName}
+        setClientFormPhone={setClientFormPhone} setClientFormEmail={setClientFormEmail}
+        setClientFormCity={setClientFormCity} setClientFormType={setClientFormType}
+        setIsClientSlideoutOpen={setIsClientSlideoutOpen} saveChatClientLink={saveChatClientLink}
+        renderCrmActions={renderCrmActions} renderInlineAiSummaryBanner={renderInlineAiSummaryBanner}
+        fetchSummary={fetchSummary} summaries={summaries} waMessagesScrollRef={waMessagesScrollRef}
+        currentUser={currentUser} waDraftMessage={waDraftMessage} setWaDraftMessage={setWaDraftMessage}
+        handleSendWhatsAppMessage={handleSendWhatsAppMessage} waSending={waSending}
+        />
+      ) : isAgentConnector(selectedChannelType) ? (
+        /* SUBSCRIPTION AI AGENT: CENTER (100% CHAT OR 50/50 SPLIT WITH ARTIFACT EDITOR) + RIGHT SIDEBAR (MEMORY & ARTIFACTS) */
+        <EmailAgentLayout
+        selectedChannelType={selectedChannelType} selectedAccount={selectedAccount}
+        activeChatSubagentId={activeChatSubagentId} agentChats={agentChats} agentStates={agentStates}
+        availableAccounts={availableAccounts} selectedArtifactKey={selectedArtifactKey}
+        visualTriggersOpen={visualTriggersOpen} t={t} setNewSubagentOpen={setNewSubagentOpen}
+        openNewTriggerModal={openNewTriggerModal} setVisualTriggersOpen={setVisualTriggersOpen}
+        openEditTriggerModal={openEditTriggerModal} handleTestTrigger={handleTestTrigger}
+        isTestingTriggerId={isTestingTriggerId} handleToggleTriggerEnabled={handleToggleTriggerEnabled}
+        handleDeleteTrigger={handleDeleteTrigger} setActiveChatSubagentId={setActiveChatSubagentId}
+        handleCancelFollowup={handleCancelFollowup} setSelectedMailboxId={setSelectedMailboxId}
+        handleToggleSubagentHeartbeat={handleToggleSubagentHeartbeat}
+        handleSelectArtifact={handleSelectArtifact} handleSendAgentMessage={handleSendAgentMessage}
+        isAgentRunning={isAgentRunning} handleClearAgentChat={handleClearAgentChat}
+        agentChatScrollRef={agentChatScrollRef} currentUser={currentUser}
+        setWaSelectedLeadId={setWaSelectedLeadId} agentPrompt={agentPrompt} setAgentPrompt={setAgentPrompt}
+        isMemoryDirty={isMemoryDirty} artifactTitleDraft={artifactTitleDraft}
+        handleRunTaskNow={handleRunTaskNow} handleUpdateAutonomousCron={handleUpdateAutonomousCron}
+        handleToggleTask={handleToggleTask} handleSaveSelectedArtifact={handleSaveSelectedArtifact}
+        isSavingMemory={isSavingMemory} canEdit={canEdit} handleDeleteArtifact={handleDeleteArtifact}
+        handleDeleteSubagent={handleDeleteSubagent} handleDeleteTask={handleDeleteTask}
+        subPromptDraft={subPromptDraft} setSubPromptDraft={setSubPromptDraft}
+        setIsMemoryDirty={setIsMemoryDirty} memoryDraft={memoryDraft} setMemoryDraft={setMemoryDraft}
+        setNewArtifactOpen={setNewArtifactOpen} newArtifactOpen={newArtifactOpen}
+        newArtifactName={newArtifactName} setNewArtifactName={setNewArtifactName}
+        handleCreateArtifact={handleCreateArtifact} newSubagentOpen={newSubagentOpen} newSubName={newSubName}
+        setNewSubName={setNewSubName} newSubRole={newSubRole} setNewSubRole={setNewSubRole}
+        newSubPrompt={newSubPrompt} setNewSubPrompt={setNewSubPrompt}
+        handleCreateSubagent={handleCreateSubagent} setNewTaskOpen={setNewTaskOpen} newTaskOpen={newTaskOpen}
+        newTaskTitle={newTaskTitle} setNewTaskTitle={setNewTaskTitle} newTaskInterval={newTaskInterval}
+        setNewTaskInterval={setNewTaskInterval} newTaskPrompt={newTaskPrompt}
+        setNewTaskPrompt={setNewTaskPrompt} handleCreateTask={handleCreateTask}
+        triggerModalOpen={triggerModalOpen} setTriggerModalOpen={setTriggerModalOpen}
+        triggerDraftId={triggerDraftId} triggerDraftName={triggerDraftName}
+        setTriggerDraftName={setTriggerDraftName} triggerDraftSourceType={triggerDraftSourceType}
+        triggerDraftSourceConnectorId={triggerDraftSourceConnectorId}
+        setTriggerDraftSourceConnectorId={setTriggerDraftSourceConnectorId}
+        setTriggerDraftSourceType={setTriggerDraftSourceType}
+        triggerDraftTargetSubagentId={triggerDraftTargetSubagentId}
+        setTriggerDraftTargetSubagentId={setTriggerDraftTargetSubagentId} waState={waState}
+        setTriggerDraftChatMatch={setTriggerDraftChatMatch} triggerDraftChatMatch={triggerDraftChatMatch}
+        triggerDraftKeywordContains={triggerDraftKeywordContains}
+        setTriggerDraftKeywordContains={setTriggerDraftKeywordContains}
+        triggerDraftOnlyGroup={triggerDraftOnlyGroup} setTriggerDraftOnlyGroup={setTriggerDraftOnlyGroup}
+        setTriggerDraftOnlyDirect={setTriggerDraftOnlyDirect} triggerDraftOnlyDirect={triggerDraftOnlyDirect}
+        triggerDraftFromContains={triggerDraftFromContains}
+        setTriggerDraftFromContains={setTriggerDraftFromContains}
+        triggerDraftSubjectContains={triggerDraftSubjectContains}
+        setTriggerDraftSubjectContains={setTriggerDraftSubjectContains}
+        triggerDraftEventType={triggerDraftEventType} setTriggerDraftEventType={setTriggerDraftEventType}
+        triggerDraftInstructions={triggerDraftInstructions}
+        setTriggerDraftInstructions={setTriggerDraftInstructions}
+        triggerDraftAutoReply={triggerDraftAutoReply} setTriggerDraftAutoReply={setTriggerDraftAutoReply}
+        triggerDraftProactiveEnabled={triggerDraftProactiveEnabled}
+        setTriggerDraftProactiveEnabled={setTriggerDraftProactiveEnabled}
+        triggerDraftProactiveAfterMinutes={triggerDraftProactiveAfterMinutes}
+        setTriggerDraftProactiveAfterMinutes={setTriggerDraftProactiveAfterMinutes}
+        triggerDraftProactiveMaxAttempts={triggerDraftProactiveMaxAttempts}
+        setTriggerDraftProactiveMaxAttempts={setTriggerDraftProactiveMaxAttempts}
+        triggerDraftProactiveInstructions={triggerDraftProactiveInstructions}
+        setTriggerDraftProactiveInstructions={setTriggerDraftProactiveInstructions}
+        handleSaveTriggerDraft={handleSaveTriggerDraft}
+        />
+      ) : (
+        /* EMAIL COMMUNICATION LAYOUT (Gmail, SMTP/IMAP, MS Exchange, Personal) */
+        <EmailMailLayout
+        mailboxNeedsReconnect={mailboxNeedsReconnect} t={t} searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery} filter={filter} setFilter={setFilter} unreadCount={unreadCount}
+        setIsLargeFont={setIsLargeFont} isLargeFont={isLargeFont} setIsThreadedMode={setIsThreadedMode}
+        setSelectedEmail={setSelectedEmail} setSelectedThreadId={setSelectedThreadId}
+        setExpandedEmailUids={setExpandedEmailUids} closeDigest={closeDigest} isThreadedMode={isThreadedMode}
+        onListScroll={onListScroll} isLoadingEmails={isLoadingEmails} shownCount={shownCount}
+        visibleThreads={visibleThreads} renderListRow={renderListRow} selectedThreadId={selectedThreadId}
+        toggleEmailExpand={toggleEmailExpand} visibleIndividualEmails={visibleIndividualEmails}
+        selectedEmail={selectedEmail} expandThreadMessage={expandThreadMessage} plural={plural}
+        activeThread={activeThread} threadContactOf={threadContactOf} findLead={findLead}
+        initialsOf={initialsOf} renderLeadChip={renderLeadChip} renderDigestButton={renderDigestButton}
+        readToggleButton={readToggleButton} setThreadSeen={setThreadSeen}
+        renderInlineAiSummaryBanner={renderInlineAiSummaryBanner} threadBodies={threadBodies}
+        stripHtml={stripHtml} fetchSummary={fetchSummary} emailThreadScrollRef={emailThreadScrollRef}
+        expandedEmailUids={expandedEmailUids} counterpartOf={counterpartOf} formatFullDate={formatFullDate}
+        canEdit={canEdit} openNewComposer={openNewComposer} canDelete={canDelete}
+        systemLanguage={systemLanguage} handleDeleteEmail={handleDeleteEmail}
+        isLoadingDetail={isLoadingDetail} renderMailFrame={renderMailFrame}
+        renderAttachments={renderAttachments} primaryButtonClass={primaryButtonClass}
+        renderCrmActions={renderCrmActions} emptyPane={emptyPane} emails={emails}
+        renderPartyMeta={renderPartyMeta} setSeenFlag={setSeenFlag} activeFolder={activeFolder}
+        tickets={tickets} ticketStatuses={ticketStatuses} getLinkedTickets={getLinkedTickets}
+        onLinkEmailToTicket={handleLinkEmailToTicket} onUnlinkEmailFromTicket={handleUnlinkEmailFromTicket}
+        />
+      )}
 
       {renderDigestPopover()}
 
       {/* COMPOSERS OVERLAY DRAWER */}
       {composers.map(comp => (
-        <div key={comp.id} className={`fixed bottom-0 right-10 w-96 bg-white border-t border-x border-slate-300 rounded-t-2xl shadow-2xl z-50 flex flex-col ${comp.isClosing ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
-          <div className="bg-slate-900 text-white p-3 rounded-t-2xl flex items-center justify-between">
-            <span className="text-ui font-bold">{t("New Email", "Nový e-mail", "Új e-mail")}</span>
-            <button
-              onClick={() => closeComposer(comp.id)}
-              className="text-slate-400 hover:text-white transition-colors"
-            >
-              <X size={14} />
-            </button>
-          </div>
-          <div className="p-4 space-y-3 text-left">
-            <div className="space-y-1">
-              <label className="type-overline text-slate-400 block">{t("To Address", "Adresa príjemcu", "Címzett címe")}</label>
-              <input
-                type="email"
-                value={comp.to}
-                onChange={(e) => setComposers(prev => prev.map(c => c.id === comp.id ? { ...c, to: e.target.value } : c))}
-                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-ui"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="type-overline text-slate-400 block">{t("Subject", "Predmet", "Tárgy")}</label>
-              <input
-                type="text"
-                value={comp.subject}
-                onChange={(e) => setComposers(prev => prev.map(c => c.id === comp.id ? { ...c, subject: e.target.value } : c))}
-                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-ui font-bold"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="type-overline text-slate-400 block">{t("Message Body", "Telo správy", "Üzenet törzse")}</label>
-              <textarea
-                rows={6}
-                value={comp.body}
-                onChange={(e) => setComposers(prev => prev.map(c => c.id === comp.id ? { ...c, body: e.target.value } : c))}
-                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-ui focus:bg-white resize-none"
-              />
-            </div>
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => handleSendEmail(comp)}
-                disabled={isSending}
-                className="px-5 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-ui font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow"
-              >
-                {isSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} {t("Send Email", "Odoslať e-mail", "E-mail küldése")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <EmailComposerDrawer key={comp.id}
+        comp={comp} t={t} closeComposer={closeComposer} setComposers={setComposers}
+        handleSendEmail={handleSendEmail} isSending={isSending}
+        />
       ))}
 
       {/* TIMELINE SLIDEOUT OVERLAY */}
       {(isTimelineSlideoutOpen || isClosingTimeline) && slideoutLead && (
-        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex justify-end ${isClosingTimeline ? "animate-fade-out" : "animate-fade-in"}`}>
-          {/* Backdrop click close */}
-          <div className="flex-1" onClick={closeTimelineSlideout} />
-          
-          <div className={`w-125 max-w-full bg-white h-full shadow-2xl flex flex-col relative ${isClosingTimeline ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
-            {/* Header */}
-            <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
-              <div className="text-left">
-                <span className="type-overline text-pink-500">{t("CRM Detail Timeline", "Detailná časová os CRM", "Részletes CRM idővonal")}</span>
-                <h3 className="text-body font-heading font-bold">{slideoutLead.name}</h3>
-              </div>
-              <button
-                onClick={closeTimelineSlideout}
-                className="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            
-            {/* Timeline List */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {isLoadingSlideoutEmails && (
-                <div className="flex flex-col items-center justify-center py-6 gap-2 text-slate-400">
-                  <Loader2 className="animate-spin text-pink-500" size={20} />
-                  <span className="type-overline">{t("Loading correspondences...", "Načítavanie korešpondencie...", "Levelezés betöltése...")}</span>
-                </div>
-              )}
-              {slideoutTimelineEvents.length === 0 ? (
-                <div className="text-center text-slate-400 py-12 text-ui font-semibold">
-                  {t("No activities or email records logged on timeline.", "Na časovej osi nie sú zaznamenané žiadne aktivity ani e-maily.", "Nincsenek tevékenységek vagy e-mail bejegyzések az idővonalon.")}
-                </div>
-              ) : (
-                <div className="space-y-4 relative border-l-2 border-slate-100 pl-4 text-left">
-                  {slideoutTimelineEvents.map((event: any) => {
-                    const pmName = event.author || slideoutLead.owner || currentUser?.name || "";
-                    const pmColor = projectManagerColors[pmName] || "#6366f1";
-                    let dotColor = "bg-blue-600 text-white border-blue-700";
-                    let cardBorder = "border-slate-200 bg-slate-50/50";
-                    let icon = <Clock size={12} />;
-
-                    if (event.type === "phone") {
-                      dotColor = "bg-blue-600 text-white border-blue-700";
-                      icon = <Phone size={12} />;
-                    } else if (event.type === "email") {
-                      dotColor = "bg-indigo-600 text-white border-indigo-700";
-                      icon = event.isOutgoing 
-                        ? <CornerDownLeft size={12} /> 
-                        : <CornerLeftDown size={12} />;
-                    } else if (event.type === "note") {
-                      dotColor = "bg-amber-500 text-white border-amber-600";
-                      icon = <FileText size={12} />;
-                    } else if (event.type === "offer") {
-                      dotColor = "bg-emerald-600 text-white border-emerald-700";
-                      icon = <TrendingUp size={12} />;
-                    } else if (event.type === "appointment") {
-                      dotColor = "bg-purple-600 text-white border-purple-700";
-                      icon = <Calendar size={12} />;
-                    }
-
-                    return (
-                      <div key={event.id} className="relative space-y-1 pb-1">
-                        {/* Dot */}
-                        <span className={`absolute -left-6.75 top-1 h-5.5 w-5.5 rounded-full border flex items-center justify-center shadow ${dotColor}`}>
-                          {icon}
-                        </span>
-                        
-                        <div className={`border p-3.5 rounded-2xl shadow-xs ${cardBorder}`}>
-                           <div className="flex justify-between items-center border-b border-slate-200/50 pb-1 mb-1.5 flex-wrap gap-2">
-                            <div className="flex items-center gap-1.5">
-                              <span className="type-overline text-slate-900">{event.title}</span>
-                              {event.type === "email" ? (
-                                <>
-                                  <span className="type-overline px-2 py-0.5 rounded-full border bg-slate-100 text-slate-700 flex items-center gap-1">
-                                    {event.isOutgoing ? `📤 ${t("Outgoing", "Odchádzajúce", "Kimenő")}` : `📥 ${t("Incoming", "Prichádzajúce", "Bejövő")}`}
-                                  </span>
-                                  <span 
-                                    className="inline-flex items-center gap-1 type-overline px-2.5 py-0.5 rounded-full border shadow-sm text-white"
-                                    style={{ backgroundColor: pmColor, borderColor: pmColor }}
-                                  >
-                                    @ {pmName}
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  <span className="type-overline px-2 py-0.5 rounded-full border bg-slate-100 text-slate-700">
-                                    {event.type === "phone" ? t("Call Logs", "Záznam hovoru", "Hívásnapló")
-                                      : event.type === "email" ? t("Email Sent", "E-mail odoslaný", "E-mail elküldve")
-                                      : event.type === "note" ? t("Timeline Note", "Poznámka na časovej osi", "Idővonal jegyzet")
-                                      : event.type === "offer" ? t("Proposal", "Cenová ponuka", "Ajánlat")
-                                      : event.type === "appointment" ? t("Meeting Log", "Záznam stretnutia", "Találkozó napló")
-                                      : getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
-                                  </span>
-                                  <TimelineAuthorBadge
-                                    name={event.author}
-                                    color={projectManagerColors[event.author || ""]}
-                                  />
-                                </>
-                              )}
-                            </div>
-                            <span className="text-micro text-slate-400 font-extrabold">{formatTimestampLocalized(event.timestamp, systemLanguage)}</span>
-                          </div>
-                          <TimelineCollapsible
-                            language={systemLanguage}
-                            isExpanded={expandedTimelineEventIds.has(event.id)}
-                            onToggle={() => toggleTimelineEventExpanded(event.id)}
-                            fadeClassName="from-slate-50 via-slate-50/70"
-                          >
-                            <p className="text-micro text-slate-600 leading-[1.35] font-bold select-text whitespace-pre-wrap">
-                              {event.content}
-                            </p>
-                          </TimelineCollapsible>
-                          {event.amount && (
-                            <span className="block mt-1 type-overline text-emerald-800">
-                              {t("Worth:", "Hodnota:", "Érték:")} &euro; {event.amount.toLocaleString()}
-                            </span>
-                          )}
-                          {event.extraTime && (
-                            <span className="block mt-1 type-overline text-rose-800">
-                              {t("Time:", "Čas:", "Idő:")} {event.extraTime}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <EmailTimelineSlideout
+        isClosingTimeline={isClosingTimeline} closeTimelineSlideout={closeTimelineSlideout} t={t}
+        slideoutLead={slideoutLead} isLoadingSlideoutEmails={isLoadingSlideoutEmails}
+        slideoutTimelineEvents={slideoutTimelineEvents} currentUser={currentUser}
+        projectManagerColors={projectManagerColors} systemLanguage={systemLanguage}
+        expandedTimelineEventIds={expandedTimelineEventIds}
+        toggleTimelineEventExpanded={toggleTimelineEventExpanded}
+        />
       )}
 
       {/* CLIENT CREATION SLIDEOUT DRAWER (slides up from bottom) */}
       {(isClientSlideoutOpen || isClosingClient) && (
-        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-end justify-center ${isClosingClient ? "animate-fade-out" : "animate-fade-in"}`}>
-          {/* Backdrop click close */}
-          <div className="fixed inset-0 -z-10" onClick={closeClientSlideout} />
-          
-          <div className={`w-full max-w-5xl h-[70vh] bg-white rounded-t-[32px] border-t border-slate-200/80 shadow-2xl p-8 flex flex-col justify-between text-left ${isClosingClient ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
-              <div>
-                <span className="type-overline text-pink-500">{t("CRM Client Registration", "Registrácia klienta CRM", "CRM ügyfél regisztráció")}</span>
-                <h3 className="text-body font-heading font-bold">{t("Create New Client from Email", "Vytvoriť nového klienta z e-mailu", "Új ügyfél létrehozása e-mailből")}</h3>
-              </div>
-              <button
-                onClick={closeClientSlideout}
-                className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            
-            <form onSubmit={handleCreateClientSubmit} className="flex-1 flex flex-col justify-between text-ui font-bold text-slate-700 mt-6">
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-1.5">
-                    <label className="type-overline text-slate-500">{t("Client Name / Business Name", "Meno klienta / Názov firmy", "Ügyfél neve / Cégnév")}</label>
-                    <input
-                      type="text"
-                      required
-                      value={clientFormName}
-                      onChange={(e) => setClientFormName(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui focus:outline-none focus:bg-white font-semibold"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="type-overline text-slate-500">{t("Email Address", "E-mailová adresa", "E-mail cím")}</label>
-                    <input
-                      type="email"
-                      required
-                      value={clientFormEmail}
-                      onChange={(e) => setClientFormEmail(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui focus:outline-none focus:bg-white font-semibold"
-                    />
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-3 gap-6">
-                  <div className="space-y-1.5">
-                    <label className="type-overline text-slate-500">{t("Phone Number", "Telefónne číslo", "Telefonszám")}</label>
-                    <input
-                      type="tel"
-                      value={clientFormPhone}
-                      onChange={(e) => setClientFormPhone(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui focus:outline-none focus:bg-white font-semibold"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="type-overline text-slate-500">{t("City", "Mesto", "Város")}</label>
-                    <input
-                      type="text"
-                      required
-                      value={clientFormCity}
-                      onChange={(e) => setClientFormCity(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui focus:outline-none focus:bg-white font-semibold"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="type-overline text-slate-500">{t("Client Type", "Typ klienta", "Ügyfél típusa")}</label>
-                    <CustomSelect
-                      value={clientFormType}
-                      onChange={(v) => setClientFormType(v as any)}
-                      options={[
-                        { value: "person", label: t("Person", "Osoba", "Személy") },
-                        { value: "business", label: t("Business", "Firma", "Cég") },
-                        { value: "partner", label: t("Partner", "Partner", "Partner") },
-                      ]}
-                    />
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 shrink-0">
-                <button
-                  type="button"
-                  onClick={closeClientSlideout}
-                  className="px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-ui font-bold transition-all cursor-pointer"
-                >
-                  {t("Cancel", "Zrušiť", "Mégse")}
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-ui font-bold transition-all shadow cursor-pointer"
-                >
-                  {t("Save & Match Client", "Uložiť a priradiť klienta", "Mentés és ügyfél párosítása")}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <EmailClientSlideout
+        isClosingClient={isClosingClient} closeClientSlideout={closeClientSlideout} t={t}
+        pendingChatLinkKey={pendingChatLinkKey} handleCreateClientSubmit={handleCreateClientSubmit}
+        clientFormName={clientFormName} setClientFormName={setClientFormName}
+        clientFormEmail={clientFormEmail} setClientFormEmail={setClientFormEmail}
+        clientFormPhone={clientFormPhone} setClientFormPhone={setClientFormPhone}
+        clientFormCity={clientFormCity} setClientFormCity={setClientFormCity} clientFormType={clientFormType}
+        setClientFormType={setClientFormType}
+        />
       )}
     </div>
     </div>

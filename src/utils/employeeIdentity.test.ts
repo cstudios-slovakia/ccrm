@@ -28,24 +28,45 @@ test("a person needs both names, a company or ledger item needs a name", () => {
   assert.equal(identityComplete({ ...base, kind: "ledger", name: "Provízia" }), true);
 });
 
-test("an external supplier keeps its contact person and register numbers; a ledger item keeps neither", () => {
+test("an external supplier keeps its contact person and register numbers; a person freelancer omits company name and register numbers; a ledger item keeps neither", () => {
   const base = { ...identityOf(null), name: "Dodigital s.r.o.", position: " ", department: "Marketing" };
-  const supplier = identityFields({ ...base, kind: "contractor", firstName: " Ján ", lastName: "Novák", companyId: " 48123456 ", taxId: "2120123456", vatId: "" });
+  const supplier = identityFields({ ...base, kind: "contractor", contractorType: "company", firstName: " Ján ", lastName: "Novák", companyId: " 48123456 ", taxId: "2120123456", vatId: "" });
   assert.deepEqual(supplier, {
-    name: "Dodigital s.r.o.", firstName: "Ján", lastName: "Novák", kind: "contractor",
+    name: "Dodigital s.r.o.", firstName: "Ján", lastName: "Novák", kind: "contractor", contractorType: "company",
     companyId: "48123456", taxId: "2120123456", vatId: null, position: null, department: "Marketing",
+  });
+  const soleTrader = identityFields({ ...base, kind: "contractor", contractorType: "sole_trader", firstName: " Ján ", lastName: "Novák", companyId: " 48123456 ", taxId: "2120123456", vatId: "SK2120123456" });
+  assert.deepEqual(soleTrader, {
+    name: "Dodigital s.r.o.", firstName: "Ján", lastName: "Novák", kind: "contractor", contractorType: "sole_trader",
+    companyId: "48123456", taxId: "2120123456", vatId: "SK2120123456", position: null, department: "Marketing",
+  });
+  const freelancer = identityFields({ ...base, kind: "contractor", contractorType: "person", firstName: " Ján ", lastName: "Novák", companyId: "48123456", taxId: "2120123456", vatId: "SK2120123456" });
+  assert.deepEqual(freelancer, {
+    name: "Ján Novák", firstName: "Ján", lastName: "Novák", kind: "contractor", contractorType: "person",
+    companyId: null, taxId: null, vatId: null, position: null, department: "Marketing",
   });
   const ledger = identityFields({ ...base, kind: "ledger", firstName: "stale", lastName: "stale", companyId: "1", taxId: "2", vatId: "3" });
   assert.deepEqual(ledger, {
-    name: "Dodigital s.r.o.", firstName: null, lastName: null, kind: "ledger",
+    name: "Dodigital s.r.o.", firstName: null, lastName: null, kind: "ledger", contractorType: null,
     companyId: null, taxId: null, vatId: null, position: null, department: "Marketing",
   });
 });
 
-test("the register numbers are only read back from a contractor", () => {
+test("the register numbers are only read back from a business contractor (sole trader or company), not a person freelancer", () => {
   const stored = emp({ kind: "employee", companyId: "48123456", taxId: "x", vatId: "y" });
   assert.deepEqual([identityOf(stored).companyId, identityOf(stored).taxId, identityOf(stored).vatId], ["", "", ""]);
   assert.equal(identityOf(emp({ kind: "contractor", companyId: "48123456" })).companyId, "48123456");
+  assert.equal(identityOf(emp({ kind: "contractor", contractorType: "sole_trader", companyId: "48123456" })).companyId, "48123456");
+  assert.deepEqual(
+    [
+      identityOf(emp({ kind: "contractor", contractorType: "person", companyId: "48123456", taxId: "x", vatId: "y" })).companyId,
+      identityOf(emp({ kind: "contractor", contractorType: "person", companyId: "48123456", taxId: "x", vatId: "y" })).taxId,
+      identityOf(emp({ kind: "contractor", contractorType: "person", companyId: "48123456", taxId: "x", vatId: "y" })).vatId,
+    ],
+    ["", "", ""]
+  );
+  assert.equal(identityComplete({ ...identityOf(null), kind: "contractor", contractorType: "person", firstName: "Ján", lastName: "" }), false);
+  assert.equal(identityComplete({ ...identityOf(null), kind: "contractor", contractorType: "person", firstName: "Ján", lastName: "Novák" }), true);
 });
 
 test("a register contact person is split into first and last name, titles stay with the first name", () => {

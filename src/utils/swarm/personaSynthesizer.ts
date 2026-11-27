@@ -3,15 +3,17 @@
  * Expands knowledge graph entities into diverse, autonomous agent profiles with distinct MBTIs, biases, and stances.
  */
 
+import { AI_MODEL_LUNA } from "../aiModels";
 import { callLlmJson } from './llmProxyClient';
 import type { SwarmEntityNode, SwarmAgentProfile } from './types';
 import { normalizeAnswer } from './answerNormalizer.ts';
+import { PRODUCT_NAME } from "../brand.ts";
 
 export async function synthesizeAgentProfiles(
   nodes: SwarmEntityNode[],
   targetCount: number = 30,
   hypothesis: string,
-  modelName: string = 'gpt-5.6-luna',
+  modelName: string = AI_MODEL_LUNA,
   language: string = 'sk',
   onBatchComplete?: (batchAgents: SwarmAgentProfile[]) => void
 ): Promise<SwarmAgentProfile[]> {
@@ -66,7 +68,7 @@ Output JSON strictly matching this schema:
       "userChar": "${sampleUserChar}",
       "publicBio": "${sampleBio}",
       "followerCount": 840,
-      "interestedTopics": ["GDPR", "pricing", "CRM", "compliance"],
+      "interestedTopics": ["GDPR", "pricing", "${PRODUCT_NAME}", "compliance"],
       "sourceEntityId": "node_1"
     }
   ]

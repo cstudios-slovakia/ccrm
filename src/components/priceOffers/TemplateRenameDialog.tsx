@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { AlertTriangle, Sparkles } from "lucide-react";
 import type { Language } from "../../utils/translations";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 interface TemplateRenameDialogProps {
   lang: Language;
@@ -102,23 +103,27 @@ export const TemplateRenameDialog: React.FC<TemplateRenameDialogProps> = ({
         aria-modal="true"
         aria-labelledby="ccrm-template-rename-title"
         data-testid="template-rename-dialog"
+        style={entityAccentStyle("invoices")}
         initial={{ opacity: 0, scale: 0.97, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97, y: 8 }}
         transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
         onMouseDown={e => e.stopPropagation()}
         onKeyDown={onKeyDown}
-        className="w-full max-w-sm overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+        className="w-full max-w-sm overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl"
       >
         <div className="flex items-start gap-3 p-5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
+          <span
+            style={entityAccentStyle("rag_ai")}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-entity-subtle text-entity-text border border-entity-border"
+          >
             <Sparkles className="h-4.5 w-4.5" />
           </span>
           <div className="min-w-0 flex-1 pt-0.5">
-            <h2 id="ccrm-template-rename-title" className="font-heading text-body font-bold text-slate-800 break-words">
+            <h2 id="ccrm-template-rename-title" className="font-heading text-body font-semibold text-gray-900 break-words">
               {t("Name this template", "Pomenujte šablónu", "Nevezze el a sablont")}
             </h2>
-            <p className="mt-1.5 text-ui text-slate-500 break-words">
+            <p className="mt-1.5 text-ui text-gray-500 break-words">
               {t(
                 "The AI suggested this name. It tells your templates apart in the offer editor — keep it or type your own.",
                 "Toto meno navrhla AI. Podľa neho rozoznáte šablóny v editore ponuky — ponechajte ho alebo napíšte vlastné.",
@@ -134,7 +139,7 @@ export const TemplateRenameDialog: React.FC<TemplateRenameDialogProps> = ({
               aria-label={t("Template name", "Názov šablóny", "Sablon neve")}
               aria-invalid={empty}
               data-testid="template-rename-input"
-              className="mt-3 w-full rounded-xl border border-slate-200 bg-white p-2.5 text-ui text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400"
+              className="mt-3 w-full rounded-md border border-gray-300 bg-white p-2.5 text-ui text-gray-900 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid"
             />
             {empty && (
               <p className="mt-1.5 text-caption font-semibold text-rose-600" role="alert">
@@ -153,12 +158,12 @@ export const TemplateRenameDialog: React.FC<TemplateRenameDialogProps> = ({
             )}
           </div>
         </div>
-        <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+        <div className="flex justify-end gap-2 border-t border-gray-200 bg-gray-50 px-5 py-3">
           <button
             type="button"
             data-testid="template-rename-keep"
             onClick={onKeep}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-ui font-bold text-slate-600 transition-all hover:bg-slate-50 hover:border-slate-300 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 cursor-pointer"
+            className="rounded-md border border-gray-200 bg-white px-4 py-2 text-ui font-semibold text-gray-700 transition-all hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 cursor-pointer"
           >
             {t("Keep", "Ponechať", "Megtart")}
           </button>
@@ -167,7 +172,7 @@ export const TemplateRenameDialog: React.FC<TemplateRenameDialogProps> = ({
             data-testid="template-rename-save"
             disabled={empty}
             onClick={save}
-            className="rounded-xl bg-indigo-600 px-4 py-2 text-ui font-bold text-white shadow-sm transition-all hover:bg-indigo-700 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            className="rounded-md bg-entity-solid px-4 py-2 text-ui font-semibold text-white shadow-xs transition-all hover:bg-entity-solid-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring focus-visible:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
             {t("Save", "Uložiť", "Mentés")}
           </button>

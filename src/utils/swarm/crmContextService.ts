@@ -1,3 +1,5 @@
+import { PRODUCT_NAME } from "../brand.ts";
+
 /**
  * CRM Context Service
  * Pulls recent leads, clients, and past objections strictly filtered by lookback horizon.
@@ -35,12 +37,12 @@ export async function fetchCrmContext(lookbackMonths: number = 12, sources?: str
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch CRM context: HTTP ${response.status}`);
+    throw new Error(`Failed to fetch ${PRODUCT_NAME} context: HTTP ${response.status}`);
   }
 
   const data = await response.json();
   if (!data.success || !data.context) {
-    throw new Error(data.message || 'Unknown error fetching CRM context');
+    throw new Error(data.message || `Unknown error fetching ${PRODUCT_NAME} context`);
   }
 
   return data.context as CrmContextBundle;

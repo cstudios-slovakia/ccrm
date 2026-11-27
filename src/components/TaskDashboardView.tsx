@@ -1,10 +1,14 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { createPortal } from "react-dom";
 import { useReadScope } from "../hooks/useReadScope";
 import { referenceLeadName, referenceProjectName } from "../utils/readScope";
 import {
     CheckSquare,
     Calendar as CalendarIcon,
+    Repeat,
+    Play,
+    Pause,
     ChevronLeft,
     ChevronRight,
     Eye,
@@ -24,7 +28,6 @@ import {
     FolderKanban,
     Trash2,
     Users,
-    ArrowUpRight,
     Flame,
     Minus,
     CheckCircle2,
@@ -36,25 +39,35 @@ import {
     UserCheck,
     PictureInPicture2,
     SlidersHorizontal,
-    Ticket as TicketIcon,
 } from "lucide-react";
-import type { Task, UserProfile, Lead, Project, Ticket } from "../types";
+import type { Task, UserProfile, Lead, Project, Ticket, Employee, RecurringTaskTemplate } from "../types";
+import { describeRecurrence, getPlannedOccurrencesInRange } from "../utils/recurringTasks";
+import { TaskRecurringMark } from "./TaskRecurringMark";
+import { excludeClickUpTasks } from "../utils/clickupTasks";
+import { CalendarLensSwitcher } from "./tasks/CalendarLensSwitcher";
+import { CustomCalendarEventModal, CustomCalendarFormModal } from "./tasks/CustomCalendarModals";
+import { MultiCalendarPanel, type TaskHubData } from "./tasks/MultiCalendarPanel";
+import { useTaskCalendarHub } from "../hooks/useTaskCalendarHub";
+import { deleteRecurringOccurrenceWithUndo, deleteRecurringSeriesWithUndo } from "../utils/recurringTaskActions";
+import { RecurringOccurrenceDeleteDialog } from "./RecurringOccurrenceDeleteDialog";
 import type { Language } from "../utils/translations";
 import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
-import { ClientSelect } from "./ui/ClientSelect";
+import { FacetedMultiSelect } from "./ui/FacetedMultiSelect";
+import { PinnedFilterChips } from "./ui/PinnedFilterChips";
+import { taskFacetOptions, useTaskFacetSelection, type TaskFacetId } from "./tasks/useTaskFacets";
 import { TaskEditDrawer } from "./TaskEditDrawer";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
-import { QuickTaskModal } from "./QuickTaskModal";
-import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
+import { QuickTaskModal, type ComposerOrigin } from "./QuickTaskModal";
+import { TaskComposerBar } from "./TaskComposerBar";
 import { TaskPillText, extractTagsFromText, type MentionEntity } from "./TaskPillText";
 import { projectDisplayName } from "../utils/projects";
 import { isClientRecord, recordHref } from "../utils/clientRecord";
 import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
 import { archiveTasksWithUndo, deleteTasksWithUndo } from "../utils/taskActions";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
-import { isTaskOverdue as isTaskOverdueShared } from "../utils/projectTasks";
+import { isDoneTaskState, isTaskOverdue as isTaskOverdueShared } from "../utils/projectTasks";
 import { nowLocalStamp } from "../utils/localTime";
 import {
     TASK_GROUP_BY_STORAGE_KEY,
@@ -80,8 +93,19 @@ import { PageHeader } from "./layout";
 import { consumeLaunchIntent, parseLaunchIntent } from "../utils/launchIntent";
 import { isEmbedUrl } from "../utils/pwaInstallLogic";
 import { openTasksMiniWindow } from "../utils/popOut";
+import { clampDeadline, deadlineChange, taskCreatedDate, todayStr as todayDateStr } from "../utils/taskDeadline";
+import { TaskDescriptionMark } from "./TaskDescriptionMark";
+import { TaskActivityMarks } from "./tasks/TaskActivityMarks";
+import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
 import { useListFilter } from "../hooks/useListFilter";
+import { TaskWhatsAppMarks } from "./WhatsAppChip";
+import { PRODUCT_NAME } from "../utils/brand";
+import { WeeklyPlanView } from "./WeeklyPlanView";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { entityAccentStyle } from "../utils/entityAccent";
+import { blockNotesToPlainText } from "../utils/blockNotes";
 
+import { ResizableTh } from "./ui/ResizableTh";
 // Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
 // as plain local date strings, so we must NOT go through toISOString() (which
 // converts to UTC and, in timezones ahead of UTC, shifts the day back by one —
@@ -107,6 +131,17 @@ const getCalendarScopeCookie = (): "month" | "week" | "timeline" | "hide" => {
 const setCalendarScopeCookie = (scope: "month" | "week" | "timeline" | "hide") => {
     if (typeof document === "undefined") return;
     document.cookie = `ccrm_task_calendar_scope=${encodeURIComponent(scope)}; path=/; max-age=31536000; SameSite=Lax`;
+};
+
+const getShowPlannedRecurringCookie = (): boolean => {
+    if (typeof document === "undefined") return true;
+    const match = document.cookie.match(/(?:^|;\s*)ccrm_task_show_planned_recurring=([^;]+)/);
+    return match ? match[1] !== "0" : true;
+};
+
+const setShowPlannedRecurringCookie = (show: boolean) => {
+    if (typeof document === "undefined") return;
+    document.cookie = `ccrm_task_show_planned_recurring=${show ? "1" : "0"}; path=/; max-age=31536000; SameSite=Lax`;
 };
 
 // Reusable calendar date-range filter (item 9) — reuses the overview CalendarPane range picker
@@ -158,13 +193,13 @@ const DateRangeCalendarFilter: React.FC<{
             <button
                 type="button"
                 onClick={() => setOpen((o) => !o)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 text-ui font-extrabold cursor-pointer transition-all ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-ui font-semibold cursor-pointer transition-all ${
                     start
-                        ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                        : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-400"
+                        ? "bg-entity-subtle border-entity-border text-entity-text"
+                        : "bg-gray-50 border-gray-200 text-gray-600 hover:border-entity-border"
                 }`}
             >
-                <CalendarIcon className="h-3.5 w-3.5 text-indigo-600" />
+                <CalendarIcon className="h-3.5 w-3.5 text-entity-text" />
                 <span>{labelText}</span>
                 {start && (
                     <span
@@ -174,14 +209,14 @@ const DateRangeCalendarFilter: React.FC<{
                             e.stopPropagation();
                             onChange(null, null);
                         }}
-                        className="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-rose-500 flex items-center"
+                        className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-rose-500 flex items-center"
                     >
                         <X className="h-3 w-3" />
                     </span>
                 )}
             </button>
             {open && (
-                <div className="absolute right-0 z-[999] mt-2 w-75 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute right-0 z-[999] mt-2 w-75 bg-white border border-gray-200 rounded-lg shadow-xl p-3 animate-in fade-in zoom-in-95 duration-150">
                     <div className="flex items-center justify-between mb-2">
                         <button
                             type="button"
@@ -286,13 +321,13 @@ const BUCKET_TONES = {
         border: "border-rose-100",
     },
     indigo: {
-        shell: "bg-indigo-50/30 border border-indigo-100",
-        headerBg: "bg-indigo-50/40 hover:bg-indigo-50/70",
-        title: "text-indigo-600",
-        chevron: "text-indigo-500 group-hover/btn:text-indigo-700",
-        emptyBorder: "border-indigo-200/50",
-        emptyText: "text-indigo-400",
-        border: "border-indigo-100",
+        shell: "bg-entity-subtle/40 border border-entity-border",
+        headerBg: "bg-entity-subtle/60 hover:bg-entity-subtle",
+        title: "text-entity-text",
+        chevron: "text-entity-text group-hover/btn:opacity-80",
+        emptyBorder: "border-entity-border/60",
+        emptyText: "text-entity-text/70",
+        border: "border-entity-border/60",
     },
     amber: {
         shell: "bg-amber-50/30 border border-amber-100",
@@ -335,11 +370,15 @@ const BUCKET_TONES = {
 interface TaskDashboardViewProps {
     tasks: Task[];
     setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+    recurringTasks?: RecurringTaskTemplate[];
+    setRecurringTasks?: React.Dispatch<React.SetStateAction<RecurringTaskTemplate[]>>;
     leads: Lead[];
     /** For the task drawers' "Project" field and the project badge on a card. */
     projects?: Project[];
     /** Support tickets so tasks created from a ticket link directly to it. */
     tickets?: Ticket[];
+    /** Team employees for @mentions on Weekly Plan. */
+    employees?: Employee[];
     users?: UserProfile[]; // made optional to avoid TS errors if not passed
     systemLanguage: Language;
     currentUser?: UserProfile;
@@ -348,9 +387,13 @@ interface TaskDashboardViewProps {
     taskAccess?: TaskAccess;
     /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
     mailConfigured?: boolean;
+    /** True when the opt-in Agency & Workforce Leasing module is active. */
+    agencyEnabled?: boolean;
     /** Lead-state settings, to keep closed leads out of the lead / client picker. */
     leadStageGroups?: Record<string, string>;
     leadStateParents?: Record<string, string>;
+    /** Multi-calendar hub data & RBAC visibility flags passed from App. */
+    hubData?: TaskHubData;
 };
 
 /** A compact micro-switch used on task cards. */
@@ -367,8 +410,8 @@ const TaskCardSwitch: React.FC<{
         aria-label={label}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-all duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-1 ${
-            checked ? "bg-indigo-600" : "bg-slate-300"
+        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-all duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring focus-visible:ring-offset-1 ${
+            checked ? "bg-entity-solid" : "bg-gray-300"
         } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:opacity-90"}`}
     >
         <span
@@ -404,7 +447,7 @@ const ClosedTasksToggleBar: React.FC<{
     const filtersLabel = t("Filters", "Filtre", "Szűrők");
 
     return (
-        <div className="bg-slate-50/50 border-b border-slate-100 select-none">
+        <div className="bg-gray-50 border-b border-gray-200 select-none">
             <div className="px-4 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                 {filters ? (
@@ -414,16 +457,16 @@ const ClosedTasksToggleBar: React.FC<{
                         aria-expanded={filtersOpen}
                         data-testid="task-filters-toggle"
                         title={filtersOpen ? t("Hide filters", "Skryť filtre", "Szűrők elrejtése") : t("Show filters", "Zobraziť filtre", "Szűrők mutatása")}
-                        className={`inline-flex items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-lg border text-ui font-bold transition-all duration-150 active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 ${
+                        className={`inline-flex items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-md border text-ui font-semibold transition-all duration-150 active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring ${
                             filterCount > 0
-                                ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
+                                ? "bg-entity-subtle border-entity-border text-entity-text hover:opacity-90"
+                                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-100"
                         }`}
                     >
                         <SlidersHorizontal className="w-3.5 h-3.5" />
                         <span>{filtersLabel}</span>
                         {filterCount > 0 && (
-                            <span className="min-w-4 h-4 px-1 rounded-full bg-indigo-600 text-white text-caption font-bold leading-4 text-center">
+                            <span className="min-w-4 h-4 px-1 rounded-md bg-entity-solid text-white text-caption font-bold leading-4 text-center">
                                 {filterCount}
                             </span>
                         )}
@@ -511,9 +554,12 @@ const ClosedTasksToggleBar: React.FC<{
 export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     tasks,
     setTasks,
+    recurringTasks = [],
+    setRecurringTasks,
     leads,
     projects = [],
     tickets = [],
+    employees = [],
     users = [],
     systemLanguage,
     currentUser,
@@ -526,16 +572,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     },
     taskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true },
     mailConfigured,
+    agencyEnabled = false,
     leadStageGroups,
     leadStateParents,
+    hubData,
 }) => {
-    const isDoneState = (status: string) => {
-        return (
-            status.toLowerCase() === "done" ||
-            (taskStates.length > 0 &&
-                status === taskStates[taskStates.length - 1])
-        );
-    };
+    const brand = PRODUCT_NAME;
+    const isDoneState = (status: string) => isDoneTaskState(status, taskStates);
 
     const isClosedRecentTask = (t: Task): boolean => {
         if (t.archived) return false;
@@ -605,40 +648,29 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Task-attribute filters shared by My Tasks, Global Tasks and Done & Archived.
     // Each one is fired by clicking that attribute on a task (client / lead
     // badge excepted — that is a link) or by the matching dropdown, and each
-    // shows as a removable chip in every section. "" / null shows everything;
-    // the assignee uses "all" because the Global Tasks select always has.
-    const [clientFilter, setClientFilter] = useListFilter("tasks.client", "");
-    const [projectFilter, setProjectFilter] = useListFilter("tasks.project", "");
-    const [assigneeFilter, setAssigneeFilter] = useListFilter("tasks.assignee", "all");
-    const [assignerFilter, setAssignerFilter] = useListFilter("tasks.assigner", "all");
+    // shows as a removable chip in every section. They are multi-select; an
+    // empty list (null for the tag) shows everything.
+    const facets = useTaskFacetSelection();
+    const { client: clientSel, project: projectSel, assignee: assigneeSel, assigner: assignerSel, priority: prioritySel, state: stateSel } = facets.selection;
     const [tagFilter, setTagFilter] = useListFilter<string | null>("tasks.tag", null);
     // My Tasks only: Global Tasks and Done & Archived have a date-range picker
     // for this. A due-date click there fills the picker instead.
     const [myDayFilter, setMyDayFilter] = useState("");
 
-    const matchesClientFilter = (task: Task) =>
-        !clientFilter || String(task.relatedLeadId ?? "") === clientFilter;
-    const matchesTaskFilters = (task: Task) => {
-        if (!matchesClientFilter(task)) return false;
-        if (projectFilter && String(task.relatedProjectId ?? "") !== projectFilter)
-            return false;
-        if (assigneeFilter !== "all" && !task.assignedUsers?.includes(assigneeFilter))
-            return false;
-        if (assignerFilter !== "all" && (task.createdBy || "") !== assignerFilter)
-            return false;
-        if (tagFilter) {
-            const target = tagFilter.toLowerCase();
-            const taskTags = [
-                ...(task.tags || []),
-                ...extractTagsFromText(task.title || ""),
-                ...extractTagsFromText(task.description || ""),
-                ...extractTagsFromText(task.conclusion || ""),
-            ].map((tg) => tg.toLowerCase());
-            if (!taskTags.includes(target)) return false;
-        }
-        return true;
+    const matchesTag = (task: Task) => {
+        if (!tagFilter) return true;
+        const target = tagFilter.toLowerCase();
+        const taskTags = [
+            ...(task.tags || []),
+            ...extractTagsFromText(task.title || ""),
+            ...extractTagsFromText(blockNotesToPlainText(task.description || "")),
+            ...extractTagsFromText(task.conclusion || ""),
+        ].map((tg) => tg.toLowerCase());
+        return taskTags.includes(target);
     };
-    const myTasks = tasks
+    const listTasks = useMemo(() => excludeClickUpTasks(tasks), [tasks]);
+    const matchesTaskFilters = (task: Task) => facets.matchesShared(task) && matchesTag(task);
+    const myTasks = listTasks
         .filter(isMyTask)
         .filter((task) => !task.archived)
         .filter(matchesTaskFilters);
@@ -736,9 +768,25 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
 
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global">(
+    const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global" | "recurring" | "weekly_plan">(
         "calendar",
     );
+    const calendarHub = useTaskCalendarHub(viewMode === "calendar" || viewMode === "global");
+    const [showPlannedRecurring, setShowPlannedRecurringState] = useState<boolean>(() => getShowPlannedRecurringCookie());
+    const setShowPlannedRecurring = (show: boolean) => {
+        setShowPlannedRecurringState(show);
+        setShowPlannedRecurringCookie(show);
+    };
+    const [recurringSearch, setRecurringSearch] = useState("");
+    const [editingTemplate, setEditingTemplate] = useState<RecurringTaskTemplate | null>(null);
+    const [seriesToDelete, setSeriesToDelete] = useState<RecurringTaskTemplate | null>(null);
+    const [occurrenceDeletingTask, setOccurrenceDeletingTask] = useState<Task | null>(null);
+    const [addInitialRepeat, setAddInitialRepeat] = useState(false);
+    // The bar button the composer grew out of (and shrinks back into), and whether
+    // it opened dictating. `composerReturned` fades the bar's mic back in after a close.
+    const [composerOrigin, setComposerOrigin] = useState<ComposerOrigin | undefined>(undefined);
+    const [composerDictate, setComposerDictate] = useState(false);
+    const [composerReturned, setComposerReturned] = useState(false);
     // Calendar scope: month view, week view, timeline activity log, or hidden (persisted in cookie)
     const [calendarScope, setCalendarScopeState] = useState<
         "month" | "week" | "timeline" | "hide"
@@ -919,6 +967,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Edit Task Drawer State
     const [editingTask, setEditingTask] = useState<Task | null>(null);
+    const [openChatWithTask, setOpenChatWithTask] = useState(false);
 
     // Completing a task that requires a conclusion asks for it first.
     const { ask: askConclusion, dialog: conclusionDialog } = useTaskConclusionPrompt(systemLanguage);
@@ -941,14 +990,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     }, [activeBulkMenu]);
 
     // Global view filters & user list memo
-    const [globalPriorityFilter, setGlobalPriorityFilter] = useListFilter("tasks.globalPriority", "all");
-    const [globalStateFilter, setGlobalStateFilter] = useListFilter("tasks.globalState", "all");
-    // The assignee filter (`assigneeFilter`, above): "all" keeps the whole-team
-    // board; any other value narrows both halves of the split view to that one
-    // project manager.
+    // The assignee filter (`assigneeSel`, above): empty keeps the whole-team
+    // board; otherwise it narrows both halves of the split view to those
+    // project managers.
     const allUsersList = useMemo(() => {
         const list = users.map((u) => u.name);
-        tasks.forEach((t) => {
+        listTasks.forEach((t) => {
             if (t.owner && !list.includes(t.owner)) {
                 list.push(t.owner);
             }
@@ -964,29 +1011,28 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             if (defaultUserName) list.push(defaultUserName);
         }
         return Array.from(new Set(list));
-    }, [users, tasks]);
+    }, [users, listTasks]);
 
     // A selected manager can disappear from the list (user deleted, or their
     // last task reassigned). Fall back to the team-wide board instead of
     // leaving the filter pinned to a name that matches nothing.
     React.useEffect(() => {
-        if (assigneeFilter !== "all" && !allUsersList.includes(assigneeFilter)) {
-            setAssigneeFilter("all");
-        }
-    }, [allUsersList, assigneeFilter]);
+        const known = assigneeSel.filter((n) => allUsersList.includes(n));
+        if (known.length !== assigneeSel.length) facets.set("assignee", known);
+    }, [allUsersList, assigneeSel]);
 
     // All distinct tags collected from stored task.tags plus hashtags in titles/descriptions
     const allExistingTags = useMemo(() => {
         const tagSet = new Set<string>();
-        tasks.forEach((tk) => {
+        listTasks.forEach((tk) => {
             if (tk.tags && Array.isArray(tk.tags)) {
                 tk.tags.forEach((t) => tagSet.add(t));
             }
             extractTagsFromText(tk.title || "").forEach((t) => tagSet.add(t));
-            extractTagsFromText(tk.description || "").forEach((t) => tagSet.add(t));
+            extractTagsFromText(blockNotesToPlainText(tk.description || "")).forEach((t) => tagSet.add(t));
         });
         return Array.from(tagSet).sort();
-    }, [tasks]);
+    }, [listTasks]);
 
     // Mentionable entities (users, projects, clients, leads) for @ mentions
     const mentionEntities: MentionEntity[] = useMemo(() => {
@@ -1045,12 +1091,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     }, []);
     // Same click-again-to-clear behaviour for the project and assignee badges.
-    const handleProjectClick = (projectId: string) =>
-        setProjectFilter((prev) => (prev === projectId ? "" : projectId));
-    const handleAssigneeClick = (name: string) =>
-        setAssigneeFilter((prev) => (prev === name ? "all" : name));
-    const handleAssignerClick = (name: string) =>
-        setAssignerFilter((prev) => (prev === name ? "all" : name));
+    const handleProjectClick = (projectId: string) => facets.toggle("project", projectId);
+    const handleAssigneeClick = (name: string) => facets.toggle("assignee", name);
+    const handleAssignerClick = (name: string) => facets.toggle("assigner", name);
     // A due-date click filters to that one day, wherever the section keeps its
     // date filter: the range picker on Global Tasks and Done & Archived, a
     // plain day chip on My Tasks. Clicking the active day clears it.
@@ -1081,13 +1124,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     // The create popup; `addDeadline` pre-fills its date (the calendar's "+" on a day).
-    const openAddTask = (deadline?: string) => {
+    const openAddTask = (deadline?: string, initialRepeat?: boolean, origin?: ComposerOrigin, dictate = false) => {
         if (!taskAccess.create) return;
         setAddDeadline(deadline);
+        setAddInitialRepeat(Boolean(initialRepeat));
+        setComposerOrigin(origin);
+        setComposerDictate(dictate);
+        setComposerReturned(false);
         setIsAddDrawerOpen(true);
     };
 
-    const closeAddDrawer = useCallback(() => setIsAddDrawerOpen(false), []);
+    const closeAddDrawer = useCallback(() => {
+        setIsAddDrawerOpen(false);
+        setComposerReturned(true);
+    }, []);
 
     // Deep links into this view. Read on mount (the address may carry them from
     // before sign-in) and on every hash change (the installed app was already open
@@ -1118,6 +1168,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             }
             if (intent.newTask !== null) {
                 setAddDeadline(undefined);
+                setComposerOrigin(undefined);
+                setComposerDictate(false);
                 setIncomingTitle((prev) => ({ id: (prev?.id ?? 0) + 1, text: intent.newTask as string }));
                 setIsAddDrawerOpen(true);
             }
@@ -1133,9 +1185,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         if (result === "blocked") {
             (window as any).showToast?.(
                 t(
-                    "Your browser blocked the pop-up window. Allow pop-ups for CCRM and try again.",
-                    "Prehliadač zablokoval vyskakovacie okno. Povoľte pre CCRM vyskakovacie okná a skúste znova.",
-                    "A böngésző letiltotta a felugró ablakot. Engedélyezze a felugró ablakokat a CCRM-hez, és próbálja újra.",
+                    `Your browser blocked the pop-up window. Allow pop-ups for ${brand} and try again.`,
+                    `Prehliadač zablokoval vyskakovacie okno. Povoľte pre ${brand} vyskakovacie okná a skúste znova.`,
+                    `A böngésző letiltotta a felugró ablakot. Engedélyezze a felugró ablakokat a ${brand}-hez, és próbálja újra.`,
                 ),
                 "warning",
             );
@@ -1253,7 +1305,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const completedUsersList = useMemo(() => {
         const list = users.map((u) => u.name);
-        tasks.forEach((t) => {
+        listTasks.forEach((t) => {
             if (
                 isDoneState(t.status) &&
                 t.completedBy &&
@@ -1263,10 +1315,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             }
         });
         return Array.from(new Set(list));
-    }, [users, tasks]);
+    }, [users, listTasks]);
 
     const filteredArchivedTasks = useMemo(() => {
-        return tasks.filter((task) => {
+        return listTasks.filter((task) => {
             if (!isDoneState(task.status)) return false;
             if (task.archived) return false;
             // Client, project, assignee and tag — the filters every section shares.
@@ -1285,7 +1337,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 const query = archiveSearchQuery.toLowerCase();
                 const matchesTitle = task.title.toLowerCase().includes(query);
                 const matchesDesc =
-                    task.description?.toLowerCase().includes(query) || false;
+                    blockNotesToPlainText(task.description || "").toLowerCase().includes(query) || false;
                 const matchesConclusion =
                     task.conclusion?.toLowerCase().includes(query) || false;
                 if (!matchesTitle && !matchesDesc && !matchesConclusion) return false;
@@ -1335,9 +1387,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archiveDateStart,
         archiveDateEnd,
         unknownCompletedBy,
-        clientFilter,
-        projectFilter,
-        assigneeFilter,
+        clientSel,
+        projectSel,
+        assigneeSel,
+        assignerSel,
         tagFilter,
     ]);
 
@@ -1361,7 +1414,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Manually archived tasks filtered by current archive query, priority, date & tag
     const filteredManuallyArchivedTasks = useMemo(() => {
-        return tasks.filter((task) => {
+        return listTasks.filter((task) => {
             if (!task.archived) return false;
             if (!matchesTaskFilters(task)) return false;
 
@@ -1370,7 +1423,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 const query = archiveSearchQuery.toLowerCase();
                 const matchesTitle = task.title.toLowerCase().includes(query);
                 const matchesDesc =
-                    task.description?.toLowerCase().includes(query) || false;
+                    blockNotesToPlainText(task.description || "").toLowerCase().includes(query) || false;
                 const matchesConclusion =
                     task.conclusion?.toLowerCase().includes(query) || false;
                 if (!matchesTitle && !matchesDesc && !matchesConclusion) return false;
@@ -1432,9 +1485,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         unknownCompletedBy,
         archiveDateStart,
         archiveDateEnd,
-        clientFilter,
-        projectFilter,
-        assigneeFilter,
+        clientSel,
+        projectSel,
+        assigneeSel,
+        assignerSel,
         tagFilter,
     ]);
 
@@ -1498,36 +1552,32 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const handleDeleteTask = (task: Task) => {
         if (!mayDeleteTask(task)) return;
+        if (task.recurringSourceId) {
+            setOccurrenceDeletingTask(task);
+            return;
+        }
         deleteTasksWithUndo({ allTasks: tasks, targets: [task], setTasks, lang: systemLanguage });
     };
 
     // --- Bulk Selection & Operations ---
-    const isSingleUserView = canSeeAllTasks && assigneeFilter !== "all";
+    const isSingleUserView = canSeeAllTasks && assigneeSel.length > 0;
 
     const matchesGlobalFilters = React.useCallback(
         (task: Task) => {
-            if (
-                globalPriorityFilter !== "all" &&
-                task.priority !== globalPriorityFilter
-            )
-                return false;
-            if (globalStateFilter !== "all" && task.status !== globalStateFilter)
-                return false;
             if (!dateInRange(task.deadline, globalDateStart, globalDateEnd))
                 return false;
-            // Client, project, assignee and tag — the filters every section shares.
-            if (!matchesTaskFilters(task)) return false;
-            return true;
+            // Client, project, assignee, assigner, priority, state and tag.
+            return facets.matchesGlobal(task) && matchesTag(task);
         },
-        [globalPriorityFilter, globalStateFilter, globalDateStart, globalDateEnd, clientFilter, projectFilter, assigneeFilter, tagFilter]
+        [clientSel, projectSel, assigneeSel, assignerSel, prioritySel, stateSel, globalDateStart, globalDateEnd, tagFilter]
     );
 
     const filteredGlobalTasks = useMemo(() => {
-        const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter((task) =>
+        const activeTasks = (canSeeAllTasks ? listTasks : myTasks).filter((task) =>
             isActiveTask(task, isDoneState) || (showClosedTasks && isClosedRecentTask(task))
         );
         return activeTasks.filter(matchesGlobalFilters);
-    }, [canSeeAllTasks, tasks, myTasks, matchesGlobalFilters, showClosedTasks, closedTasksDays]);
+    }, [canSeeAllTasks, listTasks, myTasks, matchesGlobalFilters, showClosedTasks, closedTasksDays]);
 
     const visibleTasksInCurrentView = useMemo(() => {
         if (viewMode === "calendar") {
@@ -1756,9 +1806,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setTasks((prev) =>
             prev.map((t) => {
                 if (selectedTaskIds.has(t.id)) {
-                    if (mayEditTask(t)) {
+                    // A deadline never lies before the day the task was created.
+                    if (mayEditTask(t) && !(taskCreatedDate(t) && newDateStr < taskCreatedDate(t))) {
                         modifiedCount++;
-                        return { ...t, deadline: newDateStr };
+                        return { ...t, ...deadlineChange(t, newDateStr) };
                     } else {
                         skippedCount++;
                     }
@@ -1900,17 +1951,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return createPortal(
             <div
                 ref={bulkToolbarRef}
-                className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-slate-900/95 text-white backdrop-blur-xl px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700/70 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
+                className="fixed bottom-20 ws-lg:bottom-6 left-1/2 -translate-x-1/2 z-[100000] w-[calc(100vw-1.5rem)] ws-sm:w-auto max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-gray-900/95 text-white backdrop-blur-md px-4 py-2.5 rounded-lg shadow-xl border border-gray-700 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
             >
                 {/* Left: Count and selection management */}
-                <div className="flex items-center gap-2">
-                    <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-ui font-bold px-2.5 py-1 rounded-xl">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="bg-entity-solid/25 text-white border border-entity-border text-ui font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">
                         {countLabel}
                     </span>
                     <button
                         type="button"
                         onClick={handleSelectAllVisible}
-                        className="text-caption font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                        className="text-caption font-semibold text-gray-300 hover:text-white px-2 py-1 rounded-md hover:bg-gray-800 transition-colors cursor-pointer whitespace-nowrap"
                     >
                         {areAllVisibleSelected
                             ? t("Deselect visible", "Zrušiť výber zobrazených", "Láthatók kijelölésének törlése")
@@ -1924,13 +1975,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         type="button"
                         onClick={handleClearSelection}
                         title={t("Clear selection", "Zrušiť výber", "Kijelölés törlése")}
-                        className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                        className="p-1 text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors cursor-pointer"
                     >
                         <X className="h-4 w-4" />
                     </button>
                 </div>
 
-                <div className="h-5 w-px bg-slate-700/80 hidden sm:block" />
+                <div className="h-5 w-px bg-gray-700 hidden sm:block" />
 
                 {/* Right: Actions */}
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -1943,20 +1994,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     activeBulkMenu === "status" ? null : "status"
                                 )
                             }
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-gray-800 hover:bg-gray-700 text-ui font-semibold transition-colors border border-gray-700 cursor-pointer"
                         >
-                            <CheckSquare className="h-3.5 w-3.5 text-indigo-400" />
+                            <CheckSquare className="h-3.5 w-3.5 text-entity-text" />
                             <span>{t("Status", "Stav", "Státusz")}</span>
-                            <ChevronDown className="h-3 w-3 text-slate-400" />
+                            <ChevronDown className="h-3 w-3 text-gray-400" />
                         </button>
                         {activeBulkMenu === "status" && (
-                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-40 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                            <div className="absolute bottom-full mb-2 left-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-1.5 min-w-40 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
                                 {taskStates.map((st) => (
                                     <button
                                         key={st}
                                         type="button"
                                         onClick={() => handleBulkStatusChange(st)}
-                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-ui font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                        className="w-full text-left px-2.5 py-1.5 rounded-md text-ui font-semibold text-gray-200 hover:bg-entity-solid hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
                                     >
                                         <span
                                             className="h-2 w-2 rounded-full shrink-0"
@@ -1981,20 +2032,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     activeBulkMenu === "priority" ? null : "priority"
                                 )
                             }
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-gray-800 hover:bg-gray-700 text-ui font-semibold transition-colors border border-gray-700 cursor-pointer"
                         >
                             <Flame className="h-3.5 w-3.5 text-amber-400" />
                             <span>{t("Priority", "Priorita", "Prioritás")}</span>
-                            <ChevronDown className="h-3 w-3 text-slate-400" />
+                            <ChevronDown className="h-3 w-3 text-gray-400" />
                         </button>
                         {activeBulkMenu === "priority" && (
-                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-35 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                            <div className="absolute bottom-full mb-2 left-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-1.5 min-w-35 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
                                 {(["low", "medium", "high"] as const).map((prio) => (
                                     <button
                                         key={prio}
                                         type="button"
                                         onClick={() => handleBulkPriorityChange(prio)}
-                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-ui font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                        className="w-full text-left px-2.5 py-1.5 rounded-md text-ui font-semibold text-gray-200 hover:bg-entity-solid hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
                                     >
                                         <span
                                             className={`h-2 w-2 rounded-full shrink-0 ${
@@ -2002,7 +2053,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     ? "bg-rose-500"
                                                     : prio === "medium"
                                                       ? "bg-amber-500"
-                                                      : "bg-slate-400"
+                                                      : "bg-gray-400"
                                             }`}
                                         />
                                         <span>{priorityLabel(prio)}</span>
@@ -2021,24 +2072,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     activeBulkMenu === "assignee" ? null : "assignee"
                                 )
                             }
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-gray-800 hover:bg-gray-700 text-ui font-semibold transition-colors border border-gray-700 cursor-pointer"
                         >
                             <Users className="h-3.5 w-3.5 text-sky-400" />
                             <span>{t("Assignee", "Riešiteľ", "Felelős")}</span>
-                            <ChevronDown className="h-3 w-3 text-slate-400" />
+                            <ChevronDown className="h-3 w-3 text-gray-400" />
                         </button>
                         {activeBulkMenu === "assignee" && (
-                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-42.5 max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                            <div className="absolute bottom-full mb-2 left-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-1.5 min-w-42.5 max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
                                 {allUsersList.map((uName) => (
                                     <button
                                         key={uName}
                                         type="button"
                                         onClick={() => handleBulkAssigneeChange(uName)}
-                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-ui font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                                        className="w-full text-left px-2.5 py-1.5 rounded-md text-ui font-semibold text-gray-200 hover:bg-entity-solid hover:text-white transition-colors flex items-center justify-between gap-2 cursor-pointer"
                                     >
                                         <span className="truncate">{uName}</span>
                                         {uName === myName && (
-                                            <span className="text-micro bg-slate-800 px-1 py-0.5 rounded text-indigo-300">
+                                            <span className="text-micro bg-gray-800 px-1 py-0.5 rounded text-entity-text">
                                                 {t("You", "Vy", "Ön")}
                                             </span>
                                         )}
@@ -2057,15 +2108,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     activeBulkMenu === "reschedule" ? null : "reschedule"
                                 )
                             }
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-gray-800 hover:bg-gray-700 text-ui font-semibold transition-colors border border-gray-700 cursor-pointer"
                         >
-                            <CalendarIcon className="h-3.5 w-3.5 text-indigo-400" />
+                            <CalendarIcon className="h-3.5 w-3.5 text-entity-text" />
                             <span>{t("Reschedule", "Termín", "Átütemezés")}</span>
                             <ChevronDown className="h-3 w-3 text-slate-400" />
                         </button>
                         {activeBulkMenu === "reschedule" && (
-                            <div className="absolute bottom-full mb-2 left-0 sm:right-0 sm:left-auto bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-3 min-w-55 space-y-2 animate-in fade-in zoom-in-95 duration-100 z-50">
-                                <span className="type-overline text-slate-400 block">
+                            <div className="absolute bottom-full mb-2 left-0 sm:right-0 sm:left-auto bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-3 min-w-55 space-y-2 animate-in fade-in zoom-in-95 duration-100 z-50">
+                                <span className="type-overline text-gray-400 block">
                                     {t("Set Due Date", "Nastaviť termín", "Határidő beállítása")}
                                 </span>
                                 <div className="grid grid-cols-3 gap-1">
@@ -2074,7 +2125,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         onClick={() =>
                                             handleBulkReschedule(toLocalDateStr(new Date()))
                                         }
-                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-micro font-bold text-center transition-colors cursor-pointer"
+                                        className="px-2 py-1 rounded bg-gray-800 hover:bg-entity-solid text-micro font-bold text-center transition-colors cursor-pointer"
                                     >
                                         {t("Today", "Dnes", "Ma")}
                                     </button>
@@ -2087,7 +2138,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                 )
                                             )
                                         }
-                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-micro font-bold text-center transition-colors cursor-pointer"
+                                        className="px-2 py-1 rounded bg-gray-800 hover:bg-entity-solid text-micro font-bold text-center transition-colors cursor-pointer"
                                     >
                                         {t("Tomorrow", "Zajtra", "Holnap")}
                                     </button>
@@ -2100,20 +2151,21 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                 )
                                             )
                                         }
-                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-micro font-bold text-center transition-colors cursor-pointer"
+                                        className="px-2 py-1 rounded bg-gray-800 hover:bg-entity-solid text-micro font-bold text-center transition-colors cursor-pointer"
                                     >
                                         {t("+1 Week", "+1 týždeň", "+1 hét")}
                                     </button>
                                 </div>
-                                <div className="pt-1 border-t border-slate-800">
+                                <div className="pt-1 border-t border-gray-800">
                                     <input
                                         type="date"
+                                        min={todayDateStr()}
                                         onChange={(e) => {
                                             if (e.target.value) {
-                                                handleBulkReschedule(e.target.value);
+                                                handleBulkReschedule(clampDeadline(e.target.value, todayDateStr()));
                                             }
                                         }}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-ui text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                        className="w-full bg-gray-800 border border-gray-700 rounded-md px-2.5 py-1.5 text-ui text-white focus:outline-none focus:border-entity-solid cursor-pointer"
                                     />
                                 </div>
                             </div>
@@ -2128,7 +2180,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             onConfirm={handleBulkArchive}
                             what={t("selected tasks", "vybrané úlohy", "kiválasztott feladatok")}
                             title={t("Archive selected tasks", "Archivovať vybrané úlohy", "Kiválasztott feladatok archiválása")}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-ui font-bold transition-colors border border-slate-700/50 hover:border-amber-700/50"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-gray-800 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-ui font-semibold transition-colors border border-gray-700 hover:border-amber-700/50"
                             icon={<ArchiveIcon className="h-3.5 w-3.5 text-amber-400" />}
                         >
                             {t("Archive", "Archivovať", "Archiválás")}
@@ -2139,9 +2191,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             type="button"
                             onClick={handleBulkRestore}
                             title={t("Restore selected tasks", "Obnoviť vybrané úlohy", "Kiválasztott feladatok visszaállítása")}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-indigo-900/40 text-indigo-300 hover:text-indigo-100 text-ui font-bold transition-colors border border-slate-700/50 hover:border-indigo-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-gray-800 hover:bg-entity-solid text-white text-ui font-semibold transition-colors border border-gray-700 cursor-pointer"
                         >
-                            <RotateCcw className="h-3.5 w-3.5 text-indigo-400" />
+                            <RotateCcw className="h-3.5 w-3.5" />
                             <span>{t("Restore", "Obnoviť", "Visszaállítás")}</span>
                         </button>
                     )}
@@ -2165,6 +2217,36 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     // --- RENDERING ---
+
+    // Ghost occurrences for schedule-mode recurring tasks on calendar
+    const plannedOccurrencesByDate = useMemo(() => {
+        const map = new Map<string, Array<{ template: RecurringTaskTemplate; occ: { scheduledDate: string; deadline: string; startDate: string } }>>();
+        if (!showPlannedRecurring || !recurringTasks || recurringTasks.length === 0) {
+            return map;
+        }
+
+        const existingKeys = new Set(
+            tasks
+                .filter((t) => t.recurringSourceId && t.recurringOccurrenceDate)
+                .map((t) => `${t.recurringSourceId}:${t.recurringOccurrenceDate}`)
+        );
+
+        // Visible range buffer: current month +- 1 month
+        const y = currentDate.getFullYear();
+        const m = currentDate.getMonth();
+        const rangeStart = new Date(Date.UTC(y, m - 1, 1)).toISOString().slice(0, 10);
+        const rangeEnd = new Date(Date.UTC(y, m + 2, 0)).toISOString().slice(0, 10);
+
+        for (const tpl of recurringTasks) {
+            for (const occ of getPlannedOccurrencesInRange(tpl.recurrence, rangeStart, rangeEnd)) {
+                if (existingKeys.has(`${tpl.id}:${occ.scheduledDate}`)) continue;
+                const list = map.get(occ.deadline) || [];
+                list.push({ template: tpl, occ });
+                map.set(occ.deadline, list);
+            }
+        }
+        return map;
+    }, [showPlannedRecurring, recurringTasks, tasks, currentDate]);
 
     // --- RENDERING HELPERS ---
 
@@ -2213,27 +2295,27 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         // Determine cell background styling based on time bucket
                         let cellBgClass = "bg-white";
-                        if (isPast) cellBgClass = "bg-slate-50/70";
+                        if (isPast) cellBgClass = "bg-gray-50";
                         else if (isToday)
                             cellBgClass =
-                                "bg-indigo-50/40 border-indigo-100/60 shadow-[inset_0_0_10px_rgba(79,70,229,0.05)]";
-                        else if (isTomorrow) cellBgClass = "bg-amber-50/30";
+                                "bg-entity-subtle/50 border-entity-border";
+                        else if (isTomorrow) cellBgClass = "bg-amber-50/40";
 
                         return (
                             <div
                                 key={idx}
                                 onClick={() => cfg.onSelectDay(date)}
-                                className={`min-h-20 border-b border-r border-slate-100 p-1.5 flex flex-col gap-1 transition-all cursor-pointer group relative hover:bg-slate-50 ${cellBgClass}`}
+                                className={`min-h-20 border-b border-r border-gray-100 p-1.5 flex flex-col gap-1 transition-all cursor-pointer group relative hover:bg-gray-50 ${cellBgClass}`}
                             >
                                 <div
                                     className={`text-micro font-bold self-end mb-0.5 w-5 h-5 flex items-center justify-center rounded-full ${
                                         isToday
-                                            ? "bg-indigo-600 text-white shadow-sm"
+                                            ? "bg-entity-solid text-white shadow-2xs"
                                             : isPast
-                                              ? "text-slate-300 group-hover:text-slate-500"
+                                              ? "text-gray-300 group-hover:text-gray-500"
                                               : isTomorrow
                                                 ? "text-amber-600 group-hover:bg-amber-100"
-                                                : "text-slate-400 group-hover:bg-slate-100 group-hover:text-indigo-600"
+                                                : "text-gray-400 group-hover:bg-gray-100 group-hover:text-entity-text"
                                     }`}
                                 >
                                     {date.getDate()}
@@ -2244,18 +2326,40 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     {displayTasks.map((t) => (
                                         <div
                                             key={t.id}
-                                            className={`truncate text-micro font-bold px-1 py-0.5 rounded border shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
+                                            className={`truncate text-micro font-semibold px-1 py-0.5 rounded border ${
                                                 t.priority === "high"
                                                     ? "bg-rose-50 text-rose-700 border-rose-200"
                                                     : t.priority === "medium"
                                                       ? "bg-amber-50 text-amber-700 border-amber-200"
-                                                      : "bg-slate-50 text-slate-700 border-slate-200"
+                                                      : "bg-gray-50 text-gray-700 border-gray-200"
                                             }`}
                                         >
                                             {t.isLocking && (
                                                 <Lock className="inline h-2 w-2 mr-0.5 -mt-0.5 text-rose-500" />
                                             )}
+                                            {t.recurringSourceId && (
+                                                <Repeat className="inline h-2 w-2 mr-0.5 -mt-0.5 text-entity-text" />
+                                            )}
                                             {t.title}
+                                        </div>
+                                    ))}
+
+                                    {/* Planned Recurring Ghost Pills */}
+                                    {showPlannedRecurring && plannedOccurrencesByDate.get(dateStr)?.map(({ template: tpl, occ }) => (
+                                        <div
+                                            key={`ghost-${tpl.id}-${occ.scheduledDate}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingTemplate(tpl);
+                                            }}
+                                            title={`${tpl.title} (${t("Planned recurring task", "Plánovaná opakovaná úloha", "Tervezett ismétlődő feladat")})`}
+                                            className="truncate text-micro font-semibold px-1 py-0.5 rounded border border-dashed border-entity-border bg-entity-subtle/40 text-entity-text opacity-75 hover:opacity-100 flex items-center gap-1 cursor-pointer transition-all"
+                                        >
+                                            <Repeat className="h-2 w-2 shrink-0 text-entity-text" />
+                                            <span className="truncate">{tpl.title}</span>
+                                            <span className="text-micro uppercase tracking-wider font-semibold text-entity-text/80 shrink-0">
+                                                {t("Planned", "Plánované", "Tervezett")}
+                                            </span>
                                         </div>
                                     ))}
 
@@ -2288,18 +2392,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         return (
                             <div
                                 key={dateStr}
-                                className={`py-2 text-center border-r border-slate-100 last:border-0 ${
-                                    isToday ? "bg-indigo-50/60" : ""
+                                className={`py-2 text-center border-r border-gray-100 last:border-0 ${
+                                    isToday ? "bg-entity-subtle/70" : ""
                                 }`}
                             >
-                                <div className="type-overline text-slate-500">
+                                <div className="type-overline text-gray-500">
                                     {weekdayNames[idx]}
                                 </div>
                                 <div
                                     className={`mt-1 mx-auto text-caption font-bold w-6 h-6 flex items-center justify-center rounded-full ${
                                         isToday
-                                            ? "bg-indigo-600 text-white shadow-sm"
-                                            : "text-slate-600"
+                                            ? "bg-entity-solid text-white shadow-2xs"
+                                            : "text-gray-600"
                                     }`}
                                 >
                                     {date.getDate()}
@@ -2321,28 +2425,28 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <div
                                 key={dateStr}
                                 onClick={() => cfg.onSelectDay(date)}
-                                className={`min-h-55 border-r border-slate-100 last:border-0 p-1.5 flex flex-col gap-1.5 transition-all cursor-pointer hover:bg-slate-50 ${
+                                className={`min-h-55 border-r border-gray-100 last:border-0 p-1.5 flex flex-col gap-1.5 transition-all cursor-pointer hover:bg-gray-50 ${
                                     isToday
-                                        ? "bg-indigo-50/30"
+                                        ? "bg-entity-subtle/40"
                                         : isPast
-                                          ? "bg-slate-50/70"
+                                          ? "bg-gray-50"
                                           : "bg-white"
                                 }`}
                             >
                                 {dayTasks.length === 0 ? (
-                                    <span className="type-overline text-slate-300 text-center mt-2">
+                                    <span className="type-overline text-gray-300 text-center mt-2">
                                         —
                                     </span>
                                 ) : (
                                     dayTasks.map((tk) => (
                                         <div
                                             key={tk.id}
-                                            className={`text-micro font-bold px-1.5 py-1 rounded-lg border shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
+                                            className={`text-micro font-semibold px-1.5 py-1 rounded-md border ${
                                                 tk.priority === "high"
                                                     ? "bg-rose-50 text-rose-700 border-rose-200"
                                                     : tk.priority === "medium"
                                                       ? "bg-amber-50 text-amber-700 border-amber-200"
-                                                      : "bg-slate-50 text-slate-700 border-slate-200"
+                                                      : "bg-gray-50 text-gray-700 border-gray-200"
                                             }`}
                                         >
                                             <span className="block font-bold tabular-nums opacity-70">
@@ -2354,11 +2458,35 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                 {tk.isLocking && (
                                                     <Lock className="inline h-2 w-2 mr-0.5 -mt-0.5 text-rose-500" />
                                                 )}
+                                                {tk.recurringSourceId && (
+                                                    <Repeat className="inline h-2 w-2 mr-0.5 -mt-0.5 text-entity-text" />
+                                                )}
                                                 {tk.title}
                                             </span>
                                         </div>
                                     ))
                                 )}
+
+                                {/* Planned recurring ghosts for week */}
+                                {showPlannedRecurring && plannedOccurrencesByDate.get(dateStr)?.map(({ template: tpl, occ }) => (
+                                    <div
+                                        key={`ghost-week-${tpl.id}-${occ.scheduledDate}`}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingTemplate(tpl);
+                                        }}
+                                        title={`${tpl.title} (${t("Planned recurring task", "Plánovaná opakovaná úloha", "Tervezett ismétlődő feladat")})`}
+                                        className="text-micro font-semibold px-1.5 py-1 rounded-md border border-dashed border-entity-border bg-entity-subtle/40 text-entity-text opacity-75 hover:opacity-100 cursor-pointer transition-all"
+                                    >
+                                        <span className="block font-bold tabular-nums text-entity-text opacity-70">
+                                            {t("Planned", "Plánované", "Tervezett")}
+                                        </span>
+                                        <span className="block truncate flex items-center gap-1">
+                                            <Repeat className="inline h-2.5 w-2.5 text-entity-text shrink-0" />
+                                            <span className="truncate">{tpl.title}</span>
+                                        </span>
+                                    </div>
+                                ))}
                             </div>
                         );
                     })}
@@ -2376,11 +2504,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
         return (
             <div className="flex flex-col h-full animate-in fade-in zoom-in-95 duration-200">
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+                <div className="p-6 border-b border-gray-200 flex items-center justify-between shrink-0">
                     <div>
                         <button
                             onClick={() => cfg.onSelectDay(null)}
-                            className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 type-overline transition-colors cursor-pointer mb-2"
+                            className="flex items-center gap-1.5 text-entity-text hover:opacity-80 type-overline transition-colors cursor-pointer mb-2"
                         >
                             <ChevronLeft className="h-4 w-4" />
                             {cfg.scope === "week"
@@ -2395,8 +2523,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                       "Vissza a havi naptárhoz",
                                   )}
                         </button>
-                        <h2 className="type-metric text-slate-800 flex items-center gap-2">
-                            <CalendarIcon className="h-6 w-6 text-indigo-600 stroke-[2.5]" />
+                        <h2 className="type-metric text-gray-900 flex items-center gap-2">
+                            <CalendarIcon className="h-6 w-6 text-entity-text stroke-[2]" />
                             {dayDate.toLocaleDateString(dateLocale, {
                                 weekday: "long",
                                 month: "long",
@@ -2408,23 +2536,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {cfg.onAddTask && (
                         <button
                             onClick={() => cfg.onAddTask?.(selectedDateStr)}
-                            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl type-overline shadow-md shadow-indigo-600/30 transition-all active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                            className="flex items-center gap-1.5 px-4 py-2 bg-entity-solid hover:opacity-90 text-white rounded-md type-overline shadow-xs transition-all active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={!taskAccess.create}
                         >
-                            <Plus className="h-4 w-4 stroke-[3]" />
+                            <Plus className="h-4 w-4 stroke-[2.5]" />
                             {t("Add Task", "Pridať úlohu", "Új feladat")}
                         </button>
                     )}
                 </div>
 
-                <div className="flex-1 ws-lg:overflow-y-auto overflow-visible p-6 space-y-3 bg-slate-50/30">
-                    {/* The day reads as a timeline: tasks run strictly from the
-                        earliest deadline time at the top to the latest at the
-                        bottom. They used to be bucketed by status, which pushed a
-                        10:00 task below an evening one whenever their states
-                        differed. The status stays visible on each card. */}
+                <div className="flex-1 ws-lg:overflow-y-auto overflow-visible p-6 space-y-3 bg-gray-50">
                     {dayTasks.length === 0 ? (
-                        <div className="p-6 border-2 border-dashed border-slate-200 rounded-2xl text-center bg-white">
+                        <div className="p-6 border border-dashed border-gray-200 rounded-lg text-center bg-white">
                             <span className="text-ui font-bold text-slate-400">
                                 {cfg.emptyDayLabel}
                             </span>
@@ -2432,7 +2555,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     ) : (
                         dayTasks.map((tk) => (
                             <div key={tk.id} className="flex items-start gap-3">
-                                <span className="shrink-0 mt-4 w-13 text-right text-micro font-bold tabular-nums text-indigo-500">
+                                <span className="shrink-0 mt-4 w-13 text-right text-micro font-bold tabular-nums text-entity-text">
                                     {formatTimeDisplay(
                                         tk.deadlineTime || "23:59",
                                     )}
@@ -2451,12 +2574,79 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // One calendar panel: the month or week grid, or the day view once a day is
     // clicked. Every tab renders its calendar through this, so the behaviour is
     // identical wherever a calendar appears.
-    const renderCalendarPanel = (cfg: CalendarPanelConfig) =>
-        cfg.selectedDay
-            ? renderDayView(cfg)
-            : cfg.scope === "week"
-              ? renderWeekGrid(cfg)
-              : renderMonthGrid(cfg);
+    const effectiveHubData: TaskHubData = hubData ?? {
+        projectTypes: [],
+        financialRecords: [],
+        invoicesOffers: [],
+        employeeSalaries: [],
+        employeeVacations: [],
+        orders: [],
+        warehouseBatches: [],
+        meetingNotes: [],
+        unifiedEntries: [],
+        unifiedEntriesData: {},
+        supportContracts: [],
+        rbac: { projects: true },
+    };
+
+    const renderCalendarPanel = (cfg: CalendarPanelConfig) => {
+        const isMainCalendar = cfg.onAddTask !== undefined;
+        const lens = isMainCalendar ? calendarHub.activeLens : "tasks";
+        return (
+            <>
+                {isMainCalendar && (
+                    <CalendarLensSwitcher
+                        activeLens={lens}
+                        onSelectLens={(id) => {
+                            calendarHub.setActiveLens(id);
+                            cfg.onSelectDay(null);
+                        }}
+                        favorites={calendarHub.favorites}
+                        onToggleFavorite={calendarHub.toggleFavorite}
+                        customCalendars={calendarHub.customCalendars}
+                        rbac={effectiveHubData.rbac}
+                        canEditCustom={taskAccess.edit}
+                        onNewCustomCalendar={() => calendarHub.setCalendarModal({ open: true, calendar: null })}
+                        onEditCustomCalendar={(cal) => calendarHub.setCalendarModal({ open: true, calendar: cal })}
+                        expanded={calendarHub.expanded}
+                        onToggleExpanded={calendarHub.toggleExpanded}
+                        lang={systemLanguage}
+                    />
+                )}
+                {lens === "tasks" ? (
+                    cfg.selectedDay ? renderDayView(cfg) : cfg.scope === "week" ? renderWeekGrid(cfg) : renderMonthGrid(cfg)
+                ) : (
+                    <MultiCalendarPanel
+                        lensId={lens}
+                        anchor={cfg.anchor}
+                        scope={cfg.scope}
+                        selectedDay={cfg.selectedDay}
+                        onSelectDay={cfg.onSelectDay}
+                        weekdayNames={weekdayNames}
+                        dateLocale={dateLocale}
+                        todayStr={todayStr}
+                        lang={systemLanguage}
+                        currentUserName={myName}
+                        tasks={tasks}
+                        leads={leads}
+                        projects={projects}
+                        tickets={tickets}
+                        employees={employees}
+                        hubData={effectiveHubData}
+                        customCalendars={calendarHub.customCalendars}
+                        customEvents={calendarHub.customEvents}
+                        canEditCustom={taskAccess.edit}
+                        onAddCustomEvent={(cal, dateStr) => calendarHub.setEventModal({ open: true, calendar: cal, event: null, initialDate: dateStr })}
+                        onEditCustomEvent={(cal, ev) => calendarHub.setEventModal({ open: true, calendar: cal, event: ev, initialDate: ev.startDate })}
+                        onOpenTask={(id) => {
+                            const found = tasks.find((tk) => tk.id === id);
+                            if (found) setEditingTask(found);
+                        }}
+                    />
+                )}
+            </>
+        );
+    };
 
     // Month/week switch plus the previous/next/today pager. Shared by all three
     // calendars; `compact` keeps the in-panel copies a touch smaller than the one
@@ -2481,10 +2671,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const effectiveScopeForStep: "month" | "week" =
             cfg.scope === "week" ? "week" : "month";
 
+        // "Jump to today" has nothing to do while the shown week or month already holds today.
+        const showsToday = (() => {
+            const today = new Date();
+            if (effectiveScopeForStep === "month") {
+                return cfg.anchor.getFullYear() === today.getFullYear() && cfg.anchor.getMonth() === today.getMonth();
+            }
+            const monday = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)).getTime();
+            return monday(cfg.anchor) === monday(today);
+        })();
+
         return (
             <div className="flex items-center gap-2 flex-wrap">
                 {/* Scope switcher */}
-                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1 max-w-full overflow-x-auto">
+                <div className="flex items-center bg-gray-100 p-1 rounded-md border border-gray-200 gap-1 max-w-full overflow-x-auto">
                     {availableScopes.map((scope) => (
                         <button
                             key={scope}
@@ -2492,10 +2692,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 cfg.onScopeChange(scope);
                                 cfg.onSelectDay(null);
                             }}
-                            className={`px-2.5 ws-sm:px-3 py-1.5 rounded-lg type-overline transition-all cursor-pointer whitespace-nowrap ${
+                            className={`px-2.5 ws-sm:px-3 py-1.5 rounded-md type-overline transition-all cursor-pointer whitespace-nowrap ${
                                 cfg.scope === scope
-                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                    : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                                    ? "bg-white text-entity-text shadow-2xs border border-gray-200"
+                                    : "text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
                             }`}
                         >
                             {scope === "month"
@@ -2510,7 +2710,25 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
 
                 {cfg.scope !== "hide" && cfg.scope !== "timeline" && (
-                    <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={showPlannedRecurring}
+                        onClick={() => setShowPlannedRecurring(!showPlannedRecurring)}
+                        title={t("Show planned recurring tasks", "Zobraziť plánované opakované úlohy", "Tervezett ismétlődő feladatok megjelenítése")}
+                        className={`inline-flex items-center gap-1.5 px-2.5 ws-sm:px-3 py-1.5 rounded-md border text-caption font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                            showPlannedRecurring
+                                ? "bg-entity-subtle border-entity-border text-entity-text hover:opacity-90"
+                                : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                        }`}
+                    >
+                        <Repeat className="h-3.5 w-3.5" />
+                        <span className="hidden ws-sm:inline">{t("Planned recurring", "Plánované opakované", "Tervezett ismétlődő")}</span>
+                    </button>
+                )}
+
+                {cfg.scope !== "hide" && cfg.scope !== "timeline" && (
+                    <div className="flex items-center bg-white border border-gray-200 rounded-md p-1 shadow-2xs">
                         <button
                             onClick={() =>
                                 cfg.onAnchorChange(
@@ -2536,12 +2754,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </button>
                         <button
                             onClick={() => cfg.onAnchorChange(new Date())}
+                            disabled={showsToday}
                             title={t(
                                 "Jump to today",
                                 "Prejsť na dnešok",
                                 "Ugrás a mai napra",
                             )}
-                            className={`px-4 font-bold text-indigo-950 text-center tracking-wider uppercase hover:text-indigo-600 cursor-pointer transition-colors ${
+                            className={`px-4 font-bold text-gray-900 text-center tracking-wider uppercase hover:text-entity-text cursor-pointer transition-colors disabled:cursor-default disabled:hover:text-gray-900 ${
                                 cfg.compact
                                     ? "text-caption min-w-32.5"
                                     : "text-body min-w-40"
@@ -2616,28 +2835,27 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const lead = leads.find((l) => String(l.id) === String(task.relatedLeadId));
         if (!lead) {
             return (
-                <span className={`text-micro font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate ${maxWidth}`}>
+                <span className={`text-micro font-semibold text-gray-500 flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded-md truncate ${maxWidth}`}>
                     <Briefcase className="h-2.5 w-2.5 shrink-0" />
                     <span className="truncate">{referenceLeadName(readScope, task.relatedLeadId) ?? "Lead"}</span>
                 </span>
             );
         }
         return (
-            <a
+            <EntityBadge
+                entity={isClientRecord(lead) ? "clients" : "leads"}
+                label={lead.name || "Lead"}
                 href={recordHref(lead)}
+                showIcon
                 onClick={(e) => e.stopPropagation()}
-                data-testid="task-lead-link"
+                testId="task-lead-link"
                 title={
                     isClientRecord(lead)
                         ? t("Open client", "Otvoriť klienta", "Ügyfél megnyitása")
                         : t("Open lead", "Otvoriť lead", "Lead megnyitása")
                 }
-                className={`group/lead text-micro font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md ${maxWidth} hover:bg-indigo-100 hover:text-indigo-700 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 transition-all cursor-pointer`}
-            >
-                <Briefcase className="h-2.5 w-2.5 shrink-0" />
-                <span className="truncate">{lead.name || "Lead"}</span>
-                <ArrowUpRight className="h-2.5 w-2.5 shrink-0 transition-transform group-hover/lead:translate-x-px group-hover/lead:-translate-y-px" />
-            </a>
+                className={maxWidth}
+            />
         );
     };
 
@@ -2646,7 +2864,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // a press effect, and a ring while its filter is the one in force.
     const filterChipClass = (active: boolean) =>
         `cursor-pointer active:scale-95 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 ${
-            active ? "ring-2 ring-indigo-400" : "hover:brightness-95"
+            active ? "ring-2 ring-entity-ring" : "hover:brightness-95"
         }`;
     const filterByTitle = (label: string, active: boolean) =>
         active
@@ -2657,18 +2875,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const name = projectNameFor(task);
         if (!name || !task.relatedProjectId) return null;
         const id = String(task.relatedProjectId);
-        const active = projectFilter === id;
+        const active = projectSel.includes(id);
         return (
             <button
                 type="button"
                 data-testid="task-project-filter-chip"
                 aria-pressed={active}
+                style={entityAccentStyle("projects")}
                 onClick={(e) => {
                     e.stopPropagation();
                     handleProjectClick(id);
                 }}
                 title={filterByTitle(name, active)}
-                className={`${className} ${filterChipClass(active)}`}
+                className={`${className} !bg-entity-subtle !text-entity-text border !border-entity-border ${filterChipClass(active)}`}
             >
                 <FolderKanban className="h-2.5 w-2.5 shrink-0" />
                 <span className="truncate">{name}</span>
@@ -2679,7 +2898,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // One chip per assignee, so a task with several can be narrowed to any one.
     const renderAssigneeChips = (task: Task, className: string) =>
         (task.assignedUsers || []).filter(Boolean).map((name) => {
-            const active = assigneeFilter === name;
+            const active = assigneeSel.includes(name);
             return (
                 <button
                     key={name}
@@ -2693,7 +2912,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     title={filterByTitle(name, active)}
                     className={`${className} ${filterChipClass(active)}`}
                 >
-                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-entity-solid shrink-0" />
                     <span className="truncate">{name}</span>
                 </button>
             );
@@ -2765,27 +2984,22 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             task.relatedTicketId ||
             "Ticket";
         const ticketSubject = matchedTicket?.subject || matchedTicket?.title || "";
+        const label = ticketSubject ? `${ticketNum} · ${ticketSubject}` : ticketNum;
         return (
-            <a
+            <EntityBadge
+                entity="tickets"
+                label={label}
                 href={`#tickets/${encodeURIComponent(targetId)}`}
+                showIcon
                 onClick={(e) => e.stopPropagation()}
-                data-testid="task-ticket-link"
+                testId="task-ticket-link"
                 title={
                     ticketSubject
                         ? `${t("Open ticket", "Otvoriť tiket", "Jegy megnyitása")}: ${ticketNum} — ${ticketSubject}`
                         : `${t("Open ticket", "Otvoriť tiket", "Jegy megnyitása")}: ${ticketNum}`
                 }
-                className={`group/ticket text-micro font-bold text-indigo-700 flex items-center gap-1 bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.5 rounded-md ${maxWidth} hover:bg-indigo-100 hover:text-indigo-900 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 transition-all cursor-pointer shrink-0`}
-            >
-                <TicketIcon className="h-2.5 w-2.5 shrink-0 text-indigo-600" />
-                <span className="font-mono font-extrabold shrink-0">{ticketNum}</span>
-                {ticketSubject && (
-                    <span className="truncate text-indigo-600/90 font-semibold">
-                        · {ticketSubject}
-                    </span>
-                )}
-                <ArrowUpRight className="h-2.5 w-2.5 shrink-0 transition-transform group-hover/ticket:translate-x-px group-hover/ticket:-translate-y-px" />
-            </a>
+                className={maxWidth}
+            />
         );
     };
 
@@ -2833,12 +3047,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     if ((e.target as HTMLElement).closest("button, a, input, select, label, textarea, [role='listbox'], [role='option']")) return;
                     setEditingTask(task);
                 }}
-                className={`group px-3.5 py-2.5 transition-colors border-b border-slate-100 last:border-b-0 flex items-start justify-between gap-3 text-ui cursor-pointer ${
+                data-task-card=""
+                data-testid="task-card"
+                className={`group px-3.5 py-2.5 transition-colors border-b border-gray-100 last:border-b-0 flex items-start justify-between gap-3 text-ui cursor-pointer ${
                     isSelected
-                        ? "bg-indigo-50/70"
+                        ? "bg-entity-subtle/70"
                         : freshTaskIds.has(task.id)
-                          ? "bg-orange-50 hover:bg-orange-100/70 shadow-[inset_3px_0_0_#ff5d00]"
-                          : "bg-white hover:bg-slate-50/90"
+                          ? "bg-entity-subtle hover:bg-entity-muted/60 shadow-[inset_3px_0_0_var(--entity-accent)]"
+                          : "bg-white hover:bg-gray-50"
                 } relative`}
             >
                 {task.isLocking && (
@@ -2854,7 +3070,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             e.stopPropagation();
                             handleToggleSelect(task.id);
                         }}
-                        className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0 block"
+                        className="h-3.5 w-3.5 rounded border-gray-300 text-entity-text focus:ring-entity-ring cursor-pointer accent-entity-solid shrink-0 block"
                         aria-label={`Select ${task.title}`}
                     />
                 </div>
@@ -2925,10 +3141,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             {/* Desktop-only Title: inline with status dropdown */}
                             <span
                                 onClick={() => setEditingTask(task)}
-                                className={`hidden ws-sm:inline font-bold truncate cursor-pointer transition-colors ${
+                                className={`hidden ws-sm:inline font-semibold truncate cursor-pointer transition-colors ${
                                     isClosed
-                                        ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
-                                        : "text-slate-800 hover:text-indigo-600"
+                                        ? "text-gray-400 line-through decoration-gray-400 hover:text-gray-600"
+                                        : "text-gray-900 hover:text-entity-text"
                                 }`}
                                 title={task.title}
                             >
@@ -2982,10 +3198,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     <div className="ws-sm:hidden w-full">
                         <span
                             onClick={() => setEditingTask(task)}
-                            className={`font-bold text-ui leading-snug cursor-pointer transition-colors break-words line-clamp-3 block ${
+                            className={`font-semibold text-ui leading-snug cursor-pointer transition-colors break-words line-clamp-3 block ${
                                 isClosed
-                                    ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
-                                    : "text-slate-900 hover:text-indigo-600"
+                                    ? "text-gray-400 line-through decoration-gray-400 hover:text-gray-600"
+                                    : "text-gray-900 hover:text-entity-text"
                             }`}
                             title={task.title}
                         >
@@ -3028,7 +3244,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     `Megbízó: ${task.createdBy}. Kattintson a szűréshez.`
                                 )}
                                 className={`font-bold text-micro px-1.5 py-0.5 rounded border cursor-pointer shrink-0 transition-colors flex items-center gap-1 ${
-                                    assignerFilter === task.createdBy
+                                    assignerSel.includes(task.createdBy || "")
                                         ? "bg-amber-100 text-amber-800 border-amber-300 ring-1 ring-amber-400"
                                         : "bg-amber-50/80 text-amber-700 border-amber-200/80 hover:bg-amber-100"
                                 }`}
@@ -3039,40 +3255,42 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         )}
 
                         {renderTicketBadge(task, "max-w-45")}
+                        <TaskWhatsAppMarks task={task} userLanguage={systemLanguage} showNote={false} />
 
                         {renderLeadBadge(task, "max-w-35")}
 
+                        <TaskRecurringMark task={task} templates={recurringTasks} language={systemLanguage} t={t} />
+
                         {renderProjectBadge(
                             task,
-                            "font-bold text-purple-700 flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-35 shrink-0 border border-purple-100",
+                            "font-semibold flex items-center gap-1 px-1.5 py-0.5 rounded-md truncate max-w-35 shrink-0 border",
                         )}
 
                         {renderDayChip(
                             task.deadline,
-                            "inline-flex items-center gap-1 bg-indigo-50/80 px-2 py-0.5 rounded-md border border-indigo-100/70 text-indigo-700 font-bold tabular-nums",
+                            "inline-flex items-center gap-1 bg-entity-subtle px-2 py-0.5 rounded-md border border-entity-border text-entity-text font-semibold tabular-nums",
                             <>
-                                <Clock className="h-2.5 w-2.5 shrink-0 text-indigo-500" />
+                                <Clock className="h-2.5 w-2.5 shrink-0 text-entity-text" />
                                 <span>
                                     {formatTaskDate(task.deadline)} ·{" "}
                                     {formatTimeDisplay(task.deadlineTime || "23:59")}
                                 </span>
                             </>,
                         )}
+                        <DeadlinePostponedBadge task={task} language={systemLanguage} t={t} compact />
 
                         {renderAssigneeChips(
                             task,
                             "font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-30 border border-slate-200",
                         )}
 
-                        {task.description && (
-                            <span className="text-slate-400 font-medium truncate max-w-60 ws-sm:max-w-45" title={task.description}>
-                                <TaskPillText
-                                    text={task.description}
-                                    onTagClick={handleTagClick}
-                                    knownEntities={mentionEntities}
-                                />
-                            </span>
-                        )}
+                        <TaskDescriptionMark
+                            description={task.description}
+                            label={t("Has a description", "Má popis", "Van leírása")}
+                            onTagClick={handleTagClick}
+                            knownEntities={mentionEntities}
+                        />
+                        <TaskActivityMarks task={task} onClick={() => { setOpenChatWithTask(true); setEditingTask(task); }} />
                         {task.conclusion && (
                             <span
                                 className="inline-flex items-center gap-1 text-micro font-medium text-emerald-700 bg-emerald-50/80 border border-emerald-200/60 rounded-md px-1.5 py-0.5 truncate max-w-60 ws-sm:max-w-45"
@@ -3094,7 +3312,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         {task.tags && task.tags.length > 0 && (() => {
                             const textTags = new Set([
                                 ...extractTagsFromText(task.title || "").map((t) => t.toLowerCase()),
-                                ...extractTagsFromText(task.description || "").map((t) => t.toLowerCase()),
+                                ...extractTagsFromText(blockNotesToPlainText(task.description || "")).map((t) => t.toLowerCase()),
                                 ...extractTagsFromText(task.conclusion || "").map((t) => t.toLowerCase()),
                             ]);
                             const extraTags = task.tags.filter((t) => !textTags.has(t.toLowerCase()));
@@ -3174,11 +3392,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (
             <div
                 key={task.id}
-                className={`p-2.5 rounded-xl border ${
+                className={`p-2.5 rounded-lg border ${
                     isSelected
-                        ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
-                        : "bg-white border-slate-200 hover:border-slate-300"
-                } transition-all flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 text-ui shadow-sm hover:shadow`}
+                        ? "bg-entity-subtle/60 ring-1 ring-entity-ring border-entity-border"
+                        : "bg-white border-gray-200 hover:border-gray-300"
+                } transition-all flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 text-ui shadow-2xs hover:shadow-xs`}
             >
                 <div className="flex-1 min-w-0 flex items-center gap-3">
                     <input
@@ -3188,7 +3406,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             e.stopPropagation();
                             handleToggleSelect(task.id);
                         }}
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                        className="h-4 w-4 rounded border-gray-300 text-entity-text focus:ring-entity-ring cursor-pointer accent-entity-solid shrink-0"
                         aria-label={`Select ${task.title}`}
                     />
                     {/* Priority indicator: distinct icon per level */}
@@ -3198,7 +3416,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <div className="flex items-center gap-2 flex-wrap">
                             <span
                                 onClick={() => setEditingTask(task)}
-                                className="font-extrabold text-slate-800 truncate cursor-pointer hover:text-indigo-600 transition-colors"
+                                className="font-semibold text-gray-900 truncate cursor-pointer hover:text-entity-text transition-colors"
                             >
                                 <TaskPillText
                                     text={task.title}
@@ -3207,25 +3425,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 />
                             </span>
                             {renderTicketBadge(task, "max-w-45")}
+                            <TaskWhatsAppMarks task={task} userLanguage={systemLanguage} showNote={false} />
                             {renderLeadBadge(task, "max-w-35")}
                             {renderProjectBadge(
                                 task,
-                                "text-micro font-bold text-purple-700 flex items-center gap-0.5 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-35",
+                                "text-micro font-semibold flex items-center gap-0.5 px-1.5 py-0.5 rounded-md truncate max-w-35",
                             )}
                             {renderAssigneeChips(
                                 task,
-                                "text-micro font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-30",
+                                "text-micro font-semibold text-entity-text flex items-center gap-1 bg-entity-subtle border border-entity-border px-1.5 py-0.5 rounded-md truncate max-w-30",
                             )}
+                            <TaskDescriptionMark
+                                description={task.description}
+                                label={t("Has a description", "Má popis", "Van leírása")}
+                                onTagClick={handleTagClick}
+                                knownEntities={mentionEntities}
+                            />
+                            <TaskActivityMarks task={task} onClick={() => { setOpenChatWithTask(true); setEditingTask(task); }} />
                         </div>
-                        {task.description && (
-                            <div className="text-micro font-semibold text-slate-500 truncate mt-0.5">
-                                <TaskPillText
-                                    text={task.description}
-                                    onTagClick={handleTagClick}
-                                    knownEntities={mentionEntities}
-                                />
-                            </div>
-                        )}
                         {task.conclusion && (
                             <div
                                 onClick={() => setEditingTask(task)}
@@ -3328,7 +3545,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             title={
                                 mayEditTask(task) ? undefined : readOnlyHint()
                             }
-                            className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
+                            className="px-2.5 py-1.5 border border-entity-border hover:bg-entity-subtle text-entity-text rounded-md type-overline shadow-2xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
                         >
                             <RotateCcw className="h-3 w-3 stroke-[2.5]" />
                             {t(
@@ -3366,10 +3583,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (
             <div
                 key={task.id}
-                className={`p-2.5 rounded-xl border ${
+                className={`p-2.5 rounded-lg border ${
                     isSelected
-                        ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
-                        : "border-slate-200 bg-slate-50/60"
+                        ? "bg-entity-subtle/60 ring-1 ring-entity-ring border-entity-border"
+                        : "border-gray-200 bg-gray-50"
                 } flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 text-ui`}
             >
                 <div className="flex-1 min-w-0 flex items-center gap-3">
@@ -3380,7 +3597,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             e.stopPropagation();
                             handleToggleSelect(task.id);
                         }}
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                        className="h-4 w-4 rounded border-gray-300 text-entity-text focus:ring-entity-ring cursor-pointer accent-entity-solid shrink-0"
                         aria-label={`Select ${task.title}`}
                     />
                     <span
@@ -3389,17 +3606,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 ? "bg-rose-500"
                                 : task.priority === "medium"
                                   ? "bg-amber-500"
-                                  : "bg-slate-400"
+                                  : "bg-gray-400"
                         }`}
                     />
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                             <span
                                 onClick={() => setEditingTask(task)}
-                                className={`font-extrabold truncate cursor-pointer transition-colors ${
+                                className={`font-semibold truncate cursor-pointer transition-colors ${
                                     isDoneState(task.status)
-                                        ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
-                                        : "text-slate-700 hover:text-indigo-600"
+                                        ? "text-gray-400 line-through decoration-gray-400 hover:text-gray-600"
+                                        : "text-gray-800 hover:text-entity-text"
                                 }`}
                             >
                                 <TaskPillText
@@ -3410,22 +3627,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </span>
                             {renderProjectBadge(
                                 task,
-                                "text-micro font-bold text-purple-700 flex items-center gap-0.5 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-35",
+                                "text-micro font-semibold flex items-center gap-0.5 px-1.5 py-0.5 rounded-md truncate max-w-35",
                             )}
                             {renderAssigneeChips(
                                 task,
-                                "text-micro font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-30",
+                                "text-micro font-semibold text-entity-text flex items-center gap-1 bg-entity-subtle border border-entity-border px-1.5 py-0.5 rounded-md truncate max-w-30",
                             )}
+                            <TaskDescriptionMark
+                                description={task.description}
+                                label={t("Has a description", "Má popis", "Van leírása")}
+                                onTagClick={handleTagClick}
+                                knownEntities={mentionEntities}
+                            />
+                            <TaskActivityMarks task={task} onClick={() => { setOpenChatWithTask(true); setEditingTask(task); }} />
                         </div>
-                        {task.description && (
-                            <div className="text-micro font-semibold text-slate-500 truncate mt-0.5">
-                                <TaskPillText
-                                    text={task.description}
-                                    onTagClick={handleTagClick}
-                                    knownEntities={mentionEntities}
-                                />
-                            </div>
-                        )}
                         {task.conclusion && (
                             <div
                                 onClick={() => setEditingTask(task)}
@@ -3448,7 +3663,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <div className="mt-0.5">
                             {renderDayChip(
                                 task.deadline,
-                                "text-micro font-bold text-slate-400 hover:text-indigo-600",
+                                "text-micro font-semibold text-gray-400 hover:text-entity-text",
                                 <>
                                     {t("Due", "Termín", "Határidő")}
                                     : {formatTaskDate(task.deadline)}
@@ -3466,7 +3681,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 ? undefined
                                 : archiveDeniedHint()
                         }
-                        className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
+                        className="px-2.5 py-1.5 border border-entity-border hover:bg-entity-subtle text-entity-text rounded-md type-overline shadow-2xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
                     >
                         <RotateCcw className="h-3 w-3 stroke-[2.5]" />
                         {t(
@@ -3629,7 +3844,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const columnUsers = !canSeeAllTasks
             ? [myName]
             : isSingleUserView
-              ? [assigneeFilter]
+              ? assigneeSel
               : allUsersList;
 
         const filteredTasks = filteredGlobalTasks;
@@ -3685,7 +3900,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {userName}
                 </span>
                 {userName === myName && (
-                    <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 type-overline text-indigo-600">
+                    <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-entity-subtle border border-entity-border type-overline text-entity-text">
                         {t("You", "Vy", "Ön")}
                     </span>
                 )}
@@ -3701,10 +3916,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 return (
                     <div
                         key={userName}
-                        className="shrink-0 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-200 bg-white/50 px-4 py-2.5"
+                        className="shrink-0 flex items-center justify-between gap-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-2.5"
                     >
                         {renderMemberHeading(userName)}
-                        <span className="shrink-0 type-overline text-slate-400">
+                        <span className="shrink-0 type-overline text-gray-400">
                             {t(
                                 "No active tasks",
                                 "Žiadne aktívne úlohy",
@@ -3721,28 +3936,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             const isOpen = !collapsedMembers.has(userName);
 
             return (
-                // shrink-0 is defensive. `overflow-hidden` drops a flex item's
-                // automatic minimum size to zero, which by the spec lets these cards
-                // shrink to fit the scrolling column rather than overflow it. Chrome
-                // keeps them at their content height either way (measured), so this
-                // pins the behaviour rather than fixing a live bug.
                 <div
                     key={userName}
-                    className="shrink-0 rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden transition-all"
+                    className="shrink-0 rounded-lg border border-gray-200 bg-white shadow-xs overflow-hidden transition-all"
                 >
                     <button
                         onClick={() => toggleMemberCard(userName)}
-                        className="w-full flex items-center justify-between gap-3 bg-slate-100/60 hover:bg-slate-100 px-4 py-3 text-left transition-colors cursor-pointer group/member"
+                        className="w-full flex items-center justify-between gap-3 bg-gray-50 hover:bg-gray-100 px-4 py-3 text-left transition-colors cursor-pointer group/member"
                     >
                         {renderMemberHeading(userName)}
                         <span className="flex items-center gap-2 shrink-0">
                             {lateCount > 0 && (
-                                <span className="px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 type-overline text-rose-600">
+                                <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-200 type-overline text-rose-600">
                                     {lateCount}{" "}
                                     {t("late", "po termíne", "késés")}
                                 </span>
                             )}
-                            <span className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-micro font-bold text-slate-500 shadow-sm">
+                            <span className="px-2 py-0.5 rounded-md bg-white border border-gray-200 text-micro font-bold text-gray-600 shadow-2xs tabular-nums">
                                 {memberTasks.length}
                             </span>
                             <span className="text-slate-400 group-hover/member:text-slate-600 transition-colors">
@@ -3784,10 +3994,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
         return (
             <div className="flex-1 min-h-0 flex flex-col gap-6 animate-in fade-in slide-in-from-top-4 duration-300">
+                <PinnedFilterChips
+                    options={taskFacetOptions(facetScope(), facets.selection, facetCtx()).state}
+                    pinned={facets.pinnedStates}
+                    selected={stateSel}
+                    onChange={(next) => facets.set("state", next)}
+                />
                 {/* FILTERS */}
-                <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm shrink-0">
+                <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-lg border border-gray-200 shadow-xs shrink-0">
                     <div className="flex items-center gap-2">
-                        <span className="type-overline text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                        <span className="type-overline text-gray-500 bg-gray-100 px-3 py-1.5 rounded-md border border-gray-200">
                             {t(
                                 "Filter Workloads",
                                 "Filtrovať vyťaženie",
@@ -3797,89 +4013,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-4 flex-wrap">
-                        {/* Priority Filter */}
-                        <div className="flex items-center gap-1.5 text-ui font-bold">
-                            <span className="text-slate-500">
-                                {t("Priority:", "Priorita:", "Prioritás:")}
-                            </span>
-                            <CustomSelect
-                                value={globalPriorityFilter}
-                                onChange={(v) => setGlobalPriorityFilter(v)}
-                                size="sm"
-                                options={[
-                                    {
-                                        value: "all",
-                                        label: t(
-                                            "All Priorities",
-                                            "Všetky priority",
-                                            "Minden prioritás",
-                                        ),
-                                    },
-                                    { value: "high", label: t("High", "Vysoká", "Magas") },
-                                    { value: "medium", label: t("Medium", "Stredná", "Közepes") },
-                                    { value: "low", label: t("Low", "Nízka", "Alacsony") },
-                                ]}
-                            />
-                        </div>
+                        {renderFacet("state", t("Status:", "Stav:", "Státusz:"), "", { pin: true })}
+                        {renderFacet("priority", t("Priority:", "Priorita:", "Prioritás:"))}
 
-                        {/* State Filter */}
-                        <div className="flex items-center gap-1.5 text-ui font-bold">
-                            <span className="text-slate-500">
-                                {t("Status:", "Stav:", "Státusz:")}
-                            </span>
-                            <CustomSelect
-                                value={globalStateFilter}
-                                onChange={(v) => setGlobalStateFilter(v)}
-                                size="sm"
-                                options={[
-                                    {
-                                        value: "all",
-                                        label: t(
-                                            "All Statuses",
-                                            "Všetky stavy",
-                                            "Minden státusz",
-                                        ),
-                                    },
-                                    ...taskStates
-                                        .filter((st) => !isDoneState(st))
-                                        .map((st) => ({ value: st, label: stateLabel(st) })),
-                                ]}
-                            />
-                        </div>
+                        {renderFacet("client", t("Client / Lead:", "Klient / Lead:", "Ügyfél / Lead:"), "min-w-[16rem]")}
 
-                        {renderClientFilter("min-w-[16rem]")}
+                        {renderFacet("project", t("Project:", "Projekt:", "Projekt:"))}
 
-                        {renderProjectFilter()}
-
-                        {/* Project Manager Filter — only meaningful on the
-                            team-wide board; a restricted role already sees
-                            nothing but its own work. */}
-                        {canSeeAllTasks && (
-                            <div className="flex items-center gap-1.5 text-ui font-bold">
-                                <span className="text-slate-500">
-                                    {t(
-                                        "Project Manager:",
-                                        "Projektový manažér:",
-                                        "Projektmenedzser:",
-                                    )}
-                                </span>
-                                <CustomSelect
-                                    value={assigneeFilter}
-                                    onChange={(v) => setAssigneeFilter(v)}
-                                    size="sm"
-                                    options={[
-                                        {
-                                            value: "all",
-                                            label: t("All", "Všetci", "Mindenki"),
-                                        },
-                                        ...allUsersList.map((uName) => ({
-                                            value: uName,
-                                            label: uName,
-                                        })),
-                                    ]}
-                                />
-                            </div>
-                        )}
+                        {/* Project manager: only meaningful on the team-wide board; a
+                            restricted role already sees nothing but its own work. */}
+                        {canSeeAllTasks && renderFacet("assignee", t("Project Manager:", "Projektový manažér:", "Projektmenedzser:"))}
 
                         {/* Date Filter (item 9) */}
                         <div className="flex items-center gap-1.5 text-ui font-bold">
@@ -3902,14 +4045,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <button
                             type="button"
                             onClick={handleSelectAllVisible}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 text-ui font-extrabold cursor-pointer transition-all ${
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-ui font-semibold cursor-pointer transition-all ${
                                 areAllVisibleSelected
-                                    ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                                    : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-400"
+                                    ? "bg-entity-subtle border-entity-border text-entity-text"
+                                    : "bg-gray-50 border-gray-200 text-gray-600 hover:border-entity-border"
                             }`}
                             title={t("Select all visible tasks", "Vybrať všetky zobrazené úlohy", "Összes látható feladat kijelölése")}
                         >
-                            <CheckSquare className="h-3.5 w-3.5 stroke-[2.5]" />
+                            <CheckSquare className="h-3.5 w-3.5 stroke-[2]" />
                             <span>
                                 {areAllVisibleSelected
                                     ? t("Deselect all", "Zrušiť výber", "Kijelölés törlése")
@@ -3927,7 +4070,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 ws-lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] ws-xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] ws-2xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
                     {/* LEFT: MISSED / TODAY / UPCOMING */}
                     <div className="flex flex-col min-w-0 min-h-0 h-auto ws-lg:pr-2 pb-2 ws-lg:pb-8">
-                        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
+                        <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-hidden shrink-0">
                             {/* Header bar with discreet toggle switch & number input to show closed tasks */}
                             <ClosedTasksToggleBar
                                 showClosedTasks={showClosedTasks}
@@ -4054,10 +4197,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     setGlobalRightView(mode);
                                                     setGlobalSelectedDay(null);
                                                 }}
-                                                className={`px-3 py-1.5 rounded-lg type-overline transition-all cursor-pointer ${
+                                                className={`px-3 py-1.5 rounded-md type-overline transition-all cursor-pointer ${
                                                     globalRightView === mode
-                                                        ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                                        : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                                                        ? "bg-white text-entity-text shadow-2xs border border-gray-200"
+                                                        : "text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
                                                 }`}
                                             >
                                                 {mode === "workload"
@@ -4075,14 +4218,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         ),
                                     )}
                                 </div>
-                                <span className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-micro font-bold text-slate-500 shadow-sm">
+                                <span className="px-2.5 py-0.5 rounded-md bg-white border border-gray-200 text-micro font-bold text-gray-500 shadow-2xs tabular-nums">
                                     {filteredTasks.length}
                                 </span>
                             </div>
                         </div>
 
                         {isGlobalCalendar ? (
-                            <div className="flex-1 min-h-130 ws-lg:min-h-0 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] ws-lg:overflow-hidden overflow-visible">
+                            <div className="flex-1 min-h-130 ws-lg:min-h-0 flex flex-col bg-white rounded-lg border border-gray-200 shadow-xs ws-lg:overflow-hidden overflow-visible">
                                 {renderCalendarPanel({
                                     anchor: globalCalendarDate,
                                     scope: globalCalendarScope,
@@ -4160,113 +4303,58 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const filterControlClass = (stacked: boolean, inlineWidth: string) =>
         `min-w-0 ${stacked ? "w-full" : inlineWidth}`;
 
-    const renderClientFilter = (className = "", stacked = false) => {
-        const withTasks = new Set(
-            tasks.map((task) => String(task.relatedLeadId ?? "")).filter(Boolean),
-        );
-        if (clientFilter) withTasks.add(clientFilter);
-        const idsWithoutTasks = leads
-            .filter((l) => !withTasks.has(String(l.id)))
-            .map((l) => l.id);
-        if (withTasks.size === 0) return null;
-        return (
-            <div className={filterFieldClass(stacked, className)} data-testid="task-client-filter">
-                <span className="text-slate-500 shrink-0">
-                    {t("Client / Lead:", "Klient / Lead:", "Ügyfél / Lead:")}
-                </span>
-                <div className="min-w-0 flex-1">
-                    <ClientSelect
-                        leads={leads}
-                        value={clientFilter}
-                        onChange={setClientFilter}
-                        excludeIds={idsWithoutTasks}
-                        showCity={false}
-                        showKind
-                        allowAdd={false}
-                        size="sm"
-                        noneLabel={t("All clients & leads", "Všetci klienti a leady", "Minden ügyfél és lead")}
-                    />
-                </div>
-            </div>
-        );
+    // The listTasks the open section lists before any facet filter, so each option's count is
+    // what picking it would leave with the other facets (and the tag, date range) applied.
+    const facetScope = () => {
+        if (viewMode === "global")
+            return (canSeeAllTasks ? listTasks : listTasks.filter(isMyTask)).filter(
+                (task) =>
+                    (isActiveTask(task, isDoneState) || (showClosedTasks && isClosedRecentTask(task))) &&
+                    dateInRange(task.deadline, globalDateStart, globalDateEnd) &&
+                    matchesTag(task),
+            );
+        if (viewMode === "archive")
+            return listTasks.filter((task) => (archiveTab === "done" ? isDoneState(task.status) && !task.archived : task.archived) && matchesTag(task));
+        return listTasks.filter((task) => isMyTask(task) && !task.archived && matchesTag(task));
     };
-
-    // Same idea as the client filter: only projects that have a task are offered.
-    const renderProjectFilter = (className = "", stacked = false) => {
-        const withTasks = new Set(
-            tasks.map((task) => String(task.relatedProjectId ?? "")).filter(Boolean),
-        );
-        if (projectFilter) withTasks.add(projectFilter);
-        const options = projects
-            .filter((p) => withTasks.has(String(p.id)))
-            .map((p) => ({
-                value: String(p.id),
-                label: projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt")),
-            }))
-            .sort((a, b) => a.label.localeCompare(b.label));
-        if (options.length === 0) return null;
-        return (
-            <div className={filterFieldClass(stacked, className)} data-testid="task-project-filter">
-                <span className="text-slate-500 shrink-0">
-                    {t("Project:", "Projekt:", "Projekt:")}
-                </span>
-                <div className={filterControlClass(stacked, "w-56")}>
-                    <CustomSelect
-                        value={projectFilter || "all"}
-                        onChange={(v) => setProjectFilter(v === "all" ? "" : v)}
-                        size="sm"
-                        options={[
-                            { value: "all", label: t("All projects", "Všetky projekty", "Minden projekt") },
-                            ...options,
-                        ]}
-                    />
-                </div>
-            </div>
-        );
+    const facetSelectCopy: Record<TaskFacetId, string> = {
+        client: t("All clients & leads", "Všetci klienti a leady", "Minden ügyfél és lead"),
+        project: t("All projects", "Všetky projekty", "Minden projekt"),
+        assignee: t("Everyone", "Všetci", "Mindenki"),
+        assigner: t("Everyone", "Všetci", "Mindenki"),
+        priority: t("All Priorities", "Všetky priority", "Minden prioritás"),
+        state: t("All Statuses", "Všetky stavy", "Minden státusz"),
     };
-
-    // Global Tasks has its own "Project Manager" select for the same filter.
-    const renderAssigneeFilter = (className = "", stacked = false) => (
-        <div className={filterFieldClass(stacked, className)} data-testid="task-assignee-filter">
-            <span className="text-slate-500 shrink-0">
-                {t("Assignee:", "Priradené:", "Felelős:")}
-            </span>
-            <div className={filterControlClass(stacked, "w-48")}>
-                <CustomSelect
-                    value={assigneeFilter}
-                    onChange={(v) => setAssigneeFilter(v)}
-                    size="sm"
-                    options={[
-                        { value: "all", label: t("Everyone", "Všetci", "Mindenki") },
-                        ...allUsersList.map((uName) => ({ value: uName, label: uName })),
-                    ]}
-                />
-            </div>
-        </div>
-    );
-
-    const renderAssignerFilter = (className = "", stacked = false) => {
-        const creatorsInTasks = Array.from(
-            new Set(tasks.map((t) => t.createdBy).filter(Boolean) as string[])
-        );
-        const combinedAssigners = Array.from(
-            new Set([...creatorsInTasks, ...allUsersList])
-        ).sort((a, b) => a.localeCompare(b));
-
+    const facetCtx = () => ({
+        leads,
+        projects,
+        projectLabel: (p: Project) => projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt")),
+        userNames: allUsersList,
+        stateOptions: taskStates.filter((st) => !isDoneState(st)).map((st) => ({ value: st, label: stateLabel(st) })),
+        priorityOptions: [
+            { value: "high", label: t("High", "Vysoká", "Magas") },
+            { value: "medium", label: t("Medium", "Stredná", "Közepes") },
+            { value: "low", label: t("Low", "Nízka", "Alacsony") },
+        ],
+        global: viewMode === "global",
+    });
+    // One faceted multi-select filter (the status one can pin options as chips above the board).
+    const renderFacet = (id: TaskFacetId, label: string, className = "", opts: { pin?: boolean; stacked?: boolean } = {}) => {
+        const options = taskFacetOptions(facetScope(), facets.selection, facetCtx())[id];
+        if ((id === "client" || id === "project") && options.length === 0) return null;
         return (
-            <div className={filterFieldClass(stacked, className)} data-testid="task-assigner-filter">
-                <span className="text-slate-500 shrink-0">
-                    {t("Assigner:", "Zadal:", "Megbízó:")}
-                </span>
-                <div className={filterControlClass(stacked, "w-48")}>
-                    <CustomSelect
-                        value={assignerFilter}
-                        onChange={(v) => setAssignerFilter(v)}
-                        size="sm"
-                        options={[
-                            { value: "all", label: t("Everyone", "Všetci", "Mindenki") },
-                            ...combinedAssigners.map((uName) => ({ value: uName, label: uName })),
-                        ]}
+            <div className={filterFieldClass(Boolean(opts.stacked), className)} data-testid={`task-${id}-filter`}>
+                <span className="text-slate-500 shrink-0">{label}</span>
+                <div className={filterControlClass(Boolean(opts.stacked), "")}>
+                    <FacetedMultiSelect
+                        className="h-8 !py-1"
+                        fitLabel={!opts.stacked}
+                        options={options}
+                        selected={facets.selection[id]}
+                        onChange={(next) => facets.set(id, next)}
+                        allLabel={facetSelectCopy[id]}
+                        pinned={opts.pin ? facets.pinnedStates : undefined}
+                        onTogglePin={opts.pin ? facets.togglePinnedState : undefined}
                     />
                 </div>
             </div>
@@ -4286,63 +4374,62 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         : "flex flex-wrap items-center gap-x-4 gap-y-2 min-w-0"
                 }
             >
-                {renderClientFilter(opts.clientClassName ?? (stacked ? "" : "max-w-xs"), stacked)}
-                {renderProjectFilter("", stacked)}
-                {opts.assignee && renderAssigneeFilter("", stacked)}
-                {opts.assigner && renderAssignerFilter("", stacked)}
+                {renderFacet("client", t("Client / Lead:", "Klient / Lead:", "Ügyfél / Lead:"), opts.clientClassName ?? (stacked ? "" : "max-w-xs"), { stacked })}
+                {renderFacet("project", t("Project:", "Projekt:", "Projekt:"), "", { stacked })}
+                {opts.assignee && renderFacet("assignee", t("Assignee:", "Priradené:", "Felelős:"), "", { stacked })}
+                {opts.assigner && renderFacet("assigner", t("Assigner:", "Zadal:", "Megbízó:"), "", { stacked })}
             </div>
         );
     };
 
     // How many attribute filters are set, for the badge on the Filters button.
     const attrFilterCount = (opts: { assignee: boolean; assigner: boolean }) =>
-        (clientFilter ? 1 : 0) +
-        (projectFilter ? 1 : 0) +
-        (opts.assignee && assigneeFilter !== "all" ? 1 : 0) +
-        (opts.assigner && assignerFilter !== "all" ? 1 : 0);
+        (clientSel.length ? 1 : 0) +
+        (projectSel.length ? 1 : 0) +
+        (opts.assignee && assigneeSel.length ? 1 : 0) +
+        (opts.assigner && assignerSel.length ? 1 : 0);
 
     // The filters in force, each removable — shown in all three sections so a
     // filter fired by a click in one place is never hidden from view. The date
     // is not here for Global Tasks / Done & Archived: their date picker shows it.
     const renderActiveFilterChips = (opts: { showDay?: boolean; className?: string } = {}) => {
         const chips: { key: string; label: string; tone: string; icon: React.ReactNode; onClear: () => void }[] = [];
-        if (projectFilter) {
-            const project = projects.find((p) => String(p.id) === projectFilter);
+        if (projectSel.length) {
+            const projectName = (id: string) => {
+                const project = projects.find((p) => String(p.id) === id);
+                return project ? projectDisplayName(project, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt")) : id;
+            };
             chips.push({
                 key: "project",
-                label: `${t("Project", "Projekt", "Projekt")}: ${
-                    project
-                        ? projectDisplayName(project, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))
-                        : projectFilter
-                }`,
+                label: `${t("Project", "Projekt", "Projekt")}: ${projectSel.map(projectName).join(", ")}`,
                 tone: "bg-purple-50 border-purple-200 text-purple-700",
                 icon: <FolderKanban className="w-3.5 h-3.5" />,
-                onClear: () => setProjectFilter(""),
+                onClear: () => facets.set("project", []),
             });
         }
-        if (assigneeFilter !== "all") {
+        if (assigneeSel.length) {
             chips.push({
                 key: "assignee",
-                label: `${t("Assignee", "Priradené", "Felelős")}: ${assigneeFilter}`,
-                tone: "bg-indigo-50 border-indigo-200 text-indigo-700",
+                label: `${t("Assignee", "Priradené", "Felelős")}: ${assigneeSel.join(", ")}`,
+                tone: "bg-entity-subtle border-entity-border text-entity-text",
                 icon: <Users className="w-3.5 h-3.5" />,
-                onClear: () => setAssigneeFilter("all"),
+                onClear: () => facets.set("assignee", []),
             });
         }
-        if (assignerFilter !== "all") {
+        if (assignerSel.length) {
             chips.push({
                 key: "assigner",
-                label: `${t("Assigner", "Zadal", "Megbízó")}: ${assignerFilter}`,
+                label: `${t("Assigner", "Zadal", "Megbízó")}: ${assignerSel.join(", ")}`,
                 tone: "bg-amber-50 border-amber-200 text-amber-700",
                 icon: <UserCheck className="w-3.5 h-3.5" />,
-                onClear: () => setAssignerFilter("all"),
+                onClear: () => facets.set("assigner", []),
             });
         }
         if (tagFilter) {
             chips.push({
                 key: "tag",
                 label: `${t("Tag filter:", "Filter tagu:", "Címke szűrő:")} #${tagFilter}`,
-                tone: "bg-[#ff5d00]/10 border-[#ff5d00]/30 text-[#ff5d00]",
+                tone: "bg-entity-subtle border-entity-border text-entity-text",
                 icon: <Hash className="w-3.5 h-3.5" />,
                 onClear: () => setTagFilter(null),
             });
@@ -4351,7 +4438,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             chips.push({
                 key: "day",
                 label: `${t("Due", "Termín", "Határidő")}: ${formatTaskDate(myDayFilter)}`,
-                tone: "bg-indigo-50 border-indigo-200 text-indigo-700",
+                tone: "bg-entity-subtle border-entity-border text-entity-text",
                 icon: <CalendarIcon className="w-3.5 h-3.5" />,
                 onClear: () => setMyDayFilter(""),
             });
@@ -4366,7 +4453,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     <span
                         key={chip.key}
                         data-testid={`task-active-filter-${chip.key}`}
-                        className={`flex items-center gap-2 px-3 py-1.5 border rounded-xl text-ui font-bold ${chip.tone}`}
+                        className={`flex items-center gap-2 px-3 py-1 border rounded-md text-ui font-semibold ${chip.tone}`}
                     >
                         {chip.icon}
                         <span>{chip.label}</span>
@@ -4384,9 +4471,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     <button
                         type="button"
                         onClick={() => {
-                            setProjectFilter("");
-                            setAssigneeFilter("all");
-                            setAssignerFilter("all");
+                            facets.set("project", []);
+                            facets.set("assignee", []);
+                            facets.set("assigner", []);
                             setTagFilter(null);
                             if (opts.showDay) setMyDayFilter("");
                         }}
@@ -4422,42 +4509,40 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         systemLanguage={systemLanguage}
                         currentUserName={myName}
                         mailConfigured={mailConfigured}
+                        agencyEnabled={agencyEnabled}
                         leadStageGroups={leadStageGroups}
                         leadStateParents={leadStateParents}
                         initialDeadline={addDeadline}
+                        initialRepeat={addInitialRepeat}
                         incomingTitle={incomingTitle}
+                        origin={composerOrigin}
+                        startDictation={composerDictate}
                         onCreate={(created) => {
                             markFresh(created);
                             setTasks((prev) => [...created, ...prev]);
                         }}
+                        onCreateRecurring={(tpl) => {
+                            if (setRecurringTasks) {
+                                setRecurringTasks((prev) => [tpl, ...(prev || [])]);
+                            }
+                        }}
                         onClose={closeAddDrawer}
                     />
                 ) : (
-                    <VoiceTaskActionBar
+                    <TaskComposerBar
                         canCreate={taskAccess.create}
                         systemLanguage={systemLanguage}
-                        currentUser={currentUser}
-                        users={users}
-                        defaultAssignee={myName}
-                        defaultStatus={taskStates[0] || "New"}
-                        manualButtonText={t(
-                            "Create New Task",
-                            "Vytvoriť novú úlohu",
-                            "Új feladat",
-                        )}
-                        onManualCreateClick={() => openAddTask()}
+                        returned={composerReturned}
+                        onCreate={(origin) => openAddTask(undefined, false, origin)}
+                        onDictate={(origin) => openAddTask(undefined, false, origin, true)}
                         armRequest={voiceArmRequest}
                         onArmHandled={() => setVoiceArmRequest(0)}
-                        onTasksCreated={(createdTasks) => {
-                            markFresh(createdTasks);
-                            setTasks((prev) => [...createdTasks, ...prev]);
-                        }}
                     />
                 )}
             </div>
 
             {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
+            <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-hidden shrink-0">
                 {/* Header bar with discreet toggle switch & number input to show closed tasks */}
                 <ClosedTasksToggleBar
                     showClosedTasks={showClosedTasks}
@@ -4579,7 +4664,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const now = Date.now();
 
         // Only include tasks which I assigned or I was assigned to
-        const relevantTasks = tasks.filter((task) => {
+        const relevantTasks = listTasks.filter((task) => {
             const createdByMe = isTaskCreatedBy(task, myName);
             const assignedToMe = isTaskAssignedTo(task, myName);
             return createdByMe || assignedToMe;
@@ -4655,7 +4740,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             if (timelineSearch.trim()) {
                 const q = timelineSearch.toLowerCase();
                 const titleMatch = ev.task.title.toLowerCase().includes(q);
-                const descMatch = (ev.task.description || "").toLowerCase().includes(q);
+                const descMatch = blockNotesToPlainText(ev.task.description || "").toLowerCase().includes(q);
                 const creatorMatch = (ev.task.createdBy || "").toLowerCase().includes(q);
                 const actorMatch = ev.actor.toLowerCase().includes(q);
                 const assignedMatch = (ev.task.assignedUsers || []).some((u) =>
@@ -4698,22 +4783,22 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         };
 
         return (
-            <div className="flex flex-col flex-1 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-clip animate-in fade-in duration-300">
+            <div className="flex flex-col flex-1 bg-white rounded-lg border border-gray-200 shadow-xs overflow-clip animate-in fade-in duration-300">
                 {/* Header & Controls */}
-                <div className="p-4 ws-sm:p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-3">
+                <div className="p-4 ws-sm:p-5 border-b border-gray-200 bg-gray-50 flex flex-col gap-3">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-2.5">
-                            <div className="h-9 w-9 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
+                            <div className="h-9 w-9 rounded-md bg-entity-subtle border border-entity-border flex items-center justify-center text-entity-text shadow-2xs">
                                 <History className="h-5 w-5" />
                             </div>
                             <div>
-                                <h3 className="text-body font-extrabold text-slate-800 flex items-center gap-2">
+                                <h3 className="text-body font-bold text-gray-900 flex items-center gap-2">
                                     {t("Task Activity Log", "Záznam aktivity úloh", "Feladat aktivitási napló")}
-                                    <span className="type-overline bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                                    <span className="type-overline bg-entity-subtle border border-entity-border text-entity-text px-2 py-0.5 rounded-md tabular-nums">
                                         {filtered.length} {t("events", "záznamov", "bejegyzés")}
                                     </span>
                                 </h3>
-                                <p className="text-caption text-slate-400 font-medium">
+                                <p className="text-caption text-gray-500 font-medium">
                                     {t("Audit log of task creations and completions for tasks you assigned or are assigned to", "Záznam vytvorených a dokončených úloh, ktoré ste zadali alebo vám boli pridelené", "A létrehozott és befejezett feladatok naplója, amelyeket Ön adott ki vagy Önre bíztak")}
                                 </p>
                             </div>
@@ -4721,7 +4806,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         <div className="flex items-center gap-2 flex-wrap">
                             {/* Filter pills */}
-                            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+                            <div className="flex items-center gap-1 bg-white p-1 rounded-md border border-gray-200 shadow-2xs">
                                 {(
                                     [
                                         { id: "all", label: t("All", "Všetko", "Mind") },
@@ -4732,10 +4817,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     <button
                                         key={filter.id}
                                         onClick={() => setTimelineFilter(filter.id)}
-                                        className={`px-2.5 py-1 rounded-lg type-overline transition-all cursor-pointer ${
+                                        className={`px-2.5 py-1 rounded-md type-overline transition-all cursor-pointer ${
                                             timelineFilter === filter.id
-                                                ? "bg-indigo-600 text-white shadow-xs"
-                                                : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                                                ? "bg-entity-solid text-white shadow-2xs"
+                                                : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
                                         }`}
                                     >
                                         {filter.label}
@@ -4746,10 +4831,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             {taskAccess.create && (
                                 <button
                                     onClick={() => openAddTask()}
-                                    className="px-3.5 py-1.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-xl font-bold text-ui shadow-sm shadow-orange-500/25 transition-all active:scale-[0.98] flex items-center gap-1.5 cursor-pointer shrink-0"
+                                    className="px-3.5 py-1.5 bg-entity-solid hover:opacity-90 text-white rounded-md font-semibold text-ui shadow-2xs transition-all active:scale-[0.98] flex items-center gap-1.5 cursor-pointer shrink-0"
                                     title={t("Create New Task", "Vytvoriť novú úlohu", "Új feladat")}
                                 >
-                                    <Plus className="h-3.5 w-3.5 stroke-[3]" />
+                                    <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
                                     <span>{t("New Task", "Nová úloha", "Új feladat")}</span>
                                 </button>
                             )}
@@ -4765,12 +4850,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 value={timelineSearch}
                                 onChange={(e) => setTimelineSearch(e.target.value)}
                                 placeholder={t("Search timeline activity, users...", "Hľadať v záznamoch aktivity, používateľoch...", "Keresés a naplóban, felhasználók között...")}
-                                className="w-full pl-8.5 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-ui font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                                className="w-full pl-8.5 pr-3 py-1.5 bg-white border border-gray-200 rounded-md text-ui font-medium text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-entity-solid transition-all"
                             />
                             {timelineSearch && (
                                 <button
                                     onClick={() => setTimelineSearch("")}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                 >
                                     <X className="h-3 w-3" />
                                 </button>
@@ -4784,9 +4869,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 )
                             }
                             title={t("Toggle sort order", "Prepnúť radenie", "Rendezés váltása")}
-                            className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-ui font-bold text-slate-600 hover:text-slate-800 flex items-center gap-1.5 shrink-0 shadow-xs transition-all active:scale-95 cursor-pointer"
+                            className="px-3 py-1.5 bg-white border border-gray-200 hover:border-gray-300 rounded-md text-ui font-semibold text-gray-700 flex items-center gap-1.5 shrink-0 shadow-2xs transition-all active:scale-95 cursor-pointer"
                         >
-                            <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+                            <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
                             <span className="text-caption">
                                 {timelineSort === "newest"
                                     ? t("Newest", "Najnovšie", "Legújabb")
@@ -4799,12 +4884,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 {/* The page scrolls; the timeline does not get a scroll box of its own. */}
                 <div className="flex-1 p-4 ws-sm:p-6 space-y-6">
                     {dateGroups.length === 0 ? (
-                        <div className="h-64 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                            <History className="h-8 w-8 text-slate-300 mb-2" />
-                            <p className="text-ui font-extrabold text-slate-600">
+                        <div className="h-64 flex flex-col items-center justify-center text-center p-6 border border-dashed border-gray-200 rounded-lg bg-gray-50">
+                            <History className="h-8 w-8 text-gray-300 mb-2" />
+                            <p className="text-ui font-bold text-gray-700">
                                 {t("No activity events found", "Nenašli sa žiadne záznamy aktivity", "Nem találhatók aktivitási bejegyzések")}
                             </p>
-                            <p className="text-caption text-slate-400 mt-1 max-w-xs">
+                            <p className="text-caption text-gray-400 mt-1 max-w-xs">
                                 {t("Try adjusting your filters or search terms.", "Skúste upraviť filtre alebo hľadaný text.", "Próbálja módosítani a szűrőket vagy a keresési feltételeket.")}
                             </p>
                         </div>
@@ -4813,17 +4898,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <div key={group.dateStr} className="space-y-3">
                                 {/* Date Group Header */}
                                 <div className="py-1 flex items-center gap-2">
-                                    <span className="type-overline text-slate-700 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
+                                    <span className="type-overline text-gray-700 bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-md shadow-2xs">
                                         {formatDateHeading(group.dateStr)}
                                     </span>
-                                    <div className="flex-1 h-px bg-slate-100" />
-                                    <span className="text-micro font-bold text-slate-400">
+                                    <div className="flex-1 h-px bg-gray-200" />
+                                    <span className="text-micro font-semibold text-gray-400">
                                         {group.events.length} {t("events", "záznamov", "bejegyzés")}
                                     </span>
                                 </div>
 
                                 {/* Events List with vertical track */}
-                                <div className="relative pl-6 space-y-3 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                                <div className="relative pl-6 space-y-3 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200">
                                     {group.events.map((ev) => {
                                         const overdueDays =
                                             ev.type === "completed" && ev.task.completedAt
@@ -4846,7 +4931,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     className={`absolute -left-6 top-3 h-5 w-5 rounded-full border-2 bg-white flex items-center justify-center z-1 transition-transform group-hover:scale-110 shadow-2xs ${
                                                         ev.type === "created"
                                                             ? "border-emerald-500 text-emerald-600"
-                                                            : "border-indigo-500 text-indigo-600"
+                                                            : "border-entity-solid text-entity-text"
                                                     }`}
                                                 >
                                                     {ev.type === "created" ? (
@@ -4857,7 +4942,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                 </div>
 
                                                 {/* Card Content */}
-                                                <div className="p-3.5 bg-slate-50 hover:bg-white rounded-2xl border border-slate-200/80 hover:border-slate-300 shadow-2xs hover:shadow-sm transition-all flex flex-col gap-2">
+                                                <div className="p-3.5 bg-gray-50 hover:bg-white rounded-lg border border-gray-200 hover:border-gray-300 shadow-2xs transition-all flex flex-col gap-2">
                                                     <div className="flex items-center justify-between gap-2 flex-wrap">
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             {/* Event Type Badge */}
@@ -4865,7 +4950,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                                 className={`type-overline px-2 py-0.5 rounded-md flex items-center gap-1 ${
                                                                     ev.type === "created"
                                                                         ? "bg-emerald-100 text-emerald-700"
-                                                                        : "bg-indigo-100 text-indigo-700"
+                                                                        : "bg-entity-subtle text-entity-text border border-entity-border"
                                                                 }`}
                                                             >
                                                                 {ev.type === "created"
@@ -4910,7 +4995,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                             {taskAccess.edit && (
                                                                 <button
                                                                     onClick={() => setEditingTask(ev.task)}
-                                                                    className="p-1 hover:bg-slate-200/70 rounded-md text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
+                                                                    className="p-1 hover:bg-gray-200/70 rounded-md text-gray-400 hover:text-entity-text transition-colors cursor-pointer"
                                                                     title={t("Edit task", "Upraviť úlohu", "Feladat szerkesztése")}
                                                                 >
                                                                     <Settings className="h-3 w-3" />
@@ -4924,9 +5009,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                         onClick={() => {
                                                              if (taskAccess.edit) setEditingTask(ev.task);
                                                         }}
-                                                        className={`text-ui font-bold text-slate-800 hover:text-indigo-600 transition-colors ${
+                                                        className={`text-ui font-semibold text-gray-900 hover:text-entity-text transition-colors ${
                                                             taskAccess.edit ? "cursor-pointer" : ""
-                                                        } ${isDoneState(ev.task.status) ? "text-slate-600" : ""}`}
+                                                        } ${isDoneState(ev.task.status) ? "text-gray-500" : ""}`}
                                                     >
                                                         <TaskPillText
                                                             text={ev.task.title}
@@ -4940,19 +5025,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                         {/* By Who Attribution */}
                                                         {ev.type === "created" ? (
                                                             <>
-                                                                <span className="text-micro font-bold text-slate-700 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
-                                                                    <Users className="h-2.5 w-2.5 text-slate-400" />
-                                                                    <span>{t("By", "Od", "Által")}: <strong className="text-slate-800">{ev.actor}</strong></span>
+                                                                <span className="text-micro font-semibold text-gray-700 flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded-md">
+                                                                    <Users className="h-2.5 w-2.5 text-gray-400" />
+                                                                    <span>{t("By", "Od", "Által")}: <strong className="text-gray-900">{ev.actor}</strong></span>
                                                                 </span>
                                                                 {ev.task.assignedUsers && ev.task.assignedUsers.length > 0 && (
-                                                                    <span className="text-micro font-bold text-indigo-700 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-37.5">
-                                                                        <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
-                                                                        <span className="truncate">{t("Assigned to", "Priradené", "Felelős")}: <strong className="text-indigo-900">{ev.task.assignedUsers.join(", ")}</strong></span>
+                                                                    <span className="text-micro font-semibold text-entity-text flex items-center gap-1 bg-entity-subtle border border-entity-border px-1.5 py-0.5 rounded-md truncate max-w-37.5">
+                                                                        <span className="h-1 w-1 rounded-full bg-entity-solid shrink-0" />
+                                                                        <span className="truncate">{t("Assigned to", "Priradené", "Felelős")}: <strong className="font-bold">{ev.task.assignedUsers.join(", ")}</strong></span>
                                                                     </span>
                                                                 )}
                                                             </>
                                                         ) : (
-                                                            <span className="text-micro font-bold text-emerald-800 flex items-center gap-1 bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded-md">
+                                                            <span className="text-micro font-semibold text-emerald-800 flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
                                                                 <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
                                                                 <span>{t("Completed by", "Dokončil", "Befejezte")}: <strong className="text-emerald-950">{ev.actor}</strong></span>
                                                             </span>
@@ -4960,12 +5045,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                                                         {/* Ticket, Lead & Project Badges */}
                                                         {renderTicketBadge(ev.task, "max-w-45")}
+                                                        <TaskWhatsAppMarks task={ev.task} userLanguage={systemLanguage} showNote={false} />
                                                         {renderLeadBadge(ev.task, "max-w-35")}
                                                         {ev.task.relatedProjectId && projectNameFor(ev.task) && (
-                                                            <span className="text-micro font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-35">
-                                                                <FolderKanban className="h-2.5 w-2.5 text-slate-500 shrink-0" />
-                                                                <span className="truncate">{projectNameFor(ev.task)}</span>
-                                                            </span>
+                                                            <EntityBadge
+                                                                entity="projects"
+                                                                label={projectNameFor(ev.task)!}
+                                                                showIcon
+                                                                className="max-w-35"
+                                                            />
                                                         )}
                                                     </div>
                                                 </div>
@@ -4998,13 +5086,344 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     }
 
+
+
+    const renderRecurringTasksView = () => {
+        const filtered = recurringTasks.filter((t) => {
+            if (!recurringSearch.trim()) return true;
+            return t.title.toLowerCase().includes(recurringSearch.toLowerCase().trim());
+        });
+
+        // Sort by next due date
+        const sorted = [...filtered].sort((a, b) => {
+            const da = a.deadline || "9999-99-99";
+            const db = b.deadline || "9999-99-99";
+            return da.localeCompare(db);
+        });
+
+        const handleTogglePause = (tpl: RecurringTaskTemplate) => {
+            const nextPaused = !tpl.recurrence.paused;
+            const updated: RecurringTaskTemplate = {
+                ...tpl,
+                recurrence: {
+                    ...tpl.recurrence,
+                    paused: nextPaused,
+                },
+            };
+            if (setRecurringTasks) {
+                setRecurringTasks((prev) => (prev || []).map((t) => (t.id === tpl.id ? updated : t)));
+            }
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    nextPaused
+                        ? t("Series paused", "Séria bola pozastavená", "Sorozat szüneteltetve")
+                        : t("Series resumed", "Séria bola obnovená", "Sorozat folytatva"),
+                    "info"
+                );
+            }
+        };
+
+        return (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-6 space-y-6">
+                {/* Header bar: Search & New Button */}
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-gray-200">
+                    <div className="relative flex-1 min-w-60 max-w-md">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input
+                            type="text"
+                            value={recurringSearch}
+                            onChange={(e) => setRecurringSearch(e.target.value)}
+                            placeholder={t("Search recurring tasks...", "Hľadať opakované úlohy...", "Ismétlődő feladatok keresése...")}
+                            className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-medium placeholder:text-gray-400 focus:outline-none focus:border-entity-solid focus:bg-white transition-all"
+                        />
+                    </div>
+                    {taskAccess.create && (
+                        <button
+                            type="button"
+                            onClick={() => openAddTask(undefined, true)}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-entity-solid hover:opacity-90 active:scale-95 text-white rounded-md font-semibold text-ui shadow-2xs transition-all cursor-pointer"
+                        >
+                            <Plus className="h-4 w-4 stroke-[2.5]" />
+                            <span>{t("New recurring task", "Nová opakovaná úloha", "Új ismétlődő feladat")}</span>
+                        </button>
+                    )}
+                </div>
+
+                {/* Empty State */}
+                {sorted.length === 0 ? (
+                    <div className="py-16 text-center space-y-4 max-w-md mx-auto">
+                        <div className="w-12 h-12 mx-auto rounded-lg bg-entity-subtle border border-entity-border flex items-center justify-center text-entity-text shadow-2xs">
+                            <Repeat className="h-6 w-6" />
+                        </div>
+                        <div className="space-y-1">
+                            <h3 className="type-page-title text-gray-900">
+                                {recurringSearch.trim()
+                                    ? t("No recurring tasks found", "Nenašli sa žiadne opakované úlohy", "Nem találhatók ismétlődő feladatok")
+                                    : t("No recurring tasks yet", "Zatiaľ žiadne opakované úlohy", "Még nincsenek ismétlődő feladatok")}
+                            </h3>
+                            <p className="text-caption text-gray-500 font-medium leading-relaxed">
+                                {recurringSearch.trim()
+                                    ? t("Try a different search query.", "Skúste iný vyhľadávací dotaz.", "Próbáljon másik keresési kifejezést.")
+                                    : t("Recurring tasks automatically create new tasks on a schedule or after completion.", "Opakované úlohy automaticky vytvárajú nové úlohy podľa plánu alebo po dokončení.", "Az ismétlődő feladatok automatikusan új feladatokat hoznak létre ütemezés szerint vagy befejezés után.")}
+                            </p>
+                        </div>
+                        {taskAccess.create && !recurringSearch.trim() && (
+                            <button
+                                type="button"
+                                onClick={() => openAddTask(undefined, true)}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-entity-solid hover:opacity-90 text-white rounded-md font-semibold text-ui shadow-2xs transition-all cursor-pointer"
+                            >
+                                <Plus className="h-4 w-4 stroke-[2.5]" />
+                                <span>{t("New recurring task", "Nová opakovaná úloha", "Új ismétlődő feladat")}</span>
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <>
+                        {/* Desktop Table View */}
+                        <div className="hidden ws-sm:block overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-slate-200 text-slate-400 type-overline">
+                                        <ResizableTh listKey="task-recurring" colKey="task" className="py-3 px-3">{t("Task", "Úloha", "Feladat")}</ResizableTh>
+                                        <ResizableTh listKey="task-recurring" colKey="schedule" className="py-3 px-3">{t("Schedule", "Plán", "Ütemezés")}</ResizableTh>
+                                        <ResizableTh listKey="task-recurring" colKey="next-due" className="py-3 px-3">{t("Next Due", "Ďalší termín", "Következő határidő")}</ResizableTh>
+                                        <ResizableTh listKey="task-recurring" colKey="current-task" className="py-3 px-3">{t("Current Task", "Aktuálna úloha", "Jelenlegi feladat")}</ResizableTh>
+                                        <ResizableTh listKey="task-recurring" colKey="assignee" className="py-3 px-3">{t("Assignee", "Zodpovedný", "Felelős")}</ResizableTh>
+                                        <ResizableTh listKey="task-recurring" colKey="status" className="py-3 px-3">{t("Status", "Stav", "Állapot")}</ResizableTh>
+                                        <th className="py-3 px-3 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-ui font-semibold text-slate-700">
+                                    {sorted.map((tpl) => {
+                                        const openTask = tasks.find(
+                                            (tk) => tk.recurringSourceId === tpl.id && !tk.archived && !isDoneState(tk.status)
+                                        );
+                                        const isPaused = Boolean(tpl.recurrence.paused);
+                                        const isEnded = Boolean(
+                                            tpl.recurrence.endsOn && (!tpl.deadline || tpl.deadline > tpl.recurrence.endsOn) && !openTask
+                                        );
+
+                                        return (
+                                            <tr key={tpl.id} className="hover:bg-slate-50/80 transition-colors">
+                                                <td className="py-3.5 px-3 max-w-64">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEditingTemplate(tpl)}
+                                                        className="text-left font-semibold text-gray-900 hover:text-entity-text transition-colors cursor-pointer truncate block w-full"
+                                                        title={tpl.title}
+                                                    >
+                                                        {tpl.title}
+                                                    </button>
+                                                    {tpl.description && (() => {
+                                                        const plainTplDesc = blockNotesToPlainText(tpl.description);
+                                                        return plainTplDesc ? (
+                                                            <p className="text-caption text-gray-400 font-medium truncate mt-0.5" title={plainTplDesc}>
+                                                                {plainTplDesc}
+                                                            </p>
+                                                        ) : null;
+                                                    })()}
+                                                </td>
+                                                <td className="py-3.5 px-3 text-caption font-medium text-gray-600 max-w-56">
+                                                    {describeRecurrence(tpl.recurrence, systemLanguage)}
+                                                </td>
+                                                <td className="py-3.5 px-3 text-caption font-semibold text-gray-800 whitespace-nowrap">
+                                                    <div>{tpl.deadline ? formatTaskDate(tpl.deadline) : "—"}</div>
+                                                    {tpl.startDate && tpl.startDate !== tpl.deadline && (
+                                                        <div className="text-micro font-medium text-gray-400 mt-0.5">
+                                                            {t("Appears", "Zobrazí sa", "Megjelenik")}: {formatTaskDate(tpl.startDate)}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 text-caption">
+                                                    {openTask ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setEditingTask(openTask)}
+                                                            className="text-left font-semibold text-entity-text hover:underline flex items-center gap-1.5 cursor-pointer max-w-56 truncate"
+                                                        >
+                                                            <span className="truncate">{openTask.title}</span>
+                                                            <span
+                                                                className="px-1.5 py-0.5 rounded text-micro shrink-0"
+                                                                style={{
+                                                                    backgroundColor: `${taskStateColors[openTask.status] || "#64748b"}20`,
+                                                                    color: taskStateColors[openTask.status] || "#64748b",
+                                                                }}
+                                                            >
+                                                                {stateLabel(openTask.status)}
+                                                            </span>
+                                                            {isTaskOverdue(openTask) && (
+                                                                <span className="text-rose-600 text-micro font-bold shrink-0">
+                                                                    ({t("Overdue", "Po termíne", "Késésben")})
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-gray-400 font-medium">
+                                                            {t("Next appears on", "Zobrazí sa", "Megjelenik")}: {tpl.startDate || tpl.deadline}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 text-caption">
+                                                    {renderAssigneeChips(
+                                                        tpl as any,
+                                                        "font-semibold text-gray-700 flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded-md truncate max-w-30 border border-gray-200"
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 whitespace-nowrap">
+                                                    {isPaused ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-micro font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                                                            {t("Paused", "Pozastavené", "Szüneteltetve")}
+                                                        </span>
+                                                    ) : isEnded ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-micro font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                                            {t("Ended", "Ukončené", "Lejárt")}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-micro font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                            {t("Active", "Aktívna", "Aktív")}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setEditingTemplate(tpl)}
+                                                            className="p-1.5 hover:bg-gray-100 text-gray-500 hover:text-entity-text rounded-md transition-colors cursor-pointer"
+                                                            title={t("Edit series", "Upraviť sériu", "Sorozat szerkesztése")}
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleTogglePause(tpl)}
+                                                            className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-amber-600 rounded-lg transition-colors cursor-pointer"
+                                                            title={isPaused ? t("Resume series", "Obnoviť sériu", "Sorozat folytatása") : t("Pause series", "Pozastaviť sériu", "Sorozat szüneteltetése")}
+                                                        >
+                                                            {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                                                        </button>
+                                                        {taskAccess.delete && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSeriesToDelete(tpl)}
+                                                                className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                                                                title={t("Delete series", "Odstrániť sériu", "Sorozat törlése")}
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Mobile Cards View */}
+                        <div className="ws-sm:hidden space-y-3">
+                            {sorted.map((tpl) => {
+                                const openTask = tasks.find(
+                                    (tk) => tk.recurringSourceId === tpl.id && !tk.archived && !isDoneState(tk.status)
+                                );
+                                const isPaused = Boolean(tpl.recurrence.paused);
+                                const isEnded = Boolean(
+                                    tpl.recurrence.endsOn && (!tpl.deadline || tpl.deadline > tpl.recurrence.endsOn) && !openTask
+                                );
+
+                                return (
+                                    <div key={tpl.id} className="p-4 rounded-lg border border-gray-200 bg-white shadow-2xs space-y-3">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingTemplate(tpl)}
+                                                    className="font-semibold text-ui text-gray-900 text-left hover:text-entity-text"
+                                                >
+                                                    {tpl.title}
+                                                </button>
+                                                <p className="text-caption text-gray-500 font-medium mt-0.5">
+                                                    {describeRecurrence(tpl.recurrence, systemLanguage)}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                {isPaused ? (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-micro font-semibold bg-amber-100 text-amber-800">
+                                                        {t("Paused", "Pozastavené", "Szüneteltetve")}
+                                                    </span>
+                                                ) : isEnded ? (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-micro font-semibold bg-gray-100 text-gray-600">
+                                                        {t("Ended", "Ukončené", "Lejárt")}
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-micro font-semibold bg-emerald-50 text-emerald-700">
+                                                        {t("Active", "Aktívna", "Aktív")}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2 text-caption">
+                                            <div>
+                                                <span className="text-gray-400 font-medium">{t("Next Due", "Ďalší termín", "Következő határidő")}:</span>{" "}
+                                                <span className="font-semibold text-gray-800">{tpl.deadline ? formatTaskDate(tpl.deadline) : "—"}</span>
+                                            </div>
+                                            {openTask ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingTask(openTask)}
+                                                    className="font-semibold text-entity-text underline"
+                                                >
+                                                    {t("Open task", "Otvorená úloha", "Megnyitott feladat")}
+                                                </button>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditingTemplate(tpl)}
+                                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-caption font-bold"
+                                            >
+                                                {t("Edit", "Upraviť", "Szerkesztés")}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleTogglePause(tpl)}
+                                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-caption font-bold"
+                                            >
+                                                {isPaused ? t("Resume", "Obnoviť", "Folytatás") : t("Pause", "Pozastaviť", "Szüneteltetés")}
+                                            </button>
+                                            {taskAccess.delete && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSeriesToDelete(tpl)}
+                                                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-caption font-bold"
+                                                >
+                                                    {t("Delete", "Odstrániť", "Törlés")}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    };
+
+
     return (
         <div
             className={`w-full ${viewMode === "archive" || viewMode === "calendar" ? "h-auto shrink-0" : "h-auto flex flex-col"} animate-in fade-in slide-in-from-top-4 duration-300`}
         >
             {/* HEADER */}
             <PageHeader
-              icon={<CalendarIcon className="h-6 w-6 text-indigo-600" />}
+              icon={<SectionIcon id="tasks" />}
               title={viewMode === "calendar"
                             ? t(
                                   "My Tasks",
@@ -5017,11 +5436,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Globálne úlohy",
                                     "Globális feladatok",
                                 )
-                              : t(
-                                  "Done & Archived Tasks",
-                                  "Hotové a archivované úlohy",
-                                  "Kész és archivált feladatok",
-                              )}
+                                : viewMode === "recurring"
+                                    ? t(
+                                          "Recurring Tasks",
+                                          "Opakované úlohy",
+                                          "Ismétlődő feladatok",
+                                      )
+                                    : viewMode === "weekly_plan"
+                                      ? t(
+                                            "Weekly Plan",
+                                            "Týždenný plán",
+                                            "Heti terv",
+                                        )
+                                      : t(
+                                            "Done & Archived Tasks",
+                                            "Hotové a archivované úlohy",
+                                            "Kész és archivált feladatok",
+                                        )}
               subtitle={viewMode === "calendar"
                             ? t(
                                   "Tasks assigned to you. Team tasks remain available in Global Tasks.",
@@ -5034,7 +5465,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Aktívne pracovné zaťaženie celého tímu.",
                                     "Az egész csapat aktív munkaterhelése.",
                                 )
-                              : archiveTab === "done"
+                              : viewMode === "recurring"
+                                ? t(
+                                      "Series rules that automatically generate tasks on a schedule or after completion.",
+                                      "Pravidlá sérií, ktoré automaticky vytvárajú úlohy podľa plánu alebo po dokončení.",
+                                      "Sorozatszabályok, amelyek automatikusan feladatokat hoznak létre ütemezés szerint veya befejezés után.",
+                                  )
+                                : viewMode === "weekly_plan"
+                                  ? t(
+                                        "Management weekly planning board with @references, #tags, day notes, and holiday highlights.",
+                                        "Týždenná plánovacia nástenka vedenia s @odkazmi, #štítkami, poznámkami dňa a vyznačením sviatkov.",
+                                        "Vezetőségi heti tervezőtábla @hivatkozásokkal, #címkékkel, napi jegyzetekkel és ünnepnap-jelöléssel.",
+                                    )
+                                  : archiveTab === "done"
                                 ? t(
                                       "History of completed tasks, logging details, and timing status.",
                                       "História dokončených úloh s informáciami o dobe omeškania.",
@@ -5046,24 +5489,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                       "Kézzel archivált feladatok — elrejtve a naptárból és a feladatlistákból.",
                                   )}
               actions={<>
-                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center gap-3 ws-sm:gap-4 flex-wrap">
-                      <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-sm gap-1 self-start ws-sm:self-auto overflow-x-auto max-w-full">
+                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center gap-3 ws-sm:gap-4 flex-wrap min-w-0 w-full ws-sm:w-auto max-w-full">
+                      <div className="flex items-center bg-gray-100 p-1 rounded-md border border-gray-200 gap-1 self-start ws-sm:self-auto overflow-x-auto max-w-full">
                           <button
                               onClick={() => setViewMode("calendar")}
-                className={`px-3 ws-sm:px-4 py-2 rounded-lg font-bold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                className={`px-3 ws-sm:px-3.5 py-1.5 rounded-md font-semibold text-ui transition-all cursor-pointer whitespace-nowrap ${
                                   viewMode === "calendar"
-                                      ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                      : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                                      ? "bg-white text-entity-text shadow-2xs border border-gray-200"
+                                      : "text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
                               }`}
                           >
                               {t("My Tasks", "Moje úlohy", "Saját feladatok")}
                           </button>
                           <button
                               onClick={() => setViewMode("global")}
-                className={`px-3 ws-sm:px-4 py-2 rounded-lg font-bold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                className={`px-3 ws-sm:px-3.5 py-1.5 rounded-md font-semibold text-ui transition-all cursor-pointer whitespace-nowrap ${
                                   viewMode === "global"
-                                      ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                      : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                                      ? "bg-white text-entity-text shadow-2xs border border-gray-200"
+                                      : "text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
                               }`}
                           >
                               {t(
@@ -5073,11 +5516,25 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                               )}
                           </button>
                           <button
+                              onClick={() => setViewMode("recurring")}
+                className={`px-3 ws-sm:px-3.5 py-1.5 rounded-md font-semibold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                                  viewMode === "recurring"
+                                      ? "bg-white text-entity-text shadow-2xs border border-gray-200"
+                                      : "text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
+                              }`}
+                          >
+                              {t(
+                                  "Recurring",
+                                  "Opakované",
+                                  "Ismétlődő",
+                              )}
+                          </button>
+                          <button
                               onClick={() => setViewMode("archive")}
-                className={`px-3 ws-sm:px-4 py-2 rounded-lg font-bold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                className={`px-3 ws-sm:px-3.5 py-1.5 rounded-md font-semibold text-ui transition-all cursor-pointer whitespace-nowrap ${
                                   viewMode === "archive"
-                                      ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                      : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                                      ? "bg-white text-entity-text shadow-2xs border border-gray-200"
+                                      : "text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
                               }`}
                           >
                               {t(
@@ -5086,6 +5543,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                   "Kész és archívum",
                               )}
                           </button>
+                          {(taskAccess.weeklyPlanView ?? taskAccess.view) && (
+                              <button
+                                  onClick={() => setViewMode("weekly_plan")}
+                                  data-testid="tasks-tab-weekly-plan"
+                    className={`px-3 ws-sm:px-3.5 py-1.5 rounded-md font-semibold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                                      viewMode === "weekly_plan"
+                                          ? "bg-white text-entity-text shadow-2xs border border-gray-200"
+                                          : "text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
+                                  }`}
+                              >
+                                  {t("Weekly Plan", "Týždenný plán", "Heti terv")}
+                              </button>
+                          )}
                       </div>
 
                       {!isMiniWindow && (
@@ -5098,7 +5568,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                   "Otvoriť Moje úlohy v malom okne, ktoré zostane nad ostatnými oknami",
                                   "A Saját feladatok megnyitása kis ablakban, amely a többi ablak felett marad",
                               )}
-                              className="inline-flex items-center gap-1.5 self-start ws-sm:self-auto px-3 py-2 rounded-xl border border-slate-200 bg-white text-ui font-bold text-slate-600 shadow-sm whitespace-nowrap cursor-pointer transition-all duration-150 ease-out hover:-translate-y-px hover:text-indigo-600 hover:border-indigo-200 hover:shadow-md active:translate-y-0 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                              className="inline-flex items-center gap-1.5 self-start ws-sm:self-auto px-3 py-1.5 rounded-md border border-gray-200 bg-white text-ui font-semibold text-gray-700 shadow-2xs whitespace-nowrap cursor-pointer transition-all hover:text-entity-text hover:border-entity-border active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring"
                           >
                               <PictureInPicture2 className="h-4 w-4" />
                               {t("Pop out", "Samostatné okno", "Kiemelés")}
@@ -5119,12 +5589,44 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
               </>}
             />
 
+
+            {isAddDrawerOpen && viewMode !== "calendar" && taskAccess.create && (
+                <QuickTaskModal
+                    tasks={tasks}
+                    leads={leads}
+                    projects={projects}
+                    users={users}
+                    taskStates={taskStates}
+                    systemLanguage={systemLanguage}
+                    currentUserName={myName}
+                    mailConfigured={mailConfigured}
+                    agencyEnabled={agencyEnabled}
+                    leadStageGroups={leadStageGroups}
+                    leadStateParents={leadStateParents}
+                    initialDeadline={addDeadline}
+                    initialRepeat={addInitialRepeat}
+                    incomingTitle={incomingTitle}
+                    origin={composerOrigin}
+                    startDictation={composerDictate}
+                    onCreate={(created) => {
+                        markFresh(created);
+                        setTasks((prev) => [...created, ...prev]);
+                    }}
+                    onCreateRecurring={(template) => {
+                        if (setRecurringTasks) {
+                            setRecurringTasks((prev) => [template, ...(prev || [])]);
+                        }
+                    }}
+                    onClose={closeAddDrawer}
+                />
+            )}
+
             {viewMode === "archive" ? (
-                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                    <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100 mb-4 shrink-0">
+                <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-gray-200 mb-4 shrink-0">
                         <button
                             onClick={() => setViewMode("calendar")}
-                            className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 type-overline transition-colors cursor-pointer"
+                            className="flex items-center gap-1.5 text-entity-text hover:opacity-80 type-overline transition-colors cursor-pointer"
                         >
                             <ChevronLeft className="h-4 w-4" />
                             {t(
@@ -5135,7 +5637,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </button>
                         {/* Done / Archived sub-tabs. The counts follow the
                             filters, so they say what each tab will show. */}
-                        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1">
+                        <div className="flex items-center bg-gray-100 p-1 rounded-md border border-gray-200 gap-1">
                             {(["done", "archived"] as const).map((tab) => (
                                 <button
                                     key={tab}
@@ -5144,8 +5646,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         if (tab === archiveTab) return;
                                         setArchiveTab(tab);
                                         setArchiveSelectedDay(null);
-                                        // Every task on Done is completed, so
-                                        // "Not completed" would empty it.
                                         if (
                                             tab === "done" &&
                                             archiveTimingFilter === "not_completed"
@@ -5153,10 +5653,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                             setArchiveTimingFilter("all");
                                         setSelectedTaskIds(new Set());
                                     }}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold text-ui transition-all cursor-pointer whitespace-nowrap ${
                                         archiveTab === tab
-                                            ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                            : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                                            ? "bg-white text-entity-text shadow-2xs border border-gray-200"
+                                            : "text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
                                     }`}
                                 >
                                     {tab === "done" ? (
@@ -5167,7 +5667,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     {tab === "done"
                                         ? t("Done", "Hotové", "Kész")
                                         : t("Archived", "Archivované", "Archivált")}
-                                    <span className="text-micro font-bold text-slate-400 bg-slate-200/70 px-1.5 py-0.5 rounded-full">
+                                    <span className="text-micro font-bold text-gray-500 bg-gray-200/80 px-1.5 py-0.5 rounded-md tabular-nums">
                                         {tab === "done"
                                             ? filteredArchivedTasks.length
                                             : filteredManuallyArchivedTasks.length}
@@ -5176,9 +5676,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             ))}
                         </div>
                         <div className="flex items-center gap-3 flex-wrap">
-                            {/* The archive reads either as the grouped history
-                                list or as a calendar of the same completed
-                                tasks; the filters above drive both. */}
                             {archiveView === "calendar" &&
                                 renderCalendarNav({
                                     anchor: archiveCalendarDate,
@@ -5191,21 +5688,21 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <button
                                 type="button"
                                 onClick={handleSelectAllVisible}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-ui font-bold transition-all cursor-pointer ${
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-ui font-semibold transition-all cursor-pointer ${
                                     areAllVisibleSelected
-                                        ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                                        : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-400"
+                                        ? "bg-entity-subtle border-entity-border text-entity-text"
+                                        : "bg-gray-50 border-gray-200 text-gray-600 hover:border-entity-border"
                                 }`}
                                 title={t("Select all visible tasks", "Vybrať všetky zobrazené úlohy", "Összes látható feladat kijelölése")}
                             >
-                                <CheckSquare className="h-3.5 w-3.5 stroke-[2.5]" />
+                                <CheckSquare className="h-3.5 w-3.5 stroke-[2]" />
                                 <span>
                                     {areAllVisibleSelected
                                         ? t("Deselect all", "Zrušiť výber", "Kijelölés törlése")
                                         : t("Select all", "Vybrať všetky", "Összes kijelölése")}
                                 </span>
                             </button>
-                            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1">
+                            <div className="flex items-center bg-gray-100 p-1 rounded-md border border-gray-200 gap-1">
                                 {(["list", "calendar"] as const).map((mode) => (
                                     <button
                                         key={mode}
@@ -5213,10 +5710,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                             setArchiveView(mode);
                                             setArchiveSelectedDay(null);
                                         }}
-                                        className={`px-3 py-1.5 rounded-lg type-overline transition-all cursor-pointer ${
+                                        className={`px-3 py-1.5 rounded-md type-overline transition-all cursor-pointer ${
                                             archiveView === mode
-                                                ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                                : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                                                ? "bg-white text-entity-text shadow-2xs border border-gray-200"
+                                                : "text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
                                         }`}
                                     >
                                         {mode === "list"
@@ -5369,7 +5866,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {renderActiveFilterChips({ className: "mb-4" })}
 
                     {archiveView === "calendar" ? (
-                        <div className="min-h-140 flex flex-col rounded-3xl border border-slate-200 overflow-clip bg-white">
+                        <div className="min-h-140 flex flex-col rounded-lg border border-gray-200 overflow-clip bg-white">
                             {archiveTab === "done"
                                 ? renderCalendarPanel({
                                       anchor: archiveCalendarDate,
@@ -5416,8 +5913,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 <div className="space-y-6">
                                     {archivedTasksGroupedByDate.map((group) => (
                                         <div key={group.date} className="space-y-2">
-                                            <div className="type-overline text-slate-500 pl-1 pt-1 flex items-center gap-1.5 border-l-2 border-indigo-500">
-                                                <CalendarIcon className="h-3.5 w-3.5 text-indigo-500" />
+                                            <div className="type-overline text-gray-500 pl-1 pt-1 flex items-center gap-1.5 border-l-2 border-entity-solid">
+                                                <CalendarIcon className="h-3.5 w-3.5 text-entity-text" />
                                                 {group.date === "no-date"
                                                     ? t(
                                                           "No Due Date",
@@ -5426,7 +5923,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                       )
                                                     : renderDayChip(
                                                           group.date,
-                                                          "hover:text-indigo-600",
+                                                          "hover:text-entity-text",
                                                           formatTaskDate(group.date),
                                                       )}
                                             </div>
@@ -5475,6 +5972,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
             ) : viewMode === "global" ? (
                 renderGlobalTasksView()
+            ) : viewMode === "recurring" ? (
+                renderRecurringTasksView()
+            ) : viewMode === "weekly_plan" ? (
+                <WeeklyPlanView
+                    leads={leads}
+                    projects={projects}
+                    tickets={tickets}
+                    users={users}
+                    employees={employees}
+                    tasks={tasks}
+                    existingTags={allExistingTags}
+                    systemLanguage={systemLanguage}
+                    canEdit={Boolean(taskAccess.weeklyPlanEdit ?? taskAccess.edit)}
+                />
             ) : calendarScope === "hide" ? (
                 <div className="flex-1 min-h-0">
                     {renderMyTaskListColumn(true)}
@@ -5490,7 +6001,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             {renderTimelineView()}
                         </div>
                     ) : (
-                        <div className="flex flex-col h-auto self-start ws-lg:sticky ws-lg:top-[calc(1rem-var(--gutter))] bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] ws-lg:overflow-hidden overflow-visible">
+                        <div className={`flex flex-col h-auto self-start ws-lg:sticky ws-lg:top-[calc(1rem-var(--gutter))] bg-white rounded-lg border border-gray-200 shadow-xs ws-lg:overflow-hidden overflow-visible ${calendarHub.expanded ? "ws-lg:col-span-2 ws-lg:order-first" : ""}`}>
                             {renderCalendarPanel({
                                 anchor: currentDate,
                                 scope: calendarScope,
@@ -5516,6 +6027,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 <TaskEditDrawer
                     key={editingTask.id}
                     task={editingTask}
+                    recurringTemplates={recurringTasks}
                     leads={leads}
                     projects={projects}
                     tickets={tickets}
@@ -5526,12 +6038,82 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     currentUser={currentUser}
                     currentUserName={currentUser?.name || defaultUserName}
                     mailConfigured={mailConfigured}
+                    agencyEnabled={agencyEnabled}
                     canEdit={mayEditTask(editingTask)}
                     canArchive={mayArchiveTask(editingTask)}
+                    canDelete={mayDeleteTask(editingTask)}
                     existingTags={allExistingTags}
                     leadStageGroups={leadStageGroups}
                     leadStateParents={leadStateParents}
                     onTagClick={handleTagClick}
+                    onEditSeries={(templateId) => {
+                        const tpl = (recurringTasks || []).find((r) => r.id === templateId);
+                        if (tpl) {
+                            setEditingTask(null);
+                            setEditingTemplate(tpl);
+                        }
+                    }}
+                    onConvertToRecurring={(taskToConvert, recurrenceConfig) => {
+                        const templateId = `tpl_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+                        const effectiveDeadline = taskToConvert.deadline || toLocalDateStr(new Date());
+                        const newTemplate: RecurringTaskTemplate = {
+                            id: templateId,
+                            title: taskToConvert.title,
+                            description: taskToConvert.description,
+                            priority: taskToConvert.priority,
+                            deadline: effectiveDeadline,
+                            startDate: taskToConvert.startDate,
+                            deadlineTime: taskToConvert.deadlineTime,
+                            owner: taskToConvert.owner,
+                            createdBy: taskToConvert.createdBy,
+                            assignedUsers: taskToConvert.assignedUsers,
+                            relatedLeadId: taskToConvert.relatedLeadId,
+                            relatedProjectId: taskToConvert.relatedProjectId,
+                            relatedAgencyWorkerId: taskToConvert.relatedAgencyWorkerId ?? null,
+                            isLocking: taskToConvert.isLocking,
+                            emailReminders: taskToConvert.emailReminders,
+                            requiresConclusion: taskToConvert.requiresConclusion,
+                            category: taskToConvert.category ?? null,
+                            tags: taskToConvert.tags,
+                            recurrence: {
+                                ...recurrenceConfig,
+                                lastOccurrence: effectiveDeadline,
+                                lastOccurrenceId: taskToConvert.id,
+                            },
+                        };
+
+                        const updatedTask: Task = {
+                            ...taskToConvert,
+                            recurringSourceId: templateId,
+                            recurringOccurrenceDate: effectiveDeadline,
+                        };
+
+                        if (setRecurringTasks) {
+                            setRecurringTasks((prev) => [newTemplate, ...(prev || [])]);
+                        }
+                        setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
+
+                        if (typeof (window as any).showToast === "function") {
+                            (window as any).showToast(
+                                t("Task converted to recurring series", "Úloha bola zmenená na opakovanú sériu", "A feladat ismétlődő sorozattá lett alakítva"),
+                                "success"
+                            );
+                        }
+                    }}
+                    onDeleteOccurrence={(task, choice) => {
+                        if (choice !== "cancel") {
+                            deleteRecurringOccurrenceWithUndo({
+                                occurrence: task,
+                                allTasks: tasks,
+                                setTasks,
+                                allTemplates: recurringTasks,
+                                setRecurringTasks,
+                                choice,
+                                lang: systemLanguage,
+                            });
+                        }
+                    }}
+                    initialChatOpen={openChatWithTask || undefined}
                     onSave={(next) => {
                         if (!mayEditTask(next)) return;
                         setTasks((prev) =>
@@ -5543,10 +6125,163 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             ? handleUnarchiveTask(next)
                             : handleArchiveTask(next)
                     }
-                    onClose={() => setEditingTask(null)}
+                    onClose={() => { setOpenChatWithTask(false); setEditingTask(null); }}
                 />
             )}
+
+            {/* Template Edit Drawer */}
+            {editingTemplate && (
+                <TaskEditDrawer
+                    key={editingTemplate.id}
+                    task={editingTemplate}
+                    isTemplate={true}
+                    leads={leads}
+                    projects={projects}
+                    tickets={tickets}
+                    users={users}
+                    taskStates={taskStates}
+                    taskStateColors={taskStateColors}
+                    systemLanguage={systemLanguage}
+                    currentUser={currentUser}
+                    currentUserName={currentUser?.name || defaultUserName}
+                    mailConfigured={mailConfigured}
+                    agencyEnabled={agencyEnabled}
+                    canEdit={taskAccess.edit}
+                    canArchive={false}
+                    canDelete={taskAccess.delete}
+                    existingTags={allExistingTags}
+                    leadStageGroups={leadStageGroups}
+                    leadStateParents={leadStateParents}
+                    onTagClick={handleTagClick}
+                    onSave={() => {}}
+                    onSaveTemplate={(updatedTpl) => {
+                        if (setRecurringTasks) {
+                            setRecurringTasks((prev) =>
+                                (prev || []).map((t) => (t.id === updatedTpl.id ? updatedTpl : t))
+                            );
+                        }
+                    }}
+                    onDelete={async (tpl) => {
+                        deleteRecurringSeriesWithUndo({
+                            template: tpl as unknown as RecurringTaskTemplate,
+                            allTasks: tasks,
+                            setTasks,
+                            setRecurringTasks: setRecurringTasks || (() => {}),
+                            lang: systemLanguage,
+                        });
+                        return true;
+                    }}
+                    onClose={() => setEditingTemplate(null)}
+                />
+            )}
+
+            {/* Recurring Occurrence Delete Dialog */}
+            <RecurringOccurrenceDeleteDialog
+                task={occurrenceDeletingTask}
+                onChoice={(choice) => {
+                    if (choice !== "cancel" && occurrenceDeletingTask) {
+                        deleteRecurringOccurrenceWithUndo({
+                            occurrence: occurrenceDeletingTask,
+                            allTasks: tasks,
+                            setTasks,
+                            allTemplates: recurringTasks,
+                            setRecurringTasks,
+                            choice,
+                            lang: systemLanguage,
+                        });
+                    }
+                    setOccurrenceDeletingTask(null);
+                }}
+                t={t}
+            />
+
+            {/* Series Delete Confirm Dialog */}
+            {seriesToDelete && (() => {
+                const openOccurrence = tasks.find(
+                    (t) => t.recurringSourceId === seriesToDelete.id && !t.archived && !isDoneState(t.status)
+                );
+                return (
+                    <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+                        <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-4">
+                            <div className="flex items-start gap-3">
+                                <span className="p-2 rounded-2xl bg-rose-50 text-rose-600 shrink-0">
+                                    <Trash2 className="h-5 w-5" />
+                                </span>
+                                <div>
+                                    <h3 className="type-page-title text-body font-bold text-slate-800">
+                                        {t("Delete recurring series", "Odstrániť opakovanú sériu", "Ismétlődő sorozat törlése")}
+                                    </h3>
+                                    <p className="text-caption text-slate-500 mt-1">
+                                        {openOccurrence
+                                            ? t(
+                                                  `Deleting "${seriesToDelete.title}" will also remove its open task "${openOccurrence.title}". Completed occurrences remain in history.`,
+                                                  `Odstránením série "${seriesToDelete.title}" sa odstráni aj otvorená úloha "${openOccurrence.title}". Už dokončené úlohy zostanú v histórii.`,
+                                                  `A(z) "${seriesToDelete.title}" sorozat törlésével a nyitott "${openOccurrence.title}" feladat is törlődik. A befejezett feladatok megmaradnak az előzményekben.`
+                                              )
+                                            : t(
+                                                  `Are you sure you want to delete the series "${seriesToDelete.title}"? Completed occurrences remain in history.`,
+                                                  `Naozaj chcete odstrániť sériu "${seriesToDelete.title}"? Už dokončené úlohy zostanú v histórii.`,
+                                                  `Biztosan törölni szeretné a(z) "${seriesToDelete.title}" sorozatot? A befejezett feladatok megmaradnak az előzményekben.`
+                                              )}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setSeriesToDelete(null)}
+                                    className="px-4 py-2 rounded-md text-ui font-semibold text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                                >
+                                    {t("Cancel", "Zrušiť", "Mégse")}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const tpl = seriesToDelete;
+                                        setSeriesToDelete(null);
+                                        deleteRecurringSeriesWithUndo({
+                                            template: tpl,
+                                            allTasks: tasks,
+                                            setTasks,
+                                            setRecurringTasks: setRecurringTasks || (() => {}),
+                                            lang: systemLanguage,
+                                        });
+                                    }}
+                                    className="px-4 py-2 rounded-md text-ui font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-2xs transition-colors cursor-pointer"
+                                >
+                                    {t("Delete Series", "Odstrániť sériu", "Sorozat törlése")}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
             {renderBulkActionToolbar()}
+            {calendarHub.calendarModal.open && (
+                <CustomCalendarFormModal
+                    calendar={calendarHub.calendarModal.calendar}
+                    lang={systemLanguage}
+                    onSave={calendarHub.handleSaveCalendar}
+                    onDelete={calendarHub.handleDeleteCalendar}
+                    onClose={() => calendarHub.setCalendarModal({ open: false })}
+                />
+            )}
+            {calendarHub.eventModal.open && calendarHub.eventModal.calendar && (
+                <CustomCalendarEventModal
+                    calendar={calendarHub.eventModal.calendar}
+                    event={calendarHub.eventModal.event}
+                    initialDate={calendarHub.eventModal.initialDate}
+                    existingEvents={calendarHub.customEvents}
+                    users={users}
+                    leads={leads}
+                    projects={projects}
+                    currentUserName={myName}
+                    lang={systemLanguage}
+                    onSave={calendarHub.handleSaveEvent}
+                    onDelete={calendarHub.handleDeleteEvent}
+                    onClose={() => calendarHub.setEventModal({ open: false })}
+                />
+            )}
         </div>
     );
 };

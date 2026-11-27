@@ -24,6 +24,7 @@ export interface VoiceTaskActionBarProps {
     defaultStatus?: string;
     relatedLeadId?: string;
     relatedProjectId?: string;
+    relatedAgencyWorkerId?: string;
     isLocking?: boolean;
     canCreate?: boolean;
     manualButtonText?: string;
@@ -63,6 +64,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     defaultStatus = "New",
     relatedLeadId,
     relatedProjectId,
+    relatedAgencyWorkerId,
     isLocking = false,
     canCreate = true,
     manualButtonText,
@@ -391,6 +393,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             formData.append("today", toLocalDateStr(new Date()));
             formData.append("language", systemLanguage);
             formData.append("users", JSON.stringify(users.map((u) => u.name)));
+            if (voiceRecordDuration > 0) formData.append("durationSeconds", String(voiceRecordDuration));
 
             const res = await fetchWithTimeout(
                 "/api/transcribe_task.php",
@@ -464,6 +467,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                     assignedUsers: matchedUser ? [matchedUser] : [],
                     relatedLeadId: relatedLeadId || undefined,
                     relatedProjectId: relatedProjectId || undefined,
+                    relatedAgencyWorkerId: relatedAgencyWorkerId || undefined,
                     isLocking: isLocking || undefined,
                     isAiGenerated: true,
                 };
@@ -649,8 +653,8 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             <div className={`w-full flex flex-col gap-1.5 ${containerClassName}`}>
                 <div className="w-full flex items-center gap-2">
                     {isVoiceTranscribing ? (
-                        <div className="w-full py-2.5 px-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2 text-orange-700 text-ui font-bold animate-pulse transition-all duration-300 ease-in-out shrink-0">
-                            <Loader2 className="h-4 w-4 animate-spin text-[#ff5d00] shrink-0" />
+                        <div className="w-full py-2 px-3 bg-entity-subtle rounded-md border border-entity-border shadow-2xs flex items-center justify-center gap-2 text-entity-text text-ui font-semibold animate-pulse transition-all shrink-0">
+                            <Loader2 className="h-4 w-4 animate-spin text-entity-text shrink-0" />
                             <span className="truncate">
                                 {t(
                                     "Transcribing voice & creating task…",
@@ -675,7 +679,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                                 "Kliknutím odošlite a vytvorte úlohu",
                                 "Kattintson a küldéshez és létrehozáshoz",
                             )}
-                            className="w-full py-2 px-3 bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 hover:from-rose-600 hover:to-rose-800 text-white rounded-2xl shadow-lg shadow-rose-500/30 flex items-center justify-between gap-2 border-2 border-rose-400 transition-all duration-300 ease-in-out cursor-pointer active:scale-[0.99] select-none shrink-0 group"
+                            className="w-full py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-md shadow-xs flex items-center justify-between gap-2 border border-rose-500 transition-all cursor-pointer active:scale-[0.99] select-none shrink-0 group"
                         >
                             <div className="flex items-center gap-2 shrink-0">
                                 <div className="relative flex items-center justify-center shrink-0">
@@ -701,7 +705,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                                 </div>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
-                                <div className="flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-xl type-overline shadow-sm transition-all border border-emerald-400/80 shrink-0">
+                                <div className="flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-md type-overline shadow-2xs transition-all border border-emerald-400/80 shrink-0">
                                     <Check className="h-3 w-3 stroke-[3]" />
                                     <span>{t("Send", "Odoslať", "Küldés")}</span>
                                 </div>
@@ -711,7 +715,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                                         e.stopPropagation();
                                         handleCancelVoiceRecording();
                                     }}
-                                    className="p-1.5 bg-black/20 hover:bg-black/40 active:bg-black/50 text-white/90 hover:text-white rounded-xl transition-all active:scale-95 cursor-pointer border border-white/20 shrink-0"
+                                    className="p-1.5 bg-black/20 hover:bg-black/40 active:bg-black/50 text-white/90 hover:text-white rounded-md transition-all active:scale-95 cursor-pointer border border-white/20 shrink-0"
                                     title={t("Cancel recording", "Zrušiť nahrávanie", "Felvétel megszakítása")}
                                 >
                                     <X className="h-4 w-4 stroke-[2.5]" />
@@ -725,7 +729,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                             data-testid="voice-record-button"
                             data-armed={isArmed ? "true" : undefined}
                             onClick={handleStartVoiceRecording}
-                            className={`${voiceButtonClassName || "w-full py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-bold text-ui shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"}${isArmed ? " ring-4 ring-rose-300/70 animate-pulse" : ""} focus-visible:ring-4 focus-visible:ring-rose-300/70 outline-none`}
+                            className={`${voiceButtonClassName || "w-full py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-md font-semibold text-ui shadow-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border border-rose-500 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"}${isArmed ? " ring-4 ring-rose-300/70 animate-pulse" : ""} focus-visible:ring-4 focus-visible:ring-rose-300/70 outline-none`}
                             disabled={!canCreate}
                             title={t(
                                 "Record Voice Task (Auto-transcribes and creates task)",
@@ -733,7 +737,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                                 "Hangfeladat rögzítése (Automatikusan átírja és létrehozza)",
                             )}
                         >
-                            <Mic className="h-4 w-4 shrink-0 stroke-[2.5]" />
+                            <Mic className="h-4 w-4 shrink-0 stroke-[2]" />
                             <span className="text-caption truncate">
                                 {t("Record Voice Task", "Nahrať hlasovú úlohu", "Hangfeladat felvétele")}
                             </span>
@@ -788,7 +792,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                             ? `${manualButtonClassName} ${
                                   isVoiceRecording || isVoiceTranscribing ? "!w-[20%]" : "!w-[80%]"
                               }`
-                            : `py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-2xl font-bold text-ui shadow-lg shadow-orange-500/25 transition-all duration-300 ease-in-out active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-1.5 cursor-pointer border-2 border-[#ff701e] disabled:cursor-not-allowed disabled:opacity-50 shrink-0 ${
+                            : `py-2 bg-entity-solid hover:opacity-90 text-white rounded-md font-semibold text-ui shadow-xs transition-all duration-200 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 shrink-0 ${
                                   isVoiceRecording || isVoiceTranscribing ? "w-[20%]" : "w-[80%]"
                               }`
                     }
@@ -796,7 +800,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                     {isSubmittingManual ? (
                         <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                     ) : (
-                        manualButtonIcon || <Plus className="h-4 w-4 stroke-[3] shrink-0" />
+                        manualButtonIcon || <Plus className="h-4 w-4 stroke-[2.5] shrink-0" />
                     )}
                     <span
                         className={`truncate transition-opacity duration-200 ${
@@ -809,8 +813,8 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
 
                 {/* Right Button: Record Voice Task (20% default, expands to 80% during recording) */}
                 {isVoiceTranscribing ? (
-                    <div className="w-[80%] py-2.5 px-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2 text-orange-700 text-ui font-bold animate-pulse transition-all duration-300 ease-in-out shrink-0">
-                        <Loader2 className="h-4 w-4 animate-spin text-[#ff5d00] shrink-0" />
+                    <div className="w-[80%] py-2 px-3 bg-entity-subtle rounded-md border border-entity-border shadow-2xs flex items-center justify-center gap-2 text-entity-text text-ui font-semibold animate-pulse transition-all shrink-0">
+                        <Loader2 className="h-4 w-4 animate-spin text-entity-text shrink-0" />
                         <span className="truncate">
                             {t(
                                 "Transcribing voice & creating task…",
@@ -836,7 +840,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                             "Kliknutím odošlite a vytvorte úlohu",
                             "Kattintson a küldéshez és létrehozáshoz",
                         )}
-                        className="w-[80%] py-2 px-3 bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 hover:from-rose-600 hover:to-rose-800 text-white rounded-2xl shadow-lg shadow-rose-500/30 flex items-center justify-between gap-2 border-2 border-rose-400 transition-all duration-300 ease-in-out cursor-pointer active:scale-[0.99] select-none shrink-0 group"
+                        className="w-[80%] py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-md shadow-xs flex items-center justify-between gap-2 border border-rose-500 transition-all cursor-pointer active:scale-[0.99] select-none shrink-0 group"
                     >
                         {/* Left: Pulsing status orb & live timer */}
                         <div className="flex items-center gap-2 shrink-0">
@@ -867,7 +871,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
 
                         {/* Right: Send badge indicator + Cancel X Button */}
                         <div className="flex items-center gap-1.5 shrink-0">
-                            <div className="hidden xs:flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-xl type-overline shadow-sm transition-all border border-emerald-400/80 shrink-0">
+                            <div className="hidden xs:flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-md type-overline shadow-2xs transition-all border border-emerald-400/80 shrink-0">
                                 <Check className="h-3 w-3 stroke-[3]" />
                                 <span>{t("Send", "Odoslať", "Küldés")}</span>
                             </div>
@@ -878,7 +882,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                                     e.stopPropagation();
                                     handleCancelVoiceRecording();
                                 }}
-                                className="p-1.5 bg-black/20 hover:bg-black/40 active:bg-black/50 text-white/90 hover:text-white rounded-xl transition-all active:scale-95 cursor-pointer border border-white/20 shrink-0"
+                                className="p-1.5 bg-black/20 hover:bg-black/40 active:bg-black/50 text-white/90 hover:text-white rounded-md transition-all active:scale-95 cursor-pointer border border-white/20 shrink-0"
                                 title={t("Cancel recording", "Zrušiť nahrávanie", "Felvétel megszakítása")}
                             >
                                 <X className="h-4 w-4 stroke-[2.5]" />
@@ -892,7 +896,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                             data-testid="voice-record-button"
                             data-armed={isArmed ? "true" : undefined}
                             onClick={handleStartVoiceRecording}
-                        className={`${voiceButtonClassName || "w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-bold text-ui shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"}${isArmed ? " ring-4 ring-rose-300/70 animate-pulse" : ""} focus-visible:ring-4 focus-visible:ring-rose-300/70 outline-none`}
+                        className={`${voiceButtonClassName || "w-[20%] py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-md font-semibold text-ui shadow-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border border-rose-500 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"}${isArmed ? " ring-4 ring-rose-300/70 animate-pulse" : ""} focus-visible:ring-4 focus-visible:ring-rose-300/70 outline-none`}
                         disabled={!canCreate}
                         title={t(
                             "Record Voice Task (Auto-transcribes and creates task)",

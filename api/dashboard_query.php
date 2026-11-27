@@ -3,8 +3,11 @@
  * Dynamic Dashboard Data Querying API
  * Exposes secure, read-only analytics query actions.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+// The tasks_summary / tasks_by_owner / recent_tasks presets call ccrm_sql_real_tasks().
+require_once __DIR__ . '/recurring_tasks.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS');
@@ -16,7 +19,7 @@ if (php_sapi_name() !== 'cli') {
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -423,13 +426,15 @@ try {
                 }
             }
             $where = $whereParts ? ' WHERE ' . implode(' AND ', $whereParts) : '';
-            $stmt = $pdo->prepare("SELECT `status`, COUNT(*) as `count` FROM `tasks` `t`{$where} GROUP BY `status` ORDER BY `count` DESC");
+            $realWhere = ($where ? $where . ' AND ' : ' WHERE ') . ccrm_sql_real_tasks('t');
+            $stmt = $pdo->prepare("SELECT `status`, COUNT(*) as `count` FROM `tasks` `t` /* recurring-template: filtered via $where ccrm_sql_real_tasks */{$realWhere} GROUP BY `status` ORDER BY `count` DESC");
             $stmt->execute($bind);
             $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
             break;
 
         case 'tasks_by_owner':
-            $stmt = $pdo->prepare("SELECT `owner`, COUNT(*) as `count` FROM `tasks` `t`" . ($taskScope !== '' ? " WHERE {$taskScope}" : '') . " GROUP BY `owner` ORDER BY `count` DESC");
+            $ownerWhere = " WHERE " . ccrm_sql_real_tasks('t') . ($taskScope !== '' ? " AND {$taskScope}" : '');
+            $stmt = $pdo->prepare("SELECT `owner`, COUNT(*) as `count` FROM `tasks` `t`{$ownerWhere} GROUP BY `owner` ORDER BY `count` DESC");
             $stmt->execute($taskScopeBind);
             $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
             break;
@@ -544,9 +549,10 @@ try {
                 // text only when appended last, which is where its condition sits.
                 foreach ($taskScopeBind as $tb) { $bind[] = $tb; }
             }
+            $where[] = ccrm_sql_real_tasks('t');
             $whereSql = ' WHERE ' . implode(' AND ', $where);
 
-            $countStmt = $pdo->prepare("SELECT COUNT(*) FROM `tasks` `t`{$whereSql}");
+            $countStmt = $pdo->prepare("SELECT COUNT(*) FROM `tasks` `t`{$whereSql}"); /* recurring-template: filtered via $where ccrm_sql_real_tasks */
             $countStmt->execute($bind);
             $total = (int)$countStmt->fetchColumn();
 
@@ -578,6 +584,12 @@ try {
 
     echo json_encode(['success' => true, 'data' => $result]);
 } catch (\Throwable $e) {
+    // The client gets a generic message, but the real cause must not vanish: it is written
+    // to error_logs (Settings > System) and the PHP log, tagged with the action name.
+    error_log('[ccrm] dashboard_query action=' . $action . ' failed: ' . $e->getMessage());
+    if (function_exists('ccrm_log_exception')) {
+        ccrm_log_exception($e);
+    }
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Query execution failed.']);
 }

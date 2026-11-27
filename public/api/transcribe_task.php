@@ -1,10 +1,12 @@
 <?php
 /**
  * AI Voice Task Transcription & Task Extraction Endpoint.
- * Transcribes audio via OpenAI Whisper and parses structured CRM task(s) via OpenAI GPT.
+ * Transcribes audio via OpenAI gpt-transcribe and parses structured CRM task(s) via OpenAI GPT.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -23,7 +25,7 @@ ccrm_gate($sessionUser, 'tasks', 'edit');
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -60,12 +62,6 @@ if (empty($rawText)) {
 if (!empty($rawText)) {
     $transcription = $rawText;
 } elseif (isset($_FILES['audio'])) {
-    if (empty($openAiKey)) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'OpenAI API Key is not configured in Settings.']);
-        exit;
-    }
-
     $file = $_FILES['audio'];
     $fileName = basename($file['name'] ?? 'audio.webm');
     $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
@@ -90,7 +86,7 @@ if (!empty($rawText)) {
         exit;
     }
 
-    // Step 1: Whisper transcription with multilingual CRM vocabulary prompt
+    // Step 1: Transcribe audio via configured provider (OpenAI Whisper or Gemini connector)
     $mimeType = 'audio/webm';
     if ($ext === 'mp3') $mimeType = 'audio/mp3';
     elseif ($ext === 'wav') $mimeType = 'audio/wav';
@@ -98,46 +94,45 @@ if (!empty($rawText)) {
     elseif ($ext === 'mp4') $mimeType = 'audio/mp4';
     elseif ($ext === 'ogg') $mimeType = 'audio/ogg';
 
-    $cFile = new CURLFile($targetPath, $mimeType, basename($targetPath));
-    $whisperPayload = [
-        'file' => $cFile,
-        'model' => 'whisper-1',
-        'prompt' => 'Hlasové CRM úlohy, pripomienky a termíny. Hangfeladatok, határidők és emlékeztetők a CRM-ben. Voice tasks, deadlines and reminders.'
-    ];
-
-    $ch = curl_init('https://api.openai.com/v1/audio/transcriptions');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Authorization: Bearer ' . $openAiKey
+    $tRes = ccrm_ai_transcribe_audio($pdo, $targetPath, $mimeType, [
+        'filename' => basename($targetPath),
+        'timeout' => 60,
+        'integrationsConfig' => $integrationsConfig,
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $whisperPayload);
 
-    $whisperResponse = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
-    curl_close($ch);
+    if (!empty($tRes['ok'])) {
+        if (($tRes['provider'] ?? '') === 'openai') {
+            $whisperForUsage = is_array($tRes['raw'] ?? null) ? $tRes['raw'] : [];
+            $taskAudioSeconds = ccrm_ai_resolve_audio_seconds($whisperForUsage, $targetPath, $_POST['durationSeconds'] ?? null);
+            if ($taskAudioSeconds > 0) {
+                ccrm_ai_record_usage($pdo, 'task_transcription', 'gpt-transcribe', 0, 0, 0, 0, 0, $taskAudioSeconds);
+            } else {
+                ccrm_ai_capture_usage($pdo, 'task_transcription', $whisperForUsage, 'gpt-transcribe');
+            }
+        } elseif (!empty($tRes['raw']) && is_array($tRes['raw'])) {
+            ccrm_ai_capture_usage($pdo, 'task_transcription', $tRes['raw'], (string)$tRes['model']);
+        }
+    }
 
     // Clean up temporary audio file after transcription
     @unlink($targetPath);
 
-    if ($httpCode !== 200 || !$whisperResponse) {
-        $errData = json_decode($whisperResponse, true);
-        $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI Whisper API request failed');
-        http_response_code(500);
-        echo json_encode(['success' => false, 'message' => 'Whisper Transcription Error: ' . $errMsg]);
+    if (empty($tRes['ok'])) {
+        $status = (($tRes['code'] ?? '') === 'ai_key_missing') ? 400 : 500;
+        http_response_code($status);
+        echo json_encode([
+            'success' => false,
+            'code' => $tRes['code'] ?: 'ai_error',
+            'message' => 'Transcription Error: ' . ($tRes['error'] ?: 'Audio transcription failed'),
+        ]);
         exit;
     }
 
-    $whisperJson = json_decode($whisperResponse, true);
-    $transcription = trim((string)($whisperJson['text'] ?? ''));
+    $transcription = trim((string)($tRes['text'] ?? ''));
 
     if (empty($transcription)) {
         http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Nebol rozpoznaný žiadny hlasový záznam. Skúste prosím hovoriť zreteľnejšie alebo bližšie k mikrofónu.']);
+        echo json_encode(['success' => false, 'code' => 'ai_empty', 'message' => 'Nebol rozpoznaný žiadny hlasový záznam. Skúste prosím hovoriť zreteľnejšie alebo bližšie k mikrofónu.']);
         exit;
     }
 } else {
@@ -161,15 +156,23 @@ $todayDayOfWeek = date('l', strtotime($todayDate));
 $userContextList = !empty($_POST['users']) ? json_decode($_POST['users'], true) : $knownUsers;
 if (!is_array($userContextList)) $userContextList = $knownUsers;
 $usersString = implode(', ', array_unique(array_filter($userContextList)));
+// Lead / client names the client sent, so the memo can link the task ("call Novák about the offer").
+$leadContextList = !empty($_POST['leads']) ? json_decode($_POST['leads'], true) : [];
+if (!is_array($leadContextList)) $leadContextList = [];
+$leadContextList = array_slice(array_values(array_unique(array_filter(array_map(function ($n) {
+    return is_string($n) ? trim(mb_substr($n, 0, 120)) : '';
+}, $leadContextList)))), 0, 400);
+$leadsString = $leadContextList ? implode('; ', $leadContextList) : '(none)';
 
 $parsedTasks = [];
 
-if (!empty($openAiKey)) {
+if (ccrm_ai_is_configured($pdo, $integrationsConfig)) {
     $prompt = "You are an intelligent CRM task assistant. The user recorded a voice memo to create one or more tasks.
 Analyze the transcribed voice recording and extract the structured task(s).
 
 Current Date Reference: {$todayDate} ({$todayDayOfWeek}).
 Available Team Members in CRM: {$usersString}.
+Known Leads / Clients in CRM: {$leadsString}.
 
 CRITICAL LANGUAGE REQUIREMENT:
 - You MUST write the task 'title' and 'description' in the EXACT SAME LANGUAGE that the user spoke in the voice memo (e.g. Slovak, Hungarian, English, Czech, German, etc.).
@@ -187,7 +190,8 @@ Instructions:
    - If no date is mentioned, default to '{$todayDate}'.
 6. 'deadlineTime': If user mentions a specific time ('o 14:00', 'at 3pm', '15:30-kor', 'ráno o deviatej'), format as 'HH:MM' (24-hour format like '14:00'). Otherwise set to null.
 7. 'assignedTo': If user mentions assigning to a team member (e.g. 'priraď Petrovi', 'assign to John', 'add to Roland', 'küldd Attilának'), match the name to the closest member in the Available Team Members list. Otherwise null.
-8. If the voice memo contains multiple distinct tasks, output multiple objects in the 'tasks' array. Otherwise output 1 task object.
+8. 'lead': If the task is about one of the Known Leads / Clients (a company or person named in the memo), return that entry's name exactly as listed. Otherwise null.
+9. If the voice memo contains multiple distinct tasks, output multiple objects in the 'tasks' array. Otherwise output 1 task object.
 
 Respond ONLY with valid JSON in this exact structure:
 {
@@ -198,7 +202,8 @@ Respond ONLY with valid JSON in this exact structure:
       \"priority\": \"low\" | \"medium\" | \"high\",
       \"deadline\": \"YYYY-MM-DD\",
       \"deadlineTime\": \"HH:MM\" or null,
-      \"assignedTo\": \"Member Name\" or null
+      \"assignedTo\": \"Member Name\" or null,
+      \"lead\": \"Lead or Client Name\" or null
     }
   ]
 }
@@ -206,37 +211,25 @@ Respond ONLY with valid JSON in this exact structure:
 Transcription:
 " . $transcription;
 
-    $aiModel = ccrm_ai_model();
-    $gptPayload = [
-        'model' => $aiModel,
-        'messages' => [
-            ['role' => 'user', 'content' => $prompt]
+    $aiModel = ccrm_ai_model($integrationsConfig);
+    $aiRes = ccrm_ai_chat_completion(
+        $pdo,
+        [
+            'model' => $aiModel,
+            'messages' => [
+                ['role' => 'user', 'content' => $prompt]
+            ],
+            'temperature' => 0.2,
+        ],
+        [
+            'feature' => 'task_extraction',
+            'timeout' => 30,
+            'integrationsConfig' => $integrationsConfig,
         ]
-    ];
-    if (ccrm_ai_model_supports_temperature($aiModel)) {
-        $gptPayload['temperature'] = 0.2;
-    }
+    );
 
-    $ch = curl_init('https://api.openai.com/v1/chat/completions');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'Authorization: Bearer ' . $openAiKey
-    ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($gptPayload, JSON_INVALID_UTF8_SUBSTITUTE));
-
-    $gptResponse = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
-    curl_close($ch);
-
-    if ($httpCode === 200 && $gptResponse) {
-        $gptJson = json_decode($gptResponse, true);
-        $aiReply = $gptJson['choices'][0]['message']['content'] ?? '';
+    if (!empty($aiRes['ok'])) {
+        $aiReply = (string)($aiRes['content'] ?? '');
         $cleanedReply = trim(preg_replace('/^```json|```$/i', '', trim($aiReply)));
         $aiJson = json_decode($cleanedReply, true);
         if (!empty($aiJson['tasks']) && is_array($aiJson['tasks'])) {
@@ -254,7 +247,8 @@ if (empty($parsedTasks)) {
             'priority' => 'medium',
             'deadline' => $todayDate,
             'deadlineTime' => null,
-            'assignedTo' => null
+            'assignedTo' => null,
+            'lead' => null
         ]
     ];
 }

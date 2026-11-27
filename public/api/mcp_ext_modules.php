@@ -1,0 +1,1879 @@
+<?php
+/**
+ * CCRM MCP Server Extensions — Modules (Part B4)
+ *
+ * Read & write tools for the modules not covered by core/ext/ops/intel:
+ *   - Time tracking (list/running/summary, start/stop/log/update)
+ *   - Support tickets & contracts (list/get/create/update/reply)
+ *   - Orders (list/get/create/update)
+ *   - Weekly plan board (get week, create/update cards, set day note)
+ *   - Price offers & recurring task templates
+ *
+ * Non-destructive: no tool deletes rows. Included by mcp.php.
+ */
+
+require_once __DIR__ . '/recurring_tasks.php';
+require_once __DIR__ . '/time_entries_lib.php';
+require_once __DIR__ . '/time_settle.php';
+require_once __DIR__ . '/time_locks.php';
+require_once __DIR__ . '/mcp_ext_timers.php';
+require_once __DIR__ . '/tickets.php';
+
+/**
+ * Permissions for the module tools, merged into mcp_tool_permissions().
+ */
+function mcp_ext_modules_permissions(): array {
+    return [
+        // Time tracking
+        'list_time_entries'        => ['view' => ['time_tracking']],
+        'get_running_timer'        => ['view' => ['time_tracking']],
+        'get_time_tracking_summary'=> ['view' => ['time_tracking']],
+        'log_time_entry'           => ['edit' => ['time_tracking']],
+        'start_timer'              => ['edit' => ['time_tracking']],
+        'stop_timer'               => ['edit' => ['time_tracking']],
+        'update_time_entry'        => ['edit' => ['time_tracking']],
+        // Support tickets & contracts
+        'list_tickets'             => ['view' => ['tickets']],
+        'get_ticket'               => ['view' => ['tickets']],
+        'create_ticket'            => ['edit' => ['tickets']],
+        'update_ticket'            => ['edit' => ['tickets']],
+        'add_ticket_message'       => ['edit' => ['tickets']],
+        'list_support_contracts'   => ['view' => ['tickets']],
+        // Orders
+        'list_orders'              => ['view' => ['orders']],
+        'get_order'                => ['view' => ['orders']],
+        'create_order'             => ['edit' => ['orders']],
+        'update_order'             => ['edit' => ['orders']],
+        // Weekly plan
+        'get_weekly_plan'          => ['view' => ['tasks.weekly_plan']],
+        'create_weekly_plan_card'  => ['edit' => ['tasks.weekly_plan']],
+        'update_weekly_plan_card'  => ['edit' => ['tasks.weekly_plan']],
+        'set_weekly_plan_day_note' => ['edit' => ['tasks.weekly_plan']],
+        // Price offers & recurring tasks
+        'create_price_offer'       => ['edit' => ['invoices']],
+        'list_recurring_tasks'     => ['view' => ['tasks']],
+        'create_recurring_task'    => ['edit' => ['tasks']],
+    ];
+}
+
+/**
+ * Tool definitions for the module tools, merged into mcp_get_tool_definitions().
+ * Each block keeps `'name'` on the line directly above `'description'` so the
+ * probe harness discovers every tool cleanly.
+ */
+function mcp_get_module_tool_definitions(): array {
+    return [
+        // --- Time Tracking ---
+        [
+            'name' => 'list_time_entries',
+            'description' => 'List tracked time entries (the rows of Time tracking). Without time_tracking_team permission only the key owner\'s own entries are returned; omit user_id for them. Each entry\'s `title` is the name the list shows: for an entry linked to a task or ticket (titleSource task/ticket) it is that task\'s or ticket\'s title, otherwise the entry\'s own `description`. `note` is the description of the work. Supports date range, user, project, task, ticket, and billable filters.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'from' => ['type' => 'string', 'description' => 'Start entry date YYYY-MM-DD'],
+                    'to' => ['type' => 'string', 'description' => 'End entry date YYYY-MM-DD'],
+                    'user_id' => ['type' => 'string', 'description' => 'Filter by user ID (a user id such as u-..., not an employee id; requires time_tracking_team unless own ID). Omit it for your own entries.'],
+                    'project_id' => ['type' => 'string', 'description' => 'Filter by project ID'],
+                    'task_id' => ['type' => 'string', 'description' => 'Filter by task ID'],
+                    'ticket_id' => ['type' => 'string', 'description' => 'Filter by ticket ID'],
+                    'billable' => ['type' => 'boolean', 'description' => 'Filter by billable status'],
+                    'limit' => ['type' => 'integer', 'description' => 'Max rows to return (default 50, max 200)'],
+                ],
+            ],
+        ],
+        [
+            'name' => 'get_running_timer',
+            'description' => 'Get currently running time tracker timers for the active user (or another user / all team timers with time_tracking_team). `timers` lists every running entry (several may run in parallel), oldest first (also returned as `running_timers`); `running` is the first one, or null when nothing runs.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'user_id' => ['type' => 'string', 'description' => 'Optional user ID to inspect (requires time_tracking_team unless own ID)'],
+                    'all_running' => ['type' => 'boolean', 'description' => 'When true (with time_tracking_team), return all running team timers in timers / running_timers'],
+                ],
+            ],
+        ],
+        [
+            'name' => 'get_time_tracking_summary',
+            'description' => 'Aggregate tracked hours and billable totals over a date range, grouped by project or user (respects time_tracking_team and time_tracking_costs permissions). `hours` is project time; with group_by=user each person also gets `worked_hours` (their own time, which parallel timers share) and `leverage` (hours / worked_hours).',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'from' => ['type' => 'string', 'description' => 'Start date YYYY-MM-DD (default: 30 days ago)'],
+                    'to' => ['type' => 'string', 'description' => 'End date YYYY-MM-DD (default: today)'],
+                    'group_by' => ['type' => 'string', 'description' => 'Grouping: project or user (default: project)'],
+                    'project_id' => ['type' => 'string', 'description' => 'Optional project ID filter'],
+                    'user_id' => ['type' => 'string', 'description' => 'Optional user ID filter (requires time_tracking_team unless own ID)'],
+                ],
+            ],
+        ],
+        [
+            'name' => 'log_time_entry',
+            'description' => 'Log a completed manual time entry with duration or start/end timestamps, optional project/task/ticket links, tags, description, and billable flag.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'entry_date' => ['type' => 'string', 'description' => 'Entry date YYYY-MM-DD (default: today)'],
+                    'duration_minutes' => ['type' => 'number', 'description' => 'Duration in minutes (1 to 1440)'],
+                    'duration_seconds' => ['type' => 'integer', 'description' => 'Alternative exact duration in seconds (1 to 86400)'],
+                    'start_at' => ['type' => 'string', 'description' => 'Optional ISO start timestamp'],
+                    'end_at' => ['type' => 'string', 'description' => 'Optional ISO end timestamp'],
+                    'user_id' => ['type' => 'string', 'description' => 'Optional target user ID when logging on behalf of a teammate (requires time_tracking_team)'],
+                    'description' => ['type' => 'string', 'description' => 'The entry\'s name (title, up to 500 characters). An entry with a task_id or ticket_id keeps that task\'s or ticket\'s title as its name; a different description is then put at the start of note as "<description> - <note>".'],
+                    'task_id' => ['type' => 'string', 'description' => 'Linked task ID'],
+                    'ticket_id' => ['type' => 'string', 'description' => 'Linked support ticket ID'],
+                    'project_id' => ['type' => 'string', 'description' => 'Linked project ID'],
+                    'billable' => ['type' => 'boolean', 'description' => 'Whether hours are billable (default from workspace settings)'],
+                    'note' => ['type' => 'string', 'description' => 'Description of the work (up to 1000 characters)'],
+                    'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Optional tags (up to 20 strings)'],
+                ],
+            ],
+        ],
+        [
+            'name' => 'start_timer',
+            'description' => 'Start a live running timer for the active user. mode "switch" (default) stops and prices every running timer first; mode "parallel" keeps the other timers running. Starting a target that is already running changes nothing and returns success:false with code already_running and that entry.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'mode' => ['type' => 'string', 'enum' => ['switch', 'parallel'], 'description' => 'switch (default): stop every running timer, then start this one. parallel: keeps other timers running; requires the company setting and the role permission (time_tracking_parallel), and respects the parallel limit and the same-project rule.'],
+                    'description' => ['type' => 'string', 'description' => 'Work description'],
+                    'task_id' => ['type' => 'string', 'description' => 'Linked task ID'],
+                    'ticket_id' => ['type' => 'string', 'description' => 'Linked ticket ID'],
+                    'project_id' => ['type' => 'string', 'description' => 'Linked project ID'],
+                    'billable' => ['type' => 'boolean', 'description' => 'Billable flag (default from workspace settings)'],
+                    'note' => ['type' => 'string', 'description' => 'Optional note'],
+                ],
+            ],
+        ],
+        [
+            'name' => 'stop_timer',
+            'description' => 'Stop a running timer of the active user (or of a teammate, by specific entry_id, with time_tracking_team), compute elapsed duration and rates, and save the completed entry. With several timers running, pass entry_id (one) or all:true (every one); without either it fails and lists them.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'entry_id' => ['type' => 'string', 'description' => 'The running entry to stop (see get_running_timer timers); timers of teammates need time_tracking_team'],
+                    'id' => ['type' => 'string', 'description' => 'Alias of entry_id'],
+                    'all' => ['type' => 'boolean', 'description' => 'Stop every running timer; the overrides below are ignored'],
+                    'description' => ['type' => 'string', 'description' => 'Optional final description override'],
+                    'note' => ['type' => 'string', 'description' => 'Optional final note'],
+                    'project_id' => ['type' => 'string', 'description' => 'Optional project ID if required by workspace settings'],
+                    'task_id' => ['type' => 'string', 'description' => 'Optional task ID if required by workspace settings'],
+                ],
+            ],
+        ],
+        [
+            'name' => 'update_time_entry',
+            'description' => 'Update, soft-delete (archived=true), or restore (archived=false) a time entry (own entries, or team entries with time_tracking_team). To fill in an entry\'s name and work description, set `description` (the name) and `note` (the description of the work); fields left out keep their value. An entry linked to a task or ticket keeps the task\'s or ticket\'s title as its name: a `description` that differs from that title is put at the start of the note as "<description> - <note>" (the response says so in `notice`), and sending the same call again does not add it twice. Locked/approved/paid entries cannot be edited by non-admins.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Time entry ID'],
+                    'entry_date' => ['type' => 'string', 'description' => 'Updated date YYYY-MM-DD'],
+                    'duration_minutes' => ['type' => 'number', 'description' => 'Updated duration in minutes (1 to 1440)'],
+                    'duration_seconds' => ['type' => 'integer', 'description' => 'Updated exact duration in seconds'],
+                    'start_at' => ['type' => 'string', 'description' => 'Updated ISO start timestamp (provide with end_at)'],
+                    'end_at' => ['type' => 'string', 'description' => 'Updated ISO end timestamp (provide with start_at)'],
+                    'description' => ['type' => 'string', 'description' => 'The entry\'s name (title, up to 500 characters). For an entry linked to a task or ticket it goes to the start of note instead (see above).'],
+                    'task_id' => ['type' => 'string', 'description' => 'Updated task ID (empty string clears link)'],
+                    'ticket_id' => ['type' => 'string', 'description' => 'Updated ticket ID (empty string clears link)'],
+                    'project_id' => ['type' => 'string', 'description' => 'Updated project ID (empty string clears link)'],
+                    'billable' => ['type' => 'boolean', 'description' => 'Updated billable flag'],
+                    'note' => ['type' => 'string', 'description' => 'Description of the work (up to 1000 characters; empty string clears it)'],
+                    'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Replacement tags array'],
+                    'archived' => ['type' => 'boolean', 'description' => 'Set true to soft-delete (archive) or false to restore a deleted entry'],
+                ],
+                'required' => ['id'],
+            ],
+        ],
+
+        // --- Support Tickets & Contracts ---
+        [
+            'name' => 'list_tickets',
+            'description' => 'List support tickets with filters for status, priority, type, project, client, assignee, or text search.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'status' => ['type' => 'string', 'description' => 'Filter by ticket status key (e.g. new, open, waiting, resolved, closed)'],
+                    'priority' => ['type' => 'string', 'description' => 'Filter by priority: low, normal, high, critical'],
+                    'type' => ['type' => 'string', 'description' => 'Filter by type: question, bug, feature, incident, support, request'],
+                    'project_id' => ['type' => 'string', 'description' => 'Filter by project ID'],
+                    'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
+                    'assignee' => ['type' => 'string', 'description' => 'Filter by assigned user name'],
+                    'search' => ['type' => 'string', 'description' => 'Search ticket number, title, description, or reporter'],
+                    'archived' => ['type' => 'boolean', 'description' => 'Filter to archived (true) or active (false) tickets'],
+                    'include_archived' => ['type' => 'boolean', 'description' => 'Include both archived and active tickets (default false)'],
+                    'limit' => ['type' => 'integer', 'description' => 'Max rows to return (default 50, max 100)'],
+                    'offset' => ['type' => 'integer', 'description' => 'Rows to skip for pagination'],
+                ] + mcp_date_range_props('created', 'Created') + mcp_date_range_props('updated', 'Updated'),
+            ],
+        ],
+        [
+            'name' => 'get_ticket',
+            'description' => 'Get full support ticket details, SLA deadlines, conversation messages (including internal notes), and tracked time.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Ticket ID or ticket number (e.g. TCK-000001)'],
+                ],
+                'required' => ['id'],
+            ],
+        ],
+        [
+            'name' => 'create_ticket',
+            'description' => 'Create a new support ticket with auto-generated ticket number, SLA calculation from priority/contract, and initial message.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'title' => ['type' => 'string', 'description' => 'Ticket subject/title'],
+                    'description' => ['type' => 'string', 'description' => 'Issue description'],
+                    'priority' => ['type' => 'string', 'description' => 'Priority: low, normal, high, critical (default normal)'],
+                    'type' => ['type' => 'string', 'description' => 'Type: question, bug, feature, incident, support (default question)'],
+                    'status' => ['type' => 'string', 'description' => 'Status key (default new)'],
+                    'project_id' => ['type' => 'string', 'description' => 'Linked project ID'],
+                    'client_id' => ['type' => 'string', 'description' => 'Linked client ID'],
+                    'contract_id' => ['type' => 'string', 'description' => 'Optional support contract ID for SLA overrides'],
+                    'assignee' => ['type' => 'string', 'description' => 'Assigned team member name'],
+                    'reporter_name' => ['type' => 'string', 'description' => 'Reporter contact name'],
+                    'reporter_email' => ['type' => 'string', 'description' => 'Reporter email address'],
+                    'reporter_phone' => ['type' => 'string', 'description' => 'Reporter phone number'],
+                ],
+                'required' => ['title'],
+            ],
+        ],
+        [
+            'name' => 'update_ticket',
+            'description' => 'Update support ticket fields (status, priority, type, assignee, project, client, or archived state) and recalculate SLA if priority/contract changes.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Ticket ID'],
+                    'title' => ['type' => 'string', 'description' => 'Updated title'],
+                    'description' => ['type' => 'string', 'description' => 'Updated description'],
+                    'status' => ['type' => 'string', 'description' => 'Updated ticket status key'],
+                    'priority' => ['type' => 'string', 'description' => 'Updated priority: low, normal, high, critical'],
+                    'type' => ['type' => 'string', 'description' => 'Updated type'],
+                    'assignee' => ['type' => 'string', 'description' => 'Updated assignee name (empty string unassigns)'],
+                    'project_id' => ['type' => 'string', 'description' => 'Updated project ID'],
+                    'client_id' => ['type' => 'string', 'description' => 'Updated client ID'],
+                    'contract_id' => ['type' => 'string', 'description' => 'Optional support contract ID for SLA recalculation'],
+                    'archived' => ['type' => 'boolean', 'description' => 'Archive or unarchive ticket'],
+                ],
+                'required' => ['id'],
+            ],
+        ],
+        [
+            'name' => 'add_ticket_message',
+            'description' => 'Add an internal note or agent reply message to a support ticket thread (marks first_responded_at for non-internal replies).',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'ticket_id' => ['type' => 'string', 'description' => 'Target ticket ID'],
+                    'body' => ['type' => 'string', 'description' => 'Message text'],
+                    'is_internal' => ['type' => 'boolean', 'description' => 'True for internal team note, false for client-visible reply (default true)'],
+                    'status' => ['type' => 'string', 'description' => 'Optional new ticket status key after posting'],
+                    'attachments' => [
+                        'type' => 'array',
+                        'description' => 'Optional image/file attachments ({ name, url?, path?, dataUrl?, base64?, type? }) attached to both the timeline message and the ticket',
+                        'items' => ['type' => 'object'],
+                    ],
+                ],
+                'required' => ['ticket_id', 'body'],
+            ],
+        ],
+        [
+            'name' => 'list_support_contracts',
+            'description' => 'List support retainer / SLA contracts with monthly included hours, hourly rate, SLA targets, validity dates, and linked project/client.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'tier' => ['type' => 'string', 'description' => 'Filter by tier: basic, pro, enterprise, project_only'],
+                    'project_id' => ['type' => 'string', 'description' => 'Filter by project ID'],
+                    'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
+                    'active_only' => ['type' => 'boolean', 'description' => 'Only currently valid contracts (default false)'],
+                    'limit' => ['type' => 'integer', 'description' => 'Max rows to return (default 50, max 100)'],
+                    'offset' => ['type' => 'integer', 'description' => 'Rows to skip for pagination'],
+                ],
+            ],
+        ],
+
+        // --- Orders ---
+        [
+            'name' => 'list_orders',
+            'description' => 'List sales and purchase orders with filters by type, status, payment status, client/supplier, date range, or search.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'type' => ['type' => 'string', 'description' => 'Order type: sales or purchase'],
+                    'status' => ['type' => 'string', 'description' => 'Order status (e.g. new, confirmed, processing, shipped, delivered, cancelled)'],
+                    'payment_status' => ['type' => 'string', 'description' => 'Payment status: unpaid, partially_paid, paid, refunded'],
+                    'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
+                    'supplier_id' => ['type' => 'string', 'description' => 'Filter by supplier ID (from list_suppliers)'],
+                    'project_id' => ['type' => 'string', 'description' => 'Filter by the project the order belongs to'],
+                    'from' => ['type' => 'string', 'description' => 'Order date from YYYY-MM-DD'],
+                    'to' => ['type' => 'string', 'description' => 'Order date to YYYY-MM-DD'],
+                    'search' => ['type' => 'string', 'description' => 'Search order number, guest name/company, billing name, or notes'],
+                    'limit' => ['type' => 'integer', 'description' => 'Max rows (default 50, max 100)'],
+                    'offset' => ['type' => 'integer', 'description' => 'Rows to skip for pagination'],
+                ] + mcp_date_range_props('updated', 'Updated'),
+            ],
+        ],
+        [
+            'name' => 'get_order',
+            'description' => 'Get full order details including delivery/billing info, totals, linked client/supplier, and line items.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Order ID or order number'],
+                ],
+                'required' => ['id'],
+            ],
+        ],
+        [
+            'name' => 'create_order',
+            'description' => 'Create a new sales or purchase order with billing/shipping/guest fields and optional line items (totals computed automatically from item prices, discounts, and VAT).',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'type' => ['type' => 'string', 'description' => 'Order type: sales or purchase (default sales)'],
+                    'order_number' => ['type' => 'string', 'description' => 'Custom order number (auto-generated if omitted)'],
+                    'order_date' => ['type' => 'string', 'description' => 'Order date YYYY-MM-DD (default today)'],
+                    'client_id' => ['type' => 'string', 'description' => 'Linked client/lead ID'],
+                    'supplier_id' => ['type' => 'string', 'description' => 'Linked supplier ID from suppliers (for purchase orders)'],
+                    'project_id' => ['type' => 'string', 'description' => 'Project this order belongs to (from list_projects)'],
+                    'warehouse_id' => ['type' => 'string', 'description' => 'Fulfillment / receiving warehouse ID'],
+                    'guest_name' => ['type' => 'string', 'description' => 'Customer name when not linked to a CRM client'],
+                    'guest_email' => ['type' => 'string', 'description' => 'Customer email'],
+                    'guest_phone' => ['type' => 'string', 'description' => 'Customer phone'],
+                    'guest_company' => ['type' => 'string', 'description' => 'Guest company name'],
+                    'guest_ico' => ['type' => 'string', 'description' => 'Guest IČO'],
+                    'guest_dic' => ['type' => 'string', 'description' => 'Guest DIČ'],
+                    'guest_ic_dph' => ['type' => 'string', 'description' => 'Guest IČ DPH'],
+                    'billing_name' => ['type' => 'string', 'description' => 'Billing company/person name'],
+                    'billing_street' => ['type' => 'string', 'description' => 'Billing street'],
+                    'billing_city' => ['type' => 'string', 'description' => 'Billing city'],
+                    'billing_zip' => ['type' => 'string', 'description' => 'Billing postal code'],
+                    'billing_country' => ['type' => 'string', 'description' => 'Billing country'],
+                    'billing_ico' => ['type' => 'string', 'description' => 'Billing IČO'],
+                    'billing_dic' => ['type' => 'string', 'description' => 'Billing DIČ'],
+                    'billing_ic_dph' => ['type' => 'string', 'description' => 'Billing IČ DPH'],
+                    'delivery_recipient' => ['type' => 'string', 'description' => 'Delivery recipient'],
+                    'delivery_street' => ['type' => 'string', 'description' => 'Delivery street'],
+                    'delivery_city' => ['type' => 'string', 'description' => 'Delivery city'],
+                    'delivery_zip' => ['type' => 'string', 'description' => 'Delivery postal code'],
+                    'delivery_country' => ['type' => 'string', 'description' => 'Delivery country'],
+                    'delivery_phone' => ['type' => 'string', 'description' => 'Delivery phone'],
+                    'delivery_notes' => ['type' => 'string', 'description' => 'Delivery notes'],
+                    'status' => ['type' => 'string', 'description' => 'Initial status (default new)'],
+                    'payment_status' => ['type' => 'string', 'description' => 'Payment status: unpaid, partially_paid, paid, refunded (default unpaid)'],
+                    'payment_method' => ['type' => 'string', 'description' => 'Payment method (e.g. bank_transfer, card, cash, cod)'],
+                    'currency' => ['type' => 'string', 'description' => '3-letter currency code (default workspace currency)'],
+                    'requested_delivery_date' => ['type' => 'string', 'description' => 'Requested delivery YYYY-MM-DD'],
+                    'shipping_method' => ['type' => 'string', 'description' => 'Shipping carrier/method'],
+                    'customer_note' => ['type' => 'string', 'description' => 'Customer-facing note'],
+                    'notes' => ['type' => 'string', 'description' => 'Internal order notes'],
+                    'items' => [
+                        'type' => 'array',
+                        'description' => 'Order line items',
+                        'items' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'name' => ['type' => 'string', 'description' => 'Product/service name'],
+                                'item_type' => ['type' => 'string', 'description' => 'product or service (default product)'],
+                                'item_id' => ['type' => 'string', 'description' => 'Optional warehouse_items ID'],
+                                'sku' => ['type' => 'string', 'description' => 'SKU'],
+                                'quantity' => ['type' => 'number', 'description' => 'Quantity (default 1)'],
+                                'unit' => ['type' => 'string', 'description' => 'Unit (default ks)'],
+                                'unit_price' => ['type' => 'number', 'description' => 'Net unit price'],
+                                'discount_percent' => ['type' => 'number', 'description' => 'Discount % (default 0)'],
+                                'tax_rate' => ['type' => 'number', 'description' => 'VAT % (default workspace rate)'],
+                            ],
+                            'required' => ['name', 'unit_price'],
+                        ],
+                    ],
+                ],
+            ],
+        ],
+        [
+            'name' => 'update_order',
+            'description' => 'Update order workflow status, payment status/date, delivery/billing details, tracking, or notes.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Order ID'],
+                    'status' => ['type' => 'string', 'description' => 'Updated status (e.g. new, confirmed, processing, shipped, delivered, cancelled)'],
+                    'payment_status' => ['type' => 'string', 'description' => 'Payment status: unpaid, partially_paid, paid, refunded'],
+                    'paid_at' => ['type' => 'string', 'description' => 'Payment timestamp/date YYYY-MM-DD'],
+                    'payment_reference' => ['type' => 'string', 'description' => 'Payment reference / VS'],
+                    'warehouse_id' => ['type' => 'string', 'description' => 'Fulfillment warehouse ID'],
+                    'project_id' => ['type' => 'string', 'description' => 'Project this order belongs to (empty string unlinks it)'],
+                    'shipping_method' => ['type' => 'string', 'description' => 'Shipping carrier/method'],
+                    'shipping_tracking_number' => ['type' => 'string', 'description' => 'Shipment tracking number'],
+                    'confirmed_delivery_date' => ['type' => 'string', 'description' => 'Confirmed delivery date YYYY-MM-DD'],
+                    'delivery_recipient' => ['type' => 'string', 'description' => 'Delivery recipient'],
+                    'delivery_street' => ['type' => 'string', 'description' => 'Delivery street'],
+                    'delivery_city' => ['type' => 'string', 'description' => 'Delivery city'],
+                    'delivery_zip' => ['type' => 'string', 'description' => 'Delivery postal code'],
+                    'billing_name' => ['type' => 'string', 'description' => 'Billing name'],
+                    'customer_note' => ['type' => 'string', 'description' => 'Customer note'],
+                    'notes' => ['type' => 'string', 'description' => 'Updated internal notes'],
+                ],
+                'required' => ['id'],
+            ],
+        ],
+
+        // --- Weekly Plan ---
+        [
+            'name' => 'get_weekly_plan',
+            'description' => 'Get the Weekly Plan board (planning cards grouped by date plus per-day notes) for a given Monday-Sunday date range.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'date' => ['type' => 'string', 'description' => 'Any date YYYY-MM-DD in the target week (default: current week)'],
+                    'from' => ['type' => 'string', 'description' => 'Explicit range start YYYY-MM-DD'],
+                    'to' => ['type' => 'string', 'description' => 'Explicit range end YYYY-MM-DD'],
+                ],
+            ],
+        ],
+        [
+            'name' => 'create_weekly_plan_card',
+            'description' => 'Create a standalone planning card on a Weekly Plan day column with optional color and entity references.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'date' => ['type' => 'string', 'description' => 'Day column YYYY-MM-DD'],
+                    'content' => ['type' => 'string', 'description' => 'Card text/goal'],
+                    'position' => ['type' => 'integer', 'description' => 'Sort order in day column (appends to end if omitted)'],
+                    'color' => ['type' => 'string', 'description' => 'Optional card color key/hex'],
+                    'completed' => ['type' => 'boolean', 'description' => 'Initial completion state (default false)'],
+                    'refs' => [
+                        'type' => 'array',
+                        'description' => 'Optional inline entity references [{type, id, label}]',
+                        'items' => ['type' => 'object'],
+                    ],
+                ],
+                'required' => ['date', 'content'],
+            ],
+        ],
+        [
+            'name' => 'update_weekly_plan_card',
+            'description' => 'Update a Weekly Plan card\'s text, completion checkbox, date column, position, color, entity references, or soft-delete/restore state (archived).',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Weekly plan card ID'],
+                    'date' => ['type' => 'string', 'description' => 'Move card to YYYY-MM-DD'],
+                    'content' => ['type' => 'string', 'description' => 'Updated text'],
+                    'position' => ['type' => 'integer', 'description' => 'Updated sort position'],
+                    'completed' => ['type' => 'boolean', 'description' => 'Mark card checked or unchecked'],
+                    'color' => ['type' => 'string', 'description' => 'Updated color key/hex'],
+                    'refs' => ['type' => 'array', 'description' => 'Updated refs array', 'items' => ['type' => 'object']],
+                    'archived' => ['type' => 'boolean', 'description' => 'true soft-deletes (hides) the card, false restores it'],
+                ],
+                'required' => ['id'],
+            ],
+        ],
+        [
+            'name' => 'set_weekly_plan_day_note',
+            'description' => 'Set or clear the day note displayed under a Weekly Plan day header.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'date' => ['type' => 'string', 'description' => 'Day YYYY-MM-DD'],
+                    'note' => ['type' => 'string', 'description' => 'Day note text (empty string clears the note)'],
+                ],
+                'required' => ['date', 'note'],
+            ],
+        ],
+
+        // --- Price Offers & Recurring Tasks ---
+        [
+            'name' => 'create_price_offer',
+            'description' => 'Create a price offer (quote) for a client or lead with itemized pricing, category, optional validity window, intro/closing notes, and automatic CP document number.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'client_id' => ['type' => 'string', 'description' => 'Lead or client ID from CRM'],
+                    'title' => ['type' => 'string', 'description' => 'Offer title'],
+                    'subject' => ['type' => 'string', 'description' => 'Optional email/offer subject (defaults to title)'],
+                    'category_id' => ['type' => 'string', 'description' => 'Offer category ID (see list_offer_categories)'],
+                    'issued_at' => ['type' => 'string', 'description' => 'Issue date YYYY-MM-DD (default today)'],
+                    'valid_until' => ['type' => 'string', 'description' => 'Valid-until date YYYY-MM-DD (default +30 days)'],
+                    'status' => ['type' => 'string', 'description' => 'Draft or open OFFER_STATUSES key (default draft; won/lost settled in app)'],
+                    'currency' => ['type' => 'string', 'description' => '3-letter currency code (default workspace currency)'],
+                    'greeting_note' => ['type' => 'string', 'description' => 'Optional greeting paragraph'],
+                    'intro_note' => ['type' => 'string', 'description' => 'Optional introduction paragraph'],
+                    'closing_note' => ['type' => 'string', 'description' => 'Optional closing note'],
+                    'document_number' => ['type' => 'string', 'description' => 'Custom CP number (auto-generated if omitted)'],
+                    'items' => [
+                        'type' => 'array',
+                        'description' => 'Line items (at least one required)',
+                        'items' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'title' => ['type' => 'string', 'description' => 'Item name'],
+                                'description' => ['type' => 'string', 'description' => 'Line item description'],
+                                'sku' => ['type' => 'string', 'description' => 'Optional SKU'],
+                                'warehouse_item_id' => ['type' => 'string', 'description' => 'Optional warehouse_items ID'],
+                                'quantity' => ['type' => 'number', 'description' => 'Quantity (default 1)'],
+                                'unit' => ['type' => 'string', 'description' => 'Unit of measure (default ks)'],
+                                'unit_price' => ['type' => 'number', 'description' => 'Net unit price'],
+                                'vat_rate' => ['type' => 'number', 'description' => 'VAT % (default workspace rate)'],
+                                'discount_pct' => ['type' => 'number', 'description' => 'Discount % (default 0)'],
+                            ],
+                            'required' => ['title', 'unit_price'],
+                        ],
+                    ],
+                ],
+                'required' => ['client_id', 'title', 'items'],
+            ],
+        ],
+        [
+            'name' => 'list_recurring_tasks',
+            'description' => 'List recurring task templates and their schedule frequency, paused status, owner, and next occurrence.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'owner' => ['type' => 'string', 'description' => 'Filter by owner name'],
+                    'search' => ['type' => 'string', 'description' => 'Search template title or description'],
+                    'active_only' => ['type' => 'boolean', 'description' => 'Only non-paused series (default false)'],
+                    'limit' => ['type' => 'integer', 'description' => 'Max rows (default 50, max 100)'],
+                    'offset' => ['type' => 'integer', 'description' => 'Rows to skip for pagination'],
+                ] + mcp_date_range_props('updated', 'Updated'),
+            ],
+        ],
+        [
+            'name' => 'create_recurring_task',
+            'description' => 'Create a recurring task series template (daily, weekly, monthly, or yearly) and immediately materialize any due occurrence.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'title' => ['type' => 'string', 'description' => 'Recurring task title'],
+                    'description' => ['type' => 'string', 'description' => 'Task description'],
+                    'priority' => ['type' => 'string', 'description' => 'Priority: low, medium, high (default medium)'],
+                    'frequency' => ['type' => 'string', 'description' => 'Schedule frequency: daily, weekly, monthly, yearly'],
+                    'interval' => ['type' => 'integer', 'description' => 'Repeat every N units (default 1)'],
+                    'starts_on' => ['type' => 'string', 'description' => 'Series start date YYYY-MM-DD (default today)'],
+                    'ends_on' => ['type' => 'string', 'description' => 'Optional series end date YYYY-MM-DD'],
+                    'weekend_rule' => ['type' => 'string', 'description' => 'Weekend handling: keep, before, after (default keep)'],
+                    'lead_days' => ['type' => 'integer', 'description' => 'Days before deadline to create occurrence'],
+                    'day_of_week' => ['type' => 'integer', 'description' => '0 (Sun) to 6 (Sat) for weekly schedules'],
+                    'day_of_month' => ['type' => 'integer', 'description' => '1 to 31 for monthly/yearly schedules'],
+                    'month' => ['type' => 'integer', 'description' => '1 to 12 for yearly schedules'],
+                    'owner' => ['type' => 'string', 'description' => 'Primary assignee name (default active user)'],
+                    'assignees' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Additional assignee names'],
+                    'project_id' => ['type' => 'string', 'description' => 'Optional linked project ID'],
+                    'client_id' => ['type' => 'string', 'description' => 'Optional linked client/lead ID'],
+                ],
+                'required' => ['title', 'frequency'],
+            ],
+        ],
+    ];
+}
+
+// ============================================================================
+// Internal helpers
+// ============================================================================
+
+/** Enforce the same lock / approved / paid-payroll rules as time_entries.php. */
+function mcp_mod_assert_te_unlocked(\PDO $pdo, array $user, string $entryDate, string $ownerUserId, ?string $approvalStatus, array $settings): void {
+    if (ccrm_is_admin($user)) return;
+    if ($approvalStatus === 'approved') {
+        throw new \InvalidArgumentException('Approved time entries cannot be modified.');
+    }
+    $lockDays = (int)($settings['lockAfterDays'] ?? 0);
+    if ($lockDays > 0 && ccrm_tt_valid_date($entryDate)) {
+        $age = (int)floor((strtotime(mcp_today()) - strtotime($entryDate)) / 86400);
+        if ($age > $lockDays) {
+            throw new \InvalidArgumentException("Entries older than {$lockDays} days are locked.");
+        }
+    }
+    $emp = ccrm_tt_employee_for_user($pdo, $ownerUserId);
+    if ($emp && ccrm_tt_valid_date($entryDate)) {
+        $chk = $pdo->prepare("SELECT 1 FROM employee_salaries WHERE employee_id = ? AND period_key = ? AND status = 'paid' LIMIT 1");
+        $chk->execute([$emp['id'], substr($entryDate, 0, 7)]);
+        if ($chk->fetchColumn()) {
+            throw new \InvalidArgumentException('Entries in a paid payroll period are locked.');
+        }
+    }
+}
+
+/** D3.3: an interval that overlaps a locked entry of $ownerUserId is refused like editing it; admins pass. */
+function mcp_mod_assert_te_neighbours_unlocked(\PDO $pdo, array $user, string $ownerUserId, array $intervals, array $settings, ?string $excludeId = null): void {
+    $hit = ccrm_te_refuse_locked_neighbours($pdo, $user, $ownerUserId, $intervals, $settings, $excludeId);
+    if ($hit !== null) {
+        throw new \InvalidArgumentException("This time overlaps a locked time entry ({$hit['id']}, {$hit['reason']}).");
+    }
+}
+
+/** Check user access to task/ticket/project referenced by a time entry link set. */
+function mcp_mod_check_te_link_access(\PDO $pdo, array $user, array $links): void {
+    $scope = ccrm_read_scope($pdo, $user);
+    if (!empty($links['task_id'])) {
+        $vis = ccrm_visible_task_ids($pdo, $scope, [$links['task_id']]);
+        if (!isset($vis[$links['task_id']])) {
+            throw new \InvalidArgumentException('Linked task is not accessible to this user.');
+        }
+    }
+    if (empty($links['task_id']) && !empty($links['ticket_id']) && !mcp_can('tickets')) {
+        throw new \InvalidArgumentException('Caller does not have tickets permission for this link.');
+    }
+    if (!empty($links['project_id']) && $links['project_id'] !== $links['derivedProject']
+        && !ccrm_is_admin($user) && !mcp_can('projects') && !ccrm_works_on_project($pdo, $scope, $links['project_id'])) {
+        throw new \InvalidArgumentException('Linked project is not accessible to this user.');
+    }
+}
+
+/**
+ * An entry linked to a task or ticket is named after it, so a different name sent for it is
+ * not lost but put at the front of the note: "<name> - <note>" (just "<name>" without a note).
+ * Nothing changes when the name is the task's / ticket's title, or the note already starts with
+ * it (the same call made twice). Returns [note, folded].
+ */
+function mcp_mod_fold_linked_name(array $links, $description, ?string $note): array {
+    if ($links['task_id'] === null && $links['ticket_id'] === null) return [$note, false];
+    $name = mb_substr(trim((string)($description ?? '')), 0, 500);
+    if ($name === '' || mb_strtolower($name) === mb_strtolower(trim((string)($links['title_snapshot'] ?? '')))) return [$note, false];
+    $base = trim((string)($note ?? ''));
+    if ($base === $name || str_starts_with($base, $name . ' - ')) return [$note, false];
+    return [ccrm_tt_clean_note($base === '' ? $name : $name . ' - ' . $base), true];
+}
+
+/** The `notice` of a reply whose name went into the note (mcp_mod_fold_linked_name). */
+function mcp_mod_folded_notice(array $links): string {
+    return 'This entry is linked to a ' . ($links['task_id'] !== null ? 'task' : 'ticket')
+        . ' and keeps its title as the name; the description you sent was put at the start of note.';
+}
+
+/** Normalize duration seconds from duration_seconds / duration_minutes / start_at+end_at. */
+function mcp_mod_resolve_te_timing(array $args, ?string $defaultDate = null): array {
+    $startUtc = isset($args['start_at']) && $args['start_at'] !== '' ? ccrm_tt_to_utc($args['start_at']) : null;
+    $endUtc = isset($args['end_at']) && $args['end_at'] !== '' ? ccrm_tt_to_utc($args['end_at']) : null;
+    if (($startUtc !== null) !== ($endUtc !== null)) {
+        throw new \InvalidArgumentException('Provide both start_at and end_at, or omit both and pass duration_minutes/duration_seconds.');
+    }
+    if ($startUtc !== null && $endUtc !== null) {
+        $sec = ccrm_tt_seconds_between($startUtc, $endUtc);
+        if ($sec < 1 || $sec > 86400) {
+            throw new \InvalidArgumentException('Time entry duration must be between 1 second and 24 hours.');
+        }
+        $date = mcp_optional_date($args, 'entry_date') ?? ccrm_tt_local_date($startUtc);
+        return ['entry_date' => $date, 'start_at' => $startUtc, 'end_at' => $endUtc, 'duration_sec' => $sec];
+    }
+    if (isset($args['duration_seconds'])) {
+        $sec = (int)$args['duration_seconds'];
+    } elseif (isset($args['duration_minutes'])) {
+        $sec = (int)round((float)$args['duration_minutes'] * 60);
+    } else {
+        throw new \InvalidArgumentException('Provide duration_minutes, duration_seconds, or start_at + end_at.');
+    }
+    if ($sec < 1 || $sec > 86400) {
+        throw new \InvalidArgumentException('Duration must be between 1 second and 24 hours (1440 minutes).');
+    }
+    $date = mcp_optional_date($args, 'entry_date') ?? ($defaultDate ?? mcp_today());
+    return ['entry_date' => $date, 'start_at' => null, 'end_at' => null, 'duration_sec' => $sec];
+}
+
+function mcp_mod_ensure_tickets(\PDO $pdo): void {
+    if (!ccrm_table_exists($pdo, 'tickets')) {
+        ccrm_migrate_tickets($pdo, false);
+    }
+}
+
+function mcp_mod_ensure_weekly_plan(\PDO $pdo): void {
+    if (!ccrm_table_exists($pdo, 'weekly_plan_cards')) {
+        ccrm_migrate_weekly_plan($pdo);
+    }
+}
+
+/** Local whitelist existence check for extension tables not in mcp_row_exists(). */
+function mcp_mod_row_exists(\PDO $pdo, string $table, string $id, string $label): void {
+    static $allowed = ['support_contracts', 'orders', 'suppliers', 'weekly_plan_cards', 'offer_categories', 'warehouses'];
+    if (!in_array($table, $allowed, true)) throw new \LogicException('table not allowed');
+    $stmt = $pdo->prepare("SELECT 1 FROM `{$table}` WHERE id = ? LIMIT 1");
+    $stmt->execute([$id]);
+    if (!$stmt->fetchColumn()) throw new \InvalidArgumentException("{$label} not found: {$id}");
+}
+
+/** Find ticket row by ID or ticket_number. */
+function mcp_mod_find_ticket(\PDO $pdo, string $idOrNum): array {
+    $stmt = $pdo->prepare("SELECT * FROM tickets WHERE id = ? OR UPPER(ticket_number) = UPPER(?) LIMIT 1");
+    $stmt->execute([$idOrNum, $idOrNum]);
+    $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+    if (!$row) throw new \InvalidArgumentException("Ticket not found: {$idOrNum}");
+    return $row;
+}
+
+/** Resolve a user by exact name or ID and return ['id' => ..., 'name' => ...]. */
+function mcp_mod_resolve_user(\PDO $pdo, string $nameOrId): array {
+    $stmt = $pdo->prepare("SELECT id, name FROM users WHERE id = ? OR LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
+    $stmt->execute([$nameOrId, $nameOrId]);
+    $u = $stmt->fetch(\PDO::FETCH_ASSOC);
+    if (!$u) throw new \InvalidArgumentException("User not found: {$nameOrId}");
+    return $u;
+}
+
+/** Lookup matching support contract ID when none explicitly given. */
+function mcp_mod_default_contract_id(\PDO $pdo, ?string $projectId, ?string $clientId): ?string {
+    if (!$projectId && !$clientId) return null;
+    $stmt = $pdo->prepare("SELECT id FROM support_contracts WHERE (project_id = ? OR client_id = ?) LIMIT 1");
+    $stmt->execute([$projectId, $clientId]);
+    return $stmt->fetchColumn() ?: null;
+}
+
+// ============================================================================
+// Execution Dispatcher
+// ============================================================================
+
+function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $args): mixed {
+    $uid = (string)$user['id'];
+    $viewer = ['userId' => $uid, 'canCosts' => mcp_can('time_tracking_costs')];
+
+    switch ($tool) {
+        // ------------------------------------------------------------------
+        // TIME TRACKING
+        // ------------------------------------------------------------------
+        case 'list_time_entries': {
+            $canTeam = mcp_can('time_tracking_team');
+            $targetUser = isset($args['user_id']) && $args['user_id'] !== '' ? (string)$args['user_id'] : null;
+            if (!$canTeam) {
+                if ($targetUser !== null && $targetUser !== $uid) {
+                    throw new \InvalidArgumentException("Viewing another user's time entries requires time_tracking_team permission. Your user ID is {$uid}; omit user_id to list your own entries.");
+                }
+                $targetUser = $uid;
+            }
+            $where = ['te.deleted_at IS NULL'];
+            $params = [];
+            if ($targetUser !== null) { $where[] = 'te.user_id = ?'; $params[] = $targetUser; }
+            if ($from = mcp_optional_date($args, 'from')) { $where[] = 'te.entry_date >= ?'; $params[] = $from; }
+            if ($to = mcp_optional_date($args, 'to')) { $where[] = 'te.entry_date <= ?'; $params[] = $to; }
+            if (!empty($args['project_id'])) { $where[] = 'te.project_id = ?'; $params[] = (string)$args['project_id']; }
+            if (!empty($args['task_id'])) { $where[] = 'te.task_id = ?'; $params[] = (string)$args['task_id']; }
+            if (!empty($args['ticket_id'])) { $where[] = 'te.ticket_id = ?'; $params[] = (string)$args['ticket_id']; }
+            if (array_key_exists('billable', $args) && $args['billable'] !== null) {
+                $where[] = 'te.billable = ?';
+                $params[] = $args['billable'] ? 1 : 0;
+            }
+            $limit = mcp_limit($args, 50, 200);
+            $sql = ccrm_tt_entry_select()
+                . ' WHERE ' . implode(' AND ', $where)
+                . " ORDER BY te.entry_date DESC, COALESCE(te.start_at, te.created_at) DESC LIMIT {$limit}";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            return array_map(fn($r) => ccrm_tt_entry_json($r, $viewer), $stmt->fetchAll(\PDO::FETCH_ASSOC));
+        }
+
+        case 'get_running_timer': {
+            $canTeam = mcp_can('time_tracking_team');
+            $allRunning = !empty($args['all_running']);
+            $targetUser = isset($args['user_id']) && trim((string)$args['user_id']) !== '' ? trim((string)$args['user_id']) : null;
+            if ($allRunning) {
+                if (!$canTeam) {
+                    throw new \InvalidArgumentException('Listing all running timers requires time_tracking_team permission.');
+                }
+                $stmt = $pdo->query(ccrm_tt_entry_select() . " WHERE te.start_at IS NOT NULL AND te.end_at IS NULL AND te.deleted_at IS NULL ORDER BY te.start_at DESC LIMIT 200");
+                $rows = array_map(fn($r) => ccrm_tt_entry_json($r, $viewer), $stmt->fetchAll(\PDO::FETCH_ASSOC));
+                return ['running' => $rows[0] ?? null, 'timers' => $rows, 'running_timers' => $rows, 'count' => count($rows)];
+            }
+            $lookupUid = $targetUser ?? $uid;
+            if ($lookupUid !== $uid) {
+                if (!$canTeam) {
+                    throw new \InvalidArgumentException('Viewing another user\'s running timer requires time_tracking_team permission.');
+                }
+                $rows = mcp_timer_running_json($pdo, $lookupUid, $viewer);
+                return ['running' => $rows[0] ?? null, 'timers' => $rows, 'running_timers' => $rows, 'paused' => []];
+            }
+            $own = mcp_timer_get_running($pdo, $uid, $viewer);
+            $own['running_timers'] = $own['timers'];
+            return $own;
+        }
+
+        case 'get_time_tracking_summary': {
+            $canTeam = mcp_can('time_tracking_team');
+            $targetUser = isset($args['user_id']) && $args['user_id'] !== '' ? (string)$args['user_id'] : null;
+            if (!$canTeam) {
+                if ($targetUser !== null && $targetUser !== $uid) {
+                    throw new \InvalidArgumentException('Team summary requires time_tracking_team permission.');
+                }
+                $targetUser = $uid;
+            }
+            $from = mcp_optional_date($args, 'from') ?? date('Y-m-d', strtotime('-30 days'));
+            $to = mcp_optional_date($args, 'to') ?? mcp_today();
+            $groupBy = mcp_enum($args, 'group_by', ['project', 'user'], 'project');
+
+            $where = ['e.deleted_at IS NULL', '(e.end_at IS NOT NULL OR e.start_at IS NULL)', 'e.entry_date >= ?', 'e.entry_date <= ?'];
+            $params = [$from, $to];
+            if ($targetUser !== null) { $where[] = 'e.user_id = ?'; $params[] = $targetUser; }
+            if (!empty($args['project_id'])) { $where[] = 'e.project_id = ?'; $params[] = (string)$args['project_id']; }
+
+            $selKey = $groupBy === 'user'
+                ? 'e.user_id AS group_key, COALESCE(u.name, e.user_id) AS group_label'
+                : "COALESCE(e.project_id, '_unassigned') AS group_key, COALESCE(p.name, 'Unassigned') AS group_label";
+            $groupCol = $groupBy === 'user' ? 'e.user_id, u.name' : 'e.project_id, p.name';
+
+            $costCols = $viewer['canCosts']
+                ? ', COALESCE(SUM(e.cost), 0) AS total_cost, COALESCE(SUM(CASE WHEN e.billable = 1 THEN (e.duration_sec / 3600.0) * COALESCE(e.billable_rate, 0) ELSE 0 END), 0) AS total_billable_amount'
+                : '';
+            // D9: a person's sum is worked time (parallel timers share it; hours-only and not yet settled rows count their duration).
+            $byUser = $groupBy === 'user';
+            $workedCol = $byUser ? ', COALESCE(SUM(COALESCE(e.worked_ms, e.duration_sec * 1000)), 0) AS worked_ms' : '';
+
+            $sql = "SELECT {$selKey}, COUNT(*) AS entry_count,
+                           COALESCE(SUM(e.duration_sec), 0) AS total_seconds,
+                           COALESCE(SUM(CASE WHEN e.billable = 1 THEN e.duration_sec ELSE 0 END), 0) AS billable_seconds
+                           {$workedCol}
+                           {$costCols}
+                    FROM time_entries e
+                    LEFT JOIN users u ON u.id = e.user_id
+                    LEFT JOIN projects p ON p.id = e.project_id
+                    WHERE " . implode(' AND ', $where) . "
+                    GROUP BY {$groupCol}
+                    ORDER BY total_seconds DESC";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            $rows = [];
+            $totSec = 0; $billSec = 0; $totCost = 0.0; $totBillAmt = 0.0; $totWorkedMs = 0;
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+                $s = (int)$r['total_seconds'];
+                $b = (int)$r['billable_seconds'];
+                $totSec += $s; $billSec += $b;
+                $item = [
+                    'key' => $r['group_key'],
+                    'label' => $r['group_label'],
+                    'entry_count' => (int)$r['entry_count'],
+                    'hours' => round($s / 3600, 2),
+                    'billable_hours' => round($b / 3600, 2),
+                ];
+                if ($byUser) {
+                    $w = (int)$r['worked_ms'];
+                    $totWorkedMs += $w;
+                    $item['worked_hours'] = round($w / 3600000, 2);
+                    $item['leverage'] = $w > 0 ? round($s * 1000 / $w, 2) : null;
+                }
+                if ($viewer['canCosts']) {
+                    $c = round((float)$r['total_cost'], 2);
+                    $ba = round((float)$r['total_billable_amount'], 2);
+                    $totCost += $c; $totBillAmt += $ba;
+                    $item['total_cost'] = $c;
+                    $item['total_billable_amount'] = $ba;
+                    if (!$byUser) $item['billable_value'] = $ba; // C13 / D3.2: duration x billable rate, parallel work does not reduce it
+                }
+                $rows[] = $item;
+            }
+            $out = [
+                'from' => $from, 'to' => $to, 'group_by' => $groupBy,
+                'total_hours' => round($totSec / 3600, 2),
+                'billable_hours' => round($billSec / 3600, 2),
+                'groups' => $rows,
+            ];
+            if ($byUser) {
+                $out['total_worked_hours'] = round($totWorkedMs / 3600000, 2);
+                $out['leverage'] = $totWorkedMs > 0 ? round($totSec * 1000 / $totWorkedMs, 2) : null;
+            }
+            if ($viewer['canCosts']) {
+                $out['total_cost'] = round($totCost, 2);
+                $out['total_billable_amount'] = round($totBillAmt, 2);
+            }
+            return $out;
+        }
+
+        case 'log_time_entry': {
+            $settings = ccrm_tt_load_settings($pdo);
+            $canTeam = mcp_can('time_tracking_team');
+            $targetUid = isset($args['user_id']) && trim((string)$args['user_id']) !== '' ? trim((string)$args['user_id']) : $uid;
+            if ($targetUid !== $uid) {
+                if (!$canTeam) {
+                    throw new \InvalidArgumentException('Logging time for another user requires time_tracking_team permission.');
+                }
+                $chkUser = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+                $chkUser->execute([$targetUid]);
+                if (!$chkUser->fetchColumn()) {
+                    throw new \InvalidArgumentException("User not found: {$targetUid}");
+                }
+            }
+            $timing = mcp_mod_resolve_te_timing($args);
+            mcp_mod_assert_te_unlocked($pdo, $user, $timing['entry_date'], $targetUid, null, $settings);
+            mcp_mod_assert_te_neighbours_unlocked($pdo, $user, $targetUid, [[$timing['start_at'], $timing['end_at']]], $settings);
+
+            $links = ccrm_tt_resolve_links($pdo, [
+                'taskId' => $args['task_id'] ?? null,
+                'ticketId' => $args['ticket_id'] ?? null,
+                'projectId' => $args['project_id'] ?? null,
+                'description' => $args['description'] ?? null,
+            ]);
+            if (!$links['ok']) {
+                throw new \InvalidArgumentException("Invalid time entry link: {$links['code']}");
+            }
+            if ($targetUid === $uid) {
+                mcp_mod_check_te_link_access($pdo, $user, $links);
+            }
+            if (!empty($settings['requireTask']) && $links['task_id'] === null && $links['ticket_id'] === null) {
+                throw new \InvalidArgumentException('Workspace settings require a task_id or ticket_id on every time entry (task_required).');
+            }
+
+            $billable = array_key_exists('billable', $args) ? ($args['billable'] ? 1 : 0) : (!empty($settings['defaultBillable']) ? 1 : 0);
+            $pricing = ccrm_tt_price($pdo, $targetUid, $timing['entry_date'], $timing['duration_sec'], $settings, true);
+            $billRate = $billable ? ccrm_tt_lookup_billable_rate($pdo, $links['derivedProject'] ?? $links['project_id'], $links['ticket_id'], $timing['entry_date']) : null;
+            $note = isset($args['note']) ? ccrm_tt_clean_note($args['note']) : null;
+            [$note, $nameFolded] = mcp_mod_fold_linked_name($links, $args['description'] ?? null, $note);
+            $tagsJson = json_encode(ccrm_tt_clean_tags($args['tags'] ?? []), JSON_UNESCAPED_UNICODE);
+            $id = ccrm_tt_new_id();
+
+            mcp_tx($pdo, function () use ($pdo, $id, $uid, $targetUid, $pricing, $links, $note, $timing, $billable, $billRate, $tagsJson) {
+                $pdo->prepare(
+                    "INSERT INTO time_entries
+                        (id, user_id, recorded_by_user_id, employee_id, project_id, task_id, ticket_id,
+                         description, title_snapshot, note, entry_date, start_at, end_at, duration_sec,
+                         billable, billable_rate, cost_rate, cost_rate_source, cost_rate_basis_days, tags, source)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')"
+                )->execute([
+                    $id, $targetUid, $uid, $pricing['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'],
+                    $links['description'], $links['title_snapshot'], $note,
+                    $timing['entry_date'], $timing['start_at'], $timing['end_at'], $timing['duration_sec'],
+                    $billable, $billRate, $pricing['cost_rate'], $pricing['cost_rate_source'], $pricing['cost_rate_basis_days'],
+                    $tagsJson ?: '[]',
+                ]);
+                ccrm_tt_settle_rows($pdo, [['id' => $id, 'user_id' => $targetUid, 'start_at' => $timing['start_at'], 'end_at' => $timing['end_at'], 'duration_sec' => $timing['duration_sec'], 'entry_date' => $timing['entry_date']]]);
+            });
+
+            mcp_audit($pdo, $user, 'time_entry_log', "Logged time entry {$id} ({$timing['duration_sec']}s on {$timing['entry_date']})");
+            $row = ccrm_tt_fetch_entry($pdo, $id);
+            $out = ['success' => true, 'entry' => $row ? ccrm_tt_entry_json($row, $viewer) : ['id' => $id]];
+            if ($nameFolded) $out['notice'] = mcp_mod_folded_notice($links);
+            return $out;
+        }
+
+        case 'start_timer':
+            return mcp_timer_start($pdo, $user, $uid, $args, $viewer, fn(array $links) => mcp_mod_check_te_link_access($pdo, $user, $links));
+
+        case 'stop_timer': {
+            // `id` is the older name of `entry_id`. A teammate's timer (time_tracking_team) is stopped as that person:
+            // pricing, the per-user lock and the presence cycle all belong to the timer's owner.
+            if ((!isset($args['entry_id']) || trim((string)$args['entry_id']) === '') && isset($args['id']) && trim((string)$args['id']) !== '') {
+                $args['entry_id'] = trim((string)$args['id']);
+            }
+            $stopUid = $uid;
+            if (isset($args['entry_id']) && trim((string)$args['entry_id']) !== '') {
+                $ownStmt = $pdo->prepare("SELECT user_id FROM time_entries WHERE id = ? AND deleted_at IS NULL LIMIT 1");
+                $ownStmt->execute([trim((string)$args['entry_id'])]);
+                $ownerUid = $ownStmt->fetchColumn();
+                if ($ownerUid !== false && (string)$ownerUid !== $uid) {
+                    if (!mcp_can('time_tracking_team')) {
+                        throw new \InvalidArgumentException('Stopping another user\'s timer requires time_tracking_team permission.');
+                    }
+                    $stopUid = (string)$ownerUid;
+                }
+            }
+            return mcp_timer_stop($pdo, $user, $stopUid, $args, $viewer);
+        }
+
+        case 'update_time_entry': {
+            $id = mcp_require_string($args, 'id');
+            $settings = ccrm_tt_load_settings($pdo);
+            $hasArchived = array_key_exists('archived', $args);
+            if ($hasArchived) {
+                $curStmt = $pdo->prepare(ccrm_tt_entry_select() . " WHERE te.id = ? LIMIT 1");
+                $curStmt->execute([$id]);
+                $cur = $curStmt->fetch(\PDO::FETCH_ASSOC) ?: null;
+            } else {
+                $cur = ccrm_tt_fetch_entry($pdo, $id);
+            }
+            if (!$cur) throw new \InvalidArgumentException("Time entry not found: {$id}");
+
+            $canTeam = mcp_can('time_tracking_team');
+            if ((string)$cur['user_id'] !== $uid && !$canTeam) {
+                throw new \InvalidArgumentException('Editing another user\'s time entry requires time_tracking_team permission.');
+            }
+            mcp_mod_assert_te_unlocked($pdo, $user, (string)$cur['entry_date'], (string)$cur['user_id'], $cur['approval_status'] ?? null, $settings);
+
+            $links = ccrm_tt_resolve_links($pdo, [
+                'taskId' => array_key_exists('task_id', $args) ? $args['task_id'] : $cur['task_id'],
+                'ticketId' => array_key_exists('ticket_id', $args) ? $args['ticket_id'] : $cur['ticket_id'],
+                'projectId' => array_key_exists('project_id', $args) ? $args['project_id'] : $cur['project_id'],
+                'description' => array_key_exists('description', $args) ? $args['description'] : $cur['description'],
+            ]);
+            if (!$links['ok']) {
+                throw new \InvalidArgumentException("Invalid time entry link: {$links['code']}");
+            }
+            if (!array_key_exists('project_id', $args) && $links['task_id'] === $cur['task_id'] && $cur['task_id'] !== null) {
+                $links['project_id'] = $cur['project_id'];
+            }
+            if ((string)$cur['user_id'] === $uid) {
+                mcp_mod_check_te_link_access($pdo, $user, $links);
+            }
+            // "Require a task on every entry": only a request that removes the task/ticket of a finished, linked entry is refused.
+            $curLinked = $cur['task_id'] !== null || $cur['ticket_id'] !== null;
+            if (!empty($settings['requireTask']) && $curLinked && $links['task_id'] === null && $links['ticket_id'] === null && !($cur['start_at'] !== null && $cur['end_at'] === null)) {
+                throw new \InvalidArgumentException('Workspace settings require a task_id or ticket_id on every time entry (task_required).');
+            }
+
+            $hasTiming = array_key_exists('start_at', $args) || array_key_exists('end_at', $args);
+            $startAt = $cur['start_at'];
+            $endAt = $cur['end_at'];
+            $entryDate = mcp_optional_date($args, 'entry_date') ?? (string)$cur['entry_date'];
+            if ($hasTiming) {
+                $timing = mcp_mod_resolve_te_timing($args, (string)$cur['entry_date']);
+                $entryDate = $timing['entry_date'];
+                $startAt = $timing['start_at'];
+                $endAt = $timing['end_at'];
+                $dur = $timing['duration_sec'];
+            } elseif (isset($args['duration_seconds'])) {
+                $dur = (int)$args['duration_seconds'];
+            } elseif (isset($args['duration_minutes'])) {
+                $dur = (int)round((float)$args['duration_minutes'] * 60);
+            } else {
+                $dur = (int)$cur['duration_sec'];
+            }
+            $isRunning = $startAt !== null && $endAt === null;
+            if (!$isRunning && ($dur < 1 || $dur > 86400)) {
+                throw new \InvalidArgumentException('Duration must be between 1 second and 24 hours.');
+            }
+            if ($entryDate !== (string)$cur['entry_date']) {
+                // Moving it to another day: that day's lock applies too.
+                mcp_mod_assert_te_unlocked($pdo, $user, $entryDate, (string)$cur['user_id'], $cur['approval_status'] ?? null, $settings);
+            }
+            if (!$isRunning && $cur['start_at'] !== null && $dur !== (int)$cur['duration_sec']) {
+                // A new duration moves the end (start + duration): old and new interval.
+                $oldEnd = gmdate('Y-m-d H:i:s', strtotime($cur['start_at'] . ' UTC') + (int)$cur['duration_sec']);
+                $newEnd = gmdate('Y-m-d H:i:s', strtotime($cur['start_at'] . ' UTC') + $dur);
+                mcp_mod_assert_te_neighbours_unlocked($pdo, $user, (string)$cur['user_id'], [[$cur['start_at'], $oldEnd], [$cur['start_at'], $newEnd]], $settings, $id);
+            }
+
+            $billable = array_key_exists('billable', $args) ? ($args['billable'] ? 1 : 0) : (int)$cur['billable'];
+            $note = array_key_exists('note', $args) ? ccrm_tt_clean_note($args['note']) : $cur['note'];
+            [$note, $nameFolded] = array_key_exists('description', $args)
+                ? mcp_mod_fold_linked_name($links, $args['description'], $note) : [$note, false];
+            $tagsJson = array_key_exists('tags', $args)
+                ? (json_encode(ccrm_tt_clean_tags($args['tags']), JSON_UNESCAPED_UNICODE) ?: '[]')
+                : (is_string($cur['tags'] ?? null) ? (string)$cur['tags'] : '[]');
+            $deletedAt = $hasArchived
+                ? (!empty($args['archived']) ? (!empty($cur['deleted_at']) ? $cur['deleted_at'] : gmdate('Y-m-d H:i:s')) : null)
+                : ($cur['deleted_at'] ?? null);
+
+            $pricing = ccrm_tt_price($pdo, (string)$cur['user_id'], $entryDate, $isRunning ? null : $dur, $settings, true);
+            $billRate = $billable ? ccrm_tt_lookup_billable_rate($pdo, $links['derivedProject'] ?? $links['project_id'], $links['ticket_id'], $entryDate) : null;
+
+            mcp_tx($pdo, function () use ($pdo, $links, $note, $entryDate, $startAt, $endAt, $dur, $billable, $pricing, $billRate, $tagsJson, $deletedAt, $id, $cur) {
+                $pdo->prepare(
+                    "UPDATE time_entries
+                     SET task_id = ?, ticket_id = ?, project_id = ?, title_snapshot = ?, description = ?,
+                         note = ?, entry_date = ?, start_at = ?, end_at = ?, duration_sec = ?, billable = ?,
+                         employee_id = ?, cost_rate = ?, cost_rate_source = ?, cost_rate_basis_days = ?,
+                         billable_rate = ?, tags = ?, deleted_at = ?
+                     WHERE id = ?"
+                )->execute([
+                    $links['task_id'], $links['ticket_id'], $links['project_id'], $links['title_snapshot'], $links['description'],
+                    $note, $entryDate, $startAt, $endAt, $dur, $billable,
+                    $pricing['employee_id'], $pricing['cost_rate'], $pricing['cost_rate_source'], $pricing['cost_rate_basis_days'],
+                    $billRate, $tagsJson, $deletedAt, $id,
+                ]);
+                // A new duration or timing moves the interval of a timed entry (D2); settle the old and the new one (the cost is written by the settle).
+                ccrm_tt_settle_rows($pdo, [$cur, ['duration_sec' => $dur, 'entry_date' => $entryDate, 'start_at' => $startAt, 'end_at' => $endAt] + $cur]);
+            });
+
+            if ($deletedAt !== null) {
+                mcp_audit($pdo, $user, 'time_entry_archive', "Archived time entry {$id}");
+                return ['success' => true, 'id' => $id, 'archived' => true, 'entry' => null];
+            }
+            mcp_audit($pdo, $user, 'time_entry_update', "Updated time entry {$id}");
+            $updated = ccrm_tt_fetch_entry($pdo, $id);
+            $out = ['success' => true, 'archived' => false, 'entry' => $updated ? ccrm_tt_entry_json($updated, $viewer) : ['id' => $id]];
+            if ($nameFolded) $out['notice'] = mcp_mod_folded_notice($links);
+            return $out;
+        }
+
+        // ------------------------------------------------------------------
+        // SUPPORT TICKETS & CONTRACTS
+        // ------------------------------------------------------------------
+        case 'list_tickets': {
+            mcp_mod_ensure_tickets($pdo);
+            $where = [];
+            $params = [];
+            if (array_key_exists('archived', $args) && $args['archived'] !== null) {
+                $where[] = 't.archived = ?';
+                $params[] = $args['archived'] ? 1 : 0;
+            } elseif (empty($args['include_archived'])) {
+                $where[] = 't.archived = 0';
+            }
+
+            if (!empty($args['status'])) { $where[] = 't.status = ?'; $params[] = trim((string)$args['status']); }
+            if (!empty($args['priority'])) { $where[] = 't.priority = ?'; $params[] = mcp_enum($args, 'priority', ['low', 'normal', 'high', 'critical'], 'normal'); }
+            if (!empty($args['type'])) { $where[] = 't.type = ?'; $params[] = trim((string)$args['type']); }
+            if (!empty($args['project_id'])) { $where[] = 't.project_id = ?'; $params[] = trim((string)$args['project_id']); }
+            if (!empty($args['client_id'])) { $where[] = 't.client_id = ?'; $params[] = trim((string)$args['client_id']); }
+            if (!empty($args['assignee'])) { $where[] = 't.assignee_name = ?'; $params[] = trim((string)$args['assignee']); }
+            if (!empty($args['search'])) {
+                $q = '%' . trim((string)$args['search']) . '%';
+                $where[] = '(t.ticket_number LIKE ? OR t.title LIKE ? OR t.description LIKE ? OR t.reporter_name LIKE ? OR t.reporter_email LIKE ?)';
+                array_push($params, $q, $q, $q, $q, $q);
+            }
+            $win = mcp_list_window($args, [
+                'created' => 't.created_at', 'updated' => 't.updated_at', 'id' => 't.id',
+                'sorts' => ['updated_at' => ['t.updated_at', 'DESC'], 'created_at' => ['t.created_at', 'DESC']],
+                'default_sort' => 'updated_at', 'default_limit' => 50, 'max_limit' => 100,
+            ]);
+            $where = array_merge($where ?: ['1=1'], $win['where']);
+            $params = array_merge($params, $win['params']);
+            $sql = "SELECT t.id, t.ticket_number, t.title, t.status, t.priority, t.type, t.source, t.archived,
+                           t.project_id, p.name AS project_name, t.client_id, l.name AS client_name,
+                           t.assignee_id, t.assignee_name, t.reporter_name, t.reporter_email,
+                           t.first_response_due_at, t.resolve_due_at, t.resolved_at, t.closed_at,
+                           " . mcp_moment_select('t.created_at', 'created_at') . ",
+                           " . mcp_moment_select('t.updated_at', 'updated_at') . "
+                    FROM tickets t
+                    LEFT JOIN projects p ON p.id = t.project_id
+                    LEFT JOIN leads l ON l.id = t.client_id
+                    WHERE " . implode(' AND ', $where) . "
+                    {$win['tail']}";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            return array_map('mcp_row_moments', $stmt->fetchAll(\PDO::FETCH_ASSOC));
+        }
+
+        case 'get_ticket': {
+            mcp_mod_ensure_tickets($pdo);
+            $row = mcp_mod_find_ticket($pdo, mcp_require_string($args, 'id'));
+            $mStmt = $pdo->prepare("SELECT " . mcp_moment_select('created_at', 'created_at') . ", " . mcp_moment_select('updated_at', 'updated_at') . " FROM tickets WHERE id = ?");
+            $mStmt->execute([$row['id']]);
+            if ($mRow = $mStmt->fetch(\PDO::FETCH_ASSOC)) {
+                $row = array_merge($row, mcp_row_moments($mRow));
+            }
+            $msgStmt = $pdo->prepare("SELECT id, author_type, author_name, author_email, is_internal, body, " . mcp_moment_select('created_at', 'created_at') . " FROM ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC");
+            $msgStmt->execute([$row['id']]);
+            $row['messages'] = array_map('mcp_row_moments', $msgStmt->fetchAll(\PDO::FETCH_ASSOC));
+
+            $teStmt = $pdo->prepare("SELECT COALESCE(SUM(duration_sec), 0) FROM time_entries WHERE ticket_id = ? AND deleted_at IS NULL");
+            $teStmt->execute([$row['id']]);
+            $row['tracked_seconds'] = (int)$teStmt->fetchColumn();
+
+            $ltStmt = $pdo->prepare(
+                "SELECT tk.id, tk.title, tk.status, tk.priority, tk.deadline, l.sync_mode
+                 FROM ticket_task_links l
+                 JOIN tasks tk ON tk.id = l.task_id
+                 WHERE l.ticket_id = ? AND " . ccrm_sql_real_tasks('tk')
+            );
+            $ltStmt->execute([$row['id']]);
+            $row['linked_tasks'] = $ltStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+            return $row;
+        }
+
+        case 'create_ticket': {
+            mcp_mod_ensure_tickets($pdo);
+            $title = mcp_require_string($args, 'title');
+            $desc = (string)($args['description'] ?? '');
+            $priority = mcp_enum($args, 'priority', ['low', 'normal', 'high', 'critical'], 'normal');
+            $type = trim((string)($args['type'] ?? 'question')) ?: 'question';
+            $statuses = array_column(ccrm_load_ticket_statuses($pdo), 'key');
+            $status = isset($args['status']) && $args['status'] !== '' ? trim((string)$args['status']) : ($statuses[0] ?? 'new');
+            if ($statuses && !in_array($status, $statuses, true)) {
+                throw new \InvalidArgumentException('status must be one of: ' . implode(', ', $statuses));
+            }
+            $projectId = !empty($args['project_id']) ? (string)$args['project_id'] : null;
+            $clientId = !empty($args['client_id']) ? (string)$args['client_id'] : null;
+            $contractId = !empty($args['contract_id']) ? (string)$args['contract_id'] : null;
+            if ($projectId !== null) mcp_row_exists($pdo, 'projects', $projectId, 'Project');
+            if ($clientId !== null) mcp_row_exists($pdo, 'leads', $clientId, 'Client');
+            if ($contractId !== null) mcp_mod_row_exists($pdo, 'support_contracts', $contractId, 'Support contract');
+            else $contractId = mcp_mod_default_contract_id($pdo, $projectId, $clientId);
+
+            $assigneeUser = !empty($args['assignee']) ? mcp_mod_resolve_user($pdo, (string)$args['assignee']) : null;
+
+            $id = mcp_new_id('tck-');
+            $tckNumber = ccrm_next_ticket_number($pdo);
+            $sla = ccrm_compute_ticket_sla($pdo, $priority, $contractId);
+
+            mcp_tx($pdo, function () use ($pdo, $id, $tckNumber, $title, $desc, $status, $priority, $type, $projectId, $clientId, $assigneeUser, $args, $sla, $user) {
+                $pdo->prepare(
+                    "INSERT INTO tickets (id, ticket_number, title, description, status, priority, type, source, project_id, client_id, assignee_id, assignee_name, reporter_name, reporter_email, reporter_phone, first_response_due_at, resolve_due_at, archived, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 'mcp', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())"
+                )->execute([
+                    $id, $tckNumber, $title, $desc, $status, $priority, $type,
+                    $projectId, $clientId,
+                    $assigneeUser['id'] ?? null, $assigneeUser['name'] ?? null,
+                    $args['reporter_name'] ?? $user['name'], $args['reporter_email'] ?? null, $args['reporter_phone'] ?? null,
+                    $sla['first_response_due_at'], $sla['resolve_due_at'],
+                ]);
+                if (trim($desc) !== '') {
+                    $pdo->prepare(
+                        "INSERT INTO ticket_messages (id, ticket_id, author_type, author_name, author_email, is_internal, body, attachments_json, created_at)
+                         VALUES (?, ?, 'agent', ?, ?, 0, ?, '[]', NOW())"
+                    )->execute([mcp_new_id('tmsg_'), $id, $user['name'], $user['email'], $desc]);
+                }
+            });
+
+            mcp_audit($pdo, $user, 'ticket_create', "Created ticket {$tckNumber} ({$id}): {$title}");
+            return ['success' => true, 'id' => $id, 'ticket_number' => $tckNumber, 'status' => $status, 'priority' => $priority];
+        }
+
+        case 'update_ticket': {
+            mcp_mod_ensure_tickets($pdo);
+            $cur = mcp_mod_find_ticket($pdo, mcp_require_string($args, 'id'));
+            $sets = ['updated_at = NOW()'];
+            $params = [];
+            if (isset($args['title']) && trim((string)$args['title']) !== '') { $sets[] = 'title = ?'; $params[] = trim((string)$args['title']); }
+            if (array_key_exists('description', $args)) { $sets[] = 'description = ?'; $params[] = (string)$args['description']; }
+            if (!empty($args['status'])) {
+                $st = trim((string)$args['status']);
+                $statuses = array_column(ccrm_load_ticket_statuses($pdo), 'key');
+                if ($statuses && !in_array($st, $statuses, true)) {
+                    throw new \InvalidArgumentException('status must be one of: ' . implode(', ', $statuses));
+                }
+                $sets[] = 'status = ?'; $params[] = $st;
+                if (in_array($st, ['resolved', 'closed'], true) && empty($cur['resolved_at'])) {
+                    $sets[] = 'resolved_at = NOW()';
+                }
+                if ($st === 'closed' && empty($cur['closed_at'])) {
+                    $sets[] = 'closed_at = NOW()';
+                } elseif (!in_array($st, ['closed'], true) && !empty($cur['closed_at'])) {
+                    $sets[] = 'closed_at = NULL';
+                }
+            }
+            $newPriority = $cur['priority'];
+            if (!empty($args['priority'])) {
+                $newPriority = mcp_enum($args, 'priority', ['low', 'normal', 'high', 'critical'], (string)$cur['priority']);
+                $sets[] = 'priority = ?'; $params[] = $newPriority;
+            }
+            if (!empty($args['type'])) {
+                $sets[] = 'type = ?'; $params[] = trim((string)$args['type']);
+            }
+            if (array_key_exists('assignee', $args)) {
+                $a = trim((string)$args['assignee']);
+                if ($a !== '') {
+                    $u = mcp_mod_resolve_user($pdo, $a);
+                    $sets[] = 'assignee_id = ?'; $params[] = $u['id'];
+                    $sets[] = 'assignee_name = ?'; $params[] = $u['name'];
+                } else {
+                    $sets[] = 'assignee_id = NULL';
+                    $sets[] = 'assignee_name = NULL';
+                }
+            }
+            $newProjectId = $cur['project_id'];
+            if (array_key_exists('project_id', $args)) {
+                $pid = trim((string)$args['project_id']);
+                if ($pid !== '') mcp_row_exists($pdo, 'projects', $pid, 'Project');
+                $newProjectId = $pid !== '' ? $pid : null;
+                $sets[] = 'project_id = ?'; $params[] = $newProjectId;
+            }
+            $newClientId = $cur['client_id'];
+            if (array_key_exists('client_id', $args)) {
+                $cid = trim((string)$args['client_id']);
+                if ($cid !== '') mcp_row_exists($pdo, 'leads', $cid, 'Client');
+                $newClientId = $cid !== '' ? $cid : null;
+                $sets[] = 'client_id = ?'; $params[] = $newClientId;
+            }
+            $contractId = null;
+            if (!empty($args['contract_id'])) {
+                $contractId = trim((string)$args['contract_id']);
+                mcp_mod_row_exists($pdo, 'support_contracts', $contractId, 'Support contract');
+            } elseif (!empty($args['priority'])) {
+                $contractId = mcp_mod_default_contract_id($pdo, $newProjectId, $newClientId);
+            }
+            if (!empty($args['priority']) || !empty($args['contract_id'])) {
+                $sla = ccrm_compute_ticket_sla($pdo, (string)$newPriority, $contractId);
+                $sets[] = 'first_response_due_at = ?'; $params[] = $sla['first_response_due_at'];
+                $sets[] = 'resolve_due_at = ?'; $params[] = $sla['resolve_due_at'];
+            }
+            if (array_key_exists('archived', $args)) { $sets[] = 'archived = ?'; $params[] = $args['archived'] ? 1 : 0; }
+
+            $params[] = $cur['id'];
+            $pdo->prepare('UPDATE tickets SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($params);
+            mcp_audit($pdo, $user, 'ticket_update', "Updated ticket {$cur['ticket_number']} ({$cur['id']})");
+            return ['success' => true, 'id' => $cur['id'], 'ticket_number' => $cur['ticket_number']];
+        }
+
+        case 'add_ticket_message': {
+            mcp_mod_ensure_tickets($pdo);
+            $cur = mcp_mod_find_ticket($pdo, mcp_require_string($args, 'ticket_id'));
+            $body = mcp_require_string($args, 'body');
+            $internal = array_key_exists('is_internal', $args) ? ($args['is_internal'] ? 1 : 0) : 1;
+            $msgId = mcp_new_id('tmsg_');
+
+            // Normalize optional attachments (and save base64/dataUrl images under uploads/tickets/)
+            $savedAtts = [];
+            if (!empty($args['attachments']) && is_array($args['attachments'])) {
+                $uploadDir = dirname(__DIR__) . '/uploads/tickets';
+                foreach (array_slice($args['attachments'], 0, 10) as $rawAtt) {
+                    if (!is_array($rawAtt)) continue;
+                    $name = trim((string)($rawAtt['name'] ?? 'attachment.png')) ?: 'attachment.png';
+                    $type = trim((string)($rawAtt['type'] ?? ''));
+                    $url = trim((string)($rawAtt['url'] ?? ($rawAtt['path'] ?? '')));
+                    $b64 = trim((string)($rawAtt['base64'] ?? ''));
+                    $dataUrl = trim((string)($rawAtt['dataUrl'] ?? ''));
+                    if ($url === '' && $dataUrl !== '' && preg_match('~^data:([^;]+);base64,(.+)$~s', $dataUrl, $dm)) {
+                        $type = $type ?: strtolower(trim($dm[1]));
+                        $b64 = $dm[2];
+                    }
+                    if ($url === '' && $b64 !== '') {
+                        $bin = base64_decode($b64, true);
+                        if ($bin !== false && $bin !== '' && strlen($bin) <= 5 * 1024 * 1024) {
+                            if (!is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
+                            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                            if ($ext === '' && preg_match('~image/(png|jpe?g|webp|gif)~i', $type, $em)) {
+                                $ext = strtolower($em[1] === 'jpeg' ? 'jpg' : $em[1]);
+                            }
+                            if (!in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'csv'], true)) $ext = 'png';
+                            $safeBase = preg_replace('/[^A-Za-z0-9_\-.]/', '_', pathinfo($name, PATHINFO_FILENAME)) ?: 'image';
+                            $stored = 'tck_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '_' . substr($safeBase, 0, 60) . '.' . $ext;
+                            if (@file_put_contents($uploadDir . '/' . $stored, $bin) !== false) {
+                                $url = 'uploads/tickets/' . $stored;
+                            }
+                        }
+                    }
+                    if ($url === '' && $dataUrl === '') continue;
+                    $savedAtts[] = [
+                        'id' => 'att-' . bin2hex(random_bytes(4)),
+                        'name' => substr($name, 0, 255),
+                        'type' => $type,
+                        'path' => $url !== '' ? $url : null,
+                        'url' => $url !== '' ? $url : null,
+                        'dataUrl' => $url === '' ? $dataUrl : null,
+                    ];
+                }
+            }
+
+            mcp_tx($pdo, function () use ($pdo, $msgId, $cur, $user, $internal, $body, $args, $savedAtts) {
+                $pdo->prepare(
+                    "INSERT INTO ticket_messages (id, ticket_id, author_type, author_name, author_email, is_internal, body, attachments_json, created_at)
+                     VALUES (?, ?, 'agent', ?, ?, ?, ?, ?, NOW())"
+                )->execute([$msgId, $cur['id'], $user['name'], $user['email'], $internal, $body, json_encode($savedAtts, JSON_UNESCAPED_UNICODE)]);
+
+                $sets = ['updated_at = NOW()'];
+                $params = [];
+                if (!empty($savedAtts)) {
+                    $existingAtts = json_decode((string)($cur['attachments_json'] ?? '[]'), true);
+                    if (!is_array($existingAtts)) $existingAtts = [];
+                    $mergedAtts = array_merge($existingAtts, $savedAtts);
+                    $sets[] = 'attachments_json = ?';
+                    $params[] = json_encode($mergedAtts, JSON_UNESCAPED_UNICODE);
+                }
+                if (!$internal && empty($cur['first_responded_at'])) {
+                    $sets[] = 'first_responded_at = NOW()';
+                }
+                if (!empty($args['status'])) {
+                    $st = trim((string)$args['status']);
+                    $statuses = array_column(ccrm_load_ticket_statuses($pdo), 'key');
+                    if ($statuses && !in_array($st, $statuses, true)) {
+                        throw new \InvalidArgumentException('status must be one of: ' . implode(', ', $statuses));
+                    }
+                    $sets[] = 'status = ?'; $params[] = $st;
+                    if (in_array($st, ['resolved', 'closed'], true) && empty($cur['resolved_at'])) {
+                        $sets[] = 'resolved_at = NOW()';
+                    }
+                }
+                $params[] = $cur['id'];
+                $pdo->prepare('UPDATE tickets SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($params);
+            });
+
+            mcp_audit($pdo, $user, 'ticket_message', "Added " . ($internal ? 'internal' : 'public') . " message {$msgId} to ticket {$cur['ticket_number']}");
+            return ['success' => true, 'id' => $msgId, 'ticket_id' => $cur['id'], 'is_internal' => (bool)$internal, 'attachments_count' => count($savedAtts)];
+        }
+
+        case 'list_support_contracts': {
+            mcp_mod_ensure_tickets($pdo);
+            $where = ['1=1'];
+            $params = [];
+            if (!empty($args['tier'])) { $where[] = 'sc.tier = ?'; $params[] = mcp_enum($args, 'tier', ['basic', 'pro', 'enterprise', 'project_only'], 'basic'); }
+            if (!empty($args['project_id'])) { $where[] = 'sc.project_id = ?'; $params[] = trim((string)$args['project_id']); }
+            if (!empty($args['client_id'])) { $where[] = 'sc.client_id = ?'; $params[] = trim((string)$args['client_id']); }
+            if (!empty($args['active_only'])) {
+                $today = mcp_today();
+                $where[] = '(sc.valid_from IS NULL OR sc.valid_from <= ?)';
+                $where[] = '(sc.valid_until IS NULL OR sc.valid_until >= ?)';
+                $params[] = $today;
+                $params[] = $today;
+            }
+            $limit = mcp_limit($args, 50, 100);
+            $offset = max(0, (int)($args['offset'] ?? 0));
+            $stmt = $pdo->prepare(
+                "SELECT sc.id, sc.tier, sc.project_id, p.name AS project_name, sc.client_id, l.name AS client_name,
+                        sc.monthly_hours, sc.hourly_rate,
+                        sc.sla_response_critical_hours, sc.sla_response_high_hours, sc.sla_response_normal_hours, sc.sla_response_low_hours,
+                        sc.sla_resolve_critical_hours, sc.sla_resolve_high_hours, sc.sla_resolve_normal_hours, sc.sla_resolve_low_hours,
+                        sc.valid_from, sc.valid_until, sc.notes
+                 FROM support_contracts sc
+                 LEFT JOIN projects p ON p.id = sc.project_id
+                 LEFT JOIN leads l ON l.id = sc.client_id
+                 WHERE " . implode(' AND ', $where) . "
+                 ORDER BY sc.created_at DESC LIMIT {$limit} OFFSET {$offset}"
+            );
+            $stmt->execute($params);
+            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        }
+
+        // ------------------------------------------------------------------
+        // ORDERS
+        // ------------------------------------------------------------------
+        case 'list_orders': {
+            $where = ['1=1'];
+            $params = [];
+            if (!empty($args['type'])) { $where[] = 'o.type = ?'; $params[] = mcp_enum($args, 'type', ['sales', 'purchase'], 'sales'); }
+            if (!empty($args['status'])) { $where[] = 'o.status = ?'; $params[] = trim((string)$args['status']); }
+            if (!empty($args['payment_status'])) { $where[] = 'o.payment_status = ?'; $params[] = trim((string)$args['payment_status']); }
+            if (!empty($args['client_id'])) { $where[] = 'o.client_id = ?'; $params[] = trim((string)$args['client_id']); }
+            if (!empty($args['supplier_id'])) { $where[] = 'o.supplier_id = ?'; $params[] = trim((string)$args['supplier_id']); }
+            if (!empty($args['project_id'])) { $where[] = 'o.project_id = ?'; $params[] = trim((string)$args['project_id']); }
+            if ($from = mcp_optional_date($args, 'from')) { $where[] = 'o.order_date >= ?'; $params[] = $from; }
+            if ($to = mcp_optional_date($args, 'to')) { $where[] = 'o.order_date <= ?'; $params[] = $to; }
+            if (!empty($args['search'])) {
+                $q = '%' . trim((string)$args['search']) . '%';
+                $where[] = '(o.order_number LIKE ? OR o.guest_name LIKE ? OR o.guest_company LIKE ? OR o.billing_name LIKE ? OR o.notes LIKE ? OR l.name LIKE ?)';
+                array_push($params, $q, $q, $q, $q, $q, $q);
+            }
+            $win = mcp_list_window($args, [
+                'created' => 'o.created_at', 'updated' => 'o.updated_at', 'id' => 'o.id',
+                'sorts' => ['order_date' => ['o.order_date', 'DESC', 'o.created_at DESC']],
+                'default_sort' => 'order_date', 'default_limit' => 50, 'max_limit' => 100,
+            ]);
+            $where = array_merge($where, $win['where']);
+            $params = array_merge($params, $win['params']);
+            $stmt = $pdo->prepare(
+                "SELECT o.id, o.order_number, o.type, o.status, o.payment_status, o.client_id, o.supplier_id, o.project_id,
+                        COALESCE(l.name, o.billing_name, o.guest_company, o.guest_name) AS customer_name,
+                        o.currency, o.total_net_amount, o.total_tax_amount, o.total_gross_amount,
+                        o.order_date, o.requested_delivery_date, o.confirmed_delivery_date,
+                        " . mcp_moment_select('o.updated_at', 'updated_at') . "
+                 FROM orders o
+                 LEFT JOIN leads l ON l.id = o.client_id
+                 WHERE " . implode(' AND ', $where) . "
+                 {$win['tail']}"
+            );
+            $stmt->execute($params);
+            return array_map('mcp_row_moments', $stmt->fetchAll(\PDO::FETCH_ASSOC));
+        }
+
+        case 'get_order': {
+            $idOrNum = mcp_require_string($args, 'id');
+            $stmt = $pdo->prepare("SELECT * FROM orders WHERE id = ? OR UPPER(order_number) = UPPER(?) LIMIT 1");
+            $stmt->execute([$idOrNum, $idOrNum]);
+            $order = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$order) throw new \InvalidArgumentException("Order not found: {$idOrNum}");
+            $it = $pdo->prepare("SELECT * FROM order_items WHERE order_id = ? ORDER BY sort_order ASC");
+            $it->execute([$order['id']]);
+            $order['items'] = $it->fetchAll(\PDO::FETCH_ASSOC);
+            return $order;
+        }
+
+        case 'create_order': {
+            $type = mcp_enum($args, 'type', ['sales', 'purchase'], 'sales');
+            $orderDate = mcp_optional_date($args, 'order_date') ?? mcp_today();
+            $reqDelivery = mcp_optional_date($args, 'requested_delivery_date');
+            $status = trim((string)($args['status'] ?? 'new')) ?: 'new';
+            $payStatus = mcp_enum($args, 'payment_status', ['unpaid', 'partially_paid', 'paid', 'refunded'], 'unpaid');
+            $currency = strtoupper(trim((string)($args['currency'] ?? mcp_currency($pdo))));
+            if (!preg_match('/^[A-Z]{3}$/', $currency)) throw new \InvalidArgumentException("'currency' must be a 3-letter code.");
+
+            $clientId = !empty($args['client_id']) ? (string)$args['client_id'] : null;
+            $supplierId = !empty($args['supplier_id']) ? (string)$args['supplier_id'] : null;
+            $warehouseId = !empty($args['warehouse_id']) ? (string)$args['warehouse_id'] : null;
+            $projectId = !empty($args['project_id']) ? (string)$args['project_id'] : null;
+            if ($projectId !== null) mcp_row_exists($pdo, 'projects', $projectId, 'Project');
+            if ($clientId !== null) mcp_row_exists($pdo, 'leads', $clientId, 'Client');
+            if ($supplierId !== null) mcp_mod_row_exists($pdo, 'suppliers', $supplierId, 'Supplier');
+            if ($warehouseId !== null) mcp_mod_row_exists($pdo, 'warehouses', $warehouseId, 'Warehouse');
+
+            $defaultVat = mcp_default_vat_rate($pdo);
+            $itemsIn = is_array($args['items'] ?? null) ? $args['items'] : [];
+            $lines = [];
+            $itemsNet = 0.0; $servicesNet = 0.0; $taxTotal = 0.0;
+            foreach ($itemsIn as $i => $item) {
+                if (!is_array($item)) throw new \InvalidArgumentException('Each item must be an object.');
+                $name = trim((string)($item['name'] ?? $item['title'] ?? ''));
+                if ($name === '') throw new \InvalidArgumentException('Item ' . ($i + 1) . ": 'name' is required.");
+                $itemType = ($item['item_type'] ?? 'product') === 'service' ? 'service' : 'product';
+                $qty = mcp_number(['v' => $item['quantity'] ?? 1], 'v', true, 0.0001, 1000000);
+                $price = mcp_number(['v' => $item['unit_price'] ?? 0], 'v', true, 0, 100000000);
+                $disc = mcp_number(['v' => $item['discount_percent'] ?? 0], 'v', true, 0, 100);
+                $vat = mcp_number(['v' => $item['tax_rate'] ?? $defaultVat], 'v', true, 0, 100);
+                $net = round($qty * $price * (1 - $disc / 100), 2);
+                $vatAmt = round($net * ($vat / 100), 2);
+                $gross = round($net + $vatAmt, 2);
+                if ($itemType === 'service') $servicesNet += $net; else $itemsNet += $net;
+                $taxTotal += $vatAmt;
+                $lines[] = [
+                    'item_type' => $itemType, 'item_id' => $item['item_id'] ?? null, 'sku' => $item['sku'] ?? null,
+                    'name' => $name, 'qty' => $qty, 'unit' => (string)($item['unit'] ?? 'ks'),
+                    'price' => $price, 'disc' => $disc, 'vat' => $vat, 'net' => $net, 'gross' => $gross,
+                ];
+            }
+            $itemsNet = round($itemsNet, 2);
+            $servicesNet = round($servicesNet, 2);
+            $totalNet = round($itemsNet + $servicesNet, 2);
+            $taxTotal = round($taxTotal, 2);
+            $totalGross = round($totalNet + $taxTotal, 2);
+
+            $orderId = mcp_new_id('ord_');
+            $year = (int)substr($orderDate, 0, 4);
+            $docNum = mcp_with_lock($pdo, 'ccrm_order_number', function () use ($pdo, $args, $type, $year, $orderId, $status, $clientId, $supplierId, $projectId, $warehouseId, $payStatus, $currency, $itemsNet, $servicesNet, $totalNet, $taxTotal, $totalGross, $orderDate, $reqDelivery, $user, $lines) {
+                if (!empty($args['order_number'])) {
+                    $num = trim((string)$args['order_number']);
+                    $dup = $pdo->prepare("SELECT 1 FROM orders WHERE order_number = ? LIMIT 1");
+                    $dup->execute([$num]);
+                    if ($dup->fetchColumn()) throw new \InvalidArgumentException("Order number {$num} already exists.");
+                } else {
+                    $prefix = ($type === 'purchase' ? 'PO' : 'ORD') . '-' . $year . '-';
+                    $seqStmt = $pdo->prepare("SELECT order_number FROM orders WHERE order_number LIKE ?");
+                    $seqStmt->execute([$prefix . '%']);
+                    $maxSeq = 0;
+                    foreach ($seqStmt->fetchAll(\PDO::FETCH_COLUMN) as $existingNum) {
+                        if (preg_match('/(\d+)$/', (string)$existingNum, $mm)) {
+                            $maxSeq = max($maxSeq, (int)$mm[1]);
+                        }
+                    }
+                    $num = $prefix . str_pad((string)($maxSeq + 1), 4, '0', STR_PAD_LEFT);
+                }
+
+                $pdo->prepare(
+                    "INSERT INTO orders (id, order_number, type, status, customer_type, client_id, supplier_id, project_id, warehouse_id,
+                                         guest_name, guest_email, guest_phone, guest_company, guest_ico, guest_dic, guest_ic_dph,
+                                         billing_name, billing_street, billing_city, billing_zip, billing_country, billing_ico, billing_dic, billing_ic_dph,
+                                         delivery_recipient, delivery_street, delivery_city, delivery_zip, delivery_country, delivery_phone, delivery_notes,
+                                         payment_method, payment_status, currency, items_net_amount, services_net_amount, total_net_amount, total_tax_amount, total_gross_amount,
+                                         order_date, requested_delivery_date, shipping_method, customer_note, notes, created_by)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                )->execute([
+                    $orderId, $num, $type, $status, $clientId ? 'client' : 'guest', $clientId, $supplierId, $projectId, $warehouseId,
+                    $args['guest_name'] ?? null, $args['guest_email'] ?? null, $args['guest_phone'] ?? null,
+                    $args['guest_company'] ?? null, $args['guest_ico'] ?? null, $args['guest_dic'] ?? null, $args['guest_ic_dph'] ?? null,
+                    $args['billing_name'] ?? null, $args['billing_street'] ?? null, $args['billing_city'] ?? null, $args['billing_zip'] ?? null, (!empty($args['billing_country']) ? trim((string)$args['billing_country']) : 'SK'),
+                    $args['billing_ico'] ?? null, $args['billing_dic'] ?? null, $args['billing_ic_dph'] ?? null,
+                    $args['delivery_recipient'] ?? null, $args['delivery_street'] ?? null, $args['delivery_city'] ?? null, $args['delivery_zip'] ?? null, (!empty($args['delivery_country']) ? trim((string)$args['delivery_country']) : 'SK'),
+                    $args['delivery_phone'] ?? null, $args['delivery_notes'] ?? null,
+                    $args['payment_method'] ?? null, $payStatus, $currency,
+                    $itemsNet, $servicesNet, $totalNet, $taxTotal, $totalGross,
+                    $orderDate, $reqDelivery, $args['shipping_method'] ?? null, $args['customer_note'] ?? null, $args['notes'] ?? null, $user['name'],
+                ]);
+
+                $insItem = $pdo->prepare(
+                    "INSERT INTO order_items (id, order_id, item_type, item_id, sku, name, quantity, unit, unit_price, discount_percent, tax_rate, total_net_amount, total_gross_amount, sort_order)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                );
+                foreach ($lines as $idx => $l) {
+                    $insItem->execute([mcp_new_id('oitem_'), $orderId, $l['item_type'], $l['item_id'], $l['sku'], $l['name'], $l['qty'], $l['unit'], $l['price'], $l['disc'], $l['vat'], $l['net'], $l['gross'], $idx]);
+                }
+                return $num;
+            });
+
+            mcp_audit($pdo, $user, 'order_create', "Created order {$docNum} ({$orderId}) total {$totalGross} {$currency}");
+            return ['success' => true, 'id' => $orderId, 'order_number' => $docNum, 'status' => $status, 'total_gross_amount' => $totalGross, 'currency' => $currency];
+        }
+
+        case 'update_order': {
+            $id = mcp_require_string($args, 'id');
+            mcp_mod_row_exists($pdo, 'orders', $id, 'Order');
+            $sets = [];
+            $params = [];
+            if (!empty($args['status'])) { $sets[] = 'status = ?'; $params[] = trim((string)$args['status']); }
+            if (!empty($args['payment_status'])) {
+                $sets[] = 'payment_status = ?';
+                $params[] = mcp_enum($args, 'payment_status', ['unpaid', 'partially_paid', 'paid', 'refunded'], 'unpaid');
+            }
+            if (array_key_exists('paid_at', $args)) {
+                $sets[] = 'paid_at = ?';
+                $params[] = $args['paid_at'] ? mcp_optional_date($args, 'paid_at') : null;
+            }
+            if (array_key_exists('warehouse_id', $args)) {
+                $wh = trim((string)$args['warehouse_id']);
+                if ($wh !== '') mcp_mod_row_exists($pdo, 'warehouses', $wh, 'Warehouse');
+                $sets[] = 'warehouse_id = ?'; $params[] = $wh === '' ? null : $wh;
+            }
+            if (array_key_exists('project_id', $args)) {
+                $pj = trim((string)$args['project_id']);
+                if ($pj !== '') mcp_row_exists($pdo, 'projects', $pj, 'Project');
+                $sets[] = 'project_id = ?'; $params[] = $pj === '' ? null : $pj;
+            }
+            if (array_key_exists('confirmed_delivery_date', $args)) {
+                $sets[] = 'confirmed_delivery_date = ?';
+                $params[] = $args['confirmed_delivery_date'] ? mcp_optional_date($args, 'confirmed_delivery_date') : null;
+            }
+            foreach (['payment_reference', 'shipping_method', 'shipping_tracking_number', 'delivery_recipient', 'delivery_street', 'delivery_city', 'delivery_zip', 'billing_name', 'customer_note', 'notes'] as $ordF) {
+                if (array_key_exists($ordF, $args)) { $sets[] = "`{$ordF}` = ?"; $params[] = $args[$ordF]; }
+            }
+            if (!$sets) throw new \InvalidArgumentException('No updatable fields supplied.');
+            $params[] = $id;
+            $pdo->prepare('UPDATE orders SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($params);
+            mcp_audit($pdo, $user, 'order_update', "Updated order {$id}");
+            return ['success' => true, 'id' => $id];
+        }
+
+        // ------------------------------------------------------------------
+        // WEEKLY PLAN
+        // ------------------------------------------------------------------
+        case 'get_weekly_plan': {
+            mcp_mod_ensure_weekly_plan($pdo);
+            if (!empty($args['from']) && !empty($args['to'])) {
+                $from = mcp_require_date($args, 'from');
+                $to = mcp_require_date($args, 'to');
+            } else {
+                $ref = mcp_optional_date($args, 'date') ?? mcp_today();
+                $ts = strtotime($ref . ' 00:00:00 UTC');
+                $dow = (int)gmdate('N', $ts); // 1 (Mon) .. 7 (Sun)
+                $monTs = $ts - ($dow - 1) * 86400;
+                $from = gmdate('Y-m-d', $monTs);
+                $to = gmdate('Y-m-d', $monTs + 6 * 86400);
+            }
+            if ($to < $from) throw new \InvalidArgumentException("'to' cannot be before 'from'.");
+
+            $cStmt = $pdo->prepare("SELECT id, date, content, position, completed, color, refs_json, created_by, updated_at FROM weekly_plan_cards WHERE deleted_at IS NULL AND date >= ? AND date <= ? ORDER BY date ASC, position ASC, created_at ASC");
+            $cStmt->execute([$from, $to]);
+            $cards = array_map(fn($r) => [
+                'id' => $r['id'], 'date' => $r['date'], 'content' => $r['content'],
+                'position' => (int)$r['position'], 'completed' => (bool)$r['completed'],
+                'color' => $r['color'] ?? '', 'refs' => json_decode((string)($r['refs_json'] ?? '[]'), true) ?: [],
+                'created_by' => $r['created_by'],
+            ], $cStmt->fetchAll(\PDO::FETCH_ASSOC));
+
+            $nStmt = $pdo->prepare("SELECT date, note FROM weekly_plan_day_notes WHERE date >= ? AND date <= ? ORDER BY date ASC");
+            $nStmt->execute([$from, $to]);
+            $notes = $nStmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+
+            return ['from' => $from, 'to' => $to, 'cards' => $cards, 'day_notes' => $notes ?: new \stdClass()];
+        }
+
+        case 'create_weekly_plan_card': {
+            mcp_mod_ensure_weekly_plan($pdo);
+            $date = mcp_require_date($args, 'date');
+            $content = mcp_require_string($args, 'content');
+            $color = trim((string)($args['color'] ?? ''));
+            $completed = !empty($args['completed']) ? 1 : 0;
+            $refsJson = json_encode(is_array($args['refs'] ?? null) ? array_values($args['refs']) : [], JSON_UNESCAPED_UNICODE);
+
+            if (isset($args['position']) && is_numeric($args['position'])) {
+                $pos = (int)$args['position'];
+            } else {
+                $mx = $pdo->prepare("SELECT COALESCE(MAX(position), -1) + 1 FROM weekly_plan_cards WHERE deleted_at IS NULL AND date = ?");
+                $mx->execute([$date]);
+                $pos = (int)$mx->fetchColumn();
+            }
+            $id = mcp_new_id('wpc_');
+            $pdo->prepare(
+                "INSERT INTO weekly_plan_cards (id, date, content, position, completed, color, refs_json, created_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            )->execute([$id, $date, $content, $pos, $completed, $color, $refsJson, $user['id']]);
+            mcp_audit($pdo, $user, 'weekly_plan_card_create', "Added weekly plan card {$id} on {$date}");
+            return ['success' => true, 'id' => $id, 'date' => $date, 'position' => $pos];
+        }
+
+        case 'update_weekly_plan_card': {
+            mcp_mod_ensure_weekly_plan($pdo);
+            $id = mcp_require_string($args, 'id');
+            mcp_mod_row_exists($pdo, 'weekly_plan_cards', $id, 'Weekly plan card');
+            $sets = [];
+            $params = [];
+            if (!empty($args['date'])) { $sets[] = 'date = ?'; $params[] = mcp_require_date($args, 'date'); }
+            if (array_key_exists('content', $args)) { $sets[] = 'content = ?'; $params[] = trim((string)$args['content']); }
+            if (isset($args['position']) && is_numeric($args['position'])) { $sets[] = 'position = ?'; $params[] = (int)$args['position']; }
+            if (array_key_exists('completed', $args)) { $sets[] = 'completed = ?'; $params[] = $args['completed'] ? 1 : 0; }
+            if (array_key_exists('color', $args)) { $sets[] = 'color = ?'; $params[] = trim((string)$args['color']); }
+            if (array_key_exists('refs', $args)) {
+                $sets[] = 'refs_json = ?';
+                $params[] = json_encode(is_array($args['refs']) ? array_values($args['refs']) : [], JSON_UNESCAPED_UNICODE);
+            }
+            if (array_key_exists('archived', $args)) {
+                $sets[] = !empty($args['archived']) ? 'deleted_at = NOW()' : 'deleted_at = NULL';
+            }
+            if (!$sets) throw new \InvalidArgumentException('No updatable fields supplied.');
+            $params[] = $id;
+            $pdo->prepare('UPDATE weekly_plan_cards SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($params);
+            mcp_audit($pdo, $user, 'weekly_plan_card_update', "Updated weekly plan card {$id}");
+            return ['success' => true, 'id' => $id];
+        }
+
+        case 'set_weekly_plan_day_note': {
+            mcp_mod_ensure_weekly_plan($pdo);
+            $date = mcp_require_date($args, 'date');
+            $note = trim((string)($args['note'] ?? ''));
+            $pdo->prepare(
+                "INSERT INTO weekly_plan_day_notes (date, note, updated_by)
+                 VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE note = VALUES(note), updated_by = VALUES(updated_by), updated_at = CURRENT_TIMESTAMP"
+            )->execute([$date, $note, $user['id']]);
+            mcp_audit($pdo, $user, 'weekly_plan_note_set', "Set weekly plan day note for {$date}");
+            return ['success' => true, 'date' => $date, 'note' => $note];
+        }
+
+        // ------------------------------------------------------------------
+        // PRICE OFFERS & RECURRING TASKS
+        // ------------------------------------------------------------------
+        case 'create_price_offer': {
+            $clientId = mcp_require_string($args, 'client_id');
+            $title = mcp_require_string($args, 'title');
+            $subject = trim((string)($args['subject'] ?? '')) ?: $title;
+            $issuedAt = mcp_optional_date($args, 'issued_at') ?? mcp_today();
+            $validUntil = mcp_optional_date($args, 'valid_until') ?? mcp_iso_shift($issuedAt, 30);
+            if ($validUntil < $issuedAt) throw new \InvalidArgumentException("'valid_until' cannot be before 'issued_at'.");
+            $currency = strtoupper(trim((string)($args['currency'] ?? mcp_currency($pdo))));
+            if (!preg_match('/^[A-Z]{3}$/', $currency)) throw new \InvalidArgumentException("'currency' must be a 3-letter code.");
+
+            $status = isset($args['status']) && $args['status'] !== '' ? trim((string)$args['status']) : 'draft';
+            $statusGroup = ccrm_offer_status_group($status, $pdo);
+            if ($statusGroup === null) {
+                $keys = array_column(ccrm_offer_status_defs($pdo), 'key');
+                throw new \InvalidArgumentException('status must be one of OFFER_STATUSES: ' . implode(', ', $keys));
+            }
+            if (!in_array($statusGroup, ['draft', 'open'], true)) {
+                throw new \InvalidArgumentException("Initial offer status '{$status}' must belong to the draft or open group (verdict statuses are set in the app).");
+            }
+            $categoryId = !empty($args['category_id']) ? trim((string)$args['category_id']) : null;
+            if ($categoryId !== null) mcp_mod_row_exists($pdo, 'offer_categories', $categoryId, 'Offer category');
+
+            $items = $args['items'] ?? null;
+            if (!is_array($items) || !$items) throw new \InvalidArgumentException('Price offer must contain at least one line item.');
+            if (count($items) > 200) throw new \InvalidArgumentException('A price offer can hold at most 200 line items.');
+
+            $cl = $pdo->prepare("SELECT name, email, phone, street, city, postal_code, country, company_id, tax_id, vat_id FROM leads WHERE id = ?");
+            $cl->execute([$clientId]);
+            $client = $cl->fetch(\PDO::FETCH_ASSOC);
+            if (!$client) throw new \InvalidArgumentException("Client/lead not found: {$clientId}");
+
+            $defaultVat = mcp_default_vat_rate($pdo);
+            $lines = []; $subtotal = 0.0; $vatTotal = 0.0;
+            foreach ($items as $i => $item) {
+                if (!is_array($item)) throw new \InvalidArgumentException('Each item must be an object.');
+                $name = trim((string)($item['title'] ?? $item['name'] ?? ''));
+                if ($name === '') throw new \InvalidArgumentException('Item ' . ($i + 1) . ": 'title' is required.");
+                $qty = mcp_number(['v' => $item['quantity'] ?? 1], 'v', true, 0.0001, 1000000);
+                $price = mcp_number(['v' => $item['unit_price'] ?? null], 'v', true, 0, 100000000);
+                $vat = mcp_number(['v' => $item['vat_rate'] ?? $defaultVat], 'v', true, 0, 100);
+                $disc = mcp_number(['v' => $item['discount_pct'] ?? 0], 'v', true, 0, 100);
+                $net = round($qty * $price * (1 - $disc / 100), 2);
+                $lines[] = [
+                    'name' => $name,
+                    'description' => isset($item['description']) && trim((string)$item['description']) !== '' ? trim((string)$item['description']) : null,
+                    'unit' => isset($item['unit']) && trim((string)$item['unit']) !== '' ? mb_substr(trim((string)$item['unit']), 0, 20) : 'ks',
+                    'sku' => isset($item['sku']) && trim((string)$item['sku']) !== '' ? mb_substr(trim((string)$item['sku']), 0, 100) : null,
+                    'warehouse_item_id' => !empty($item['warehouse_item_id']) ? (string)$item['warehouse_item_id'] : null,
+                    'qty' => $qty, 'price' => $price, 'vat' => $vat, 'disc' => $disc, 'net' => $net,
+                ];
+                $subtotal += $net;
+                $vatTotal += $net * ($vat / 100);
+            }
+            $subtotal = round($subtotal, 2); $vatTotal = round($vatTotal, 2); $total = round($subtotal + $vatTotal, 2);
+
+            $offerId = 'off_' . bin2hex(random_bytes(8));
+            $year = (int)substr($issuedAt, 0, 4);
+            $docNum = mcp_with_lock($pdo, 'ccrm_offer_number', function () use ($pdo, $user, $args, $clientId, $client, $title, $subject, $categoryId, $status, $issuedAt, $validUntil, $currency, $lines, $subtotal, $vatTotal, $total, $year, $offerId) {
+                if (!empty($args['document_number'])) {
+                    $num = trim((string)$args['document_number']);
+                    $dup = $pdo->prepare("SELECT 1 FROM invoices_offers WHERE document_number = ? LIMIT 1");
+                    $dup->execute([$num]);
+                    if ($dup->fetchColumn()) throw new \InvalidArgumentException("Document number {$num} is already used.");
+                } else {
+                    $num = mcp_next_document_number($pdo, 'invoices_offers', 'document_number', 'CP', $year, 3);
+                }
+                $pdo->prepare(
+                    "INSERT INTO invoices_offers (id, document_number, type, mode, lead_id, client_id, client_name, client_email, client_phone, client_street, client_city, client_postal_code, client_country, client_ico, client_dic, client_icdph, title, subject, category_id, greeting_note, intro_note, closing_note, subtotal, vat_amount, total_price, currency, status, status_changed_at, issued_at, valid_until, created_by)
+                     VALUES (?, ?, 'price_offer', 'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                )->execute([
+                    $offerId, $num, $clientId, $clientId, $client['name'], $client['email'], $client['phone'],
+                    $client['street'], $client['city'], $client['postal_code'], $client['country'] ?: 'Slovakia',
+                    $client['company_id'], $client['tax_id'], $client['vat_id'],
+                    $title, $subject, $categoryId, $args['greeting_note'] ?? null, $args['intro_note'] ?? null, $args['closing_note'] ?? null,
+                    $subtotal, $vatTotal, $total, $currency, $status, mcp_today(), $issuedAt, $validUntil, $user['name'],
+                ]);
+                $ins = $pdo->prepare("INSERT INTO invoice_offer_items (id, invoice_offer_id, warehouse_item_id, sku, name, description, quantity, unit, unit_price, vat_rate, discount_pct, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                foreach ($lines as $l) $ins->execute([mcp_new_id('it_'), $offerId, $l['warehouse_item_id'], $l['sku'], $l['name'], $l['description'], $l['qty'], $l['unit'], $l['price'], $l['vat'], $l['disc'], $l['net']]);
+                return $num;
+            });
+
+            mcp_audit($pdo, $user, 'price_offer_create', "Created price offer {$docNum} ({$offerId}) for {$client['name']} totaling {$total} {$currency}");
+            return ['success' => true, 'id' => $offerId, 'document_number' => $docNum, 'status' => $status, 'category_id' => $categoryId, 'total_price' => $total, 'currency' => $currency, 'valid_until' => $validUntil];
+        }
+
+        case 'list_recurring_tasks': {
+            [$scopeSql, $scopeParams] = mcp_task_scope($user, 't');
+            $where = ["t.task_kind = 'recurring'"];
+            $params = [];
+            if ($scopeSql !== '') { $where[] = $scopeSql; $params = array_merge($params, $scopeParams); }
+            if (!empty($args['owner'])) { $where[] = 't.owner = ?'; $params[] = trim((string)$args['owner']); }
+            if (!empty($args['search'])) {
+                $q = '%' . trim((string)$args['search']) . '%';
+                $where[] = '(t.title LIKE ? OR t.description LIKE ?)';
+                array_push($params, $q, $q);
+            }
+            $win = mcp_list_window($args, [
+                'created' => 't.created_at', 'updated' => 't.updated_at', 'id' => 't.id',
+                'sorts' => ['title' => ['t.title', 'ASC']],
+                'default_sort' => 'title', 'default_limit' => 50, 'max_limit' => 100,
+            ]);
+            $where = array_merge($where, $win['where']);
+            $params = array_merge($params, $win['params']);
+            $stmt = $pdo->prepare(
+                "SELECT t.id, t.title, t.description, t.priority, t.owner, t.related_project_id, t.related_lead_id, t.recurrence_json, t.archived
+                 FROM tasks t /* recurring-template: mcp lists recurring task templates */
+                 WHERE " . implode(' AND ', $where) . "
+                 {$win['tail']}"
+            );
+            $stmt->execute($params);
+            $out = [];
+            $activeOnly = !empty($args['active_only']);
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+                $rec = json_decode((string)($r['recurrence_json'] ?? '{}'), true) ?: [];
+                $isPaused = !empty($rec['paused']) || (array_key_exists('active', $rec) && !$rec['active']);
+                if ($activeOnly && ($isPaused || !empty($r['archived']))) continue;
+                $out[] = [
+                    'id' => $r['id'], 'title' => $r['title'], 'description' => $r['description'],
+                    'priority' => $r['priority'], 'owner' => $r['owner'], 'archived' => (bool)$r['archived'],
+                    'project_id' => $r['related_project_id'], 'client_id' => $r['related_lead_id'],
+                    'recurrence' => $rec,
+                    'next_occurrence' => !$isPaused ? ccrm_recurring_next_occurrence($rec) : null,
+                ];
+            }
+            return $out;
+        }
+
+        case 'create_recurring_task': {
+            $title = mcp_require_string($args, 'title');
+            $freq = mcp_enum($args, 'frequency', ['daily', 'weekly', 'monthly', 'yearly'], 'monthly');
+            $priority = mcp_enum($args, 'priority', ['low', 'medium', 'high'], 'medium');
+            $owner = !empty($args['owner']) ? mcp_user_exists($pdo, (string)$args['owner']) : $user['name'];
+            $projId = !empty($args['project_id']) ? (string)$args['project_id'] : null;
+            $leadId = !empty($args['client_id']) ? (string)$args['client_id'] : null;
+            if ($projId !== null) mcp_row_exists($pdo, 'projects', $projId, 'Project');
+            if ($leadId !== null) mcp_row_exists($pdo, 'leads', $leadId, 'Client/lead');
+
+            $assignees = [$owner];
+            if (is_array($args['assignees'] ?? null)) {
+                foreach ($args['assignees'] as $a) {
+                    if (trim((string)$a) !== '') $assignees[] = mcp_user_exists($pdo, (string)$a);
+                }
+            }
+
+            $cfg = [];
+            if (isset($args['day_of_week'])) $cfg['dayOfWeek'] = (int)$args['day_of_week'];
+            if (isset($args['day_of_month'])) { $cfg['monthlyType'] = 'day_of_month'; $cfg['dayOfMonth'] = (int)$args['day_of_month']; }
+            if (isset($args['month'])) $cfg['month'] = (int)$args['month'];
+
+            $rec = ccrm_recurring_validate_json([
+                'mode' => 'schedule',
+                'frequency' => $freq,
+                'interval' => (int)($args['interval'] ?? 1),
+                'startsOn' => mcp_optional_date($args, 'starts_on') ?? mcp_today(),
+                'endsOn' => mcp_optional_date($args, 'ends_on'),
+                'weekendRule' => mcp_enum($args, 'weekend_rule', ['keep', 'before', 'after'], 'keep'),
+                'leadDays' => $args['lead_days'] ?? null,
+                'config' => $cfg,
+            ]);
+
+            $states = mcp_config_json($pdo, 'TASK_STATES', []);
+            $status = (is_array($states) && $states) ? (string)$states[0] : 'todo';
+            $id = 'tsk_rec_' . bin2hex(random_bytes(6));
+
+            mcp_tx($pdo, function () use ($pdo, $id, $title, $args, $priority, $rec, $status, $owner, $user, $projId, $leadId, $assignees) {
+                $pdo->prepare(
+                    "INSERT INTO tasks (id, title, description, priority, deadline, status, owner, created_by, related_project_id, related_lead_id, task_kind, recurrence_json) /* recurring-template: mcp creates recurring task template */
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recurring', ?)"
+                )->execute([
+                    $id, $title, $args['description'] ?? null, $priority, $rec['startsOn'], $status,
+                    $owner, $user['name'], $projId, $leadId, json_encode($rec, JSON_UNESCAPED_UNICODE),
+                ]);
+                $ins = $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)");
+                foreach (array_unique($assignees) as $a) $ins->execute([$id, $a]);
+            });
+
+            ccrm_process_recurring_tasks($pdo, $id);
+            mcp_audit($pdo, $user, 'recurring_task_create', "Created recurring task template '{$title}' ({$id}, {$freq})");
+            return ['success' => true, 'id' => $id, 'title' => $title, 'recurrence' => $rec];
+        }
+
+        default:
+            return MCP_NOT_MINE;
+    }
+}

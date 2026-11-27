@@ -75,14 +75,20 @@ test.describe('page-sticky table heads', () => {
     expect(Math.round(box.y + box.height)).toBeGreaterThanOrEqual(Math.round(mainBox.y + mainBox.height) - 1);
 
     // Dragging it (here: scrolling it) moves the table, and the table moves it back.
-    await proxy.evaluate((el) => {
-      el.scrollLeft = 120;
-    });
-    await expect.poll(() => wrap.evaluate((el) => el.scrollLeft)).toBeGreaterThan(100);
-    await wrap.evaluate((el) => {
-      el.scrollLeft = 40;
-    });
-    await expect.poll(() => proxy.evaluate((el) => el.scrollLeft)).toBeLessThan(60);
+    // Compact mode fits more columns on screen, so measure the real horizontal overflow
+    // instead of assuming >120px of hidden width at 1440px.
+    const maxScroll = await wrap.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(maxScroll).toBeGreaterThan(20);
+    const target = Math.min(120, maxScroll);
+    const back = Math.floor(target / 3);
+    await proxy.evaluate((el, x) => {
+      el.scrollLeft = x;
+    }, target);
+    await expect.poll(() => wrap.evaluate((el) => el.scrollLeft)).toBeGreaterThanOrEqual(target - 5);
+    await wrap.evaluate((el, x) => {
+      el.scrollLeft = x;
+    }, back);
+    await expect.poll(() => proxy.evaluate((el) => el.scrollLeft)).toBeLessThanOrEqual(back + 5);
 
     // The head is a copy outside the sideways scroller, pinned by plain CSS
     // sticky (nothing moves it per scroll step), lying exactly over the real one.
@@ -110,6 +116,34 @@ test.describe('page-sticky table heads', () => {
     // The end of the table: its own bar is on screen, so the proxy gets out of the way.
     await scrollMain(page, 'end');
     await expect(proxy).toHaveAttribute('data-sticky-hscrollbar', 'hidden');
+  });
+
+  test('a wide table re-measured while scrolled down leaves no gap above its rows', async ({ page }) => {
+    // Each infinite-scroll page (and any resize) re-places the head copy. Done
+    // while the copy was stuck, it read the sticky offset as a gap and pushed
+    // the table down by it: back at the top, a blank band and two heads.
+    await gotoView(page, '#projects');
+    const wrap = page.locator('.table-page-wrap').first();
+    await expect(wrap).toHaveAttribute('data-hscroll', 'true');
+    const mirror = page.locator('.table-page-head-mirror');
+    await expect(mirror).toHaveCount(1);
+
+    await scrollMain(page, 1500);
+    // Grow the wrapper, as a new page of rows does: the hook's ResizeObserver
+    // re-places the copy now. (Padding would not do: it watches content boxes.)
+    await wrap.evaluate((node) => {
+      const el = node as HTMLElement;
+      el.style.minHeight = `${el.offsetHeight + 40}px`;
+    });
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await scrollMain(page, 0);
+
+    const offset = await mirror.evaluate((m) => {
+      const real = m.nextElementSibling!.querySelector('thead th')!.getBoundingClientRect();
+      const copy = m.querySelector('thead th')!.getBoundingClientRect();
+      return Math.abs(real.top - copy.top);
+    });
+    expect(offset, 'the copy still lies over the real head').toBeLessThanOrEqual(0.5);
   });
 
   test('a table that fits has no proxy scrollbar and sticks with plain CSS', async ({ page }) => {

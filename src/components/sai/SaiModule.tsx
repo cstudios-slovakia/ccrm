@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { SectionIcon } from "../icons/SectionIcon";
+import { SECTION_VISUALS } from "../../utils/sectionVisuals";
 import { 
   Sparkles, 
   Plus, 
@@ -16,6 +18,7 @@ import {
   Database 
 } from 'lucide-react';
 import FlockIcon from '../icons/FlockIcon';
+import { upgradeSwarmModel } from '../../utils/aiModels';
 import type { 
   SimulationParameters, 
   SwarmKnowledgeGraph, 
@@ -37,14 +40,7 @@ import {
   deleteServerSimulation,
   saveRoundCheckpoint
 } from '../../utils/swarm/checkpointClient';
-import { 
-  DEMO_SIMULATION_CHECKPOINT,
-  DEMO_GRAPH,
-  DEMO_AGENTS,
-  DEMO_POSTS,
-  DEMO_METRICS_HISTORY,
-  DEMO_STRATEGIC_REPORT
-} from '../../utils/swarm/demoData';
+import { getDemoData, isBuiltInDemoSimulationId } from '../../utils/swarm/demoData';
 import { CreateRehearsalView, type DraftData } from './CreateRehearsalView';
 import { LiveWarRoom } from './LiveWarRoom';
 import { StrategicReportView } from './StrategicReportView';
@@ -55,6 +51,7 @@ import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { runUndoable } from "../../utils/undoable";
 import { reinsertAt } from "../../utils/undoableList";
 import { asLang, singleMessage, undoLabel } from "../../utils/undoMessages";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface SaiModuleProps {
   isDemoMode?: boolean;
@@ -69,6 +66,14 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
+  // The built-in interactive demo, in the system language (demoData.{sk,hu,en}.ts).
+  const demoBundle = useMemo(() => getDemoData(systemLanguage), [systemLanguage]);
+  const DEMO_SIMULATION_CHECKPOINT = demoBundle.checkpoint;
+  const DEMO_GRAPH = demoBundle.graph;
+  const DEMO_AGENTS = demoBundle.agents;
+  const DEMO_POSTS = demoBundle.posts;
+  const DEMO_METRICS_HISTORY = demoBundle.metricsHistory;
+  const DEMO_STRATEGIC_REPORT = demoBundle.report;
   // Navigation & View State
   const [demoModeActive, setDemoModeActive] = useState<boolean>(isDemoMode);
   const [activeIsDemo, setActiveIsDemo] = useState<boolean>(isDemoMode);
@@ -202,7 +207,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                 context_documents: Array.isArray(simDetails.context_documents) ? simDetails.context_documents : (Array.isArray(cp.context_documents) ? cp.context_documents : undefined),
                 swarm_scale: simDetails.swarm_scale ? Number(simDetails.swarm_scale) : (cp.swarm_scale ? Number(cp.swarm_scale) : 30),
                 total_rounds: simDetails.total_rounds ? Number(simDetails.total_rounds) : (cp.total_rounds ? Number(cp.total_rounds) : 8),
-                model_name: simDetails.model_name || cp.model_name || 'gpt-5.6-luna',
+                model_name: upgradeSwarmModel(simDetails.model_name || cp.model_name),
                 diurnal_cycle: simDetails.diurnal_cycle !== undefined ? simDetails.diurnal_cycle : (cp.diurnal_cycle ?? true),
                 status: 'draft'
               });
@@ -219,7 +224,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         setActiveView('create');
       } else if (subView === 'war-room' || subView === 'running' || subView === 'live') {
         if (id && id !== activeSimulationId) {
-          if (id === DEMO_SIMULATION_CHECKPOINT.simulationId || id.startsWith('demo-')) {
+          if (isBuiltInDemoSimulationId(id)) {
             handleLoadDemoSimulation(false);
             setActiveView('running');
           } else {
@@ -237,7 +242,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         }
       } else if (subView === 'report' || subView === 'briefing' || subView === 'results') {
         if (id && id !== activeSimulationId) {
-          if (id === DEMO_SIMULATION_CHECKPOINT.simulationId || id.startsWith('demo-')) {
+          if (isBuiltInDemoSimulationId(id)) {
             handleLoadDemoSimulation(false);
             setActiveView('report');
           } else {
@@ -281,9 +286,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
     setActiveSimulationId(DEMO_SIMULATION_CHECKPOINT.simulationId);
     setActiveTitle(DEMO_SIMULATION_CHECKPOINT.title);
     setActiveHypothesis(DEMO_SIMULATION_CHECKPOINT.hypothesis);
-    setActiveSeed(
-      "Enterprise tier restructuring: +25% price increase, 99.9% uptime SLA, direct WhatsApp developer support, and 6-month grandfathering grace period."
-    );
+    setActiveSeed(demoBundle.seedDocument);
     setCurrentRound(DEMO_SIMULATION_CHECKPOINT.currentRound);
     setTotalRounds(DEMO_SIMULATION_CHECKPOINT.totalRounds);
     setGraph(DEMO_GRAPH);
@@ -329,7 +332,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
       context_documents: contextDocs,
       swarm_scale: sim.swarm_scale ? Number(sim.swarm_scale) : (cp.swarm_scale ? Number(cp.swarm_scale) : 30),
       total_rounds: sim.total_rounds ? Number(sim.total_rounds) : (cp.total_rounds ? Number(cp.total_rounds) : 8),
-      model_name: sim.model_name || cp.model_name || 'gpt-5.6-luna',
+      model_name: upgradeSwarmModel(sim.model_name || cp.model_name),
       diurnal_cycle: sim.diurnal_cycle !== undefined ? sim.diurnal_cycle : (cp.diurnal_cycle ?? true),
       status: 'draft'
     });
@@ -368,9 +371,9 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         const activeSrcCount = config.crmDataSources ? config.crmDataSources.length : 8;
         setPrepStepMessage(
           t(
-            `[Demo Mode] Extracting CRM context (${config.lookbackMonths}-month horizon, ${activeSrcCount} active sources)...`,
-            `[Demo režim] Extrakcia CRM kontextu (${config.lookbackMonths}-mesačný horizont, ${activeSrcCount} aktívnych zdrojov)...`,
-            `[Demo mód] CRM kontext kinyerése (${config.lookbackMonths} hónapos időtáv, ${activeSrcCount} aktív forrás)...`
+            `[Demo Mode] Extracting ${PRODUCT_NAME} context (${config.lookbackMonths}-month horizon, ${activeSrcCount} active sources)...`,
+            `[Demo režim] Extrakcia ${PRODUCT_NAME} kontextu (${config.lookbackMonths}-mesačný horizont, ${activeSrcCount} aktívnych zdrojov)...`,
+            `[Demo mód] ${PRODUCT_NAME} kontext kinyerése (${config.lookbackMonths} hónapos időtáv, ${activeSrcCount} aktív forrás)...`
           )
         );
         await new Promise(r => setTimeout(r, 600));
@@ -476,20 +479,20 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
       setPrepStepMessage(
         attachedDocsCount > 0 
           ? t(
-              `Extracting CRM data (${config.lookbackMonths}-mo horizon, ${activeSrcCount} sources) and processing ${attachedDocsCount} attached documents...`,
-              `Extrakcia CRM dát (${config.lookbackMonths}-mes. horizont, ${activeSrcCount} zdrojov) a spracovanie ${attachedDocsCount} priložených dokumentov...`,
-              `CRM adatok kinyerése (${config.lookbackMonths} hónapos horizont, ${activeSrcCount} forrás) és ${attachedDocsCount} csatolt dokumentum feldolgozása...`
+              `Extracting ${PRODUCT_NAME} data (${config.lookbackMonths}-mo horizon, ${activeSrcCount} sources) and processing ${attachedDocsCount} attached documents...`,
+              `Extrakcia ${PRODUCT_NAME} dát (${config.lookbackMonths}-mes. horizont, ${activeSrcCount} zdrojov) a spracovanie ${attachedDocsCount} priložených dokumentov...`,
+              `${PRODUCT_NAME} adatok kinyerése (${config.lookbackMonths} hónapos horizont, ${activeSrcCount} forrás) és ${attachedDocsCount} csatolt dokumentum feldolgozása...`
             )
           : activeSrcCount > 0
             ? t(
-                `Extracting selected CRM data (${config.lookbackMonths}-month horizon, ${activeSrcCount} active sources)...`,
-                `Extrakcia vybraných CRM dát (${config.lookbackMonths}-mesačný horizont, ${activeSrcCount} aktívnych zdrojov)...`,
-                `Kijelölt CRM adatok kinyerése (${config.lookbackMonths} hónapos időtáv, ${activeSrcCount} aktív forrás)...`
+                `Extracting selected ${PRODUCT_NAME} data (${config.lookbackMonths}-month horizon, ${activeSrcCount} active sources)...`,
+                `Extrakcia vybraných ${PRODUCT_NAME} dát (${config.lookbackMonths}-mesačný horizont, ${activeSrcCount} aktívnych zdrojov)...`,
+                `Kijelölt ${PRODUCT_NAME} adatok kinyerése (${config.lookbackMonths} hónapos időtáv, ${activeSrcCount} aktív forrás)...`
               )
             : t(
-                'Grounded purely on scenario prompt (all CRM sources disabled)...',
-                'Založené výhradne na oznámení scenára (všetky CRM zdroje vypnuté)...',
-                'Kizárólag a forgatókönyv alapján (minden CRM forrás kikapcsolva)...'
+                `Grounded purely on scenario prompt (all ${PRODUCT_NAME} sources disabled)...`,
+                `Založené výhradne na oznámení scenára (všetky ${PRODUCT_NAME} zdroje vypnuté)...`,
+                `Kizárólag a forgatókönyv alapján (minden ${PRODUCT_NAME} forrás kikapcsolva)...`
               )
       );
       const crmContext = await fetchCrmContext(config.lookbackMonths, config.crmDataSources);
@@ -647,7 +650,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
           totalRounds: simDetails.total_rounds ? Number(simDetails.total_rounds) : (cp.total_rounds ? Number(cp.total_rounds) : 8),
           platforms: (simDetails.platforms || cp.platforms || 'dual') as ('dual' | 'chitchat' | 'forum' | 'twitter' | 'reddit'),
           diurnalCycle: simDetails.diurnal_cycle !== undefined ? simDetails.diurnal_cycle : (cp.diurnal_cycle ?? true),
-          llmModel: simDetails.model_name || cp.model_name || 'gpt-5.6-luna',
+          llmModel: upgradeSwarmModel(simDetails.model_name || cp.model_name),
           executionMode: activeIsDemo ? 'demo' : 'live'
         };
         await handleLaunchSimulation(config, activeSimulationId);
@@ -673,7 +676,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
     if (!sim || !sim.id) return;
 
     // If demo simulation or demo ID, load demo state
-    if (sim.id === DEMO_SIMULATION_CHECKPOINT.simulationId || (typeof sim.id === 'string' && sim.id.startsWith('demo-'))) {
+    if (isBuiltInDemoSimulationId(sim.id)) {
       handleLoadDemoSimulation(shouldUpdateHash);
       return;
     }
@@ -805,29 +808,29 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
   }, [activeView, isPreparing, isEngineRunning, currentRound, activeReport]);
 
   return (
-    <div className="flex flex-col h-full bg-slate-50/50">
+    <div className="flex flex-col h-full bg-gray-50/50">
       
       {/* Top Navigation Bar: List Overview uses standard header; Real Simulation views use SimulationStepsBar */}
       {activeView === 'list' ? (
-        <header className="px-6 py-4 bg-white border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
+        <header className="px-6 py-4 bg-white border-b border-gray-200/80 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-400 flex items-center justify-center shadow-md text-white">
-              <FlockIcon size={22} className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md text-white" style={{ backgroundColor: SECTION_VISUALS.sai.color }}>
+              <SectionIcon id="sai" className="w-5 h-5" color="#ffffff" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-title font-extrabold bg-gradient-to-r from-purple-700 via-indigo-700 to-emerald-600 bg-clip-text text-transparent">
+                <h1 className="text-title font-extrabold text-gray-900">
                   SAI
                 </h1>
                 <span className="px-2 py-0.5 rounded-full type-overline bg-purple-100 text-purple-700 border border-purple-200">
                   {t("Swarm artificial intelligence", "Rojová umelá inteligencia", "Raj-alapú mesterséges intelligencia")}
                 </span>
               </div>
-              <p className="text-ui text-slate-500 font-medium">
+              <p className="text-ui text-gray-500 font-medium">
                 {t(
-                  'Predictive market simulation with autonomous agents grounded in live CRM history',
-                  'Prediktívna simulácia trhu s autonómnymi agentmi založená na reálnej histórii CRM',
-                  'Prediktív piaci szimuláció autonóm ágensekkel, valós CRM történetre alapozva'
+                  `Predictive market simulation with autonomous agents grounded in live ${PRODUCT_NAME} history`,
+                  `Prediktívna simulácia trhu s autonómnymi agentmi založená na reálnej histórii ${PRODUCT_NAME}`,
+                  `Prediktív piaci szimuláció autonóm ágensekkel, valós ${PRODUCT_NAME} történetre alapozva`
                 )}
               </p>
             </div>
@@ -835,17 +838,17 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
 
           {/* View Switcher & Action Buttons */}
           <div className="flex items-center gap-2.5">
-            <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200 text-ui font-bold">
+            <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-200 text-ui font-bold">
               <button
                 onClick={() => navigateView('list')}
-                className="px-3 py-1.5 rounded-xl bg-white text-slate-800 shadow-sm transition cursor-pointer"
+                className="px-3 py-1.5 rounded-md bg-white text-gray-800 shadow-sm transition cursor-pointer"
               >
                 {t('Simulations', 'Simulácie', 'Szimulációk')}
               </button>
               {activeSimulationId && (
                 <button
                   onClick={() => navigateView('running')}
-                  className="px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-800 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <Activity className="w-3.5 h-3.5 text-indigo-600" />
                   <span>{t("War Room", "War Room", "Élő War Room")}</span>
@@ -854,7 +857,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
               {activeSimulationId && activeReport && (
                 <button
                   onClick={() => navigateView('report')}
-                  className="px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-800 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <FileText className="w-3.5 h-3.5 text-emerald-600" />
                   <span>{t('Strategic Briefing', 'Strategický briefing', 'Stratégiai eligazítás')}</span>
@@ -868,7 +871,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                   setInterviewAgent(null);
                   setIsQaOpen(true);
                 }}
-                className="px-3 py-2 rounded-2xl bg-white border border-slate-200 hover:border-purple-300 hover:bg-purple-50/50 text-slate-700 font-bold text-ui flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:border-purple-300 hover:bg-purple-50/50 text-gray-700 font-bold text-ui flex items-center gap-1.5 shadow-sm transition cursor-pointer"
               >
                 <MessageSquare className="w-4 h-4 text-purple-600" />
                 <span>{t('Ask Analyst / Agents', 'Spýtať sa analytika / agentov', 'Elemző / ágensek megkérdezése')}</span>
@@ -879,14 +882,14 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setDemoModeActive(!demoModeActive)}
-                className={`px-3 py-2 rounded-2xl border text-ui font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                className={`px-3 py-2 rounded-lg border text-ui font-bold flex items-center gap-1.5 transition cursor-pointer ${
                   demoModeActive
                     ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-sm'
-                    : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                    : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-800'
                 }`}
                 title={t('Toggle interactive demo mode (local simulation with zero API costs)', 'Prepnúť interaktívny demo režim (lokálna simulácia bez nákladov na API)', 'Interaktív demó mód váltása (helyi szimuláció nulla API költséggel)')}
               >
-                <Zap className={`w-3.5 h-3.5 ${demoModeActive ? 'text-emerald-600 fill-emerald-600' : 'text-slate-400'}`} />
+                <Zap className={`w-3.5 h-3.5 ${demoModeActive ? 'text-emerald-600 fill-emerald-600' : 'text-gray-400'}`} />
                 <span>{demoModeActive ? t('Demo mode: ON', 'Demo režim: ZAP', 'Demó mód: BE') : t('Demo mode: OFF', 'Demo režim: VYP', 'Demó mód: KI')}</span>
               </button>
 
@@ -896,7 +899,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                     setIsGuidedDemoOpen(true);
                     navigateView(activeView, { isDemo: true });
                   }}
-                  className="px-3 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-ui shadow-sm flex items-center gap-1.5 transition cursor-pointer"
+                  className="px-3 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-ui shadow-sm flex items-center gap-1.5 transition cursor-pointer"
                   title={t('View step-by-step animated walkthrough of the simulation process', 'Pozrieť si animovanú ukážku celého procesu simulácie krok za krokom', 'A szimulációs folyamat lépésről lépésre bemutatott animált megtekintése')}
                 >
                   <Sparkles className="w-3.5 h-3.5 fill-white" />
@@ -907,7 +910,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
 
             <button
               onClick={handleStartNewRehearsal}
-              className="px-4 py-2 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-ui shadow-md hover:shadow-lg transition flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-ui shadow-md hover:shadow-lg transition flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>{t('New Simulation', 'Nová simulácia', 'Új szimuláció')}</span>
@@ -948,8 +951,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         
         {/* Preparation Banner */}
         {isPreparing && (
-          <div className="mb-6 p-6 rounded-3xl bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white shadow-xl flex items-center gap-4 animate-in fade-in duration-300">
-            <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center flex-shrink-0">
+          <div className="mb-6 p-6 rounded-lg bg-gradient-to-r from-purple-900 via-indigo-900 to-gray-900 text-white shadow-xl flex items-center gap-4 animate-in fade-in duration-300">
+            <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
               <BrainCircuit className="w-6 h-6 text-emerald-400 animate-spin" />
             </div>
             <div className="flex-1">
@@ -959,7 +962,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
               <div className="text-title-sm font-bold text-white mt-0.5">
                 {prepStepMessage || t('Preparing simulation components...', 'Pripravujú sa komponenty simulácie...', 'Szimulációs komponensek előkészítése...')}
               </div>
-              <div className="text-ui text-slate-300 mt-1">
+              <div className="text-ui text-gray-300 mt-1">
                 {t(
                   'Please remain on this screen. Client state synchronizes round checkpoints to the database.',
                   'Prosím, zostaňte na tejto obrazovke. Klientsky stav synchronizuje kontrolné body jednotlivých kôl do databázy.',
@@ -975,16 +978,16 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
           <div className="space-y-6">
             
             {/* Hero Card */}
-            <div className="p-8 rounded-3xl bg-gradient-to-br from-purple-900 via-indigo-950 to-slate-900 text-white shadow-xl relative overflow-hidden">
+            <div className="p-8 rounded-lg bg-gradient-to-br from-purple-900 via-indigo-950 to-gray-900 text-white shadow-xl relative overflow-hidden">
               <div className="relative z-10 max-w-2xl space-y-3">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-ui font-semibold text-emerald-300">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10  border border-white/20 text-ui font-semibold text-emerald-300">
                   <Sparkles className="w-3.5 h-3.5" />
-                  {t('Grounded in live CRM lead history', 'Podložené živou históriou leadov z CRM', 'Élő CRM leadek történetével alátámasztva')}
+                  {t(`Grounded in live ${PRODUCT_NAME} lead history`, `Podložené živou históriou leadov z ${PRODUCT_NAME}`, `Élő ${PRODUCT_NAME} leadek történetével alátámasztva`)}
                 </div>
                 <h2 className="type-metric text-white">
                   {t('Stress-test strategic market moves before publishing', 'Otestujte strategické kroky na trhu ešte pred ich zverejnením', 'Tesztelje piaci stratégiai lépéseit még a közzététel előtt')}
                 </h2>
-                <p className="text-body text-slate-300 leading-relaxed font-normal">
+                <p className="text-body text-gray-300 leading-relaxed font-normal">
                   {t(
                     'SAI generates dozens of autonomous buyer and competitor personas in a live social simulation. Uncover market polarization, sales objections, and get a concrete action plan.',
                     'SAI vygeneruje desiatky autonómnych persón nákupcov a konkurentov v reálnej sociálnej simulácii. Odhaľte polarizáciu trhu, námietky pri predaji a získajte konkrétny akčný plán na dosiahnutie cieľa.',
@@ -994,7 +997,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                 <div className="pt-2 flex items-center gap-3">
                   <button
                     onClick={handleStartNewRehearsal}
-                    className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-600 hover:to-teal-500 text-slate-950 font-extrabold text-ui shadow-lg transition flex items-center gap-2 cursor-pointer"
+                    className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-600 hover:to-teal-500 text-gray-950 font-extrabold text-ui shadow-lg transition flex items-center gap-2 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>{t('Launch New Market Simulation', 'Spustiť novú simuláciu trhu', 'Új piaci szimuláció indítása')}</span>
@@ -1008,26 +1011,22 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
 
             {/* Interactive Demo Showcase Card */}
             {demoModeActive && (
-              <div className="p-6 rounded-3xl bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-900 text-white shadow-xl border border-emerald-500/40 flex flex-col ws-md:flex-row items-start ws-md:items-center justify-between gap-4 animate-in fade-in duration-300">
+              <div className="p-6 rounded-lg bg-gradient-to-r from-emerald-950 via-teal-950 to-gray-900 text-white shadow-xl border border-emerald-500/40 flex flex-col ws-md:flex-row items-start ws-md:items-center justify-between gap-4 animate-in fade-in duration-300">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-400/30">
+                  <div className="w-12 h-12 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-400/30">
                     <Zap className="w-6 h-6 fill-emerald-400 text-emerald-400" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-title-sm font-bold text-white">
-                        {t('Interactive Demo: Q4 Enterprise Pricing Restructuring', 'Interaktívne demo: Reštrukturalizácia cien balíka Enterprise v Q4', 'Interaktív demó: Q4 Enterprise átszervezés és árazás')}
+                        {demoBundle.cardTitle}
                       </h3>
                       <span className="px-2 py-0.5 rounded-full type-overline bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
                         {t('Zero Token Costs', 'Nulové náklady na tokeny', 'Nulla token költség')}
                       </span>
                     </div>
-                    <p className="text-ui text-slate-300 mt-1 max-w-xl">
-                      {t(
-                        'Explore the pre-configured simulation (+25% price increase, 99.9% SLA guarantee, direct WhatsApp support). Try the War Room, Strategic Briefing, and Q&A hub.',
-                        'Pozrite si predpripravenú simuláciu (+25% zvýšenie cien, 99.9% SLA garancia, priama podpora cez WhatsApp). Vyskúšajte War Room, Strategický briefing a interrogačný hub.',
-                        'Tekintse meg az előre konfigurált szimulációt (+25% áremelés, 99.9% SLA garancia, közvetlen WhatsApp támogatás). Próbálja ki a War Roomot, a Stratégiai eligazítást és a kérdezőközpontot.'
-                      )}
+                    <p className="text-ui text-gray-300 mt-1 max-w-xl">
+                      {demoBundle.cardDescription}
                     </p>
                   </div>
                 </div>
@@ -1037,14 +1036,14 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                       setIsGuidedDemoOpen(true);
                       navigateView(activeView, { isDemo: true });
                     }}
-                    className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-slate-950 font-bold text-ui shadow-lg transition flex items-center gap-2 cursor-pointer"
+                    className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-gray-950 font-bold text-ui shadow-lg transition flex items-center gap-2 cursor-pointer"
                   >
-                    <Play className="w-4 h-4 fill-slate-950" />
+                    <Play className="w-4 h-4 fill-gray-950" />
                     <span>{t('Full Process Walkthrough (6 steps)', 'Ukážka celého procesu (6 krokov)', 'Teljes folyamatbemutató (6 lépés)')}</span>
                   </button>
                   <button
                     onClick={() => handleLoadDemoSimulation()}
-                    className="px-4 py-2.5 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-bold text-ui border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2.5 rounded-lg bg-gray-800/80 hover:bg-gray-700 text-gray-200 font-bold text-ui border border-gray-700 transition flex items-center gap-1.5 cursor-pointer"
                   >
                     <span>{t('Jump to Final Results', 'Prejsť na konečné výsledky', 'Ugrás a végső eredményekhez')}</span>
                   </button>
@@ -1055,27 +1054,27 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
             {/* Past Rehearsals List */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-title-sm font-bold text-slate-800 flex items-center gap-2">
+                <h3 className="text-title-sm font-bold text-gray-800 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-purple-600" />
                   {t('Previous Strategic Simulations', 'Predchádzajúce strategické simulácie', 'Korábbi stratégiai szimulációk')}
                 </h3>
-                <span className="text-ui text-slate-500 font-medium">
+                <span className="text-ui text-gray-500 font-medium">
                   {pastSimulations.length} {t('total', 'celkovo', 'összesen')}
                 </span>
               </div>
 
               {loadingList ? (
-                <div className="p-12 text-center text-slate-400">
+                <div className="p-12 text-center text-gray-400">
                   <Activity className="w-6 h-6 animate-spin mx-auto mb-2 text-purple-600" />
                   <p className="text-ui font-medium">{t('Loading simulations from database...', 'Načítavanie simulácií z databázy...', 'Szimulációk betöltése az adatbázisból...')}</p>
                 </div>
               ) : pastSimulations.length === 0 ? (
-                <div className="p-12 rounded-3xl bg-white border border-dashed border-slate-300 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
-                    <FlockIcon size={24} className="w-6 h-6" />
+                <div className="p-12 rounded-lg bg-white border border-dashed border-gray-300 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-lg flex items-center justify-center mx-auto" style={{ backgroundColor: SECTION_VISUALS.sai.bg, color: SECTION_VISUALS.sai.color }}>
+                    <SectionIcon id="sai" className="w-6 h-6" />
                   </div>
-                  <h4 className="text-body font-bold text-slate-700">{t('No simulations yet', 'Zatiaľ žiadne simulácie', 'Még nincsenek szimulációk')}</h4>
-                  <p className="text-ui text-slate-500 max-w-sm mx-auto">
+                  <h4 className="text-body font-bold text-gray-700">{t('No simulations yet', 'Zatiaľ žiadne simulácie', 'Még nincsenek szimulációk')}</h4>
+                  <p className="text-ui text-gray-500 max-w-sm mx-auto">
                     {t(
                       'Create your first simulation to test market reactions to pricing changes, new tiers, or competitor positioning.',
                       'Vytvorte svoju prvú simuláciu na otestovanie reakcie trhu na zmeny cien, nové balíky alebo pozíciu voči konkurencii.',
@@ -1084,7 +1083,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                   </p>
                   <button
                     onClick={handleStartNewRehearsal}
-                    className="px-4 py-2 rounded-xl bg-purple-600 text-white text-ui font-bold shadow hover:bg-purple-700 transition cursor-pointer"
+                    className="px-4 py-2 rounded-md bg-purple-600 text-white text-ui font-bold shadow hover:bg-purple-700 transition cursor-pointer"
                   >
                     {t('Create Simulation', 'Vytvoriť simuláciu', 'Szimuláció létrehozása')}
                   </button>
@@ -1124,10 +1123,10 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                           }
                         }}
                         onClick={() => isUnstarted ? handleOpenDraft(sim) : handleOpenPastSimulation(sim)}
-                        className={`p-5 rounded-3xl bg-white border transition cursor-pointer flex flex-col justify-between group select-none ${
+                        className={`p-5 rounded-lg bg-white border transition cursor-pointer flex flex-col justify-between group select-none ${
                           isUnstarted 
                             ? 'border-amber-300/90 hover:border-amber-500 hover:shadow-lg bg-gradient-to-br from-white to-amber-50/20' 
-                            : 'border-slate-200/90 hover:border-purple-400 hover:shadow-lg'
+                            : 'border-gray-200/90 hover:border-purple-400 hover:shadow-lg'
                         }`}
                       >
                         <div className="space-y-3">
@@ -1141,7 +1140,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                                 lang={asLang(systemLanguage)}
                                 what={sim.title}
                                 onConfirm={() => handleDeleteSimulation(sim.id)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                className="p-1 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition"
                                 title={isUnstarted ? t('Delete draft', 'Zmazať koncept', 'Piszkozat törlése') : t('Delete simulation', 'Zmazať simuláciu', 'Szimuláció törlése')}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1150,16 +1149,16 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
 
                           <div>
                             <h4 className={`text-body font-bold transition line-clamp-1 ${
-                              isUnstarted ? 'text-slate-900 group-hover:text-amber-700' : 'text-slate-900 group-hover:text-purple-600'
+                              isUnstarted ? 'text-gray-900 group-hover:text-amber-700' : 'text-gray-900 group-hover:text-purple-600'
                             }`}>
                               {sim.title}
                             </h4>
-                            <p className="text-ui text-slate-500 line-clamp-2 mt-1 font-normal">
+                            <p className="text-ui text-gray-500 line-clamp-2 mt-1 font-normal">
                               {sim.hypothesis}
                             </p>
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-3 pt-2 text-caption text-slate-400 font-medium">
+                          <div className="flex flex-wrap items-center gap-3 pt-2 text-caption text-gray-400 font-medium">
                             <span className="flex items-center gap-1">
                               <Users className="w-3.5 h-3.5" />
                               {sim.swarm_scale} {t('agents', 'agentov', 'ágens')}
@@ -1177,7 +1176,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                           </div>
                         </div>
 
-                        <div className={`pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-ui font-bold ${
+                        <div className={`pt-4 mt-4 border-t border-gray-100 flex items-center justify-between text-ui font-bold ${
                           isUnstarted ? 'text-amber-700 group-hover:text-amber-800' : 'text-purple-600 group-hover:text-purple-700'
                         }`}>
                           <span>{actionLabel}</span>

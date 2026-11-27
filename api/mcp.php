@@ -5,11 +5,12 @@
  * Implements JSON-RPC 2.0 protocol for MCP clients (Antigravity, Claude Desktop, Cursor).
  * Supports both HTTP POST JSON-RPC execution and HTTP GET SSE streaming.
  * Security: every tool call is checked against the key owner's role permissions
- * (see mcp_tool_permissions). No tool deletes rows. System settings are limited to the two
+ * (see mcp_tool_permissions). No tool deletes rows (tasks are archived via update_task). System settings are limited to the two
  * finance-mode keys (FINANCIAL_MODE, FINANCIAL_SIMPLIFIED_TABLE); nothing else is reachable.
  */
 
 // 1. Headers & CORS
+require_once __DIR__ . '/brand.php';
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-CCRM-MCP-KEY, X-API-Key');
 
@@ -33,6 +34,20 @@ require_once __DIR__ . '/mcp_ext.php';
 require_once __DIR__ . '/mcp_ext_ops.php';
 require_once __DIR__ . '/mcp_ext_writes.php';
 require_once __DIR__ . '/mcp_ext_intel.php';
+require_once __DIR__ . '/mcp_deleted.php';
+require_once __DIR__ . '/mcp_window.php';
+// The list tools rebuilt on the shared window, one module per area (audit 2026-11-10).
+require_once __DIR__ . '/mcp_lists_crm.php';
+require_once __DIR__ . '/mcp_lists_money.php';
+require_once __DIR__ . '/mcp_lists_people.php';
+require_once __DIR__ . '/mcp_ext_modules.php';
+require_once __DIR__ . '/mcp_ext_agency.php';
+require_once __DIR__ . '/mcp_ext_catalog.php';
+require_once __DIR__ . '/mcp_ext_crm_plus.php';
+require_once __DIR__ . '/mcp_ext_commercial.php';
+require_once __DIR__ . '/mcp_ext_self.php';
+require_once __DIR__ . '/mcp_ext_newsletter.php';
+require_once __DIR__ . '/mcp_ext_comms.php';
 
 try {
     $pdo = function_exists('get_db_connection') ? get_db_connection() : ccrm_auth_pdo();
@@ -147,12 +162,12 @@ function mcp_tool_permissions(): array {
         'transition_lead_stage' => $e('leads'), 'convert_lead_to_client' => $e('leads', 'clients'),
         'list_clients' => $v('clients'), 'get_client' => $v('clients'),
         'create_client' => $e('clients'), 'update_client' => $e('clients'),
-        'list_contacts' => $v('clients'), 'create_contact' => $e('clients', 'leads'),
-        'list_tasks' => $v('tasks'), 'get_task' => $v('tasks'),
+        'list_contacts' => $v('clients'), 'create_contact' => $e('clients'),
+        'list_tasks' => $v('tasks'), 'get_task' => $v('tasks'), 'get_task_chat' => $v('tasks'),
         'create_task' => $e('tasks'), 'update_task' => $e('tasks'), 'complete_task' => $e('tasks'),
-        'add_task_comment' => $e('tasks', 'leads'),
+        'add_task_comment' => $e('tasks'),
         'list_projects' => $v('projects'), 'get_project' => $v('projects'),
-        'create_project' => $e('projects'), 'update_project' => $e('projects'),
+        'create_project' => $e('projects'), 'update_project' => $e('projects'), 'manage_project_acceptance_criteria' => $e('projects'),
         'create_milestone' => $e('projects', 'tasks'),
         'get_financial_summary' => $v('financial'), 'get_financial_mode' => $v('financial'),
         'get_financial_simplified_table' => $v('financial'),
@@ -160,12 +175,13 @@ function mcp_tool_permissions(): array {
         'set_financial_mode' => ['edit' => ['financial'], 'admin' => true],
         'set_financial_simplified_cell' => $e('financial'),
         'list_invoices' => $v('invoices'), 'get_invoice' => $v('invoices'),
-        'create_invoice' => $e('invoices', 'financial'), 'update_invoice_status' => $e('invoices', 'financial'),
+        'create_invoice' => $e('invoices', 'financial'), 'update_invoice_status' => $e('invoices'),
         'list_expenses' => $v('financial'), 'record_expense' => $e('financial'),
         'list_inventory_items' => $v('warehouse'), 'get_inventory_item' => $v('warehouse'),
         'create_inventory_item' => $e('warehouse'), 'adjust_stock' => $e('warehouse'),
         'list_meetings' => $v('meetings'), 'schedule_meeting' => $e('meetings'), 'update_meeting' => $e('meetings'),
-        'list_communications' => $v('leads'), 'log_communication' => $e('leads'),
+        'list_communications' => ['any' => ['leads', 'clients']],
+        'log_communication' => ['any_edit' => ['leads', 'clients']],
         // Each section is gated per module inside the tool.
         'search_entities' => [],
         // Directory parity with sync.php: any authenticated user.
@@ -176,11 +192,24 @@ function mcp_tool_permissions(): array {
         'record_salary_payout' => ['edit' => ['employees'], 'view' => ['employees.salaries']],
         'list_vacations' => $v('employees', 'employees.vacations'),
         'record_vacation' => ['edit' => ['employees'], 'view' => ['employees.vacations']],
+        'whatsapp_list_chats' => $v('whatsapp'),
+        'whatsapp_read_messages' => $v('whatsapp'),
+        'whatsapp_send_message' => $e('whatsapp'),
+        'whatsapp_sync_chat' => $e('whatsapp'),
     ];
     // Part B tools (mcp_ext.php).
     $map += mcp_ext_fin_permissions();
     $map += mcp_ext_ops_permissions();
     $map += mcp_ext_intel_permissions();
+    $map += mcp_deleted_permissions();
+    $map += mcp_ext_modules_permissions();
+    $map += mcp_ext_agency_permissions();
+    $map += mcp_ext_catalog_permissions();
+    $map += mcp_ext_crm_plus_permissions();
+    $map += mcp_ext_commercial_permissions();
+    $map += mcp_ext_self_permissions();
+    $map += mcp_ext_newsletter_permissions();
+    $map += mcp_ext_comms_permissions();
     return $map;
 }
 
@@ -197,9 +226,36 @@ function mcp_tool_allowed(string $tool): bool {
         foreach ($need['any'] as $k) { if (mcp_can($k)) { $seen = true; break; } }
         if (!$seen) return false;
     }
+    if (!empty($need['any_edit'])) {
+        $seenEdit = false;
+        foreach ($need['any_edit'] as $k) { if (mcp_can_edit($k)) { $seenEdit = true; break; } }
+        if (!$seenEdit) return false;
+    }
     foreach ($need['view'] ?? [] as $k) { if (!mcp_can($k)) return false; }
     foreach ($need['edit'] ?? [] as $k) { if (!mcp_can_edit($k)) return false; }
     return true;
+}
+
+/**
+ * Why mcp_tool_allowed() refuses $tool, in the order it checks: the first unmet requirement.
+ * Goes into the -32003 message so a key owner (or their agent) can tell an administrator which
+ * permission to grant in Settings → Roles, instead of only hearing "no access".
+ */
+function mcp_tool_refusal_reason(string $tool, ?string $roleName): string {
+    $map = mcp_tool_permissions();
+    if (!array_key_exists($tool, $map)) return 'unknown tool; tools/list shows the tools this key may call';
+    $need = $map[$tool];
+    $role = 'the role "' . (string)$roleName . '"';
+    if (!empty($need['admin']) && empty($GLOBALS['mcp_is_admin'])) return 'only an Admin may call it';
+    if (!empty($need['any']) && !array_filter($need['any'], fn($k) => mcp_can($k))) {
+        return $role . ' needs view access to one of: ' . implode(', ', $need['any']);
+    }
+    if (!empty($need['any_edit']) && !array_filter($need['any_edit'], fn($k) => mcp_can_edit($k))) {
+        return $role . ' needs edit access to one of: ' . implode(', ', $need['any_edit']);
+    }
+    foreach ($need['view'] ?? [] as $k) { if (!mcp_can($k)) return $role . ' needs view access to ' . $k; }
+    foreach ($need['edit'] ?? [] as $k) { if (!mcp_can_edit($k)) return $role . ' needs edit access to ' . $k; }
+    return 'not permitted';
 }
 
 // Helper: audit log wrapper
@@ -320,9 +376,9 @@ if ($method === 'GET') {
         'capabilities' => [
             'tools_count' => count(array_filter(mcp_get_tool_definitions(), fn($t) => mcp_tool_allowed((string)($t['name'] ?? '')))),
             'domains' => [
-                'leads', 'clients', 'tasks', 'projects', 'financials', 'invoices',
-                'warehouse', 'meetings', 'communications', 'search', 'team',
-                'employees', 'automation', 'files'
+                'leads', 'clients', 'tasks', 'weekly_plan', 'projects', 'financials', 'invoices',
+                'orders', 'warehouse', 'time_tracking', 'tickets', 'meetings', 'communications',
+                'search', 'team', 'employees', 'automation', 'files'
             ]
         ]
     ]);
@@ -361,10 +417,17 @@ switch ($rpcMethod) {
                 'capabilities' => [
                     'tools' => ['listChanged' => false]
                 ],
+                // serverInfo.name stays "ccrm-mcp-server" on purpose: it is the one identifier
+                // clients may have stored, so renaming it could force a reconnect. Everything else
+                // (instructions, tool descriptions) is plain text that is re-read on its own.
                 'serverInfo' => [
                     'name' => 'ccrm-mcp-server',
                     'version' => '1.0.0'
-                ]
+                ],
+                // Optional MCP field, ignored by clients that do not use it: tells the assistant whose
+                // installation this is ("Lapidea (Koperniq)"; just "Koperniq" with no title of its own).
+                'instructions' => 'This is ' . kprnq_title_with_product(kprnq_system_title_override($pdo))
+                    . '. Use these tools to read and update its data within the signed-in user\'s permissions.'
             ]
         ]);
         exit;
@@ -403,7 +466,8 @@ switch ($rpcMethod) {
             echo json_encode([
                 'jsonrpc' => '2.0',
                 'id' => $rpcId,
-                'error' => ['code' => -32003, 'message' => 'Forbidden: this key may not call ' . $toolName . '.']
+                'error' => ['code' => -32003, 'message' => 'Forbidden: this key may not call ' . $toolName
+                    . ' (' . mcp_tool_refusal_reason($toolName, $sessionUser['role'] ?? null) . ').']
             ]);
             exit;
         }
@@ -464,49 +528,54 @@ switch ($rpcMethod) {
 // TOOL DEFINITIONS (core tools; the finance, operations and automation tools live in mcp_ext*.php)
 // ============================================================================
 function mcp_get_tool_definitions(): array {
-    return array_merge(mcp_core_tool_definitions(), mcp_ext_fin_tool_definitions(), mcp_ext_ops_tool_definitions(), mcp_ext_intel_tool_definitions());
+    return array_merge(
+        mcp_core_tool_definitions(),
+        mcp_ext_fin_tool_definitions(),
+        mcp_ext_ops_tool_definitions(),
+        mcp_ext_intel_tool_definitions(),
+        mcp_deleted_tool_definitions(),
+        mcp_get_module_tool_definitions(),
+        mcp_get_agency_tool_definitions(),
+        mcp_ext_catalog_tool_definitions(),
+        mcp_ext_crm_plus_tool_definitions(),
+        mcp_ext_commercial_tool_definitions(),
+        mcp_ext_self_tool_definitions(),
+        mcp_get_newsletter_tool_definitions(),
+        mcp_get_comms_tool_definitions()
+    );
 }
 
 function mcp_core_tool_definitions(): array {
     return [
         // DOMAIN 1: Leads & Opportunities (Pipeline)
-        [
-            'name' => 'list_leads',
-            'description' => 'List and filter sales leads and pipeline opportunities.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'status' => ['type' => 'string', 'description' => 'Filter by status: new, contacted, proposal_sent, negotiation, won, lost'],
-                    'search' => ['type' => 'string', 'description' => 'Search across lead name, email, phone, city'],
-                    'owner' => ['type' => 'string', 'description' => 'Filter by assigned owner/manager name'],
-                    'limit' => ['type' => 'integer', 'description' => 'Number of records to return (default 25, max 100)'],
-                    'offset' => ['type' => 'integer', 'description' => 'Pagination offset (default 0)']
-                ]
-            ]
-        ],
-        [
-            'name' => 'get_lead',
-            'description' => 'Get full details of a specific lead by ID, including recent timeline events and notes.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'id' => ['type' => 'string', 'description' => 'The lead ID']
-                ],
-                'required' => ['id']
-            ]
-        ],
+        mcp_crm_defs()['list_leads'],
+        mcp_crm_defs()['get_lead'],
         [
             'name' => 'create_lead',
-            'description' => 'Create a new sales opportunity or lead in the pipeline.',
+            'description' => 'Create a new sales opportunity or lead in the pipeline, including optional custom fields.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'name' => ['type' => 'string', 'description' => 'Company or individual name'],
                     'contact_person' => ['type' => 'string', 'description' => 'Primary contact person name'],
+                    'contact_first_name' => ['type' => 'string', 'description' => 'Contact first name'],
+                    'contact_last_name' => ['type' => 'string', 'description' => 'Contact last name'],
                     'email' => ['type' => 'string', 'description' => 'Contact email address'],
                     'phone' => ['type' => 'string', 'description' => 'Contact phone number'],
                     'city' => ['type' => 'string', 'description' => 'City location'],
                     'street' => ['type' => 'string', 'description' => 'Street address'],
+                    'postal_code' => ['type' => 'string', 'description' => 'Postal code'],
+                    'country' => ['type' => 'string', 'description' => 'Country (default Slovakia)'],
+                    'company_id' => ['type' => 'string', 'description' => 'IČO'],
+                    'tax_id' => ['type' => 'string', 'description' => 'DIČ'],
+                    'vat_id' => ['type' => 'string', 'description' => 'IČ DPH'],
+                    'website' => ['type' => 'string', 'description' => 'Website URL'],
+                    'client_type' => ['type' => 'string', 'enum' => ['business', 'person', 'partner'], 'description' => 'Default business'],
+                    'division' => ['type' => 'string', 'description' => 'Division name'],
+                    'source' => ['type' => 'string', 'description' => 'Lead source key'],
+                    'price_level_id' => ['type' => 'string', 'description' => 'Price level ID'],
+                    'categories' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Lead category/interest names'],
+                    'custom_fields' => ['type' => 'object', 'description' => 'Custom attribute map keyed by attribute ID (see list_lead_attributes)'],
                     'value' => ['type' => 'number', 'description' => 'Estimated opportunity deal value'],
                     'status' => ['type' => 'string', 'description' => 'Initial stage (default "new")'],
                     'owner' => ['type' => 'string', 'description' => 'Assigned owner name (defaults to active user)'],
@@ -517,17 +586,31 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'update_lead',
-            'description' => 'Update fields of an existing lead opportunity.',
+            'description' => 'Update fields, categories, archive state, or custom fields of an existing lead opportunity.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'The lead ID to update'],
                     'name' => ['type' => 'string', 'description' => 'Updated company / client name'],
                     'contact_person' => ['type' => 'string', 'description' => 'Updated contact person'],
+                    'contact_first_name' => ['type' => 'string', 'description' => 'Contact first name'],
+                    'contact_last_name' => ['type' => 'string', 'description' => 'Contact last name'],
                     'email' => ['type' => 'string', 'description' => 'Updated email'],
                     'phone' => ['type' => 'string', 'description' => 'Updated phone'],
                     'city' => ['type' => 'string', 'description' => 'Updated city'],
                     'street' => ['type' => 'string', 'description' => 'Updated street'],
+                    'postal_code' => ['type' => 'string', 'description' => 'Postal code'],
+                    'country' => ['type' => 'string', 'description' => 'Country'],
+                    'company_id' => ['type' => 'string', 'description' => 'IČO'],
+                    'tax_id' => ['type' => 'string', 'description' => 'DIČ'],
+                    'vat_id' => ['type' => 'string', 'description' => 'IČ DPH'],
+                    'website' => ['type' => 'string', 'description' => 'Website URL'],
+                    'division' => ['type' => 'string', 'description' => 'Division name'],
+                    'source' => ['type' => 'string', 'description' => 'Lead source key'],
+                    'price_level_id' => ['type' => 'string', 'description' => 'Price level ID'],
+                    'categories' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Replace lead categories/interests'],
+                    'custom_fields' => ['type' => 'object', 'description' => 'Custom field updates keyed by attribute ID (empty string/null clears key)'],
+                    'archived' => ['type' => 'boolean', 'description' => 'true archives the lead, false restores it'],
                     'value' => ['type' => 'number', 'description' => 'Updated opportunity value'],
                     'rating' => ['type' => 'integer', 'description' => 'Star rating 1-5'],
                     'owner' => ['type' => 'string', 'description' => 'Updated assigned owner'],
@@ -551,50 +634,25 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'convert_lead_to_client',
-            'description' => 'Close a lead as won and register the client record the Clients register shows (same name and contact data; value stays on the lead). Optionally creates an initial project. Refused while the lead has open blocking tasks.',
+            'description' => 'Close a lead as won and register the client record the Clients register shows (same name and contact data; value stays on the lead). Optionally creates an initial project and copies matching custom fields. Refused while the lead has open blocking tasks.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Lead ID to convert'],
                     'create_project' => ['type' => 'boolean', 'description' => 'Whether to auto-create a delivery project'],
-                    'project_name' => ['type' => 'string', 'description' => 'Name for the project if created']
+                    'project_name' => ['type' => 'string', 'description' => 'Name for the project if created'],
+                    'project_type_id' => ['type' => 'string', 'description' => 'Optional project type ID when creating project']
                 ],
                 'required' => ['id']
             ]
         ],
 
         // DOMAIN 2: Clients & Contact Management
-        [
-            'name' => 'list_clients',
-            'description' => 'List clients as the Clients register shows them: one profile per client name (records with the same name are combined; total_value = sum of their lead values plus the client value adjustment). Pipeline leads are not clients.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'search' => ['type' => 'string', 'description' => 'Search by client name, email, ICO, phone'],
-                    'city' => ['type' => 'string', 'description' => 'Filter by city'],
-                    'client_type' => ['type' => 'string', 'description' => 'Filter by client type: business, person, partner'],
-                    'sort_by' => ['type' => 'string', 'description' => 'Sort column: name, created_at, value (default name)'],
-                    'sort_order' => ['type' => 'string', 'description' => 'Sort direction: asc or desc (default asc)'],
-                    'limit' => ['type' => 'integer', 'description' => 'Results limit (default 50)'],
-                    'offset' => ['type' => 'integer', 'description' => 'Offset for pagination'],
-                    'include_archived' => ['type' => 'boolean', 'description' => 'Include archived clients (default false)']
-                ]
-            ]
-        ],
-        [
-            'name' => 'get_client',
-            'description' => 'Get a client record with the projects and invoicing documents of the whole client: every record sharing its name (as the Clients register shows it), plus unlinked projects named for it (linked_by = name_match). Projects carry the resolved contract value, status group, invoice date (invoice_date), deadline (completion_deadline) and url; documents carry payment status. For one-call context use get_client_dossier.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'id' => ['type' => 'string', 'description' => 'The client ID']
-                ],
-                'required' => ['id']
-            ]
-        ],
+        mcp_crm_defs()['list_clients'],
+        mcp_crm_defs()['get_client'],
         [
             'name' => 'create_client',
-            'description' => 'Create a new business client record with tax and invoicing details.',
+            'description' => 'Create a new business, person, or partner client record with tax, pricing, category, and custom-field details.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -602,7 +660,10 @@ function mcp_core_tool_definitions(): array {
                     'company_id' => ['type' => 'string', 'description' => 'Company Registration Number (IČO)'],
                     'tax_id' => ['type' => 'string', 'description' => 'Tax Identification Number (DIČ)'],
                     'vat_id' => ['type' => 'string', 'description' => 'VAT Number (IČ DPH)'],
+                    'website' => ['type' => 'string', 'description' => 'Website URL'],
                     'contact_person' => ['type' => 'string', 'description' => 'Primary contact person'],
+                    'contact_first_name' => ['type' => 'string', 'description' => 'Primary contact first name'],
+                    'contact_last_name' => ['type' => 'string', 'description' => 'Primary contact last name'],
                     'email' => ['type' => 'string', 'description' => 'Primary email address'],
                     'phone' => ['type' => 'string', 'description' => 'Primary phone number'],
                     'street' => ['type' => 'string', 'description' => 'Street address'],
@@ -610,6 +671,15 @@ function mcp_core_tool_definitions(): array {
                     'postal_code' => ['type' => 'string', 'description' => 'Postal code'],
                     'country' => ['type' => 'string', 'description' => 'Country (default Slovakia)'],
                     'notes' => ['type' => 'string', 'description' => 'Internal client notes'],
+                    'owner' => ['type' => 'string', 'description' => 'Assigned owner name'],
+                    'division' => ['type' => 'string', 'description' => 'Division name'],
+                    'client_category_id' => ['type' => 'string', 'description' => 'Client category ID'],
+                    'price_level_id' => ['type' => 'string', 'description' => 'Price level ID'],
+                    'adjustment' => ['type' => 'number', 'description' => 'Value adjustment in EUR'],
+                    'company_client_id' => ['type' => 'string', 'description' => 'Parent company client ID when client_type = person'],
+                    'contact_role' => ['type' => 'string', 'description' => 'Role at parent company'],
+                    'ticket_allowed_emails' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Allowed support ticket sender emails/domains'],
+                    'custom_fields' => ['type' => 'object', 'description' => 'Custom attribute map keyed by attribute ID'],
                     'client_type' => ['type' => 'string', 'enum' => ['business', 'person', 'partner'], 'description' => 'Default business']
                 ],
                 'required' => ['name']
@@ -617,7 +687,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'update_client',
-            'description' => 'Update client information and tax credentials.',
+            'description' => 'Update client information, tax credentials, pricing, category, custom fields, or archive/restore state.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -626,86 +696,68 @@ function mcp_core_tool_definitions(): array {
                     'company_id' => ['type' => 'string', 'description' => 'IČO'],
                     'tax_id' => ['type' => 'string', 'description' => 'DIČ'],
                     'vat_id' => ['type' => 'string', 'description' => 'IČ DPH'],
+                    'website' => ['type' => 'string', 'description' => 'Website URL'],
                     'contact_person' => ['type' => 'string', 'description' => 'Contact person'],
+                    'contact_first_name' => ['type' => 'string', 'description' => 'Contact first name'],
+                    'contact_last_name' => ['type' => 'string', 'description' => 'Contact last name'],
                     'email' => ['type' => 'string', 'description' => 'Email'],
                     'phone' => ['type' => 'string', 'description' => 'Phone'],
                     'street' => ['type' => 'string', 'description' => 'Street'],
                     'city' => ['type' => 'string', 'description' => 'City'],
                     'postal_code' => ['type' => 'string', 'description' => 'Postal code'],
                     'country' => ['type' => 'string', 'description' => 'Country'],
-                    'notes' => ['type' => 'string', 'description' => 'Notes']
+                    'notes' => ['type' => 'string', 'description' => 'Notes'],
+                    'client_type' => ['type' => 'string', 'enum' => ['business', 'person', 'partner']],
+                    'owner' => ['type' => 'string', 'description' => 'Assigned owner name'],
+                    'division' => ['type' => 'string', 'description' => 'Division name'],
+                    'rating' => ['type' => 'integer', 'description' => 'Rating 1-5'],
+                    'adjustment' => ['type' => 'number', 'description' => 'Value adjustment'],
+                    'client_category_id' => ['type' => 'string', 'description' => 'Client category ID (empty clears)'],
+                    'price_level_id' => ['type' => 'string', 'description' => 'Price level ID (empty clears)'],
+                    'company_client_id' => ['type' => 'string', 'description' => 'Parent company ID (empty clears)'],
+                    'contact_role' => ['type' => 'string', 'description' => 'Role at parent company'],
+                    'ticket_allowed_emails' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Allowed ticket sender emails/domains'],
+                    'custom_fields' => ['type' => 'object', 'description' => 'Custom field updates keyed by attribute ID'],
+                    'archived' => ['type' => 'boolean', 'description' => 'true archives the client, false restores it']
                 ],
                 'required' => ['id']
             ]
         ],
-        [
-            'name' => 'list_contacts',
-            'description' => 'List contacts associated with a specific client.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'client_id' => ['type' => 'string', 'description' => 'Client ID']
-                ],
-                'required' => ['client_id']
-            ]
-        ],
+        mcp_crm_defs()['list_contacts'],
         [
             'name' => 'create_contact',
-            'description' => 'Log or link a contact person for a client.',
+            'description' => 'Create a contact person in the separate client_contacts table (linked under a company client via client_id, or standalone when client_id is omitted). Does not add a row to the Clients list.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
-                    'client_id' => ['type' => 'string', 'description' => 'Client ID'],
-                    'name' => ['type' => 'string', 'description' => 'Contact person name'],
+                    'client_id' => ['type' => 'string', 'description' => 'Optional parent company client/lead ID (omit for a standalone personal contact)'],
+                    'name' => ['type' => 'string', 'description' => 'Contact person full name'],
+                    'first_name' => ['type' => 'string', 'description' => 'Contact first name'],
+                    'last_name' => ['type' => 'string', 'description' => 'Contact last name'],
                     'email' => ['type' => 'string', 'description' => 'Email'],
                     'phone' => ['type' => 'string', 'description' => 'Phone'],
-                    'role' => ['type' => 'string', 'description' => 'Position or role']
+                    'role' => ['type' => 'string', 'description' => 'Position or role at the company (legacy summary fallback)'],
+                    'function_tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Function / category tags for the contact (e.g. ["CEO", "Billing"])'],
+                    'notes' => ['type' => 'string', 'description' => 'Optional notes']
                 ],
-                'required' => ['client_id', 'name']
+                'required' => ['name']
             ]
         ],
 
         // DOMAIN 3: Tasks & Collaboration
-        [
-            'name' => 'list_tasks',
-            'description' => 'List and filter tasks across projects, clients, and team members.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'status' => ['type' => 'string', 'description' => 'Filter by a configured task status'],
-                    'bucket' => ['type' => 'string', 'enum' => ['overdue', 'today', 'tomorrow', 'upcoming', 'done'], 'description' => 'Time bucket as in the task panel (upcoming = later than tomorrow)'],
-                    'created_from' => ['type' => 'string', 'description' => 'Created on/after (YYYY-MM-DD)'],
-                    'created_to' => ['type' => 'string', 'description' => 'Created on/before (YYYY-MM-DD)'],
-                    'priority' => ['type' => 'string', 'description' => 'Filter by priority: low, medium, high'],
-                    'owner' => ['type' => 'string', 'description' => 'Filter by assignee name'],
-                    'project_id' => ['type' => 'string', 'description' => 'Filter by related project ID'],
-                    'client_id' => ['type' => 'string', 'description' => 'Filter by related client ID'],
-                    'search' => ['type' => 'string', 'description' => 'Search task titles and descriptions'],
-                    'limit' => ['type' => 'integer', 'description' => 'Max results (default 50)'],
-                    'offset' => ['type' => 'integer', 'description' => 'Pagination offset']
-                ]
-            ]
-        ],
-        [
-            'name' => 'get_task',
-            'description' => 'Retrieve full task details, assignees, and tags.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'id' => ['type' => 'string', 'description' => 'Task ID']
-                ],
-                'required' => ['id']
-            ]
-        ],
+        mcp_crm_defs()['list_tasks'],
+        mcp_crm_defs()['get_task'],
+        mcp_crm_defs()['get_task_chat'],
         [
             'name' => 'create_task',
-            'description' => 'Create a new task with assignees, deadline, and project/client links.',
+            'description' => 'Create a new task with assignees, dates, tags, blocking/conclusion flags, and project/client/ticket/agency links.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'title' => ['type' => 'string', 'description' => 'Task title'],
                     'description' => ['type' => 'string', 'description' => 'Detailed task description'],
                     'priority' => ['type' => 'string', 'description' => 'Priority: low, medium, high (default medium)'],
+                    'start_date' => ['type' => 'string', 'description' => 'Optional start date in YYYY-MM-DD format'],
                     'deadline' => ['type' => 'string', 'description' => 'Deadline date in YYYY-MM-DD format'],
                     'deadline_time' => ['type' => 'string', 'description' => 'Optional deadline time in HH:MM format'],
                     'status' => ['type' => 'string', 'description' => 'A configured task status (default: the first one)'],
@@ -715,15 +767,23 @@ function mcp_core_tool_definitions(): array {
                         'items' => ['type' => 'string'],
                         'description' => 'List of team member names to assign'
                     ],
+                    'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Tags to attach'],
                     'project_id' => ['type' => 'string', 'description' => 'Linked project ID'],
-                    'client_id' => ['type' => 'string', 'description' => 'Linked client / lead ID']
+                    'client_id' => ['type' => 'string', 'description' => 'Linked client / lead ID'],
+                    'related_agency_worker_id' => ['type' => 'string', 'description' => 'Linked rented worker ID'],
+                    'ticket_id' => ['type' => 'string', 'description' => 'Linked support ticket ID (auto_resolve link)'],
+                    'is_locking' => ['type' => 'boolean', 'description' => 'Blocking/milestone task flag'],
+                    'requires_conclusion' => ['type' => 'boolean', 'description' => 'Require conclusion note on completion'],
+                    'category' => ['type' => 'string', 'description' => 'Task category: "bug" marks the task as a Bug (counted as bug time on the dashboard); omitted or empty means no category']
                 ],
                 'required' => ['title', 'deadline']
             ]
         ],
         [
             'name' => 'update_task',
-            'description' => 'Update task properties such as title, priority, deadline, or status.',
+            'description' => 'Update an existing task: title, description, priority, dates, status, owner, category, links, flags, tags, or archive / restore it. '
+                . 'Only the fields you pass change; pass an empty string for project_id, client_id, or related_agency_worker_id to unlink. Tasks are never deleted through MCP: archive one instead (archived=true); '
+                . 'list_tasks hides it unless include_archived=true, and archived=false restores it.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -731,11 +791,21 @@ function mcp_core_tool_definitions(): array {
                     'title' => ['type' => 'string', 'description' => 'Updated title'],
                     'description' => ['type' => 'string', 'description' => 'Updated description'],
                     'priority' => ['type' => 'string', 'description' => 'Priority: low, medium, high'],
+                    'start_date' => ['type' => 'string', 'description' => 'Start date YYYY-MM-DD (empty clears)'],
                     'deadline' => ['type' => 'string', 'description' => 'Deadline in YYYY-MM-DD format'],
+                    'deadline_time' => ['type' => 'string', 'description' => 'Deadline time in HH:MM format; empty string clears it'],
                     'status' => ['type' => 'string', 'description' => 'A configured task status'],
                     'conclusion' => ['type' => 'string', 'description' => 'How the task was finished. Required when moving a task that has "requires conclusion" set to a done status.'],
+                    'requires_conclusion' => ['type' => 'boolean', 'description' => 'Require conclusion note on completion'],
+                    'is_locking' => ['type' => 'boolean', 'description' => 'Blocking/milestone task flag'],
                     'owner' => ['type' => 'string', 'description' => 'Primary assignee name'],
-                    'project_id' => ['type' => 'string', 'description' => 'Linked project ID']
+                    'project_id' => ['type' => 'string', 'description' => 'Linked project ID; empty string unlinks'],
+                    'client_id' => ['type' => 'string', 'description' => 'Linked client / lead ID (from list_clients, list_leads or search_entities); empty string unlinks'],
+                    'related_agency_worker_id' => ['type' => 'string', 'description' => 'Linked agency worker ID; empty string unlinks'],
+                    'ticket_id' => ['type' => 'string', 'description' => 'Support ticket ID to auto-resolve link'],
+                    'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Additional tags to attach'],
+                    'archived' => ['type' => 'boolean', 'description' => 'true archives the task (the MCP way to remove one), false restores it'],
+                    'category' => ['type' => 'string', 'description' => 'Task category: "bug" marks the task as a Bug; null or an empty string clears it; omitted leaves it unchanged']
                 ],
                 'required' => ['id']
             ]
@@ -767,34 +837,11 @@ function mcp_core_tool_definitions(): array {
         ],
 
         // DOMAIN 4: Projects & Gantt Roadmaps
-        [
-            'name' => 'list_projects',
-            'description' => 'List and filter delivery projects with contract value, budget, rating, invoice date (invoice_date), deadline (completion_deadline), delay reason and finish date, plus project_type (name and the has_invoice_date / has_deadline switches: a null date on a type without the switch is not applicable rather than missing).',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'status' => ['type' => 'string', 'description' => 'Filter by a configured project status'],
-                    'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
-                    'search' => ['type' => 'string', 'description' => 'Search project names'],
-                    'include_archived' => ['type' => 'boolean', 'description' => 'Include archived projects (default false)'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ]
-            ]
-        ],
-        [
-            'name' => 'get_project',
-            'description' => 'Retrieve project details (incl. start_date, invoice_date, completion_deadline = the Deadline, delay_reason, finished_at; project_type tells whether its type uses the invoice date and the deadline) with its client (from client_id, else the paired lead, else the client the project is named for — see client.linked_by), contract value, a financials block (contract value, invoiced, paid, outstanding, remaining billable, and the installment schedule: every income movement with due date, amount, invoice number and payment status), milestones, linked tasks and a url.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'id' => ['type' => 'string', 'description' => 'Project ID']
-                ],
-                'required' => ['id']
-            ]
-        ],
+        mcp_money_tool_def('list_projects'),
+        mcp_money_tool_def('get_project'),
         [
             'name' => 'create_project',
-            'description' => 'Create a new client project.',
+            'description' => 'Create a new client project with managers, division, WhatsApp contact phone, and custom fields.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -803,6 +850,11 @@ function mcp_core_tool_definitions(): array {
                     'budget' => ['type' => 'number', 'description' => 'Cost budget (not the contract value)'],
                     'value' => ['type' => 'number', 'description' => 'Contract value to be invoiced'],
                     'project_type_id' => ['type' => 'string', 'description' => 'Project type (default: the first one)'],
+                    'division' => ['type' => 'string', 'description' => 'Division name'],
+                    'contact_phone' => ['type' => 'string', 'description' => 'Project contact phone used to pair WhatsApp chats'],
+                    'contact_email' => ['type' => 'string', 'description' => 'Project contact e-mail'],
+                    'managers' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Assigned project manager user IDs or names'],
+                    'custom_fields' => ['type' => 'object', 'description' => 'Custom field values keyed by project type attribute ID'],
                     'start_date' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
                     'invoice_date' => ['type' => 'string', 'description' => 'Invoice date (YYYY-MM-DD) - the "Invoice date" field in the app'],
                     'completion_deadline' => ['type' => 'string', 'description' => 'Deadline (YYYY-MM-DD) - the "Deadline" field in the app'],
@@ -813,7 +865,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'update_project',
-            'description' => 'Update project details, dates, budget, contract value, rating, delay reason, status or archive flag. A completed status stamps the finish date, an open one clears it, as in the app.',
+            'description' => 'Update project details, dates, budget, contract value, rating, delay reason, managers, custom fields, contact phone, status or archive flag. A completed status stamps the finish date, an open one clears it, as in the app.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -825,12 +877,57 @@ function mcp_core_tool_definitions(): array {
                     'delay_reason' => ['type' => 'string', 'description' => 'Why the project is late (max 500 chars)'],
                     'rating' => ['type' => 'integer', 'description' => 'Star rating 0-5'],
                     'division' => ['type' => 'string', 'description' => 'Division'],
+                    'contact_phone' => ['type' => 'string', 'description' => 'Project contact phone (empty clears)'],
+                    'contact_email' => ['type' => 'string', 'description' => 'Project contact e-mail (empty clears)'],
+                    'managers' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Additional project manager user IDs or names'],
+                    'custom_fields' => ['type' => 'object', 'description' => 'Custom field updates keyed by project type attribute ID'],
                     'archived' => ['type' => 'boolean', 'description' => 'Archive / restore'],
                     'start_date' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
                     'invoice_date' => ['type' => 'string', 'description' => 'Invoice date (YYYY-MM-DD) - the "Invoice date" field in the app'],
-                    'completion_deadline' => ['type' => 'string', 'description' => 'Deadline (YYYY-MM-DD) - the "Deadline" field in the app']
+                    'completion_deadline' => ['type' => 'string', 'description' => 'Deadline (YYYY-MM-DD) - the "Deadline" field in the app'],
+                    'acceptance_criteria' => [
+                        'type' => 'array',
+                        'description' => 'Merge acceptance criteria: items with an existing id update title/done (or pass remove=true for soft removal); items without an id are added with server timestamp & user (tracked as scope creep if scope is already approved).',
+                        'items' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'id' => ['type' => 'string', 'description' => 'Existing criterion ID (omit to create new)'],
+                                'title' => ['type' => 'string', 'description' => 'Criterion title (max 300 chars)'],
+                                'done' => ['type' => 'boolean', 'description' => 'Whether the criterion is met'],
+                                'remove' => ['type' => 'boolean', 'description' => 'true to soft-remove this criterion (keeps history)'],
+                            ],
+                        ],
+                    ],
+                    'scope_action' => ['type' => 'string', 'description' => 'Approve or withdraw baseline scope: "approve" stamps scope_approved_at/by (criteria added later count as scope creep); "withdraw" clears approval']
                 ],
                 'required' => ['id']
+            ]
+        ],
+        [
+            'name' => 'manage_project_acceptance_criteria',
+            'description' => 'Add, edit, check/uncheck, or soft-remove project acceptance criteria, and approve or withdraw baseline scope. Uses the same server-stamped audit trail as the app: criteria added after scope approval are automatically tracked as scope creep (returned in scope_creep).',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'project_id' => ['type' => 'string', 'description' => 'Project ID'],
+                    'add' => [
+                        'type' => 'array',
+                        'description' => 'New criteria to add (strings or {title, done?} objects). Added after scope approval = tracked as scope creep.',
+                        'items' => ['type' => 'object', 'properties' => ['title' => ['type' => 'string'], 'done' => ['type' => 'boolean']]]
+                    ],
+                    'update' => [
+                        'type' => 'array',
+                        'description' => 'Existing live criteria to rename or toggle done: [{id, title?, done?}]',
+                        'items' => ['type' => 'object', 'properties' => ['id' => ['type' => 'string'], 'title' => ['type' => 'string'], 'done' => ['type' => 'boolean']], 'required' => ['id']]
+                    ],
+                    'remove' => [
+                        'type' => 'array',
+                        'description' => 'Criterion IDs to soft-remove (history is preserved with removedAt/removedBy)',
+                        'items' => ['type' => 'string']
+                    ],
+                    'scope_action' => ['type' => 'string', 'description' => '"approve" stamps baseline scope approval (subsequent additions count as scope creep); "withdraw" clears approval']
+                ],
+                'required' => ['project_id']
             ]
         ],
         [
@@ -862,7 +959,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'get_financial_mode',
-            'description' => 'Get the current financial operating mode: connected (live movements) or simplified (detached spreadsheet).',
+            'description' => 'Get the current financial operating mode: connected (live movements) or simplified (detached spreadsheet). updated_at (ISO 8601 moment) is when the mode setting last changed.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => (object)[]
@@ -885,7 +982,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'get_financial_simplified_table',
-            'description' => 'Get the simplified spreadsheet matrix: categories, period columns, raw equations, and evaluated cell values.',
+            'description' => 'Get the simplified spreadsheet matrix: categories, period columns, raw equations, and evaluated cell values. updated_at (ISO 8601 moment) is when the matrix last changed, whatever the year filter.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -906,31 +1003,8 @@ function mcp_core_tool_definitions(): array {
                 'required' => ['category_id', 'period', 'equation']
             ]
         ],
-        [
-            'name' => 'list_invoices',
-            'description' => 'List issued invoices and price offers with payment status.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'type' => ['type' => 'string', 'description' => 'Type: invoice, price_offer, proforma (default: all types)'],
-                    'status' => ['type' => 'string', 'description' => 'Status. Invoices and proformas: draft, sent, approved, rejected, invoiced, cancelled. Price offers use the statuses configured in the app (Price offers → Settings), so any key of that list is valid; the defaults are the same six.'],
-                    'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
-                    'search' => ['type' => 'string', 'description' => 'Search document number or client name'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ]
-            ]
-        ],
-        [
-            'name' => 'get_invoice',
-            'description' => 'Get full breakdown of an invoice or price offer with line items.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'id' => ['type' => 'string', 'description' => 'Invoice document ID']
-                ],
-                'required' => ['id']
-            ]
-        ],
+        mcp_money_tool_def('list_invoices'),
+        mcp_money_tool_def('get_invoice'),
         [
             'name' => 'create_invoice',
             'description' => 'Create a DRAFT invoice with line items, numbered FA-YYYY-NNN in sequence, with its pending income movement in the ledger. Line prices are net; VAT is added per line. Sending, approving and settling money are done in the app.',
@@ -938,6 +1012,7 @@ function mcp_core_tool_definitions(): array {
                 'type' => 'object',
                 'properties' => [
                     'client_id' => ['type' => 'string', 'description' => 'Client ID'],
+                    'project_id' => ['type' => 'string', 'description' => 'Optional linked project ID for the income movement'],
                     'title' => ['type' => 'string', 'description' => 'Invoice title or subject'],
                     'document_number' => ['type' => 'string', 'description' => 'Invoice number (e.g. 2026001). Auto-generated if omitted.'],
                     'issued_at' => ['type' => 'string', 'description' => 'Issue date (YYYY-MM-DD)'],
@@ -949,7 +1024,11 @@ function mcp_core_tool_definitions(): array {
                             'type' => 'object',
                             'properties' => [
                                 'title' => ['type' => 'string'],
+                                'description' => ['type' => 'string', 'description' => 'Line item description'],
+                                'sku' => ['type' => 'string', 'description' => 'Optional SKU'],
+                                'warehouse_item_id' => ['type' => 'string', 'description' => 'Optional warehouse_items ID'],
                                 'quantity' => ['type' => 'number'],
+                                'unit' => ['type' => 'string', 'description' => 'Unit of measure (default ks)'],
                                 'unit_price' => ['type' => 'number'],
                                 'vat_rate' => ['type' => 'number', 'description' => 'Percent (default: the company default VAT rate)'],
                                 'discount_pct' => ['type' => 'number', 'description' => 'Line discount percent']
@@ -975,20 +1054,7 @@ function mcp_core_tool_definitions(): array {
                 'required' => ['id', 'status']
             ]
         ],
-        [
-            'name' => 'list_expenses',
-            'description' => 'Query recorded business expenses.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'category_id' => ['type' => 'string', 'description' => 'Filter by financial category ID'],
-                    'start_date' => ['type' => 'string', 'description' => 'From date (YYYY-MM-DD)'],
-                    'end_date' => ['type' => 'string', 'description' => 'To date (YYYY-MM-DD)'],
-                    'search' => ['type' => 'string', 'description' => 'Search expense title/description'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ]
-            ]
-        ],
+        mcp_money_tool_def('list_expenses'),
         [
             'name' => 'record_expense',
             'description' => 'Record a planned or pending expense. Marking it paid is done in the app.',
@@ -996,12 +1062,16 @@ function mcp_core_tool_definitions(): array {
                 'type' => 'object',
                 'properties' => [
                     'title' => ['type' => 'string', 'description' => 'Expense description or title'],
+                    'description' => ['type' => 'string', 'description' => 'Detailed expense note'],
                     'amount' => ['type' => 'number', 'description' => 'Amount spent'],
                     'currency' => ['type' => 'string', 'description' => 'Currency (default EUR)'],
                     'category_id' => ['type' => 'string', 'description' => 'Category ID'],
                     'issue_date' => ['type' => 'string', 'description' => 'Date occurred (YYYY-MM-DD)'],
                     'status' => ['type' => 'string', 'enum' => ['planned', 'pending'], 'description' => 'Default planned'],
                     'due_date' => ['type' => 'string', 'description' => 'Due date (YYYY-MM-DD, default = issue_date)'],
+                    'tax_rate' => ['type' => 'number', 'description' => 'VAT % (default workspace rate)'],
+                    'payment_method' => ['type' => 'string', 'description' => 'Payment method (default bank_transfer)'],
+                    'invoice_number' => ['type' => 'string', 'description' => 'Supplier invoice number / VS'],
                     'project_id' => ['type' => 'string', 'description' => 'Linked project ID if applicable'],
                     'client_id' => ['type' => 'string', 'description' => 'Linked client ID if applicable']
                 ],
@@ -1012,15 +1082,14 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 6: Warehouse & Inventory
         [
             'name' => 'list_inventory_items',
-            'description' => 'List warehouse stock items and current inventory levels.',
+            'description' => 'List warehouse stock items and current inventory levels. updated_at moves when the item record itself changes (name, prices, limits), not when stock moves: stock changes are the movements (list_stock_movements). ' . mcp_window_doc('items', MCP_INVENTORY_WINDOW),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'category' => ['type' => 'string', 'description' => 'Filter by item category'],
                     'low_stock_only' => ['type' => 'boolean', 'description' => 'Show only items below min_stock'],
                     'search' => ['type' => 'string', 'description' => 'Search by item name, SKU, or barcode'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ]
+                ] + mcp_window_props(MCP_INVENTORY_WINDOW)
             ]
         ],
         [
@@ -1075,19 +1144,7 @@ function mcp_core_tool_definitions(): array {
         ],
 
         // DOMAIN 7: Meetings & Scheduling
-        [
-            'name' => 'list_meetings',
-            'description' => 'Query scheduled client meetings and meeting notes.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'upcoming_only' => ['type' => 'boolean', 'description' => 'Only show future meetings'],
-                    'start_date' => ['type' => 'string', 'description' => 'From date (YYYY-MM-DD)'],
-                    'search' => ['type' => 'string', 'description' => 'Search meeting title or notes'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ]
-            ]
-        ],
+        mcp_crm_defs()['list_meetings'],
         [
             'name' => 'schedule_meeting',
             'description' => 'Schedule a client meeting with notes and attendees.',
@@ -1099,18 +1156,16 @@ function mcp_core_tool_definitions(): array {
                     'duration' => ['type' => 'integer', 'description' => 'Duration in minutes (default 30)'],
                     'lead_id' => ['type' => 'string', 'description' => 'Linked lead or client ID'],
                     'notes' => ['type' => 'string', 'description' => 'Agenda or discussion notes'],
-                    'attendees' => [
-                        'type' => 'array',
-                        'items' => ['type' => 'string'],
-                        'description' => 'List of attendee names'
-                    ]
+                    'attendees' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'List of attendee names'],
+                    'attached_leads' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Attached lead IDs'],
+                    'attached_clients' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Attached client IDs']
                 ],
                 'required' => ['title', 'date']
             ]
         ],
         [
             'name' => 'update_meeting',
-            'description' => 'Update meeting details, notes, or rescheduled date.',
+            'description' => 'Update meeting details, notes, attendees, linked lead/clients, rescheduled date, or archive/restore flag.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1118,29 +1173,22 @@ function mcp_core_tool_definitions(): array {
                     'title' => ['type' => 'string', 'description' => 'Updated title'],
                     'date' => ['type' => 'string', 'description' => 'Updated date (YYYY-MM-DD)'],
                     'duration' => ['type' => 'integer', 'description' => 'Duration in minutes'],
-                    'notes' => ['type' => 'string', 'description' => 'Updated notes']
+                    'notes' => ['type' => 'string', 'description' => 'Updated notes'],
+                    'lead_id' => ['type' => 'string', 'description' => 'Linked lead or client ID (empty clears)'],
+                    'attendees' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Attendee user list'],
+                    'attached_leads' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Attached lead IDs'],
+                    'attached_clients' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Attached client IDs'],
+                    'archived' => ['type' => 'boolean', 'description' => 'true archives the meeting, false restores it']
                 ],
                 'required' => ['id']
             ]
         ],
 
         // DOMAIN 8: Communications & Notes
-        [
-            'name' => 'list_communications',
-            'description' => 'List interaction history (calls, emails, notes) for a lead or client.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'lead_id' => ['type' => 'string', 'description' => 'Lead or client ID'],
-                    'type' => ['type' => 'string', 'description' => 'Filter by event type: phone, email, note, appointment'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ],
-                'required' => ['lead_id']
-            ]
-        ],
+        mcp_crm_defs()['list_communications'],
         [
             'name' => 'log_communication',
-            'description' => 'Log a client phone call, interaction note, or email summary to the timeline.',
+            'description' => 'Log a client or lead phone call, interaction note, or email summary to the timeline.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1148,7 +1196,8 @@ function mcp_core_tool_definitions(): array {
                     'type' => ['type' => 'string', 'description' => 'Type: phone, email, note, appointment (default note)'],
                     'title' => ['type' => 'string', 'description' => 'Short summary or subject'],
                     'content' => ['type' => 'string', 'description' => 'Detailed conversation content or note'],
-                    'is_outgoing' => ['type' => 'boolean', 'description' => 'True if initiated by team, false if received (default true)']
+                    'is_outgoing' => ['type' => 'boolean', 'description' => 'True if initiated by team, false if received (default true)'],
+                    'timestamp' => ['type' => 'string', 'description' => 'Optional local/ISO timestamp (default: now)']
                 ],
                 'required' => ['lead_id', 'title']
             ]
@@ -1157,7 +1206,7 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 9: Cross-Entity Global Search
         [
             'name' => 'search_entities',
-            'description' => 'Search leads, clients, tasks, projects, invoices and the warehouse catalog. Every word of the query must match (case- and accent-insensitive), each in any searched field; the query run together also matches names written without spaces ("villa testa" and "villatesta" both find "Villatesta"). Leads/clients are searched by name, email, phone, IČO, DIČ, IČ DPH, contact person, notes, city and website; projects by their own and their client\'s name. Lead/client and project rows carry a `url` into the web app.',
+            'description' => 'Search leads, clients, tasks, projects, invoices, tickets, orders, the warehouse catalog, employees/contractors, meetings, suppliers, agency workers and custom registries (each section gated by module permissions). Every word of the query must match (case- and accent-insensitive), each in any searched field; the query run together also matches names written without spaces ("villa testa" and "villatesta" both find "Villatesta"). Lead/client and project rows carry a `url` into the web app.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1165,7 +1214,7 @@ function mcp_core_tool_definitions(): array {
                     'entity_types' => [
                         'type' => 'array',
                         'items' => ['type' => 'string'],
-                        'description' => 'Optional filter: leads, clients, tasks, projects, invoices, warehouse'
+                        'description' => 'Optional filter: leads, clients, tasks, projects, invoices, tickets, orders, warehouse, employees, meetings, suppliers, agency_workers, unified_entries'
                     ],
                     'limit' => ['type' => 'integer', 'description' => 'Rows per section (default 15, max 50)']
                 ],
@@ -1176,34 +1225,35 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 10: Team Directory (Read-Only)
         [
             'name' => 'list_team_members',
-            'description' => 'List CRM team members available for assigning tasks and projects (passwords excluded).',
+            'description' => ('List ' . KOPERNIQ_PRODUCT_NAME . ' team members available for assigning tasks and projects (passwords excluded). ' . mcp_window_doc('members', MCP_TEAM_WINDOW)),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'search' => ['type' => 'string', 'description' => 'Search name or email'],
                     'role' => ['type' => 'string', 'description' => 'Filter by role']
-                ]
+                ] + mcp_window_props(MCP_TEAM_WINDOW)
             ]
         ],
 
         // DOMAIN 11: Employees, Salaries & Vacations
         [
             'name' => 'list_employees',
-            'description' => 'List the staff roster. Every record has a kind (employee = a person, contractor = an external supplier, a company or a sole trader, ledger = a payroll-only line such as commission), first_name + last_name for a person (the contact person of a contractor) or company_name for a contractor/ledger item, company_id (IČO), tax_id (DIČ) and vat_id (IČ DPH) of a contractor, a job position and a department, plus compensation rates, contact details, vacation allowances and the app login it is linked to (user_id; null when none). The position is a job title; the app permission role (Admin, Project Manager...) is separate.',
+            'description' => 'List the staff roster. Every record has a kind (employee = a person, contractor = an external supplier broken down by contractor_type into person [freelancer], sole_trader, or company, ledger = a payroll-only line such as commission), first_name + last_name for a person/person-contractor or company_name for sole_trader/company/ledger, company_id (IČO), tax_id (DIČ) and vat_id (IČ DPH), work_country (SK | HU | null), job position, department, compensation rates, contact details, vacation allowances and linked user_id. ' . mcp_window_doc('records', MCP_EMPLOYEE_WINDOW),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'search' => ['type' => 'string', 'description' => 'Search by name, position, department, email, PIN, or phone'],
-                    'kind' => ['type' => 'string', 'enum' => ['employee', 'contractor', 'ledger'], 'description' => 'Only this kind. Use employee to leave out companies and accounting items.'],
+                    'kind' => ['type' => 'string', 'enum' => ['employee', 'contractor', 'ledger'], 'description' => 'Only this kind.'],
+                    'contractor_type' => ['type' => 'string', 'enum' => ['person', 'sole_trader', 'company'], 'description' => 'Only contractors of this subtype (person = freelancer, sole_trader = živnostník, company = firma)'],
                     'position' => ['type' => 'string', 'description' => 'Only this exact position (case-insensitive), e.g. "programátor"'],
                     'department' => ['type' => 'string', 'description' => 'Only this exact department (case-insensitive), e.g. "Marketing"'],
                     'active_only' => ['type' => 'boolean', 'description' => 'Filter by active employees only (default true)']
-                ]
+                ] + mcp_window_props(MCP_EMPLOYEE_WINDOW)
             ]
         ],
         [
             'name' => 'get_employee',
-            'description' => 'Retrieve full employee details by ID including allowances, salary configuration, and recent payroll.',
+            'description' => 'Retrieve full employee details by ID including contractor_type, work_country, allowances, salary configuration, and recent payroll.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1214,59 +1264,70 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'create_employee',
-            'description' => 'Register a new record in the staff roster. kind employee (default) needs first_name and last_name; contractor and ledger need company_name instead (a contractor, an external supplier that is a company or a sole trader, may also carry first_name / last_name of its contact person and its company_id / tax_id / vat_id). Also set position (job title) and department where known.',
+            'description' => 'Register a new record in the staff roster. kind employee (default) or contractor with contractor_type="person" (freelancer, no IČO/DIČ/company_name) needs first_name and last_name; contractor (sole_trader or company) and ledger need company_name instead.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
-                    'kind' => ['type' => 'string', 'enum' => ['employee', 'contractor', 'ledger'], 'description' => 'employee = a person (default); contractor = an external supplier company; ledger = an accounting line such as commission'],
-                    'first_name' => ['type' => 'string', 'description' => 'First name (kind employee; optional contact person of a contractor)'],
-                    'last_name' => ['type' => 'string', 'description' => 'Surname (kind employee; optional contact person of a contractor)'],
-                    'company_name' => ['type' => 'string', 'description' => 'Company, trade or item name (kind contractor / ledger), e.g. "Dodigital s.r.o."'],
-                    'company_id' => ['type' => 'string', 'description' => 'IČO (kind contractor)'],
-                    'tax_id' => ['type' => 'string', 'description' => 'DIČ (kind contractor)'],
-                    'vat_id' => ['type' => 'string', 'description' => 'IČ DPH (kind contractor)'],
-                    'name' => ['type' => 'string', 'description' => 'Fallback when the parts are not split: "First Last" for an employee, the company name otherwise'],
-                    'position' => ['type' => 'string', 'description' => 'Job title, e.g. programátor, grafik, PPC špecialista, account manažér, telemarketing'],
-                    'department' => ['type' => 'string', 'description' => 'Department / team, e.g. Vývoj, Marketing, Manažment, Obchod'],
-                    'pin' => ['type' => 'string', 'description' => 'Personal ID number / Rodné číslo / Tax ID'],
+                    'kind' => ['type' => 'string', 'enum' => ['employee', 'contractor', 'ledger'], 'description' => 'employee = a person (default); contractor = external supplier; ledger = accounting line'],
+                    'contractor_type' => ['type' => 'string', 'enum' => ['person', 'sole_trader', 'company'], 'description' => 'External supplier subtype for kind=contractor (person = freelancer with first_name/last_name and no IČO/DIČ/company_name; sole_trader; company default)'],
+                    'first_name' => ['type' => 'string', 'description' => 'First name (kind employee or contractor_type=person; optional contact person of sole_trader/company)'],
+                    'last_name' => ['type' => 'string', 'description' => 'Surname (kind employee or contractor_type=person; optional contact person of sole_trader/company)'],
+                    'company_name' => ['type' => 'string', 'description' => 'Company or trade name (contractor sole_trader/company or ledger only; refused for contractor_type=person)'],
+                    'company_id' => ['type' => 'string', 'description' => 'IČO (contractor sole_trader/company only)'],
+                    'tax_id' => ['type' => 'string', 'description' => 'DIČ (contractor sole_trader/company only)'],
+                    'vat_id' => ['type' => 'string', 'description' => 'IČ DPH (contractor sole_trader/company only)'],
+                    'name' => ['type' => 'string', 'description' => 'Fallback when parts are not split: "First Last" for a person/person-contractor, company name otherwise'],
+                    'position' => ['type' => 'string', 'description' => 'Job title'],
+                    'department' => ['type' => 'string', 'description' => 'Department / team'],
+                    'pin' => ['type' => 'string', 'description' => 'Personal ID number / Rodné číslo'],
                     'email' => ['type' => 'string', 'description' => 'Email address'],
                     'phone' => ['type' => 'string', 'description' => 'Phone number'],
                     'address_street' => ['type' => 'string', 'description' => 'Street address'],
                     'address_city' => ['type' => 'string', 'description' => 'City'],
                     'address_zip' => ['type' => 'string', 'description' => 'Postal code'],
+                    'address_country' => ['type' => 'string', 'description' => 'Country (default Slovakia)'],
+                    'work_country' => ['type' => 'string', 'description' => 'Public holiday calendar override: SK, HU, or empty'],
+                    'notes' => ['type' => 'string', 'description' => 'Internal HR notes (requires employees.personal)'],
                     'salary_type' => ['type' => 'string', 'enum' => ['monthly', 'daily', 'hourly'], 'description' => 'Salary period type'],
                     'salary_amount' => ['type' => 'number', 'description' => 'Base salary rate in EUR'],
                     'salary_due_day' => ['type' => 'integer', 'description' => 'Day of the month for payout (e.g. 15)'],
                     'auto_expense' => ['type' => 'boolean', 'description' => 'Automatically create expense records in Financial Management'],
                     'expense_category_id' => ['type' => 'string', 'description' => 'Financial category ID for auto-expense']
-                ],
-                'required' => ['name']
+                ]
             ]
         ],
         [
             'name' => 'update_employee',
-            'description' => 'Update an existing employee profile, kind, name, position, department, salary rate, or contact information. A record whose first or last name is still missing gets completed by passing first_name and last_name.',
+            'description' => 'Update an existing employee profile, kind, contractor_type, name, position, department, work_country, salary rate, address, or notes.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Employee ID'],
                     'kind' => ['type' => 'string', 'enum' => ['employee', 'contractor', 'ledger']],
-                    'first_name' => ['type' => 'string', 'description' => 'First name (kind employee; optional contact person of a contractor)'],
-                    'last_name' => ['type' => 'string', 'description' => 'Surname (kind employee; optional contact person of a contractor)'],
-                    'company_name' => ['type' => 'string', 'description' => 'Company, trade or item name (kind contractor / ledger)'],
-                    'company_id' => ['type' => 'string', 'description' => 'IČO (kind contractor); an empty string clears it'],
-                    'tax_id' => ['type' => 'string', 'description' => 'DIČ (kind contractor); an empty string clears it'],
-                    'vat_id' => ['type' => 'string', 'description' => 'IČ DPH (kind contractor); an empty string clears it'],
-                    'name' => ['type' => 'string', 'description' => 'Fallback display name: "First Last" for an employee, the company name otherwise'],
-                    'position' => ['type' => 'string', 'description' => 'Job title; an empty string clears it'],
-                    'department' => ['type' => 'string', 'description' => 'Department / team; an empty string clears it'],
+                    'contractor_type' => ['type' => 'string', 'enum' => ['person', 'sole_trader', 'company'], 'description' => 'External supplier subtype for kind=contractor'],
+                    'first_name' => ['type' => 'string', 'description' => 'First name'],
+                    'last_name' => ['type' => 'string', 'description' => 'Surname'],
+                    'company_name' => ['type' => 'string', 'description' => 'Company/trade name (refused when contractor_type=person)'],
+                    'company_id' => ['type' => 'string', 'description' => 'IČO (sole_trader/company contractor only; empty clears)'],
+                    'tax_id' => ['type' => 'string', 'description' => 'DIČ (sole_trader/company contractor only; empty clears)'],
+                    'vat_id' => ['type' => 'string', 'description' => 'IČ DPH (sole_trader/company contractor only; empty clears)'],
+                    'name' => ['type' => 'string', 'description' => 'Fallback display name'],
+                    'position' => ['type' => 'string', 'description' => 'Job title; empty clears'],
+                    'department' => ['type' => 'string', 'description' => 'Department / team; empty clears'],
                     'pin' => ['type' => 'string', 'description' => 'Personal ID number'],
                     'email' => ['type' => 'string', 'description' => 'Email address'],
                     'phone' => ['type' => 'string', 'description' => 'Phone number'],
+                    'address_street' => ['type' => 'string', 'description' => 'Street address'],
+                    'address_city' => ['type' => 'string', 'description' => 'City'],
+                    'address_zip' => ['type' => 'string', 'description' => 'Postal code'],
+                    'address_country' => ['type' => 'string', 'description' => 'Country'],
+                    'work_country' => ['type' => 'string', 'description' => 'Holiday calendar override SK | HU (empty clears)'],
+                    'notes' => ['type' => 'string', 'description' => 'HR notes'],
                     'salary_type' => ['type' => 'string', 'enum' => ['monthly', 'daily', 'hourly']],
                     'salary_amount' => ['type' => 'number', 'description' => 'Salary rate in EUR'],
                     'salary_due_day' => ['type' => 'integer', 'description' => 'Day of month for payout'],
                     'auto_expense' => ['type' => 'boolean', 'description' => 'Auto-expense enabled'],
+                    'expense_category_id' => ['type' => 'string', 'description' => 'Financial category ID for auto-expense'],
                     'is_active' => ['type' => 'boolean', 'description' => 'Active employment status']
                 ],
                 'required' => ['id']
@@ -1274,19 +1335,19 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'list_salaries',
-            'description' => 'Query salary and payment records for employees by period (year, month) or employee ID.',
+            'description' => 'Query salary and payment records for employees by period (year, month), employee ID, payout due date (due_from/due_to) or the day it was paid (payment_from/payment_to). closed_at is the moment the month was closed (paid in full), as an ISO 8601 moment. ' . mcp_window_doc('records', MCP_SALARY_WINDOW),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'employee_id' => ['type' => 'string', 'description' => 'Filter by employee ID'],
                     'year' => ['type' => 'integer', 'description' => 'Filter by year (e.g. 2026)'],
                     'period_key' => ['type' => 'string', 'description' => 'Filter by period key (e.g. 2026-09)']
-                ]
+                ] + mcp_date_range_props('due', 'Payout due date') + mcp_date_range_props('payment', 'Payment date') + mcp_window_props(MCP_SALARY_WINDOW)
             ]
         ],
         [
             'name' => 'record_salary_payout',
-            'description' => 'Record the monthly salary obligation and payment of an employee (YYYY-MM). Mirrors the app: creates/updates the linked payroll expense when the employee has auto-expense on. A period already paid, or split into components, is refused (edit it in the app).',
+            'description' => 'Record the monthly salary obligation and payment of an employee (YYYY-MM). Mirrors the app: creates/updates the linked payroll expense when the employee has auto-expense on. Paid is measured against labor_cost (Cena práce) once set, otherwise against total_salary. A closed period (paid in full once), or one split into components, is refused (edit it in the app).',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1294,8 +1355,10 @@ function mcp_core_tool_definitions(): array {
                     'period_key' => ['type' => 'string', 'description' => 'Period key (e.g. 2026-09)'],
                     'year' => ['type' => 'integer', 'description' => 'Year'],
                     'period_number' => ['type' => 'integer', 'description' => 'Month (1-12) or week (1-53)'],
-                    'total_salary' => ['type' => 'number', 'description' => 'Total salary obligation amount'],
+                    'total_salary' => ['type' => 'number', 'description' => 'Gross salary obligation amount'],
                     'total_paid' => ['type' => 'number', 'description' => 'Actual amount paid so far'],
+                    'labor_cost' => ['type' => 'number', 'description' => 'Optional total employer labour cost (Cena práce)'],
+                    'net_pay' => ['type' => 'number', 'description' => 'Optional employee net payout (Na výplatu)'],
                     'payment_date' => ['type' => 'string', 'description' => 'Date payment was made (YYYY-MM-DD)'],
                     'due_date' => ['type' => 'string', 'description' => 'Target payout due date (YYYY-MM-DD)'],
                     'payment_method' => ['type' => 'string', 'description' => 'Payment method (bank_transfer, cash, etc.)'],
@@ -1306,31 +1369,85 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'list_vacations',
-            'description' => 'List vacation and absence entries with optional filtering by employee, status, or date.',
+            'description' => 'List vacation and absence entries with optional filtering by employee, status, year of the start, or a date range: from/to (YYYY-MM-DD, inclusive) return every entry with a day inside the range. ' . mcp_window_doc('entries', MCP_VACATION_WINDOW),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'employee_id' => ['type' => 'string', 'description' => 'Filter by employee ID'],
-                    'status' => ['type' => 'string', 'enum' => ['pending', 'approved', 'rejected']],
-                    'year' => ['type' => 'integer', 'description' => 'Filter by year']
-                ]
+                    'status' => ['type' => 'string', 'enum' => ['requested', 'pending', 'approved', 'rejected', 'taken']],
+                    'year' => ['type' => 'integer', 'description' => 'Filter by the year the entry starts in'],
+                    'from' => ['type' => 'string', 'description' => 'Entries that end on or after this date (YYYY-MM-DD)'],
+                    'to' => ['type' => 'string', 'description' => 'Entries that start on or before this date (YYYY-MM-DD)'],
+                ] + mcp_window_props(MCP_VACATION_WINDOW)
             ]
         ],
         [
             'name' => 'record_vacation',
-            'description' => 'Log a vacation request for an employee. Dates must be valid and must not overlap other leave; the type must be a configured vacation type.',
+            'description' => 'Log a vacation entry for an employee. Dates must be valid and must not overlap other leave; omits days_count to auto-calculate business working days excluding public holidays.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'employee_id' => ['type' => 'string', 'description' => 'Employee ID'],
-                    'vacation_type_id' => ['type' => 'string', 'description' => 'Vacation type ID (annual, worked_days, sick, unpaid)'],
+                    'vacation_type_id' => ['type' => 'string', 'description' => 'Vacation type ID (annual, worked_days, sick, unpaid, ...)'],
                     'start_date' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
                     'end_date' => ['type' => 'string', 'description' => 'End date (YYYY-MM-DD)'],
-                    'days_count' => ['type' => 'number', 'description' => 'Total business days'],
-                    'status' => ['type' => 'string', 'enum' => ['pending', 'approved', 'rejected'], 'description' => 'Status (default pending)'],
+                    'days_count' => ['type' => 'number', 'description' => 'Total working days (auto-calculated excluding weekends & holidays if omitted)'],
+                    'status' => ['type' => 'string', 'enum' => ['requested', 'pending', 'approved', 'rejected', 'taken'], 'description' => 'Status (default pending)'],
                     'note' => ['type' => 'string', 'description' => 'Note or reason']
                 ],
                 'required' => ['employee_id', 'start_date', 'end_date']
+            ]
+        ],
+
+        // DOMAIN 12: WhatsApp (WAAI) Live Messaging
+        [
+            'name' => 'whatsapp_list_chats',
+            'description' => 'List WhatsApp chats and groups from the connected WhatsApp (WAAI) channel. Supports filtering by search query or chat type (all, groups, contacts).',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'Optional search string to filter chats by contact name, group name, phone number, participant name, or message preview.'],
+                    'type' => ['type' => 'string', 'enum' => ['all', 'groups', 'contacts'], 'description' => 'Filter by chat type: all (default), groups, or contacts.'],
+                    'limit' => ['type' => 'integer', 'description' => 'Maximum number of chats to return (default 30, max 100).'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ]
+            ]
+        ],
+        [
+            'name' => 'whatsapp_read_messages',
+            'description' => 'Read the message history of a WhatsApp contact or group chat by chat name (e.g. "Managment Cstudios", "Roland Vanyek"), phone number, or WhatsApp JID.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'chat' => ['type' => 'string', 'description' => 'Target WhatsApp chat name, group name, participant name, phone number, or JID.'],
+                    'limit' => ['type' => 'integer', 'description' => 'Number of most recent messages to return (default 30, max 100).'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ],
+                'required' => ['chat']
+            ]
+        ],
+        [
+            'name' => 'whatsapp_send_message',
+            'description' => 'Send a WhatsApp message (or reply) to a contact or group chat via the connected WhatsApp (WAAI) channel.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'chat' => ['type' => 'string', 'description' => 'Target WhatsApp chat name, group name, phone number, or JID.'],
+                    'message' => ['type' => 'string', 'description' => 'The exact text message to send on WhatsApp.'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ],
+                'required' => ['chat', 'message']
+            ]
+        ],
+        [
+            'name' => 'whatsapp_sync_chat',
+            'description' => 'Trigger a live on-demand WhatsApp sync (fetchMessageHistory) for a specific chat/group or the entire WhatsApp (WAAI) connector.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'chat' => ['type' => 'string', 'description' => 'Optional chat name, phone number, or JID to sync on-demand.'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ]
             ]
         ]
     ];
@@ -1344,7 +1461,7 @@ function mcp_core_tool_definitions(): array {
  */
 function mcp_resolve_employee_identity(array $args, ?array $stored): ?array {
     $touches = false;
-    foreach (['kind', 'first_name', 'last_name', 'company_name', 'name'] as $k) {
+    foreach (['kind', 'contractor_type', 'first_name', 'last_name', 'company_name', 'name'] as $k) {
         if (array_key_exists($k, $args)) $touches = true;
     }
     if ($stored !== null && !$touches) return null;
@@ -1355,19 +1472,48 @@ function mcp_resolve_employee_identity(array $args, ?array $stored): ?array {
     }
     $clean = static fn($v): ?string => ($v === null || trim((string)$v) === '') ? null : trim((string)$v);
 
-    if ($kind !== 'employee') {
-        $company = $clean($args['company_name'] ?? $args['name'] ?? null);
-        if ($company === null && $stored !== null && ($stored['kind'] ?? 'employee') !== 'employee') {
-            $company = $clean($stored['name'] ?? null);
+    if ($kind === 'contractor') {
+        $ctype = $clean($args['contractor_type'] ?? ($stored['contractor_type'] ?? null)) ?? 'company';
+        if (!in_array($ctype, CCRM_CONTRACTOR_TYPES, true)) {
+            throw new \InvalidArgumentException("contractor_type must be one of: " . implode(', ', CCRM_CONTRACTOR_TYPES) . ".");
         }
-        if ($company === null) throw new \InvalidArgumentException("A {$kind} needs company_name.");
-        // A contractor (company or sole trader) keeps its contact person's name; a ledger item has none.
-        $first = $last = null;
-        if ($kind === 'contractor') {
+        if ($ctype === 'person') {
+            if ($clean($args['company_name'] ?? null) !== null) {
+                throw new \InvalidArgumentException("company_name does not apply when contractor_type is 'person'; use first_name and last_name.");
+            }
             $first = array_key_exists('first_name', $args) ? $clean($args['first_name']) : $clean($stored['first_name'] ?? null);
             $last = array_key_exists('last_name', $args) ? $clean($args['last_name']) : $clean($stored['last_name'] ?? null);
+            if (($first === null || $last === null) && !array_key_exists('first_name', $args) && !array_key_exists('last_name', $args) && $clean($args['name'] ?? null) !== null) {
+                $split = ccrm_split_person_name((string)$args['name']);
+                if ($split !== null) [$first, $last] = $split;
+            }
+            if ($first === null || $last === null) {
+                throw new \InvalidArgumentException("A person contractor (freelancer) needs both first_name and last_name.");
+            }
+            return [
+                'kind' => 'contractor', 'contractor_type' => 'person',
+                'first_name' => $first, 'last_name' => $last,
+                'name' => ccrm_compose_employee_name('contractor', $first, $last, '', 'person'),
+            ];
         }
-        return ['kind' => $kind, 'first_name' => $first, 'last_name' => $last, 'name' => $company];
+        $company = $clean($args['company_name'] ?? $args['name'] ?? null);
+        $storedCtype = ($stored !== null && ($stored['kind'] ?? '') === 'contractor') ? ($clean($stored['contractor_type'] ?? null) ?? 'company') : null;
+        if ($company === null && $stored !== null && ($stored['kind'] ?? 'employee') !== 'employee' && $storedCtype !== 'person') {
+            $company = $clean($stored['name'] ?? null);
+        }
+        if ($company === null) throw new \InvalidArgumentException("A contractor needs company_name.");
+        $first = array_key_exists('first_name', $args) ? $clean($args['first_name']) : $clean($stored['first_name'] ?? null);
+        $last = array_key_exists('last_name', $args) ? $clean($args['last_name']) : $clean($stored['last_name'] ?? null);
+        return ['kind' => 'contractor', 'contractor_type' => $ctype, 'first_name' => $first, 'last_name' => $last, 'name' => $company];
+    }
+
+    if ($kind === 'ledger') {
+        $company = $clean($args['company_name'] ?? $args['name'] ?? null);
+        if ($company === null && $stored !== null && ($stored['kind'] ?? 'employee') === 'ledger') {
+            $company = $clean($stored['name'] ?? null);
+        }
+        if ($company === null) throw new \InvalidArgumentException("A ledger needs company_name.");
+        return ['kind' => 'ledger', 'contractor_type' => null, 'first_name' => null, 'last_name' => null, 'name' => $company];
     }
 
     $first = array_key_exists('first_name', $args) ? $clean($args['first_name']) : $clean($stored['first_name'] ?? null);
@@ -1380,17 +1526,16 @@ function mcp_resolve_employee_identity(array $args, ?array $stored): ?array {
     if ($first === null || $last === null) {
         throw new \InvalidArgumentException("An employee needs both first_name and last_name (full name). For a company use kind contractor with company_name.");
     }
-    return ['kind' => 'employee', 'first_name' => $first, 'last_name' => $last, 'name' => ccrm_compose_employee_name('employee', $first, $last, '')];
+    return ['kind' => 'employee', 'contractor_type' => null, 'first_name' => $first, 'last_name' => $last, 'name' => ccrm_compose_employee_name('employee', $first, $last, '')];
 }
 
 /**
- * IČO / DIČ / IČ DPH columns for a create or an update. They belong to a contractor only: any other
- * kind has them cleared, and a value passed for one is refused rather than silently dropped.
- * $onlyGiven (an update) leaves a number the call did not mention alone.
+ * IČO / DIČ / IČ DPH columns for a create or an update. They belong to sole_trader/company contractors only:
+ * any other kind or contractor_type='person' has them cleared, and passing one is refused rather than silently dropped.
  *
  * @return array<string,?string>
  */
-function mcp_employee_company_ids(array $args, string $kind, bool $onlyGiven): array {
+function mcp_employee_company_ids(array $args, string $kind, ?string $contractorType, bool $onlyGiven): array {
     $out = [];
     foreach (['company_id', 'tax_id', 'vat_id'] as $k) {
         $given = array_key_exists($k, $args);
@@ -1400,15 +1545,24 @@ function mcp_employee_company_ids(array $args, string $kind, bool $onlyGiven): a
             $out[$k] = null;
             continue;
         }
+        if (($contractorType ?? 'company') === 'person') {
+            if ($v !== '') throw new \InvalidArgumentException("{$k} does not apply when contractor_type is 'person'.");
+            $out[$k] = null;
+            continue;
+        }
         if ($onlyGiven && !$given) continue;
         $out[$k] = $v === '' ? null : $v;
     }
     return $out;
 }
 
-/** Add company_name for contractor / ledger rows, so a caller never has to guess which field holds it. */
+/** Add company_name for sole_trader/company contractor and ledger rows. */
 function mcp_label_employee(array $row): array {
-    if (($row['kind'] ?? 'employee') !== 'employee') $row['company_name'] = $row['name'] ?? null;
+    $kind = $row['kind'] ?? 'employee';
+    $ctype = $row['contractor_type'] ?? 'company';
+    if ($kind === 'ledger' || ($kind === 'contractor' && $ctype !== 'person')) {
+        $row['company_name'] = $row['name'] ?? null;
+    }
     return $row;
 }
 
@@ -1443,12 +1597,7 @@ function mcp_project_employee(array $row): array {
  * Returns [sqlFragment, params] to AND onto a query on `tasks` (alias optional).
  */
 function mcp_task_scope(array $user, string $alias = ''): array {
-    if (mcp_can('tasks.view_all')) return ['', []];
-    $a = $alias === '' ? '' : $alias . '.';
-    return [
-        "({$a}owner = ? OR {$a}created_by = ? OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = {$a}id AND ta.user_name = ?))",
-        [$user['name'], $user['name'], $user['name']],
-    ];
+    return mcp_task_scope_for($user, $alias); // name or e-mail, like ccrm_task_scope_sql (mcp_lists_crm.php)
 }
 
 // ============================================================================
@@ -1458,397 +1607,51 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
     switch ($tool) {
         // --- 1. Leads & Pipeline ---
         case 'list_leads':
-            $where = ["archived = 0"];
-            $params = [];
-
-            if (!empty($args['status'])) {
-                $where[] = "status = ?";
-                $params[] = $args['status'];
-            }
-            if (!empty($args['owner'])) {
-                $where[] = "owner = ?";
-                $params[] = $args['owner'];
-            }
-            if (!empty($args['search'])) {
-                $term = '%' . $args['search'] . '%';
-                $where[] = "(name LIKE ? OR email LIKE ? OR phone LIKE ? OR city LIKE ?)";
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 25)), 100);
-            $offset = max(0, (int)($args['offset'] ?? 0));
-
-            $sql = "SELECT id, name, city, client_type, status, source, owner, division, value, adjustment, rating, phone, email, contact_person, created_at
-                    FROM leads
-                    WHERE " . implode(' AND ', $where) . "
-                    ORDER BY created_at DESC
-                    LIMIT $limit OFFSET $offset";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            // The leads/clients module split: rows of the kind this key may not
-            // read are withheld, exactly as sync.php withholds them.
-            return array_map(
-                fn($l) => $l + ['url' => mcp_record_url($pdo, $l)],
-                array_values(array_filter($stmt->fetchAll(\PDO::FETCH_ASSOC), 'mcp_lead_module_visible'))
-            );
+            return mcp_list_leads($pdo, $user, $args);
 
         case 'get_lead':
-            $stmt = $pdo->prepare("SELECT * FROM leads WHERE id = ?");
-            $stmt->execute([$args['id']]);
-            $lead = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$lead) {
-                throw new \Exception("Lead not found with ID: " . $args['id']);
-            }
-            // A client-classified row needs the clients module, a pipeline lead the
-            // leads module — same rule the list applies, so no record can be reached
-            // by id that the caller could not see in the list. The not-found message
-            // is reused so the split cannot be used to probe for record existence.
-            if (!mcp_lead_module_visible($lead)) {
-                throw new \Exception("Lead not found with ID: " . $args['id']);
-            }
-
-            // Fetch recent timeline events
-            $evStmt = $pdo->prepare("SELECT id, type, timestamp, title, content, amount, author FROM timeline_events WHERE lead_id = ? AND hidden = 0" . (mcp_can('email') ? '' : " AND type <> 'email'") . " ORDER BY timestamp DESC LIMIT 20");
-            $evStmt->execute([$args['id']]);
-            $lead['timeline_events'] = $evStmt->fetchAll(\PDO::FETCH_ASSOC);
-            $lead['url'] = mcp_record_url($pdo, $lead);
-
-            return $lead;
+            return mcp_get_lead($pdo, $user, $args);
 
         case 'create_lead':
-            $id = 'ld_' . bin2hex(random_bytes(8));
-            $city = $args['city'] ?? null;
-            $phone = $args['phone'] ?? null;
-            $email = $args['email'] ?? null;
-            $contact = $args['contact_person'] ?? null;
-            $street = $args['street'] ?? null;
-            $value = (float)($args['value'] ?? 0);
-            $name = trim((string)($args['name'] ?? ''));
-            if ($name === '') throw new \InvalidArgumentException("'name' is required.");
-            $status = isset($args['status']) && $args['status'] !== '' ? mcp_check_lead_state($pdo, (string)$args['status']) : 'new';
-            $owner = $args['owner'] ?? $user['name'];
-            $interestNote = $args['interest_note'] ?? null;
-            $today = date('Y-m-d');
-
-            $stmt = $pdo->prepare(
-                "INSERT INTO leads (id, name, city, street, phone, email, contact_person, value, status, owner, interest_note, source, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ai_assistant', ?)"
-            );
-            $stmt->execute([$id, $name, $city, $street, $phone, $email, $contact, $value, $status, $owner, $interestNote, $today]);
-
-            mcp_audit($pdo, $user, 'lead_create', "Created lead '{$name}' (ID: $id) with value €{$value}");
-
-            return ['success' => true, 'id' => $id, 'name' => $name, 'status' => $status, 'value' => $value];
+            return mcp_crm_plus_create_lead($pdo, $user, $args);
 
         case 'update_lead':
-            $id = $args['id'];
-            $allowedFields = ['name', 'contact_person', 'email', 'phone', 'city', 'street', 'value', 'rating', 'owner', 'interest_note'];
-            $updates = [];
-            $params = [];
-
-            foreach ($allowedFields as $f) {
-                if (array_key_exists($f, $args)) {
-                    $updates[] = "`$f` = ?";
-                    $params[] = $args[$f];
-                }
-            }
-
-            if (array_key_exists('name', $args) && trim((string)$args['name']) === '') {
-                throw new \InvalidArgumentException("'name' cannot be empty.");
-            }
-            if (empty($updates)) {
-                return ['success' => true, 'message' => 'No fields updated'];
-            }
-
-            $params[] = $id;
-            $stmt = $pdo->prepare("UPDATE leads SET " . implode(', ', $updates) . " WHERE id = ?");
-            $stmt->execute($params);
-
-            mcp_audit($pdo, $user, 'lead_update', "Updated lead $id");
-
-            return ['success' => true, 'id' => $id, 'updated_fields' => array_keys($args)];
+            return mcp_crm_plus_update_lead($pdo, $user, $args);
 
         case 'transition_lead_stage':
-            $id = mcp_require_string($args, 'id');
-            $status = mcp_check_lead_state($pdo, mcp_require_string($args, 'status'));
-            $note = trim((string)($args['note'] ?? ''));
-
-            $cur = $pdo->prepare("SELECT status FROM leads WHERE id = ?");
-            $cur->execute([$id]);
-            $fromStatus = $cur->fetchColumn();
-            if ($fromStatus === false) throw new \Exception("Lead not found with ID: {$id}");
-            if (strtolower((string)$fromStatus) === strtolower($status)) {
-                return ['success' => true, 'id' => $id, 'new_status' => $fromStatus, 'message' => 'Lead is already in this stage.'];
-            }
-            // The pipeline guard the lead list enforces: open blocking tasks hold the lead in its stage.
-            mcp_assert_lead_unlocked($pdo, $id);
-
-            mcp_tx($pdo, function () use ($pdo, $user, $id, $status, $fromStatus, $note) {
-                $pdo->prepare("UPDATE leads SET status = ? WHERE id = ?")->execute([$status, $id]);
-                // Same history entry the app writes (LeadsDatagrid.buildStatusChangeEvent).
-                $content = $fromStatus . ' → ' . $status . ($note !== '' ? "\n\n" . $note : '');
-                $pdo->prepare(
-                    "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-                     VALUES (?, ?, 'status_change', NOW(), 'Lead state changed', ?, ?)"
-                )->execute([mcp_new_id('ev_'), $id, $content, $user['name']]);
-            });
-
-            mcp_audit($pdo, $user, 'lead_stage_transition', "Moved lead $id from '$fromStatus' to '$status'");
-
-            return ['success' => true, 'id' => $id, 'previous_status' => $fromStatus, 'new_status' => $status];
+            return mcp_crm_plus_transition_lead_stage($pdo, $user, $args);
 
         case 'convert_lead_to_client':
-            // In the app a client is a record with id client-* (or a confirmed value adjustment); a won
-            // pipeline lead stays a lead. Converting therefore closes the lead as won and registers a
-            // separate client record carrying the same name and contact data, so the Clients register
-            // (which groups by name) shows the client with the lead's value.
-            $id = mcp_require_string($args, 'id');
-            $lStmt = $pdo->prepare("SELECT * FROM leads WHERE id = ?");
-            $lStmt->execute([$id]);
-            $lead = $lStmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$lead) throw new \Exception("Lead not found with ID: {$id}");
-            if (strpos($lead['id'], 'client-') === 0) throw new \Exception('This record is already a client.');
-
-            $won = mcp_won_lead_state($pdo);
-            $needsMove = strtolower((string)$lead['status']) !== strtolower($won);
-            if ($needsMove) mcp_assert_lead_unlocked($pdo, $id);
-
-            $projectName = trim((string)($args['project_name'] ?? '')) ?: ($lead['name'] ?: ('Project for ' . $id));
-            $result = mcp_tx($pdo, function () use ($pdo, $user, $lead, $id, $won, $needsMove, $args, $projectName) {
-                if ($needsMove) {
-                    $pdo->prepare("UPDATE leads SET status = ? WHERE id = ?")->execute([$won, $id]);
-                    $pdo->prepare(
-                        "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-                         VALUES (?, ?, 'status_change', NOW(), 'Lead state changed', ?, ?)"
-                    )->execute([mcp_new_id('ev_'), $id, $lead['status'] . ' → ' . $won, $user['name']]);
-                }
-                $exists = $pdo->prepare("SELECT id FROM leads WHERE id LIKE 'client-%' AND LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
-                $exists->execute([$lead['name']]);
-                $clientId = $exists->fetchColumn() ?: null;
-                if (!$clientId) {
-                    $clientId = 'client-' . (int)round(microtime(true) * 1000);
-                    $pdo->prepare(
-                        "INSERT INTO leads (id, name, city, street, postal_code, country, phone, email, contact_person, company_id, tax_id, vat_id, website, client_type, status, source, owner, value, adjustment, rating, created_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ai_assistant', ?, 0, 0, ?, ?)"
-                    )->execute([
-                        $clientId, $lead['name'], $lead['city'], $lead['street'], $lead['postal_code'], $lead['country'] ?: 'Slovakia',
-                        $lead['phone'], $lead['email'], $lead['contact_person'], $lead['company_id'], $lead['tax_id'], $lead['vat_id'], $lead['website'],
-                        $lead['client_type'] ?: 'business', $won, $lead['owner'] ?: $user['name'], $lead['rating'] ?: 5, date('Y-m-d'),
-                    ]);
-                    $pdo->prepare(
-                        "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-                         VALUES (?, ?, 'note', NOW(), 'Client Registered', ?, ?)"
-                    )->execute([mcp_new_id('ev_'), $clientId, 'Converted from lead ' . $id . ' via MCP.', $user['name']]);
-                }
-                // Point the lead at its client by id, the way the app does when it creates one.
-                $pdo->prepare("UPDATE leads SET client_id = ? WHERE id = ?")->execute([$clientId, $id]);
-                $projectId = null;
-                if (!empty($args['create_project'])) {
-                    $projectId = mcp_create_project_row($pdo, ['name' => $projectName, 'client_id' => $id]);
-                }
-                return ['client_id' => $clientId, 'project_id' => $projectId];
-            });
-
-            mcp_audit($pdo, $user, 'lead_convert', "Converted lead $id to client {$result['client_id']}" . ($result['project_id'] ? " with project {$result['project_id']}" : ""));
-
-            return ['success' => true, 'lead_id' => $id, 'lead_status' => $won, 'client_id' => $result['client_id'], 'project_id' => $result['project_id']];
+            return mcp_crm_plus_convert_lead($pdo, $user, $args);
 
         // --- 2. Clients & Contacts ---
         case 'list_clients':
-            // Client profiles as the Clients register shows them: records grouped by name, a client being
-            // any name with a client-* record or a value adjustment. Pipeline leads are not clients.
             return mcp_do_list_clients($pdo, $args);
 
         case 'get_client':
-            // A client is every record with its name (the Clients register groups them); projects and
-            // invoices hang off whichever record they were paired with, so all of them are searched.
-            $id = mcp_require_string($args, 'id');
-            $scope = mcp_client_scope($pdo, $id);
-            if (!$scope) {
-                throw new \Exception("Client not found with ID: " . $id);
-            }
-            $client = $scope['record'];
-            $client['kind'] = $scope['is_client'] ? 'client' : 'lead';
-            $client['url'] = mcp_scope_url($pdo, $scope);
-            $client['record_ids'] = $scope['ids'];
-
-            // Linked projects (only for callers who can see the projects module)
-            if (mcp_can('projects')) {
-                $ctx = mcp_projects_ctx();
-                $groups = mcp_project_status_groups($pdo);
-                $client['projects'] = array_map(fn($p) => mcp_project_row($pdo, $p, $ctx, $groups), mcp_scope_projects($pdo, $scope));
-            }
-
-            // Linked invoices (only for callers who can see the invoices module)
-            if (mcp_can('invoices')) {
-                $client['invoices'] = mcp_scope_invoice_docs($pdo, $scope, true, 50);
-            }
-
-            return $client;
+            return mcp_crm_plus_get_client($pdo, $args);
 
         case 'create_client':
             return mcp_do_create_client($pdo, $user, $args);
 
         case 'update_client':
-            $id = $args['id'];
-            $allowedFields = ['name', 'company_id', 'tax_id', 'vat_id', 'contact_person', 'email', 'phone', 'street', 'city', 'postal_code', 'country', 'interest_note'];
-            $updates = [];
-            $params = [];
-
-            foreach ($allowedFields as $f) {
-                if (array_key_exists($f, $args)) {
-                    $updates[] = "`$f` = ?";
-                    $params[] = $args[$f];
-                }
-            }
-
-            if (!empty($args['notes'])) {
-                $updates[] = "`interest_note` = ?";
-                $params[] = $args['notes'];
-            }
-
-            if (array_key_exists('name', $args) && trim((string)$args['name']) === '') {
-                throw new \InvalidArgumentException("'name' cannot be empty.");
-            }
-            if (empty($updates)) {
-                return ['success' => true, 'message' => 'No fields updated'];
-            }
-
-            $params[] = $id;
-            $stmt = $pdo->prepare("UPDATE leads SET " . implode(', ', $updates) . " WHERE id = ?");
-            $stmt->execute($params);
-
-            mcp_audit($pdo, $user, 'client_update', "Updated client $id");
-
-            return ['success' => true, 'id' => $id, 'updated_fields' => array_keys($args)];
+            return mcp_crm_plus_update_client($pdo, $user, $args);
 
         case 'list_contacts':
-            $stmt = $pdo->prepare("SELECT id, name, contact_person, email, phone FROM leads WHERE id = ?");
-            $stmt->execute([$args['client_id']]);
-            $lead = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$lead) return [];
-            return [
-                [
-                    'name' => $lead['contact_person'] ?: $lead['name'],
-                    'email' => $lead['email'],
-                    'phone' => $lead['phone'],
-                    'role' => 'Primary Contact'
-                ]
-            ];
+            return mcp_list_contacts($pdo, $args);
 
         case 'create_contact':
-            $clientId = mcp_require_string($args, 'client_id');
-            mcp_row_exists($pdo, 'leads', $clientId, 'Client/lead');
-            $contactName = mcp_require_string($args, 'name');
-            $email = $args['email'] ?? '';
-            $phone = $args['phone'] ?? '';
-            $role = $args['role'] ?? 'Contact';
-
-            $evId = 'ev_' . bin2hex(random_bytes(8));
-            $content = "Added contact: $contactName ($role)" . ($email ? " - $email" : "") . ($phone ? " - $phone" : "");
-            $evStmt = $pdo->prepare(
-                "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-                 VALUES (?, ?, 'note', NOW(), 'Contact Person Added', ?, ?)"
-            );
-            $evStmt->execute([$evId, $clientId, $content, $user['name']]);
-
-            mcp_audit($pdo, $user, 'contact_create', "Added contact '$contactName' to client $clientId");
-
-            return ['success' => true, 'client_id' => $clientId, 'contact_name' => $contactName];
+            return mcp_crm_plus_create_contact($pdo, $user, $args);
 
         // --- 3. Tasks & Collaboration ---
         case 'list_tasks':
-            $where = ["archived = 0"];
-            $params = [];
-
-            if (!empty($args['status'])) {
-                $where[] = "status = ?";
-                $params[] = $args['status'];
-            }
-            if (!empty($args['priority'])) {
-                $where[] = "priority = ?";
-                $params[] = $args['priority'];
-            }
-            if (!empty($args['owner'])) {
-                $where[] = "owner = ?";
-                $params[] = $args['owner'];
-            }
-            if (!empty($args['project_id'])) {
-                $where[] = "related_project_id = ?";
-                $params[] = $args['project_id'];
-            }
-            if (!empty($args['client_id'])) {
-                $where[] = "related_lead_id = ?";
-                $params[] = $args['client_id'];
-            }
-            if (!empty($args['search'])) {
-                $term = '%' . $args['search'] . '%';
-                $where[] = "(title LIKE ? OR description LIKE ?)";
-                $params[] = $term;
-                $params[] = $term;
-            }
-
-            [$scopeSql, $scopeParams] = mcp_task_scope($user);
-            if ($scopeSql !== '') {
-                $where[] = $scopeSql;
-                $params = array_merge($params, $scopeParams);
-            }
-            if (!empty($args['created_from'])) { $where[] = "DATE(created_at) >= ?"; $params[] = mcp_require_date($args, 'created_from'); }
-            if (!empty($args['created_to'])) { $where[] = "DATE(created_at) <= ?"; $params[] = mcp_require_date($args, 'created_to'); }
-            if (!empty($args['bucket'])) {
-                // The time buckets of the task panel: overdue / today / tomorrow / upcoming (later than tomorrow) / done.
-                $bucket = mcp_enum($args, 'bucket', ['overdue', 'today', 'tomorrow', 'upcoming', 'done']);
-                [$openSql, $openParams] = mcp_open_task_sql($pdo);
-                $today = mcp_today(); $nowTime = date('H:i');
-                $limitExpr = "COALESCE(NULLIF(deadline_time, ''), '23:59')";
-                if ($bucket === 'done') {
-                    $where[] = "NOT $openSql"; $params = array_merge($params, $openParams);
-                } else {
-                    $where[] = $openSql; $params = array_merge($params, $openParams);
-                    if ($bucket === 'overdue') { $where[] = "(deadline < ? OR (deadline = ? AND $limitExpr < ?))"; array_push($params, $today, $today, $nowTime); }
-                    if ($bucket === 'today') { $where[] = "deadline = ? AND $limitExpr >= ?"; array_push($params, $today, $nowTime); }
-                    if ($bucket === 'tomorrow') { $where[] = "deadline = ?"; $params[] = mcp_iso_shift($today, 1); }
-                    if ($bucket === 'upcoming') { $where[] = "deadline > ?"; $params[] = mcp_iso_shift($today, 1); }
-                }
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-            $offset = max(0, (int)($args['offset'] ?? 0));
-
-            $sql = "SELECT id, title, description, priority, deadline, deadline_time, status, owner, created_by, related_lead_id, related_project_id, created_at  
-                    FROM tasks 
-                    WHERE " . implode(' AND ', $where) . " 
-                    ORDER BY deadline ASC, priority DESC 
-                    LIMIT $limit OFFSET $offset";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_tasks($pdo, $user, $args);
 
         case 'get_task':
-            [$scopeSql, $scopeParams] = mcp_task_scope($user);
-            $stmt = $pdo->prepare("SELECT * FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
-            $stmt->execute(array_merge([$args['id']], $scopeParams));
-            $task = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$task) {
-                throw new \Exception("Task not found with ID: " . $args['id']);
-            }
+            return mcp_get_task($pdo, $user, $args);
 
-            // Assignees
-            $asStmt = $pdo->prepare("SELECT user_name FROM task_assignees WHERE task_id = ?");
-            $asStmt->execute([$args['id']]);
-            $task['assignees'] = $asStmt->fetchAll(\PDO::FETCH_COLUMN);
-
-            // Tags
-            $tgStmt = $pdo->prepare("SELECT tag_name FROM task_tags WHERE task_id = ?");
-            $tgStmt->execute([$args['id']]);
-            $task['tags'] = $tgStmt->fetchAll(\PDO::FETCH_COLUMN);
-
-            return $task;
+        case 'get_task_chat':
+            return mcp_get_task_chat($pdo, $user, $args);
 
         case 'create_task':
             return mcp_do_create_task($pdo, $user, $args);
@@ -1860,97 +1663,14 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             return mcp_do_complete_task($pdo, $user, $args);
 
         case 'add_task_comment':
-            $taskId = mcp_require_string($args, 'task_id');
-            $comment = mcp_require_string($args, 'comment');
-
-            // Comments are kept on the linked lead's timeline; without one there is nowhere to store them.
-            [$scopeSql, $scopeParams] = mcp_task_scope($user);
-            $tStmt = $pdo->prepare("SELECT title, related_lead_id FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
-            $tStmt->execute(array_merge([$taskId], $scopeParams));
-            $task = $tStmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$task) throw new \Exception("Task not found with ID: {$taskId}");
-            if (empty($task['related_lead_id'])) {
-                throw new \Exception('This task is not linked to a lead or client, so the comment has nowhere to be stored. Link it first with update_task (client_id).');
-            }
-
-            if ($task && !empty($task['related_lead_id'])) {
-                $evId = 'ev_' . bin2hex(random_bytes(8));
-                $evStmt = $pdo->prepare(
-                    "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-                     VALUES (?, ?, 'note', NOW(), ?, ?, ?)"
-                );
-                $evStmt->execute([$evId, $task['related_lead_id'], "Comment on task: " . $task['title'], $comment, $user['name']]);
-            }
-
-            mcp_audit($pdo, $user, 'task_comment', "Commented on task $taskId");
-
-            return ['success' => true, 'task_id' => $taskId, 'comment' => $comment];
+            return mcp_crm_plus_add_task_comment($pdo, $user, $args);
 
         // --- 4. Projects & Gantt Roadmaps ---
         case 'list_projects':
-            $where = ["1=1"];
-            $params = [];
-
-            if (!empty($args['status'])) {
-                $where[] = "p.status = ?";
-                $params[] = $args['status'];
-            }
-            if (!empty($args['client_id'])) {
-                $where[] = "(p.client_id = ? OR p.lead_id = ?)";
-                $params[] = $args['client_id'];
-                $params[] = $args['client_id'];
-            }
-            if (!empty($args['search'])) {
-                $where[] = "p.name LIKE ?";
-                $params[] = '%' . $args['search'] . '%';
-            }
-            if (empty($args['include_archived'])) {
-                $where[] = "(p.archived = 0 OR p.archived IS NULL)";
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $sql = "SELECT p.id, p.name, p.status, p.division, p.rating, p.value, p.budget, p.invoice_date, p.completion_deadline, p.delay_reason, p.start_date, p.finished_at, p.project_type_id, p.lead_id, p.client_id, l.name as client_name, p.archived, p.created_at
-                    FROM projects p
-                    LEFT JOIN leads l ON l.id = COALESCE(p.lead_id, p.client_id)
-                    WHERE " . implode(' AND ', $where) . "
-                    ORDER BY p.created_at DESC
-                    LIMIT $limit";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return array_map(fn($p) => $p + ['project_type' => mcp_project_type_info($pdo, $p['project_type_id']), 'url' => mcp_project_url($pdo, (string)$p['id'])], $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            return mcp_list_projects($pdo, $user, $args);
 
         case 'get_project':
-            $stmt = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
-            $stmt->execute([$args['id']]);
-            $proj = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$proj) {
-                throw new \Exception("Project not found with ID: " . $args['id']);
-            }
-            $proj['url'] = mcp_project_url($pdo, (string)$proj['id']);
-            $proj['project_type'] = mcp_project_type_info($pdo, $proj['project_type_id'] ?? null);
-
-            // The client: client_id, else the paired lead, else the client the project is named for.
-            $owner = mcp_project_client($pdo, $proj);
-            $proj['client'] = $owner ? mcp_client_summary($pdo, $owner['scope'], $owner['linked_by']) : null;
-
-            $ctx = mcp_projects_ctx();
-            $proj['contract_value'] = mcp_project_value($pdo, $proj, $ctx);
-            if (mcp_can('financial')) {
-                $proj['financials'] = mcp_project_financials($pdo, $proj, $ctx);
-            }
-            $proj['milestones'] = mcp_project_milestones($pdo, $user, $proj);
-
-            // Linked tasks (only for callers who can see the tasks module, scoped by tasks.view_all)
-            if (mcp_can('tasks')) {
-                [$scopeSql, $scopeParams] = mcp_task_scope($user);
-                $tStmt = $pdo->prepare("SELECT id, title, priority, deadline, status, owner FROM tasks WHERE related_project_id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : '') . " ORDER BY deadline ASC");
-                $tStmt->execute(array_merge([$args['id']], $scopeParams));
-                $proj['tasks'] = $tStmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
-
-            return $proj;
+            return mcp_get_project($pdo, $user, $args);
 
         case 'create_project':
             $id = mcp_create_project_row($pdo, $args);
@@ -1963,22 +1683,11 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
         case 'update_project':
             return mcp_do_update_project($pdo, $user, $args);
 
+        case 'manage_project_acceptance_criteria':
+            return mcp_do_manage_project_acceptance_criteria($pdo, $user, $args);
+
         case 'create_milestone':
-            $projId = $args['project_id'];
-            $title = trim($args['title']);
-            $deadline = $args['deadline'];
-            $priority = $args['priority'] ?? 'high';
-
-            $id = 'tsk_' . bin2hex(random_bytes(8));
-            $stmt = $pdo->prepare(
-                "INSERT INTO tasks (id, title, description, priority, deadline, status, owner, created_by, related_project_id, is_locking)
-                 VALUES (?, ?, 'Project Milestone', ?, ?, 'todo', ?, ?, ?, 1)"
-            );
-            $stmt->execute([$id, $title, $priority, $deadline, $user['name'], $user['name'], $projId]);
-
-            mcp_audit($pdo, $user, 'milestone_create', "Created milestone '$title' for project $projId");
-
-            return ['success' => true, 'id' => $id, 'project_id' => $projId, 'title' => $title, 'deadline' => $deadline];
+            return mcp_crm_plus_create_milestone($pdo, $user, $args);
 
         // --- 5. Financials & Invoicing ---
         case 'get_financial_mode':
@@ -1986,6 +1695,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $currentMode = $modeStmt->fetchColumn() ?: 'connected';
             return [
                 'mode' => $currentMode,
+                'updated_at' => mcp_setting_moment($pdo, 'FINANCIAL_MODE'),
                 'description' => $currentMode === 'simplified' 
                     ? 'Simplified mode: Detached spreadsheet matrix where overview and graph derive from cell equations/totals.' 
                     : 'Connected mode: Live financial movements, payments, and recurring schedules.'
@@ -2048,6 +1758,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             return [
                 'mode' => $currentMode,
+                'updated_at' => mcp_setting_moment($pdo, 'FINANCIAL_SIMPLIFIED_TABLE'),
                 'year_filter' => $filterYear,
                 'categories' => $categories,
                 'cells' => $filteredCells,
@@ -2097,6 +1808,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         case 'get_financial_summary':
             $year = isset($args['year']) ? (int)$args['year'] : (int)date('Y');
+            $period = isset($args['period']) && in_array(strtolower((string)$args['period']), ['month', 'quarter', 'year', 'all'], true)
+                ? strtolower((string)$args['period']) : 'year';
             
             // Check operating mode
             $modeStmt = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'FINANCIAL_MODE'");
@@ -2112,13 +1825,13 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
                 $paidRevenue = 0.0;
                 $paidCost = 0.0;
-                $yearPrefix = (string)$year;
+                $validCols = $period === 'all' ? null : array_flip(array_column(mcp_financial_period_columns($pdo, $year, $period), 'id'));
 
                 foreach ($cells as $k => $expr) {
                     $parts = explode(':', $k, 2);
                     if (count($parts) !== 2) continue;
                     list($cId, $colId) = $parts;
-                    if (strpos($colId, $yearPrefix) !== 0) continue;
+                    if ($validCols !== null && !isset($validCols[$colId])) continue;
 
                     $val = ccrm_mcp_eval_equation($expr);
                     if ($val === null) continue;
@@ -2134,6 +1847,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                 return [
                     'mode' => 'simplified',
                     'year' => $year,
+                    'period' => $period,
                     'currency' => 'EUR',
                     'paid_revenue' => round($paidRevenue, 2),
                     'planned_revenue' => round($paidRevenue, 2),
@@ -2144,58 +1858,13 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                 ];
             }
 
-            return mcp_financial_summary_connected($pdo, $year);
+            return mcp_financial_summary_connected($pdo, $year, $period);
 
         case 'list_invoices':
-            $where = ["1=1"];
-            $params = [];
-
-            if (!empty($args['type'])) {
-                $where[] = "type = ?";
-                $params[] = $args['type'];
-            }
-            if (!empty($args['status'])) {
-                $where[] = "status = ?";
-                $params[] = $args['status'];
-            }
-            if (!empty($args['client_id'])) {
-                $where[] = "(client_id = ? OR lead_id = ?)";
-                $params[] = $args['client_id'];
-                $params[] = $args['client_id'];
-            }
-            if (!empty($args['search'])) {
-                $term = '%' . $args['search'] . '%';
-                $where[] = "(document_number LIKE ? OR client_name LIKE ? OR title LIKE ?)";
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $sql = "SELECT id, document_number, type, mode, client_id, lead_id, client_name, title, subtotal, vat_amount, total_price, currency, status, issued_at, valid_until, due_date, created_by 
-                    FROM invoices_offers 
-                    WHERE " . implode(' AND ', $where) . " 
-                    ORDER BY issued_at DESC 
-                    LIMIT $limit";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_invoices($pdo, $user, $args);
 
         case 'get_invoice':
-            $stmt = $pdo->prepare("SELECT * FROM invoices_offers WHERE id = ?");
-            $stmt->execute([$args['id']]);
-            $inv = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$inv) {
-                throw new \Exception("Invoice not found with ID: " . $args['id']);
-            }
-
-            $itStmt = $pdo->prepare("SELECT * FROM invoice_offer_items WHERE invoice_offer_id = ?");
-            $itStmt->execute([$args['id']]);
-            $inv['items'] = $itStmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            return $inv;
+            return mcp_get_invoice($pdo, $user, $args);
 
         case 'create_invoice':
             return mcp_do_create_invoice($pdo, $user, $args);
@@ -2204,116 +1873,17 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             return mcp_do_update_invoice_status($pdo, $user, $args);
 
         case 'list_expenses':
-            $where = ["type = 'expense'"];
-            $params = [];
-
-            if (!empty($args['category_id'])) {
-                $where[] = "category_id = ?";
-                $params[] = $args['category_id'];
-            }
-            if (!empty($args['start_date'])) {
-                $where[] = "issue_date >= ?";
-                $params[] = $args['start_date'];
-            }
-            if (!empty($args['end_date'])) {
-                $where[] = "issue_date <= ?";
-                $params[] = $args['end_date'];
-            }
-            if (!empty($args['search'])) {
-                $where[] = "(title LIKE ? OR description LIKE ?)";
-                $params[] = '%' . $args['search'] . '%';
-                $params[] = '%' . $args['search'] . '%';
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $sql = "SELECT id, subtype, title, description, category_id, amount_planned, amount_real, currency, status, issue_date, due_date, paid_date, project_id, client_id, created_by 
-                    FROM financial_records 
-                    WHERE " . implode(' AND ', $where) . " 
-                    ORDER BY issue_date DESC 
-                    LIMIT $limit";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            $expenseRows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            if (!mcp_can('employees.salaries')) {
-                $expenseRows = array_map(fn($r) => ccrm_is_salary_finance_row($r) ? ccrm_anonymise_salary_finance_row($r) : $r, $expenseRows);
-            }
-            return $expenseRows;
+            return mcp_list_expenses($pdo, $user, $args);
 
         case 'record_expense':
             return mcp_do_record_expense($pdo, $user, $args);
 
         // --- 6. Warehouse & Inventory ---
         case 'list_inventory_items':
-            $where = ["1=1"];
-            $params = [];
-
-            if (!empty($args['category'])) {
-                $where[] = "i.category = ?";
-                $params[] = $args['category'];
-            }
-            if (!empty($args['search'])) {
-                $term = '%' . $args['search'] . '%';
-                $where[] = "(i.name LIKE ? OR i.sku LIKE ? OR i.barcode LIKE ? OR i.alt_codes_json LIKE ? OR i.external_id LIKE ?)";
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-            }
-
-            $having = "";
-            if (!empty($args['low_stock_only'])) {
-                $having = "HAVING current_stock <= i.min_stock";
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $sql = "SELECT i.id, i.sku, i.barcode, i.name, i.category, i.unit, i.min_stock, i.default_sell_price, i.avg_purchase_price,
-                           i.vat_rate, i.pack_quantity, i.pack_unit, i.weight_kg, i.external_source, i.external_id, i.alt_codes_json,
-                           COALESCE(SUM(s.quantity), 0) as current_stock
-                    FROM warehouse_items i
-                    LEFT JOIN warehouse_stock s ON i.id = s.item_id
-                    WHERE " . implode(' AND ', $where) . "
-                    GROUP BY i.id
-                    $having
-                    ORDER BY i.name ASC
-                    LIMIT $limit";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return array_map('mcp_inventory_row', $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            return mcp_list_inventory_items($pdo, $user, $args);
 
         case 'get_inventory_item':
-            $stmt = $pdo->prepare("SELECT * FROM warehouse_items WHERE id = ?");
-            $stmt->execute([$args['id']]);
-            $item = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$item) {
-                throw new \Exception("Warehouse item not found with ID: " . $args['id']);
-            }
-
-            $stkStmt = $pdo->prepare(
-                "SELECT s.warehouse_id, w.name as warehouse_name, s.quantity, s.reserved_quantity, s.location
-                 FROM warehouse_stock s
-                 JOIN warehouses w ON s.warehouse_id = w.id
-                 WHERE s.item_id = ?"
-            );
-            $stkStmt->execute([$args['id']]);
-            $item['stock_breakdown'] = $stkStmt->fetchAll(\PDO::FETCH_ASSOC);
-            $item = mcp_inventory_row($item);
-            // One price per price level (Settings → Price levels), named; default_sell_price stays the fallback.
-            $priceStmt = $pdo->prepare("SELECT price_level_id, price FROM warehouse_item_prices WHERE item_id = ?");
-            $priceStmt->execute([$args['id']]);
-            $byLevel = $priceStmt->fetchAll(\PDO::FETCH_KEY_PAIR);
-            $item['price_levels'] = [];
-            foreach (ccrm_price_levels($pdo) as $level) {
-                if (isset($byLevel[$level['id']])) {
-                    $item['price_levels'][] = ['id' => $level['id'], 'name' => $level['name'], 'price' => (float)$byLevel[$level['id']]];
-                }
-            }
-
-            return $item;
+            return mcp_get_inventory_item($pdo, $user, $args);
 
         case 'create_inventory_item':
             $id = 'whi_' . bin2hex(random_bytes(8));
@@ -2367,139 +1937,20 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         // --- 7. Meetings & Scheduling ---
         case 'list_meetings':
-            $where = ["archived = 0"];
-            $params = [];
-
-            if (!empty($args['upcoming_only'])) {
-                $where[] = "date >= CURDATE()";
-            }
-            if (!empty($args['start_date'])) {
-                $where[] = "date >= ?";
-                $params[] = $args['start_date'];
-            }
-            if (!empty($args['search'])) {
-                $where[] = "(title LIKE ? OR notes LIKE ?)";
-                $params[] = '%' . $args['search'] . '%';
-                $params[] = '%' . $args['search'] . '%';
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $sql = "SELECT id, title, date, duration, lead_id, lead_name, notes, created_at 
-                    FROM meeting_notes 
-                    WHERE " . implode(' AND ', $where) . " 
-                    ORDER BY date DESC 
-                    LIMIT $limit";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_meetings($pdo, $args);
 
         case 'schedule_meeting':
-            $id = 'mtg_' . bin2hex(random_bytes(8));
-            $title = mcp_require_string($args, 'title');
-            $date = mcp_require_date($args, 'date');
-            $duration = (int)(mcp_number($args, 'duration', false, 0, 1440) ?? 30);
-            if (!empty($args['lead_id'])) mcp_row_exists($pdo, 'leads', (string)$args['lead_id'], 'Lead/client');
-            $leadId = $args['lead_id'] ?? null;
-            $notes = $args['notes'] ?? null;
-            $attendeesJson = isset($args['attendees']) ? json_encode($args['attendees']) : null;
-
-            $leadName = null;
-            if ($leadId) {
-                $lStmt = $pdo->prepare("SELECT name FROM leads WHERE id = ?");
-                $lStmt->execute([$leadId]);
-                $leadName = $lStmt->fetchColumn() ?: null;
-            }
-
-            $stmt = $pdo->prepare(
-                "INSERT INTO meeting_notes (id, title, date, duration, lead_id, lead_name, notes, attached_users_json)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-            );
-            $stmt->execute([$id, $title, $date, $duration, $leadId, $leadName, $notes, $attendeesJson]);
-
-            mcp_audit($pdo, $user, 'meeting_schedule', "Scheduled meeting '$title' on $date");
-
-            return ['success' => true, 'id' => $id, 'title' => $title, 'date' => $date, 'duration' => $duration];
+            return mcp_crm_plus_schedule_meeting($pdo, $user, $args);
 
         case 'update_meeting':
-            $id = mcp_require_string($args, 'id');
-            $allowedFields = ['title', 'date', 'duration', 'notes'];
-            $updates = [];
-            $params = [];
-            if (array_key_exists('title', $args)) mcp_require_string($args, 'title');
-            if (array_key_exists('date', $args)) mcp_require_date($args, 'date');
-            if (array_key_exists('duration', $args)) mcp_number($args, 'duration', true, 0, 1440);
-
-            foreach ($allowedFields as $f) {
-                if (array_key_exists($f, $args)) {
-                    $updates[] = "`$f` = ?";
-                    $params[] = $args[$f];
-                }
-            }
-
-            if (empty($updates)) {
-                return ['success' => true, 'message' => 'No fields updated'];
-            }
-
-            $params[] = $id;
-            $stmt = $pdo->prepare("UPDATE meeting_notes SET " . implode(', ', $updates) . " WHERE id = ?");
-            $stmt->execute($params);
-
-            mcp_audit($pdo, $user, 'meeting_update', "Updated meeting $id");
-
-            return ['success' => true, 'id' => $id, 'updated_fields' => array_keys($args)];
+            return mcp_crm_plus_update_meeting($pdo, $user, $args);
 
         // --- 8. Communications & Notes ---
         case 'list_communications':
-            $leadId = $args['lead_id'];
-            // The lead/client the timeline belongs to must be readable by this key
-            // (module split), not just the leads module in general.
-            $leadStmt = $pdo->prepare("SELECT id, adjustment FROM leads WHERE id = ?");
-            $leadStmt->execute([$leadId]);
-            $leadRow = $leadStmt->fetch(\PDO::FETCH_ASSOC);
-            if ($leadRow && !mcp_lead_module_visible($leadRow)) {
-                throw new \Exception("Lead not found with ID: {$leadId}");
-            }
-            $where = ["lead_id = ?", "hidden = 0"];
-            $params = [$leadId];
-            // Mail bodies belong to the mailbox module: callers without it do not see email events.
-            if (!mcp_can('email')) $where[] = "type <> 'email'";
-
-            if (!empty($args['type'])) {
-                $where[] = "type = ?";
-                $params[] = $args['type'];
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $stmt = $pdo->prepare(
-                "SELECT id, lead_id, type, timestamp, title, content, amount, is_outgoing, author 
-                 FROM timeline_events 
-                 WHERE " . implode(' AND ', $where) . " 
-                 ORDER BY timestamp DESC 
-                 LIMIT $limit"
-            );
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_communications($pdo, $user, $args);
 
         case 'log_communication':
-            $id = 'ev_' . bin2hex(random_bytes(8));
-            $leadId = $args['lead_id'];
-            $type = in_array($args['type'] ?? '', ['phone', 'email', 'note', 'appointment']) ? $args['type'] : 'note';
-            $title = trim($args['title']);
-            $content = $args['content'] ?? null;
-            $isOutgoing = !empty($args['is_outgoing']) ? 1 : 0;
-
-            $stmt = $pdo->prepare(
-                "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author, is_outgoing)
-                 VALUES (?, ?, ?, NOW(), ?, ?, ?, ?)"
-            );
-            $stmt->execute([$id, $leadId, $type, $title, $content, $user['name'], $isOutgoing]);
-
-            mcp_audit($pdo, $user, 'communication_log', "Logged $type for lead $leadId: '$title'");
-
-            return ['success' => true, 'id' => $id, 'lead_id' => $leadId, 'title' => $title, 'type' => $type];
+            return mcp_crm_plus_log_communication($pdo, $user, $args);
 
         // --- 9. Cross-Entity Global Search ---
         case 'search_entities':
@@ -2508,101 +1959,38 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         // --- 10. Team Directory (Read-Only) ---
         case 'list_team_members':
-            $where = ["1=1"];
-            $params = [];
-
-            if (!empty($args['role'])) {
-                $where[] = "role = ?";
-                $params[] = $args['role'];
-            }
-            if (!empty($args['search'])) {
-                $where[] = "(name LIKE ? OR email LIKE ?)";
-                $params[] = '%' . $args['search'] . '%';
-                $params[] = '%' . $args['search'] . '%';
-            }
-
-            // CRITICAL: NEVER select password_hash or session secrets!
-            $sql = "SELECT id, name, email, role, avatar, color, created_at 
-                    FROM users 
-                    WHERE " . implode(' AND ', $where) . " 
-                    ORDER BY name ASC";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_team_members($pdo, $user, $args);
 
         // --- 11. Employees, Salaries & Vacations ---
         case 'list_employees':
-            $where = ["1=1"];
-            $params = [];
-            if (!empty($args['search'])) {
-                $s = '%' . trim($args['search']) . '%';
-                if (mcp_can('employees.personal')) {
-                    $where[] = "(name LIKE ? OR `position` LIKE ? OR `department` LIKE ? OR email LIKE ? OR pin LIKE ? OR phone LIKE ? OR company_id LIKE ? OR tax_id LIKE ? OR vat_id LIKE ?)";
-                    $params = array_merge($params, [$s, $s, $s, $s, $s, $s, $s, $s, $s]);
-                } else {
-                    // A search that matched on a PIN or phone would confirm one to someone who may not read it.
-                    $where[] = "(name LIKE ? OR `position` LIKE ? OR `department` LIKE ? OR email LIKE ? OR company_id LIKE ? OR tax_id LIKE ? OR vat_id LIKE ?)";
-                    $params = array_merge($params, [$s, $s, $s, $s, $s, $s, $s]);
-                }
-            }
-            if (!empty($args['kind'])) {
-                if (!in_array($args['kind'], CCRM_EMPLOYEE_KINDS, true)) throw new \Exception("kind must be one of: " . implode(', ', CCRM_EMPLOYEE_KINDS) . ".");
-                $where[] = "kind = ?";
-                $params[] = $args['kind'];
-            }
-            foreach (['position', 'department'] as $f) {
-                if (!empty($args[$f])) {
-                    $where[] = "`$f` = ?";
-                    $params[] = trim((string)$args[$f]);
-                }
-            }
-            if (!isset($args['active_only']) || !empty($args['active_only'])) {
-                $where[] = "is_active = 1";
-            }
-            $stmt = $pdo->prepare("SELECT id, name, first_name, last_name, kind, company_id, tax_id, vat_id, `position`, `department`, user_id, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 200");
-            $stmt->execute($params);
-            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            return array_map(static fn($r) => mcp_label_employee(mcp_project_employee($r)), $rows);
+            return mcp_list_employees($pdo, $user, $args);
 
         case 'get_employee':
-            $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = ? LIMIT 1");
-            $stmt->execute([$args['id']]);
-            $emp = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$emp) throw new \Exception("Employee not found with ID: " . $args['id']);
-            
-            // Pay records only with employees.salaries, leave only with employees.vacations
-            if (mcp_can('employees.salaries')) {
-                $salStmt = $pdo->prepare("SELECT * FROM employee_salaries WHERE employee_id = ? ORDER BY year DESC, period_number DESC LIMIT 12");
-                $salStmt->execute([$args['id']]);
-                $emp['salaries'] = $salStmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
-            $emp = mcp_label_employee(mcp_project_employee($emp));
-
-            if (mcp_can('employees.vacations')) {
-                $vacStmt = $pdo->prepare("SELECT * FROM employee_vacations WHERE employee_id = ? ORDER BY start_date DESC LIMIT 20");
-                $vacStmt->execute([$args['id']]);
-                $emp['vacations'] = $vacStmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
-
-            return $emp;
+            return mcp_get_employee($pdo, $user, $args);
 
         case 'create_employee':
             $id = 'emp-' . bin2hex(random_bytes(6));
             $identity = mcp_resolve_employee_identity($args, null);
             $name = $identity['name'];
+            $workCountry = null;
+            if (isset($args['work_country']) && trim((string)$args['work_country']) !== '') {
+                $wc = strtoupper(trim((string)$args['work_country']));
+                if (!in_array($wc, ['SK', 'HU'], true)) throw new \InvalidArgumentException("work_country must be 'SK', 'HU', or empty.");
+                $workCountry = $wc;
+            }
 
             $ins = $pdo->prepare("INSERT INTO employees (
-                id, name, first_name, last_name, kind, company_id, tax_id, vat_id, `position`, `department`, pin, email, phone, address_street, address_city, address_zip, address_country,
+                id, name, first_name, last_name, kind, contractor_type, company_id, tax_id, vat_id, `position`, `department`, pin, email, phone, address_street, address_city, address_zip, address_country, work_country, notes,
                 salary_type, salary_amount, salary_due_day, auto_expense, expense_category_id, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
-            $companyIds = mcp_employee_company_ids($args, $identity['kind'], false);
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
+            $companyIds = mcp_employee_company_ids($args, $identity['kind'], $identity['contractor_type'], false);
             $ins->execute([
                 $id,
                 $name,
                 $identity['first_name'],
                 $identity['last_name'],
                 $identity['kind'],
+                $identity['contractor_type'],
                 $companyIds['company_id'],
                 $companyIds['tax_id'],
                 $companyIds['vat_id'],
@@ -2615,15 +2003,17 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                 mcp_can('employees.personal') ? ($args['address_city'] ?? null) : null,
                 mcp_can('employees.personal') ? ($args['address_zip'] ?? null) : null,
                 mcp_can('employees.personal') ? ($args['address_country'] ?? 'Slovakia') : 'Slovakia',
+                $workCountry,
+                mcp_can('employees.personal') ? ($args['notes'] ?? null) : null,
                 mcp_can('employees.salaries') ? ($args['salary_type'] ?? 'monthly') : 'monthly',
                 mcp_can('employees.salaries') ? (float)($args['salary_amount'] ?? 0) : 0.0,
                 (mcp_can('employees.salaries') && isset($args['salary_due_day'])) ? (int)$args['salary_due_day'] : null,
                 !empty($args['auto_expense']) ? 1 : 0,
-                $args['expense_category_id'] ?? null
+                mcp_can('employees.salaries') ? ($args['expense_category_id'] ?? null) : null
             ]);
 
             mcp_audit($pdo, $user, 'create_employee', "Created employee {$name} ({$id})");
-            return ['id' => $id, 'name' => $name, 'kind' => $identity['kind'], 'first_name' => $identity['first_name'], 'last_name' => $identity['last_name'], 'message' => "Employee created successfully."];
+            return ['id' => $id, 'name' => $name, 'kind' => $identity['kind'], 'contractor_type' => $identity['contractor_type'], 'first_name' => $identity['first_name'], 'last_name' => $identity['last_name'], 'message' => "Employee created successfully."];
 
         case 'update_employee':
             $id = $args['id'];
@@ -2631,42 +2021,49 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $params = [];
             // Pay fields are writable only with employees.salaries, personal data only with employees.personal.
             if (!mcp_can('employees.salaries')) {
-                foreach (['salary_type', 'salary_amount', 'salary_due_day', 'auto_expense'] as $f) {
+                foreach (['salary_type', 'salary_amount', 'salary_due_day', 'auto_expense', 'expense_category_id'] as $f) {
                     if (isset($args[$f])) {
                         throw new \Exception("Field '{$f}' needs the employees.salaries permission.");
                     }
                 }
             }
             if (!mcp_can('employees.personal')) {
-                foreach (['pin', 'phone', 'address_street', 'address_city', 'address_zip'] as $f) {
+                foreach (['pin', 'phone', 'address_street', 'address_city', 'address_zip', 'address_country', 'notes'] as $f) {
                     if (isset($args[$f])) {
                         throw new \Exception("Field '{$f}' needs the employees.personal permission.");
                     }
                 }
             }
-            foreach (['pin', 'email', 'phone', 'address_street', 'address_city', 'address_zip', 'salary_type'] as $f) {
-                if (isset($args[$f])) {
+            foreach (['pin', 'email', 'phone', 'address_street', 'address_city', 'address_zip', 'address_country', 'notes', 'salary_type', 'expense_category_id'] as $f) {
+                if (array_key_exists($f, $args)) {
                     $fields[] = "`$f` = ?";
-                    $params[] = $args[$f];
+                    $params[] = $args[$f] === '' ? null : $args[$f];
                 }
             }
-            // Identity: kind, first/last name or company name (re-deriving the display name), position, department.
-            $curStmt = $pdo->prepare("SELECT name, first_name, last_name, kind FROM employees WHERE id = ? LIMIT 1");
+            if (array_key_exists('work_country', $args)) {
+                $wc = strtoupper(trim((string)$args['work_country']));
+                if ($wc !== '' && !in_array($wc, ['SK', 'HU'], true)) throw new \InvalidArgumentException("work_country must be 'SK', 'HU', or empty.");
+                $fields[] = '`work_country` = ?';
+                $params[] = $wc === '' ? null : $wc;
+            }
+            // Identity: kind, contractor_type, first/last name or company name.
+            $curStmt = $pdo->prepare("SELECT name, first_name, last_name, kind, contractor_type FROM employees WHERE id = ? LIMIT 1");
             $curStmt->execute([$id]);
             $cur = $curStmt->fetch(\PDO::FETCH_ASSOC);
             if (!$cur) throw new \Exception("Employee not found with ID: " . $id);
             $identity = mcp_resolve_employee_identity($args, $cur);
             if ($identity !== null) {
-                foreach (['name', 'first_name', 'last_name', 'kind'] as $f) {
+                foreach (['name', 'first_name', 'last_name', 'kind', 'contractor_type'] as $f) {
                     $fields[] = "`$f` = ?";
                     $params[] = $identity[$f];
                 }
             }
-            // IČO / DIČ / IČ DPH: only a contractor has them; changing the kind away from it clears them.
+            // IČO / DIČ / IČ DPH: only sole_trader/company contractors have them; switching to person or other kind clears them.
             $finalKind = $identity['kind'] ?? $cur['kind'] ?? 'employee';
-            $kindChanged = $identity !== null && $identity['kind'] !== ($cur['kind'] ?? 'employee');
-            $touchesIds = $kindChanged || array_intersect(['company_id', 'tax_id', 'vat_id'], array_keys($args));
-            foreach ($touchesIds ? mcp_employee_company_ids($args, $finalKind, !$kindChanged) : [] as $f => $v) {
+            $finalCtype = $identity['contractor_type'] ?? ($finalKind === 'contractor' ? ($cur['contractor_type'] ?? 'company') : null);
+            $subtypeChanged = $identity !== null && ($identity['kind'] !== ($cur['kind'] ?? 'employee') || ($identity['contractor_type'] ?? null) !== ($cur['contractor_type'] ?? null));
+            $touchesIds = $subtypeChanged || array_intersect(['company_id', 'tax_id', 'vat_id'], array_keys($args));
+            foreach ($touchesIds ? mcp_employee_company_ids($args, $finalKind, $finalCtype, !$subtypeChanged) : [] as $f => $v) {
                 $fields[] = "`$f` = ?";
                 $params[] = $v;
             }
@@ -2704,63 +2101,30 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             return ['id' => $id, 'success' => true, 'message' => "Employee updated successfully."];
 
         case 'list_salaries':
-            $where = ["1=1"];
-            $params = [];
-            if (!empty($args['employee_id'])) {
-                $where[] = "es.employee_id = ?";
-                $params[] = $args['employee_id'];
-            }
-            if (!empty($args['year'])) {
-                $where[] = "es.year = ?";
-                $params[] = (int)$args['year'];
-            }
-            if (!empty($args['period_key'])) {
-                $where[] = "es.period_key = ?";
-                $params[] = $args['period_key'];
-            }
-
-            $stmt = $pdo->prepare("
-                SELECT es.*, e.name as employee_name
-                FROM employee_salaries es
-                JOIN employees e ON es.employee_id = e.id
-                WHERE " . implode(' AND ', $where) . "
-                ORDER BY es.year DESC, es.period_number DESC
-                LIMIT 500
-            ");
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_salaries($pdo, $user, $args);
 
         case 'record_salary_payout':
             return mcp_do_record_salary_payout($pdo, $user, $args);
 
         case 'list_vacations':
-            $where = ["1=1"];
-            $params = [];
-            if (!empty($args['employee_id'])) {
-                $where[] = "ev.employee_id = ?";
-                $params[] = $args['employee_id'];
-            }
-            if (!empty($args['status'])) {
-                $where[] = "ev.status = ?";
-                $params[] = $args['status'];
-            }
-            if (!empty($args['year'])) {
-                $where[] = "YEAR(ev.start_date) = ?";
-                $params[] = (int)$args['year'];
-            }
-
-            $stmt = $pdo->prepare("
-                SELECT ev.*, e.name as employee_name
-                FROM employee_vacations ev
-                JOIN employees e ON ev.employee_id = e.id
-                WHERE " . implode(' AND ', $where) . "
-                ORDER BY ev.start_date DESC
-            ");
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_vacations($pdo, $user, $args);
 
         case 'record_vacation':
             return mcp_do_record_vacation($pdo, $user, $args);
+
+        case 'whatsapp_list_chats':
+        case 'whatsapp_read_messages':
+        case 'whatsapp_send_message':
+        case 'whatsapp_sync_chat':
+            require_once __DIR__ . '/marveen/marveen_lib.php';
+            $waExec = ccrm_marveen_execute_whatsapp_tool($pdo, null, $tool, $args, (string)($user['id'] ?? ''));
+            if ($tool === 'whatsapp_send_message') {
+                mcp_audit($pdo, $user, 'whatsapp_send', 'Sent WhatsApp message to ' . (string)($args['chat'] ?? '?'));
+            } elseif ($tool === 'whatsapp_sync_chat') {
+                mcp_audit($pdo, $user, 'whatsapp_sync', 'Triggered WhatsApp sync for ' . (string)($args['chat'] ?? 'all'));
+            }
+            $decoded = json_decode((string)($waExec['toolText'] ?? '{}'), true);
+            return is_array($decoded) ? $decoded : ['result' => $waExec['toolText'] ?? ''];
 
         default:
             $extResult = mcp_ext_fin_execute($pdo, $user, $tool, $args);
@@ -2768,6 +2132,24 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $extResult = mcp_ext_ops_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             $extResult = mcp_ext_intel_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_deleted_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_modules_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_agency_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_catalog_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_crm_plus_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_commercial_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_self_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_newsletter_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_comms_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             throw new \Exception("Unrecognized tool name: " . htmlspecialchars($tool));
     }

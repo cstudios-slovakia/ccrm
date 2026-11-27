@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Plus, Tag, X } from "lucide-react";
+import { SectionCard } from "./settings/SectionCard";
+import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import type { Lead, WarehouseItem } from "../types";
 import type { Language } from "../utils/translations";
 import { priceLevelIdFor, type PriceLevel } from "../utils/priceLevels";
@@ -119,37 +120,32 @@ export const PriceLevelSettings: React.FC<PriceLevelSettingsProps> = ({
   };
 
   return (
-    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left" data-testid="price-level-settings">
-      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-        <Tag className="h-4.5 w-4.5 text-indigo-500" />
-        {t("Price levels", "Cenové hladiny", "Árszintek")}
-      </h3>
-
-      <p className="type-overline text-slate-400">
-        {t(
+    <SectionCard
+      title={t("Price levels", "Cenové hladiny", "Árszintek")}
+      description={t(
           "Named price lists, e.g. Retail, Wholesale, Partner. Set the price per level on each product (Warehouse), and the level a client buys on on the client's profile. A product without a price on that level uses its default sell price.",
           "Pomenované cenníky, napr. Maloobchod, Veľkoobchod, Partner. Cenu pre každú hladinu nastavíte na produkte (Sklad) a hladinu klienta v jeho profile. Tovar bez ceny na danej hladine použije svoju predvolenú predajnú cenu.",
           "Elnevezett árlisták, pl. Kiskereskedelem, Nagykereskedelem, Partner. Az árat szintenként a terméken (Raktár), az ügyfél szintjét az ügyfél profiljában állíthatja be. Az adott szinten ár nélküli termék az alapértelmezett eladási árát használja.",
         )}
-      </p>
-
+      testId="price-level-settings"
+    >
       {levels.length === 0 ? (
-        <p className="text-ui text-slate-500 italic">{t("No price levels yet.", "Zatiaľ nie sú žiadne cenové hladiny.", "Még nincsenek árszintek.")}</p>
+        <p className="text-ui text-gray-500 italic">{t("No price levels yet.", "Zatiaľ nie sú žiadne cenové hladiny.", "Még nincsenek árszintek.")}</p>
       ) : (
-        <div className="border border-slate-200/80 rounded-2xl overflow-x-auto shadow-inner bg-white/50">
+        <div className="border border-gray-200/80 rounded-lg overflow-x-auto shadow-inner bg-white">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-                <th className="py-3 px-4 type-overline text-slate-500 w-24 text-center">{t("Order", "Poradie", "Sorrend")}</th>
-                <th className="py-3 px-4 type-overline text-slate-500">{t("Level name", "Názov hladiny", "Szint neve")}</th>
-                <th className="py-3 px-4 type-overline text-slate-500 w-28 text-center">{t("Products", "Tovar", "Termékek")}</th>
-                <th className="py-3 px-4 type-overline text-slate-500 w-28 text-center">{t("Clients", "Klienti", "Ügyfelek")}</th>
-                <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{t("Delete", "Zmazať", "Törlés")}</th>
+              <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+                <th className="py-3 px-4 type-overline text-gray-500 w-24 text-center">{t("Order", "Poradie", "Sorrend")}</th>
+                <th className="py-3 px-4 type-overline text-gray-500">{t("Level name", "Názov hladiny", "Szint neve")}</th>
+                <th className="py-3 px-4 type-overline text-gray-500 w-28 text-center">{t("Products", "Tovar", "Termékek")}</th>
+                <th className="py-3 px-4 type-overline text-gray-500 w-28 text-center">{t("Clients", "Klienti", "Ügyfelek")}</th>
+                <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{t("Delete", "Zmazať", "Törlés")}</th>
               </tr>
             </thead>
             <tbody>
               {levels.map((level, idx) => (
-                <tr key={level.id} data-testid={`price-level-row-${level.id}`} className="border-b border-slate-200/60 hover:bg-slate-50/50">
+                <tr key={level.id} data-testid={`price-level-row-${level.id}`} className="border-b border-gray-200/60 hover:bg-gray-50/50">
                   <td className="py-3 px-4 text-center align-middle">
                     {canEdit && (
                       <span className="inline-flex gap-1">
@@ -158,7 +154,7 @@ export const PriceLevelSettings: React.FC<PriceLevelSettingsProps> = ({
                           disabled={idx === 0}
                           onClick={() => handleMove(level.id, -1)}
                           title={t("Move up", "Posunúť vyššie", "Feljebb")}
-                          className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                          className="p-1 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-soft disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                         >
                           <ArrowUp className="h-3.5 w-3.5" />
                         </button>
@@ -167,7 +163,7 @@ export const PriceLevelSettings: React.FC<PriceLevelSettingsProps> = ({
                           disabled={idx === levels.length - 1}
                           onClick={() => handleMove(level.id, 1)}
                           title={t("Move down", "Posunúť nižšie", "Lejjebb")}
-                          className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                          className="p-1 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-soft disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                         >
                           <ArrowDown className="h-3.5 w-3.5" />
                         </button>
@@ -181,16 +177,16 @@ export const PriceLevelSettings: React.FC<PriceLevelSettingsProps> = ({
                       onCommit={(next) => handleRename(level.id, next)}
                       renameTitle={t("Rename", "Premenovať", "Átnevezés")}
                     >
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-ui font-bold border bg-indigo-50 text-indigo-700 border-indigo-200">
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-ui font-bold border bg-entity-soft text-entity-text border-entity-border">
                         {level.name}
                       </span>
                     </InlineRenameName>
                   </td>
                   <td className="py-3 px-4 text-center align-middle select-none">
-                    <span className={`text-ui font-bold ${usage.items[level.id] ? "text-slate-700" : "text-slate-300"}`}>{usage.items[level.id] || 0}</span>
+                    <span className={`text-ui font-bold ${usage.items[level.id] ? "text-gray-700" : "text-gray-300"}`}>{usage.items[level.id] || 0}</span>
                   </td>
                   <td className="py-3 px-4 text-center align-middle select-none">
-                    <span className={`text-ui font-bold ${usage.clients[level.id] ? "text-slate-700" : "text-slate-300"}`}>{usage.clients[level.id] || 0}</span>
+                    <span className={`text-ui font-bold ${usage.clients[level.id] ? "text-gray-700" : "text-gray-300"}`}>{usage.clients[level.id] || 0}</span>
                   </td>
                   <td className="py-3 px-4 text-center align-middle">
                     {canEdit ? (
@@ -199,13 +195,13 @@ export const PriceLevelSettings: React.FC<PriceLevelSettingsProps> = ({
                         lang={userLanguage}
                         what={level.name}
                         onConfirm={() => handleRemove(level)}
-                        className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                        className="text-gray-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
                         title={t("Remove price level", "Odstrániť cenovú hladinu", "Árszint eltávolítása")}
                       >
                         <X className="h-3.5 w-3.5" />
                       </HoldToConfirmButton>
                     ) : (
-                      <span className="type-overline text-slate-300 block select-none">{t("Locked", "Zamknuté", "Zárolt")}</span>
+                      <span className="type-overline text-gray-300 block select-none">{t("Locked", "Zamknuté", "Zárolt")}</span>
                     )}
                   </td>
                 </tr>
@@ -224,16 +220,16 @@ export const PriceLevelSettings: React.FC<PriceLevelSettingsProps> = ({
             onChange={(e) => setNewName(e.target.value)}
             placeholder={t("Add new price level...", "Pridať novú cenovú hladinu...", "Új árszint hozzáadása...")}
             aria-label={t("New price level", "Nová cenová hladina", "Új árszint")}
-            className="flex-1 min-w-37.5 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+            className="flex-1 min-w-37.5 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
           />
           <button
             type="submit"
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
+            className="px-4 py-2.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-bold transition-all shadow-xs flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
           >
             <Plus className="h-3.5 w-3.5" /> {t("Add level", "Pridať hladinu", "Szint hozzáadása")}
           </button>
         </form>
       )}
-    </div>
+    </SectionCard>
   );
 };

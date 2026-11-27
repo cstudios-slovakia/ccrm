@@ -8,17 +8,20 @@ import {
   DEFAULT_TICKET_SETTINGS,
   DEFAULT_TICKET_STATUS_DEFS,
   evaluateTicketSla,
+  findTicketSupportContract,
   formatDurationMinutes,
   getTicketStatusLabel,
   nextTicketNumber,
   normalizeTicketSettings,
   normalizeTicketStatuses,
   parseDurationColonInput,
+  resolveTicketSlaTargetMinutes,
   sanitizeColonTimeDraft,
+  ticketLoggedTotalAdjustment,
   ticketTypeColor,
   ticketTypeLabel,
 } from "./tickets.ts";
-import type { Project, Ticket } from "../types/index.ts";
+import type { Project, SupportContract, Ticket, TicketSettingsConfig } from "../types/index.ts";
 
 test("nextTicketNumber increments highest existing TCK-XXXX number", () => {
   assert.equal(nextTicketNumber([]), "TCK-0001");
@@ -183,6 +186,17 @@ test("computeRetainerPeriod and computeProjectRetainerUsage respect resetDay", (
   assert.equal(usage.enabled, true);
   assert.equal(usage.resetDay, 15);
   assert.equal(usage.usedMinutes, 90);
+
+  // Native entries: billable only, inside the period, and a row linked to both a
+  // task and a ticket counts once even if it is listed twice.
+  const native = computeProjectRetainerUsage(project, sampleTickets, [], refBeforeReset, [
+    { id: "te-1", projectId: "proj-1", ticketId: "tck-1", taskId: "task-1", billable: true, entryDate: "2026-09-20", durationSec: 90 * 60 },
+    { id: "te-1", projectId: "proj-1", ticketId: "tck-1", taskId: "task-1", billable: true, entryDate: "2026-09-20", durationSec: 90 * 60 },
+    { id: "te-old", projectId: "proj-1", ticketId: "tck-1", billable: true, entryDate: "2026-09-10", durationSec: 240 * 60 },
+    { id: "te-free", projectId: "proj-1", ticketId: "tck-1", billable: false, entryDate: "2026-09-21", durationSec: 60 * 60 },
+    { id: "te-other", projectId: "proj-2", ticketId: "tck-9", billable: true, entryDate: "2026-09-21", durationSec: 30 * 60 },
+  ]);
+  assert.equal(native.usedMinutes, 90);
   assert.equal(usage.monthlyMinutes, 600);
   assert.equal(usage.remainingMinutes, 510);
   assert.equal(usage.percent, 15);
@@ -198,4 +212,93 @@ test("ticketTypeColor and ticketTypeLabel resolve per-type colors and localized 
   assert.equal(ticketTypeLabel("bug", "en"), "Bug / Error");
   assert.equal(ticketTypeLabel("feature_request", "sk"), "Požiadavka");
   assert.equal(ticketTypeLabel("billing", "hu"), "Számlázás");
+});
+
+test("lowering a ticket total writes nothing, raising it adds one positive correcting entry", () => {
+  const lower = ticketLoggedTotalAdjustment(90, 60);
+  assert.deepEqual(lower, { write: false, reason: "lower" });
+  const same = ticketLoggedTotalAdjustment(90, 90);
+  assert.deepEqual(same, { write: false, reason: "equal" });
+  const higher = ticketLoggedTotalAdjustment(90, 150);
+  assert.equal(higher.write, true);
+  if (higher.write) {
+    assert.equal(higher.durationSec, 60 * 60);
+    assert.ok(higher.durationSec > 0);
+  }
+});
+
+// Stored-vs-derived audit S3: a manual ticket must carry the same resolution SLA as
+// one the server creates (ccrm_compute_ticket_sla), and keep it after a reload.
+
+test("SLA targets: ticket settings in minutes, or in hours as the server seeds them", () => {
+  assert.deepEqual(resolveTicketSlaTargetMinutes("high", DEFAULT_TICKET_SETTINGS), {
+    firstResponseMins: 120,
+    resolutionMins: 480,
+  });
+  const hoursShape = normalizeTicketSettings({
+    slaTargets: {
+      critical: { responseHours: 1, resolveHours: 4 },
+      high: { responseHours: 4, resolveHours: 16 },
+      normal: { responseHours: 8, resolveHours: 40 },
+      low: { responseHours: 24, resolveHours: 120 },
+    },
+  } as unknown as Partial<TicketSettingsConfig>);
+  assert.deepEqual(resolveTicketSlaTargetMinutes("normal", hoursShape), {
+    firstResponseMins: 480,
+    resolutionMins: 2400,
+  });
+});
+
+test("SLA targets: the contract's per-priority hours win over the settings", () => {
+  const contract = {
+    id: "sc-1",
+    name: "Gold",
+    slaResponseHighHours: 2,
+    slaResolveHighHours: 6,
+  } as SupportContract;
+  assert.deepEqual(resolveTicketSlaTargetMinutes("high", DEFAULT_TICKET_SETTINGS, contract), {
+    firstResponseMins: 120,
+    resolutionMins: 360,
+  });
+  // A priority the contract leaves empty falls back to the settings.
+  assert.deepEqual(resolveTicketSlaTargetMinutes("low", DEFAULT_TICKET_SETTINGS, contract), {
+    firstResponseMins: 480,
+    resolutionMins: 2880,
+  });
+});
+
+test("computeTicketSlaDueDates puts the contract's resolution target on the due date", () => {
+  const contract = { id: "sc-1", name: "Gold", slaResolveCriticalHours: 2 } as SupportContract;
+  const before = Date.now();
+  const due = computeTicketSlaDueDates("critical", DEFAULT_TICKET_SETTINGS, contract);
+  const dueMs = new Date(`${due.resolutionDueAt.replace(" ", "T")}Z`).getTime();
+  const expected = before + 2 * 60 * 60_000;
+  assert.ok(Math.abs(dueMs - expected) < 5_000, `${due.resolutionDueAt} is not ~2h out`);
+});
+
+test("findTicketSupportContract: chosen contract, else the project's, else the client's", () => {
+  const contracts = [
+    { id: "sc-client", name: "Client", leadId: "lead-1" },
+    { id: "sc-proj", name: "Project", projectId: "proj-1" },
+    { id: "sc-other", name: "Other", projectId: "proj-9" },
+  ] as SupportContract[];
+  assert.equal(findTicketSupportContract(contracts, { contractId: "sc-other", projectId: "proj-1" })?.id, "sc-other");
+  assert.equal(findTicketSupportContract(contracts, { projectId: "proj-1" })?.id, "sc-proj");
+  assert.equal(findTicketSupportContract(contracts, { leadId: "lead-1" })?.id, "sc-client");
+  assert.equal(findTicketSupportContract(contracts, {}), null);
+  assert.equal(findTicketSupportContract(contracts, { projectId: "proj-x" }), null);
+});
+
+test("a ticket whose resolution due date only reached the server survives a reload", () => {
+  // What sync.php hands back after a reload carries only slaResolutionDueAt /
+  // resolveDueAt. evaluateTicketSla must read it once the first response is in.
+  const future = new Date(Date.now() + 3 * 60 * 60_000).toISOString().replace("T", " ").slice(0, 19);
+  const reloaded = {
+    id: "tkt-1",
+    status: "open",
+    slaFirstRespondedAt: "2026-01-01 10:00:00",
+    slaResolutionDueAt: future,
+    resolveDueAt: future,
+  } as unknown as Ticket;
+  assert.equal(evaluateTicketSla(reloaded, DEFAULT_TICKET_STATUS_DEFS).status, "ok");
 });

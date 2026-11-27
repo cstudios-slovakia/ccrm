@@ -2,6 +2,7 @@ import { test } from '@playwright/test';
 import { QAReport } from './helpers/reportCollector';
 import { assertNoDefectsFound } from './helpers/gate';
 import { ViewCrawler } from './helpers/uiExplorer';
+import { installNewsletterMock } from './helpers/newsletterMock';
 import { dismissOverlays, gotoView, startSession, type ConsoleCapture } from './helpers/appDriver';
 
 /**
@@ -18,11 +19,20 @@ interface ModuleUnderTest {
   hash: string;
   /** Registers whose rows open a detail view worth drilling into. */
   drilldown?: boolean;
+  /**
+   * Time budget for this module's crawl (default 4). Settings has a section per
+   * tab and a form per section, so its crawl is longer by design; on a loaded
+   * runner it needs more than 4 minutes and ran out twice in a row mid-crawl.
+   */
+  minutes?: number;
 }
 
 const MODULES: ModuleUnderTest[] = [
   { name: 'Dashboard', hash: '#dashboard' },
   { name: 'Tasks', hash: '#tasks' },
+  { name: 'Time Tracking', hash: '#time-tracking' },
+  { name: 'WhatsApp', hash: '#whatsapp' },
+  { name: 'Newsletter', hash: '#newsletter', drilldown: true },
   { name: 'Leads / Pipeline', hash: '#leads', drilldown: true },
   { name: 'Clients Register', hash: '#clients', drilldown: true },
   { name: 'Projects', hash: '#projects', drilldown: true },
@@ -33,7 +43,7 @@ const MODULES: ModuleUnderTest[] = [
   { name: 'Email Hub', hash: '#email' },
   { name: 'Automation', hash: '#automation' },
   { name: 'Update Notes', hash: '#updates' },
-  { name: 'System Settings', hash: '#settings' },
+  { name: 'System Settings', hash: '#settings', minutes: 9 },
 ];
 
 test.describe('Deep UI audit', () => {
@@ -42,11 +52,12 @@ test.describe('Deep UI audit', () => {
   test.beforeEach(async ({ page }) => {
     QAReport.beginScope();
     consoleCapture = await startSession(page);
+    await installNewsletterMock(page);
   });
 
   for (const mod of MODULES) {
     test(`${mod.name} (${mod.hash})`, async ({ page }) => {
-      test.setTimeout(4 * 60 * 1000);
+      test.setTimeout((mod.minutes ?? 4) * 60 * 1000);
       const crawler = new ViewCrawler(page, mod.name, consoleCapture);
 
       await gotoView(page, mod.hash);

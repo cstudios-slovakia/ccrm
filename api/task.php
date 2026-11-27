@@ -1,7 +1,11 @@
 <?php
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/deleted_records.php';
+require_once __DIR__ . '/task_activity_lib.php';
+require_once __DIR__ . '/task_files_lib.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -17,7 +21,7 @@ $sessionUser = ccrm_require_auth();
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed.')]);
     exit;
 }
 require_once $configFile;
@@ -40,12 +44,20 @@ if ($taskId === '' || strlen($taskId) > 50) {
     exit;
 }
 
+$chkKind = $pdo->prepare("SELECT `task_kind` FROM `tasks` WHERE `id` = ? LIMIT 1"); /* recurring-template: template refusal */
+$chkKind->execute([$taskId]);
+if ($chkKind->fetchColumn() === 'recurring') {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'Recurring task templates cannot be deleted through this endpoint.']);
+    exit;
+}
+
 $taskStmt = $pdo->prepare(
-    "SELECT t.`id`, t.`title`, t.`created_by`,
+    "SELECT t.`id`, t.`title`, t.`created_by`, t.`external_source`,
             u.`name` AS session_user_name
        FROM `tasks` t
        JOIN `users` u ON u.`id` = ?
-      WHERE t.`id` = ?
+      WHERE t.`id` = ? AND " . ccrm_sql_real_tasks('t') . "
       LIMIT 1"
 );
 $taskStmt->execute([$sessionUser['id'], $taskId]);
@@ -53,6 +65,11 @@ $task = $taskStmt->fetch();
 if (!$task) {
     http_response_code(404);
     echo json_encode(['success' => false, 'message' => 'Task not found.']);
+    exit;
+}
+if (($task['external_source'] ?? null) === 'clickup') {
+    http_response_code(409);
+    echo json_encode(['success' => false, 'message' => 'ClickUp-synced tasks are managed in ClickUp.']);
     exit;
 }
 
@@ -95,7 +112,8 @@ if (!$isAdmin) {
 
 try {
     $pdo->beginTransaction();
-    $deleteStmt = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ?");
+    $tomb = ccrm_deleted_snapshot($pdo, 'tasks', $taskId);
+    $deleteStmt = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks());
     $deleteStmt->execute([$taskId]);
     if ($deleteStmt->rowCount() !== 1) {
         $pdo->rollBack();
@@ -109,6 +127,10 @@ try {
         'tasks.delete',
         $taskId . ': ' . (string)$task['title']
     );
+    // Tombstone for "what was deleted since X" (MCP list_deleted_records); fail-soft.
+    ccrm_record_deleted($pdo, 'tasks', $taskId, $tomb, (string)$task['session_user_name']);
+    ccrm_delete_task_activities($pdo, [$taskId]);
+    ccrm_delete_task_files($pdo, $taskId);
     $pdo->commit();
     echo json_encode(['success' => true, 'id' => $taskId]);
 } catch (\Throwable $e) {

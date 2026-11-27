@@ -1,8 +1,10 @@
 <?php
 // Agent Utilities for CCMR RAG
+require_once __DIR__ . '/brand.php';
 $configFile = dirname(__DIR__) . '/config.php';
 require_once $configFile;
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 function get_rag_db_connection($config) {
     $vectorDb = $config['vectorDb'] ?? 'none';
@@ -676,7 +678,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
             FROM `tasks` t
             LEFT JOIN `leads` l ON t.`lead_id` = l.`id`
             LEFT JOIN `projects` p ON t.`project_id` = p.`id`
-            WHERE (t.`archived` = 0 OR t.`archived` IS NULL)
+            WHERE (t.`archived` = 0 OR t.`archived` IS NULL) AND " . ccrm_sql_real_tasks('t') . "
             ORDER BY t.`created_at` DESC
             LIMIT 70
         ");
@@ -888,6 +890,8 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 $expenseByCat = [];
 
                 foreach ($finRecords as $fr) {
+                    // A recurring rule is not money of its own: its payments are stored rows.
+                    if ((int)($fr['is_recurring'] ?? 0) === 1) continue;
                     $amtReal = (float)($fr['amount_real'] ?? 0);
                     $amtPlan = (float)($fr['amount_planned'] ?? 0);
                     $type = $fr['type'];
@@ -1366,7 +1370,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 // Recent salaries summary
                 if ($hrPay && $pdo->query("SHOW TABLES LIKE 'employee_salaries'")->rowCount() > 0) {
                     $salSummaryStmt = $pdo->query("
-                        SELECT es.`period_key`, es.`total_salary`, es.`total_paid`, es.`status`, es.`payment_date`, es.`due_date`, e.`name` as `emp_name`
+                        SELECT es.*, e.`name` as `emp_name`
                         FROM `employee_salaries` es
                         JOIN `employees` e ON es.`employee_id` = e.`id`
                         ORDER BY es.`year` DESC, es.`period_number` DESC
@@ -1376,7 +1380,13 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                     if (!empty($salRows)) {
                         $hrBlock .= "\n--- RECENT PAYROLL & SALARY RECORDS ---\n";
                         foreach ($salRows as $sr) {
-                            $hrBlock .= "- Period " . $sr['period_key'] . " | " . $sr['emp_name'] . ": Salary €" . number_format((float)$sr['total_salary'], 2) . " | Paid €" . number_format((float)$sr['total_paid'], 2) . " [Status: " . strtoupper($sr['status']) . ", Due: " . ($sr['due_date'] ?: 'N/A') . "]\n";
+                            // Paid is measured against the labour cost (Cena práce) once the payslip is in,
+                            // otherwise the gross: the same "due" as the app (payslip.ts salaryDue)
+                            $laborCost = isset($sr['labor_cost']) && is_numeric($sr['labor_cost']) ? (float)$sr['labor_cost'] : null;
+                            $hrBlock .= "- Period " . $sr['period_key'] . " | " . $sr['emp_name'] . ": Gross salary €" . number_format((float)$sr['total_salary'], 2)
+                                . ($laborCost !== null ? " | Labour cost €" . number_format($laborCost, 2) : '')
+                                . " | Paid €" . number_format((float)$sr['total_paid'], 2) . " of €" . number_format($laborCost ?? (float)$sr['total_salary'], 2)
+                                . " [Status: " . strtoupper($sr['status']) . (!empty($sr['closed_at']) ? ", CLOSED" : '') . ", Due: " . ($sr['due_date'] ?: 'N/A') . "]\n";
                         }
                     }
                 }
@@ -1476,21 +1486,54 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey, ?array $scope
                   . "Your skill details and domain instructions are:\n" . $agent['skill_content'] . "\n\n"
                   . "IMPORTANT - PRIVACY INSTRUCTION: Personal names, phone numbers, and emails have been pseudonymized and masked with placeholders like [CLIENT_NAME_1] or [EMAIL_REF_1].\n"
                   . "Keep references exactly as they are.\n\n"
-                  . "=== COMPREHENSIVE CRM RAG KNOWLEDGE BASE CONTEXT (ALL 16 DOMAINS) ===\n"
+                  . ("=== COMPREHENSIVE " . KOPERNIQ_PRODUCT_NAME . " RAG KNOWLEDGE BASE CONTEXT (ALL 16 DOMAINS) ===\n")
                   . $sanitized_context
                   . "\n====================================================================\n\n"
-                  . "You are executing a specialized executive check and analysis. Perform your custom analysis or actions based on your skills and the live CRM database context. Present your findings, status, key metrics, recommendations, or alerts with executive precision.";
+                  . ("You are executing a specialized executive check and analysis. Perform your custom analysis or actions based on your skills and the live " . KOPERNIQ_PRODUCT_NAME . " database context. Present your findings, status, key metrics, recommendations, or alerts with executive precision.");
 
-    $userPrompt = "Run an autonomous executive check and generate your domain assessment, alert triggers, or recommendations now based on current CRM data.";
-
-    if (empty($openAiKey)) {
-        return "[SYSTEM] OpenAI API Key is not configured. Autonomous run skipped.";
-    }
+    $userPrompt = ("Run an autonomous executive check and generate your domain assessment, alert triggers, or recommendations now based on current " . KOPERNIQ_PRODUCT_NAME . " data.");
 
     $payloadMessages = [
         ['role' => 'system', 'content' => $systemPrompt],
         ['role' => 'user', 'content' => $userPrompt]
     ];
+
+    if ($pdo instanceof \PDO && ccrm_ai_is_configured($pdo)) {
+        @set_time_limit(150);
+        $agentModel = ccrm_ai_model();
+        $aiRes = ccrm_ai_chat_completion(
+            $pdo,
+            [
+                'model' => $agentModel,
+                'messages' => $payloadMessages,
+                'temperature' => 0.4,
+            ],
+            [
+                'feature' => 'executive_agent',
+                'timeout' => 120,
+            ]
+        );
+        if (empty($aiRes['ok'])) {
+            return "Autonomous Run failed: AI returned error (" . ($aiRes['code'] ?: 'ai_error') . "): " . ($aiRes['error'] ?: 'Unknown error');
+        }
+        $aiReply = (string)($aiRes['content'] ?? 'No response returned from model.');
+        $reply = restore_text($aiReply, $to_real);
+        return "[Autonomous Run " . date('Y-m-d H:i') . "]\n\n" . $reply;
+    }
+
+    if (empty($openAiKey)) {
+        require_once __DIR__ . '/marveen/marveen_lib.php';
+        $callerId = (string)($scope['sessionUserId'] ?? 'default_user');
+        $marveenConnector = ccrm_marveen_pick_connector_for_user($pdo, $callerId);
+        if ($marveenConnector) {
+            $mRes = ccrm_marveen_run_agent($pdo, $marveenConnector, $callerId, $userPrompt, $systemPrompt);
+            if (!empty($mRes['ok']) && !empty($mRes['text'])) {
+                $reply = restore_text((string)$mRes['text'], $to_real);
+                return "[Autonomous Run " . date('Y-m-d H:i') . " · " . strtoupper((string)($mRes['provider'] ?? 'Marveen')) . "]\n\n" . $reply;
+            }
+        }
+        return "[SYSTEM] AI credentials are not configured. Autonomous run skipped.";
+    }
 
     $ch = curl_init('https://api.openai.com/v1/chat/completions');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -1527,6 +1570,7 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey, ?array $scope
         return "Autonomous Run failed: OpenAI API returned code " . $httpCode . ": " . $errMsg;
     } else {
         $resData = json_decode($response, true);
+        ccrm_ai_capture_usage($pdo, 'executive_agent', $resData, $agentModel);
         $aiReply = $resData['choices'][0]['message']['content'] ?? 'No response returned from model.';
         $reply = restore_text($aiReply, $to_real);
         return "[Autonomous Run " . date('Y-m-d H:i') . "]\n\n" . $reply;
@@ -1543,7 +1587,7 @@ function get_executive_prompts() {
             'name' => 'Executive Orchestrator',
             'position' => 'Executive Orchestrator & Principal Advisor',
             'voice' => 'alloy',
-            'prompt' => "You are the Executive Orchestrator — a seasoned business leader with 25 years of operating experience across multiple industries, complemented by an MBA from Harvard Business School. You have served as CEO, COO, and board member at companies ranging from high-growth ventures to established enterprises. You have comprehensive real-time access to CRM records and live screen context. Synthesize data across departments into one coherent, actionable, intelligent executive voice. Directly and precisely address the user's specific questions with conversational clarity. When a concrete operational plan or strategic verdict is required, provide actionable next steps; otherwise converse naturally, helpfully, and decisively without repeating rigid templates."
+            'prompt' => ("You are the Executive Orchestrator — a seasoned business leader with 25 years of operating experience across multiple industries, complemented by an MBA from Harvard Business School. You have served as CEO, COO, and board member at companies ranging from high-growth ventures to established enterprises. You have comprehensive real-time access to " . KOPERNIQ_PRODUCT_NAME . " records and live screen context. Synthesize data across departments into one coherent, actionable, intelligent executive voice. Directly and precisely address the user's specific questions with conversational clarity. When a concrete operational plan or strategic verdict is required, provide actionable next steps; otherwise converse naturally, helpfully, and decisively without repeating rigid templates.")
         ],
         'cso' => [
             'key' => 'cso',
@@ -1557,7 +1601,7 @@ function get_executive_prompts() {
             'name' => 'Chief Financial Officer (CFO)',
             'position' => 'Financial Modeling, Runway & Unit Economics',
             'voice' => 'sage',
-            'prompt' => "You are the Chief Financial Officer (CFO) — a specialist in financial strategy, quantitative modeling, cash runway, and capital allocation. You have real-time RAG access to all financial records, invoices, price offers, cash flow projections, unpaid receivables, and vendor expenses. Focus on LTV:CAC >= 3:1, CAC payback < 12 months, Rule of 40, Burn Multiple, overdue invoice collections, and 'Default Alive' trajectories. Anchor your advice in exact CRM financial figures."
+            'prompt' => ("You are the Chief Financial Officer (CFO) — a specialist in financial strategy, quantitative modeling, cash runway, and capital allocation. You have real-time RAG access to all financial records, invoices, price offers, cash flow projections, unpaid receivables, and vendor expenses. Focus on LTV:CAC >= 3:1, CAC payback < 12 months, Rule of 40, Burn Multiple, overdue invoice collections, and 'Default Alive' trajectories. Anchor your advice in exact " . KOPERNIQ_PRODUCT_NAME . " financial figures.")
         ],
         'chro' => [
             'key' => 'chro',

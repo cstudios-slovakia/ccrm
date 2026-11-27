@@ -2,7 +2,7 @@
 // especially "a project with no value sorts last, whichever way you sort" —
 // are the same in the table, the cards, and the tests.
 
-export type BuiltinProjectSortKey = "default" | "manual" | "name" | "client" | "type" | "managers" | "rating" | "invoiceDate" | "deadline" | "progress" | "status" | "value" | "invoicable" | "stillToBePaid" | "division";
+export type BuiltinProjectSortKey = "default" | "manual" | "name" | "client" | "type" | "managers" | "employees" | "rating" | "invoiceDate" | "deadline" | "progress" | "status" | "value" | "invoicable" | "stillToBePaid" | "costs" | "division";
 
 /**
  * A column to order by: one of the built-in ones, or `attr:<attributeId>` for a
@@ -54,6 +54,7 @@ export const PROJECT_SORT_KEYS: readonly BuiltinProjectSortKey[] = [
   "client",
   "type",
   "managers",
+  "employees",
   "rating",
   "invoiceDate",
   "deadline",
@@ -62,6 +63,7 @@ export const PROJECT_SORT_KEYS: readonly BuiltinProjectSortKey[] = [
   "value",
   "invoicable",
   "stillToBePaid",
+  "costs",
   "division",
 ];
 
@@ -130,6 +132,7 @@ export interface ProjectSortValues {
   client: string;
   type: string;
   managers: string;
+  employees: string;
   /**
    * 1-5 stars, or null when nobody has rated the project. Unrated is an absent
    * value rather than a zero, so an unrated project sorts to the bottom in both
@@ -151,6 +154,8 @@ export interface ProjectSortValues {
   invoicable: number | null;
   /** What is still to be paid to us on the project, or null when it has no value. */
   stillToBePaid: number | null;
+  /** The project's total expense costs, or null when it has none. */
+  costs: number | null;
   /** The division, "" when unassigned. */
   division: string;
   /** Position of the status in the workflow order. */

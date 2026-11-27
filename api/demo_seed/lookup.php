@@ -88,9 +88,21 @@ if (!function_exists('demo_setting_list')) {
         ];
     }
 
-    /** Divisions in order ('Cstudios', 'Cstudios Budapest' on a stock install). */
+    /**
+     * Divisions in order: the DIVISIONS setting when it has any (it is what the app
+     * offers in its pickers, so a project must name one of those), otherwise the
+     * edition's two from the company pack. There is no hardcoded fallback: a stock
+     * install has none (B13).
+     */
     function demo_divisions(PDO $pdo): array {
-        return demo_setting_list($pdo, 'DIVISIONS') ?: ['Cstudios', 'Cstudios Budapest'];
+        $stored = demo_setting_list($pdo, 'DIVISIONS');
+        if ($stored) {
+            return $stored;
+        }
+        return array_map(
+            static fn(array $d): string => (string)$d['name'],
+            demo_company_pack(demo_ctx($pdo)['lang'])['divisions']
+        );
     }
 
     /** True if $table exists in the current database. */

@@ -229,6 +229,7 @@ export const QuickAddClientProvider: React.FC<ProviderProps> = ({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
+                data-dropdown-panel=""
                 className="fixed inset-0 z-[100010] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
                 onMouseDown={e => {
                   if (e.target === e.currentTarget) close();

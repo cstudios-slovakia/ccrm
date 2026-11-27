@@ -16,6 +16,7 @@
  *
  * It never modifies anything: no row can be edited or deleted through the API.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 
 header('Cache-Control: no-store');
@@ -34,7 +35,7 @@ $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     header('Content-Type: application/json');
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed.')]);
     exit;
 }
 require_once $configFile;

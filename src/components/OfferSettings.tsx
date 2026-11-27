@@ -1,19 +1,23 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowLeft, FileText, Lock, Plus, Save, Share2, Sparkles, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, FileText, Lock, Pencil, Plus, Save, Share2, Sparkles, Tag, Trash2 } from "lucide-react";
 import type { AiCustomTemplate, CompanyBillingSettings, ExternalInvoicingConfig, InvoiceOffer } from "../types";
 import type { OfferStatusDef } from "../utils/offerStatuses";
 import { OfferStatusSettings } from "./OfferStatusSettings";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
-import { InlineRenameName } from "./ui/InlineRenameName";
+import { InlineRenameName, type InlineRenameHandle } from "./ui/InlineRenameName";
 import { AiKeyBanner } from "./ui/AiKeyBanner";
 import { Tabs, type TabItem } from "./layout/Tabs";
 import { TemplateRenameDialog } from "./priceOffers/TemplateRenameDialog";
 import { translateAiApiError } from "../utils/aiConfig";
+import { normalizeOfferDocument } from "../utils/offerDocument";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { pickOfferDefaults, withOfferDefaults } from "../utils/offerDefaults";
 import type { OfferDefaults } from "../utils/offerDefaults";
+import { entityAccentStyle } from "../utils/entityAccent";
+
+type SettingsTab = "defaults" | "accounting" | "ai" | "statuses";
 
 interface OfferSettingsProps {
   companyBillingSettings: CompanyBillingSettings | null | undefined;
@@ -34,10 +38,14 @@ interface OfferSettingsProps {
   /** False renders every field read-only; saving, uploading and deleting are hidden. */
   canEdit: boolean;
   onBack: () => void;
+  /** Opens the reconstruction review. Nothing is stored until that screen saves. */
+  onReview?: (template: AiCustomTemplate) => void;
   /** Opens Settings → Invoicing, where the company identity lives. */
   onOpenCompanySettings?: () => void;
   /** Integrations config, to tell whether the OpenAI key behind the template generator is set. */
   integrationsConfig?: unknown;
+  /** Which tab to open on. The review screen unmounts settings, so coming back can resume AI templates. */
+  initialTab?: SettingsTab;
 }
 
 /** The `success: false` body of /api/generate_pdf_template.php (vocabulary of utils/aiConfig.ts, plus pdf_* codes). */
@@ -46,8 +54,6 @@ interface GenerationFailure {
   message?: string;
   providerMessage?: string;
 }
-
-type SettingsTab = "defaults" | "accounting" | "ai" | "statuses";
 
 /** The largest sample PDF the generator takes; the server refuses anything bigger. */
 const MAX_SAMPLE_PDF_BYTES = 10 * 1024 * 1024;
@@ -70,8 +76,75 @@ const emptyIntegrations = (loaded?: ExternalInvoicingConfig | null): ExternalInv
 
 type TestStatus = { success: boolean; message: string } | null;
 
-const inputClass = "w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 disabled:bg-slate-50 disabled:text-slate-500";
-const labelClass = "type-overline text-slate-600 block mb-1";
+const inputClass = "w-full p-2.5 bg-white border border-gray-300 rounded-md text-ui focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid disabled:bg-gray-50 disabled:text-gray-500";
+const labelClass = "type-overline text-gray-600 block mb-1";
+
+/** Same icon button as the row actions on offers, leads and projects. */
+const templateActionClass = "p-2 rounded-md text-gray-400 transition-all cursor-pointer";
+
+const AiTemplateCardHeader: React.FC<{
+  template: AiCustomTemplate;
+  canEdit: boolean;
+  lang: Language;
+  renameTitle: string;
+  description: string;
+  onRename: (next: string) => void;
+  onReview?: () => void;
+  onDelete?: () => void;
+}> = ({ template, canEdit, lang, renameTitle, description, onRename, onReview, onDelete }) => {
+  const renameRef = useRef<InlineRenameHandle>(null);
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <div className="font-bold text-ui text-gray-900 truncate">
+          <InlineRenameName
+            value={template.name}
+            canEdit={canEdit}
+            onCommit={onRename}
+            renameTitle={renameTitle}
+            hideButton
+            handleRef={renameRef}
+          >
+            <span data-testid="ai-template-name">{template.name}</span>
+          </InlineRenameName>
+        </div>
+        <div className="text-caption text-gray-500">{description}</div>
+      </div>
+      {canEdit && onDelete && (
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => renameRef.current?.startEdit()}
+            className={`${templateActionClass} hover:text-entity-text hover:bg-entity-subtle`}
+            title={renameTitle}
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+          {onReview && (
+            <button
+              type="button"
+              data-testid="ai-template-review"
+              onClick={onReview}
+              className={`${templateActionClass} hover:text-entity-text hover:bg-entity-subtle`}
+              title={lang === "sk" ? "Skontrolovať šablónu" : lang === "hu" ? "Sablon áttekintése" : "Review template"}
+            >
+              <Sparkles className="h-4 w-4" />
+            </button>
+          )}
+          <HoldToConfirmButton
+            tone="danger"
+            lang={lang}
+            what={template.name}
+            onConfirm={onDelete}
+            className={`${templateActionClass} hover:text-rose-600 hover:bg-rose-50`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </HoldToConfirmButton>
+        </div>
+      )}
+    </div>
+  );
+};
 
 /**
  * Settings of the Price offers module: the texts a new offer starts with, the
@@ -95,8 +168,10 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
   lang,
   canEdit,
   onBack,
+  onReview,
   onOpenCompanySettings,
-  integrationsConfig
+  integrationsConfig,
+  initialTab = "defaults"
 }) => {
   const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
   const toast = (message: string, variant?: "error" | "warning") => {
@@ -117,7 +192,7 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
   const [idkStatus, setIdkStatus] = useState<TestStatus>(null);
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
   const [pdfUploadStatus, setPdfUploadStatus] = useState<string | null>(null);
-  const [tab, setTab] = useState<SettingsTab>("defaults");
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
   /** The template just generated, while the rename dialog is open. */
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -239,11 +314,8 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
       });
       const genData = await readJson(genRes, "/api/generate_pdf_template.php");
       if (genRes.ok && genData.success && genData.template) {
-        const generated = genData.template as AiCustomTemplate;
-        setAiCustomTemplates?.(prev => [generated, ...prev]);
         setPdfUploadStatus(null);
-        toast(t("AI Custom Template successfully generated and saved!", "Vlastná AI šablóna bola úspešne vygenerovaná a uložená!", "Egyedi AI sablon sikeresen létrehozva!"));
-        setRenaming({ id: generated.id, name: generated.name });
+        onReview?.(genData.template as AiCustomTemplate);
       } else {
         // Nothing is created on failure: a template that ignores the PDF is worse than an error.
         throw new Error(describeGenerationFailure(genData, genRes.status));
@@ -286,7 +358,7 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
   return (
     <div className="space-y-6 animate-fade-in">
       {!canEdit && (
-        <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-ui text-amber-900">
+        <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-lg text-ui text-amber-900">
           <Lock className="h-4 w-4 shrink-0 text-amber-600" />
           <span className="font-semibold">{t("Read-only access", "Iba na čítanie", "Csak olvasható")}</span>
           <span className="text-amber-800/80">
@@ -299,22 +371,22 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
         </div>
       )}
 
-      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm">
+      <div className="bg-white p-5 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid shadow-xs">
         {/* Header */}
         <div className="flex flex-col ws-sm:flex-row justify-between items-start ws-sm:items-center gap-3">
           <div>
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1.5 text-ui font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer mb-2"
+              className="flex items-center gap-1.5 text-ui font-semibold text-entity-text hover:opacity-80 cursor-pointer mb-2"
             >
               <ArrowLeft className="h-4 w-4" />
               {t("Back to price offers", "Späť na cenové ponuky", "Vissza az árajánlatokhoz")}
             </button>
-            <h3 className="text-body font-heading font-bold text-slate-900">
+            <h3 className="text-body font-heading font-semibold text-gray-900">
               {t("Price offer settings", "Nastavenia cenových ponúk", "Árajánlat-beállítások")}
             </h3>
-            <p className="text-ui text-slate-500 font-medium mt-0.5">
+            <p className="text-ui text-gray-500 font-medium mt-0.5">
               {t(
                 "Default texts for new offers, accounting-service connectors, AI PDF templates and statuses.",
                 "Predvolené texty nových ponúk, prepojenia na účtovné služby, AI šablóny PDF a stavy.",
@@ -325,7 +397,7 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
               <button
                 type="button"
                 onClick={onOpenCompanySettings}
-                className="text-caption font-semibold text-slate-500 hover:text-indigo-600 underline underline-offset-2 mt-1 cursor-pointer"
+                className="text-caption font-semibold text-gray-500 hover:text-entity-text underline underline-offset-2 mt-1 cursor-pointer"
               >
                 {t(
                   "Company identity, bank account and VAT rates are in Settings → Invoicing.",
@@ -340,7 +412,7 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
             <button
               type="button"
               onClick={handleSave}
-              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold shadow-md cursor-pointer transition-all active:scale-[0.98]"
+              className="flex items-center gap-2 px-5 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-semibold shadow-xs cursor-pointer transition-all"
             >
               <Save className="h-4 w-4" />
               {t("Save offer settings", "Uložiť nastavenia ponúk", "Beállítások mentése")}
@@ -352,16 +424,16 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
       <Tabs items={tabItems} value={tab} onChange={setTab} testId="offer-settings-tabs" />
 
       {tab !== "statuses" && (
-        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm">
+        <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-xs">
           <fieldset disabled={!canEdit} className="space-y-8 min-w-0">
             {tab === "defaults" && (
               <>
           {/* SECTION 1: Default offer texts */}
           <div className="space-y-4">
-            <h4 className="text-ui font-bold text-slate-800">
+            <h4 className="text-ui font-bold text-gray-800">
               {t("Default offer texts", "Predvolené texty ponuky", "Alapértelmezett ajánlatszövegek")}
             </h4>
-            <p className="text-ui text-slate-500 -mt-2">
+            <p className="text-ui text-gray-500 -mt-2">
               {t(
                 "Every new offer starts with these. Leaving one blank simply omits that block from the printed offer.",
                 "Každá nová ponuka začína s týmito textami. Prázdne pole znamená, že sa blok na ponuke nevytlačí.",
@@ -438,20 +510,20 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                       defaultUspCards: defaults.defaultUspCards.map((c, i) => (i === idx ? { ...c, ...patch } : c))
                     });
                   return (
-                    <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                    <div key={idx} className="p-3 bg-gray-50 border border-gray-200 rounded-lg space-y-1.5">
                       <input
                         type="text"
                         value={card.title}
                         onChange={e => updateCard({ title: e.target.value })}
                         placeholder={t(`Benefit ${idx + 1}`, `Výhoda ${idx + 1}`, `${idx + 1}. előny`)}
-                        className="font-bold text-ui w-full bg-transparent border-b border-slate-200 focus:border-indigo-500 focus:outline-none transition-colors py-0.5"
+                        className="font-semibold text-ui w-full bg-transparent border-b border-gray-200 focus:border-entity-solid focus:outline-none transition-colors py-0.5"
                       />
                       <input
                         type="text"
                         value={card.subtitle}
                         onChange={e => updateCard({ subtitle: e.target.value })}
                         placeholder={t("Short description", "Krátky popis", "Rövid leírás")}
-                        className="text-caption text-slate-500 w-full bg-transparent focus:outline-none py-0.5"
+                        className="text-caption text-gray-500 w-full bg-transparent focus:outline-none py-0.5"
                       />
                     </div>
                   );
@@ -465,11 +537,11 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
               <>
           {/* SECTION 2: External accounting connectors */}
           <div className="space-y-4">
-            <h4 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-              <Share2 className="h-4 w-4 text-indigo-600" />
+            <h4 className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+              <Share2 className="h-4 w-4 text-entity-text" />
               {t("External accounting APIs (SuperFaktúra & iDoklad)", "Externé účtovníctvo (SuperFaktúra a iDoklad)", "Külső számlázó integrációk")}
             </h4>
-            <p className="text-ui text-slate-500 -mt-2">
+            <p className="text-ui text-gray-500 -mt-2">
               {t(
                 "Connect an accounting service to issue price offers through it.",
                 "Prepojte účtovnú službu, cez ktorú sa budú cenové ponuky vystavovať.",
@@ -479,9 +551,9 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
 
             <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
               {/* SuperFaktura */}
-              <div className="p-5 bg-slate-50/80 border border-slate-200/90 rounded-2xl space-y-3.5">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                  <div className="font-bold text-ui text-slate-900 flex items-center gap-2">
+              <div className="p-5 bg-gray-50 border border-gray-200 rounded-lg space-y-3.5">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                  <div className="font-semibold text-ui text-gray-900 flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-blue-500"></span>
                     SuperFaktúra API
                   </div>
@@ -490,9 +562,9 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                       type="checkbox"
                       checked={integrations.superfaktura.enabled}
                       onChange={e => patchSf({ enabled: e.target.checked })}
-                      className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                      className="rounded accent-entity-solid h-4 w-4"
                     />
-                    <span className="text-ui font-bold text-slate-700">{t("Active", "Aktívne", "Aktív")}</span>
+                    <span className="text-ui font-semibold text-gray-700">{t("Active", "Aktívne", "Aktív")}</span>
                   </label>
                 </div>
 
@@ -529,12 +601,12 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                       />
                     </div>
                     <div className="flex items-center pt-5">
-                      <label className="flex items-center gap-1.5 cursor-pointer text-ui font-medium text-slate-600">
+                      <label className="flex items-center gap-1.5 cursor-pointer text-ui font-medium text-gray-600">
                         <input
                           type="checkbox"
                           checked={integrations.superfaktura.sandbox}
                           onChange={e => patchSf({ sandbox: e.target.checked })}
-                          className="rounded text-indigo-600"
+                          className="rounded accent-entity-solid"
                         />
                         Sandbox test
                       </label>
@@ -555,12 +627,12 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                         setTestingSf,
                         setSfStatus
                       )}
-                      className="px-3 py-1.5 bg-white border border-slate-300 hover:border-indigo-500 rounded-xl text-ui font-bold text-slate-700 shadow-sm cursor-pointer transition-all disabled:opacity-40"
+                      className="px-3 py-1.5 bg-white border border-gray-300 hover:border-entity-border rounded-md text-ui font-semibold text-gray-700 shadow-2xs cursor-pointer transition-all disabled:opacity-40"
                     >
                       {testingSf ? t("Testing...", "Testujem...", "Tesztelés...") : t("Test connection", "Otestovať pripojenie", "Kapcsolat tesztelése")}
                     </button>
                     {sfStatus && (
-                      <span className={cn("text-ui font-bold", sfStatus.success ? "text-emerald-600" : "text-rose-600")}>
+                      <span className={cn("text-ui font-semibold", sfStatus.success ? "text-emerald-600" : "text-rose-600")}>
                         {sfStatus.message}
                       </span>
                     )}
@@ -569,9 +641,9 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
               </div>
 
               {/* iDoklad */}
-              <div className="p-5 bg-slate-50/80 border border-slate-200/90 rounded-2xl space-y-3.5">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                  <div className="font-bold text-ui text-slate-900 flex items-center gap-2">
+              <div className="p-5 bg-gray-50 border border-gray-200 rounded-lg space-y-3.5">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                  <div className="font-semibold text-ui text-gray-900 flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
                     iDoklad API
                   </div>
@@ -580,9 +652,9 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                       type="checkbox"
                       checked={integrations.idoklad.enabled}
                       onChange={e => patchIdk({ enabled: e.target.checked })}
-                      className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                      className="rounded accent-entity-solid h-4 w-4"
                     />
-                    <span className="text-ui font-bold text-slate-700">{t("Active", "Aktívne", "Aktív")}</span>
+                    <span className="text-ui font-semibold text-gray-700">{t("Active", "Aktívne", "Aktív")}</span>
                   </label>
                 </div>
 
@@ -608,12 +680,12 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                     />
                   </div>
                   <div className="flex items-center">
-                    <label className="flex items-center gap-1.5 cursor-pointer text-ui font-medium text-slate-600">
+                    <label className="flex items-center gap-1.5 cursor-pointer text-ui font-medium text-gray-600">
                       <input
                         type="checkbox"
                         checked={integrations.idoklad.sandbox}
                         onChange={e => patchIdk({ sandbox: e.target.checked })}
-                        className="rounded text-indigo-600"
+                        className="rounded accent-entity-solid"
                       />
                       Sandbox test
                     </label>
@@ -632,12 +704,12 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                         setTestingIdk,
                         setIdkStatus
                       )}
-                      className="px-3 py-1.5 bg-white border border-slate-300 hover:border-indigo-500 rounded-xl text-ui font-bold text-slate-700 shadow-sm cursor-pointer transition-all disabled:opacity-40"
+                      className="px-3 py-1.5 bg-white border border-gray-300 hover:border-entity-border rounded-md text-ui font-semibold text-gray-700 shadow-2xs cursor-pointer transition-all disabled:opacity-40"
                     >
                       {testingIdk ? t("Testing...", "Testujem...", "Tesztelés...") : t("Test connection", "Otestovať pripojenie", "Kapcsolat tesztelése")}
                     </button>
                     {idkStatus && (
-                      <span className={cn("text-ui font-bold", idkStatus.success ? "text-emerald-600" : "text-rose-600")}>
+                      <span className={cn("text-ui font-semibold", idkStatus.success ? "text-emerald-600" : "text-rose-600")}>
                         {idkStatus.message}
                       </span>
                     )}
@@ -651,24 +723,24 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
             {tab === "ai" && (
               <>
           {/* SECTION 3: AI custom PDF templates */}
-          <div className="space-y-4">
+          <div style={entityAccentStyle("rag_ai")} className="space-y-4">
             <div className="flex flex-col ws-sm:flex-row justify-between items-start ws-sm:items-center gap-2">
               <div>
-                <h4 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-purple-600" />
+                <h4 className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-entity-text" />
                   {t("AI custom PDF template generator", "AI Generátor vlastných PDF šablón", "AI egyedi PDF sablon generátor")}
                 </h4>
-                <p className="text-ui text-slate-500 mt-0.5">
+                <p className="text-ui text-gray-500 mt-0.5">
                   {t(
-                    "Upload a sample offer PDF (up to 10 MB). AI reads its colors, header, table, cards and wording from the pages and builds a template that looks like it — all mandatory fields guaranteed.",
-                    "Nahrajte ukážkové PDF cenovej ponuky (do 10 MB). AI z jeho strán prečíta farby, hlavičku, tabuľku, karty a formulácie a vytvorí šablónu, ktorá mu je podobná — s garanciou všetkých povinných údajov.",
-                    "Töltsön fel egy minta árajánlat-PDF-et (legfeljebb 10 MB). Az AI az oldalakról kiolvassa a színeket, a fejlécet, a táblázatot, a kártyákat és a szövegezést, és hasonló kinézetű sablont készít — minden kötelező adat garantálva."
+                    "Upload a sample offer PDF (up to 10 MB). A plain one-column quote comes out very close; a dense designed page needs a few corrections on the next screen.",
+                    "Nahrajte ukážkové PDF cenovej ponuky (do 10 MB). Jednoduchá jednosĺpcová ponuka vyjde veľmi blízko; hustá grafická stránka potrebuje na ďalšej obrazovke zopár opráv.",
+                    "Töltsön fel egy minta árajánlat-PDF-et (legfeljebb 10 MB). Egy egyszerű egyoszlopos árajánlat nagyon közel kerül; egy sűrű, tervezett oldal a következő képernyőn néhány javítást kér."
                   )}
                 </p>
               </div>
 
               {canEdit && (
-                <label className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-ui font-bold shadow-md cursor-pointer transition-all flex items-center gap-2 shrink-0 focus-within:ring-2 focus-within:ring-purple-400 focus-within:ring-offset-2">
+                <label className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-semibold shadow-xs cursor-pointer transition-all flex items-center gap-2 shrink-0 focus-within:ring-2 focus-within:ring-entity-ring focus-within:ring-offset-2">
                   <Plus className="h-4 w-4" />
                   {isUploadingPdf
                     ? t("Processing with AI...", "Analyzujem pomocou AI...", "Feldolgozás...")
@@ -697,61 +769,48 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
             />
 
             {pdfUploadStatus && (
-              <div className="p-3 bg-purple-50 border border-purple-200 text-purple-800 rounded-xl text-ui font-semibold flex items-center gap-2 animate-pulse">
-                <Sparkles className="h-4 w-4 text-purple-600" />
+              <div className="p-3 bg-entity-subtle border border-entity-border text-entity-text rounded-md text-ui font-semibold flex items-center gap-2 animate-pulse">
+                <Sparkles className="h-4 w-4 text-entity-text" />
                 {pdfUploadStatus}
               </div>
             )}
 
             {aiCustomTemplates.length === 0 ? (
-              <p className="text-ui text-slate-400 italic">
+              <p className="text-ui text-gray-400 italic">
                 {t("No AI template yet.", "Zatiaľ žiadna AI šablóna.", "Még nincs AI sablon.")}
               </p>
             ) : (
               <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-md:grid-cols-3 gap-4 pt-2">
                 {aiCustomTemplates.map(template => (
-                  <div key={template.id} className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="font-bold text-ui text-slate-900 truncate">
-                          <InlineRenameName
-                            value={template.name}
-                            canEdit={canEdit && Boolean(setAiCustomTemplates)}
-                            onCommit={next => renameTemplate(template.id, next)}
-                            renameTitle={t("Rename template", "Premenovať šablónu", "Sablon átnevezése")}
-                          >
-                            <span data-testid="ai-template-name">{template.name}</span>
-                          </InlineRenameName>
-                        </div>
-                        <div className="text-caption text-slate-500">{template.description || t("AI-generated template", "AI vygenerovaná šablóna", "AI által generált sablon")}</div>
-                      </div>
-                      {canEdit && setAiCustomTemplates && (
-                        <HoldToConfirmButton
-                          tone="danger"
-                          lang={lang}
-                          what={template.name}
-                          onConfirm={() =>
-                            deleteRecordsWithUndo({
-                              collection: "aiCustomTemplates",
-                              allRecords: aiCustomTemplates,
-                              targets: [template],
-                              setRecords: setAiCustomTemplates,
-                              lang,
-                              entity: "template",
-                              titleOf: x => x.name,
-                            })
-                          }
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded-md"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </HoldToConfirmButton>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
-                      <span className="type-overline text-slate-400">{t("Palette:", "Paleta:", "Paletta:")}</span>
+                  <div key={template.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
+                    <AiTemplateCardHeader
+                      template={template}
+                      canEdit={canEdit && Boolean(setAiCustomTemplates)}
+                      lang={lang}
+                      renameTitle={t("Rename template", "Premenovať šablónu", "Sablon átnevezése")}
+                      description={template.description || t("AI-generated template", "AI vygenerovaná šablóna", "AI által generált sablon")}
+                      onRename={next => renameTemplate(template.id, next)}
+                      onReview={normalizeOfferDocument(template.document) ? () => onReview?.(template) : undefined}
+                      onDelete={
+                        setAiCustomTemplates
+                          ? () =>
+                              deleteRecordsWithUndo({
+                                collection: "aiCustomTemplates",
+                                allRecords: aiCustomTemplates,
+                                targets: [template],
+                                setRecords: setAiCustomTemplates,
+                                lang,
+                                entity: "template",
+                                titleOf: x => x.name,
+                              })
+                          : undefined
+                      }
+                    />
+                    <div className="flex items-center gap-2 pt-1 border-t border-gray-200/70">
+                      <span className="type-overline text-gray-400">{t("Palette:", "Paleta:", "Paletta:")}</span>
                       <div className="flex items-center gap-1">
                         {[template.colors.primary, template.colors.accent, template.colors.secondary].map((color, i) => (
-                          <span key={i} className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: color }}></span>
+                          <span key={i} className="h-3 w-3 rounded-full border border-gray-300" style={{ backgroundColor: color }}></span>
                         ))}
                       </div>
                     </div>

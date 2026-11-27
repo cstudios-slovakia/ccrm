@@ -82,19 +82,19 @@ export const AddWidgetDrawer: React.FC<{
   return (
     <>
       <div
-        className="fixed inset-0 bg-slate-900/30 backdrop-blur-[1px] z-[9998] animate-in fade-in duration-200"
+        className="fixed inset-0 bg-gray-900/30 -[1px] z-[9998] animate-in fade-in duration-200"
         onClick={onClose}
       />
-      <aside className="fixed right-0 top-0 h-screen w-full max-w-115 bg-white border-l border-slate-200 shadow-2xl z-[9999] flex flex-col animate-in slide-in-from-right duration-300">
-        <div className="flex items-center gap-3.5 px-6 py-5.5 border-b border-slate-100 shrink-0">
-          <span className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
-            <Plus className="h-5 w-5 text-indigo-600" strokeWidth={2.25} />
+      <aside className="fixed right-0 top-0 h-screen w-full max-w-115 bg-white border-l border-gray-200 shadow-xl z-[9999] flex flex-col animate-in slide-in-from-right duration-300">
+        <div className="flex items-center gap-3.5 px-6 py-5.5 border-b border-gray-100 shrink-0">
+          <span className="w-10 h-10 rounded-md bg-indigo-50 flex items-center justify-center shrink-0">
+            <Plus className="h-5 w-5 text-entity-text" strokeWidth={2.25} />
           </span>
           <div className="flex flex-col gap-0.75 flex-1 min-w-0">
-            <span className="text-title font-bold text-slate-900">
+            <span className="text-title font-bold text-gray-900">
               {t("Add widget", "Pridať modul", "Modul hozzáadása")}
             </span>
-            <span className="type-overline text-slate-500">
+            <span className="type-overline text-gray-500">
               {t("Library or AI", "Knižnica alebo AI", "Könyvtár vagy AI")}
             </span>
           </div>
@@ -102,14 +102,14 @@ export const AddWidgetDrawer: React.FC<{
             type="button"
             onClick={onClose}
             aria-label={t("Close", "Zavrieť", "Bezárás")}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="px-6 pt-4.5 flex flex-col gap-3 shrink-0">
-          <div role="tablist" className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100">
+          <div role="tablist" className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-gray-100">
             {(
               [
                 { id: "library" as const, label: t("Library", "Knižnica", "Könyvtár"), icon: LayoutGrid },
@@ -123,8 +123,8 @@ export const AddWidgetDrawer: React.FC<{
                 aria-selected={tab === entry.id}
                 onClick={() => setTab(entry.id)}
                 className={cn(
-                  "flex items-center justify-center gap-2 h-9 rounded-xl type-overline transition-all cursor-pointer",
-                  tab === entry.id ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  "flex items-center justify-center gap-2 h-9 rounded-md type-overline transition-all cursor-pointer",
+                  tab === entry.id ? "bg-white text-entity-text shadow-sm" : "text-gray-500 hover:text-gray-700"
                 )}
               >
                 <entry.icon className="h-3.5 w-3.5" strokeWidth={2.25} />
@@ -134,15 +134,15 @@ export const AddWidgetDrawer: React.FC<{
           </div>
 
           {tab === "library" && (
-            <label className="flex items-center gap-2.5 h-10 px-3.5 rounded-xl border border-slate-200 bg-white">
-              <Search className="h-4 w-4 text-slate-400 shrink-0" />
+            <label className="flex items-center gap-2.5 h-10 px-3.5 rounded-md border border-gray-200 bg-white">
+              <Search className="h-4 w-4 text-gray-400 shrink-0" />
               <input
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t("Search widgets…", "Hľadať modul…", "Modul keresése…")}
                 aria-label={t("Search widgets", "Hľadať modul", "Modul keresése")}
-                className="w-full border-0 outline-none bg-transparent text-ui text-slate-700"
+                className="w-full border-0 outline-none bg-transparent text-ui text-gray-700"
               />
             </label>
           )}
@@ -158,19 +158,19 @@ export const AddWidgetDrawer: React.FC<{
               return (
                 <section
                   key={sectionId}
-                  className="shrink-0 flex flex-col border border-slate-100 rounded-2xl overflow-hidden"
+                  className="shrink-0 flex flex-col border border-gray-100 rounded-lg overflow-hidden"
                 >
-                  <div className="flex items-center gap-2.5 h-12 px-3 bg-slate-50">
+                  <div className="flex items-center gap-2.5 h-12 px-3 bg-gray-50">
                     <span
                       className="w-6.5 h-6.5 rounded-lg flex items-center justify-center shrink-0"
                       style={{ backgroundColor: section.accent }}
                     >
                       <SectionIcon className="h-3.5 w-3.5 text-white" strokeWidth={2.25} />
                     </span>
-                    <span className="flex-1 type-overline text-slate-700">
+                    <span className="flex-1 type-overline text-gray-700">
                       {t(section.title.en, section.title.sk, section.title.hu)}
                     </span>
-                    <span className="text-caption font-bold text-slate-400">{presets.length}</span>
+                    <span className="text-caption font-bold text-gray-400">{presets.length}</span>
                   </div>
 
                   {presets.map((preset) => {
@@ -179,31 +179,31 @@ export const AddWidgetDrawer: React.FC<{
                     return (
                       <div
                         key={preset.id}
-                        className="flex items-center gap-3 px-3 py-2.5 border-t border-slate-100"
+                        className="flex items-center gap-3 px-3 py-2.5 border-t border-gray-100"
                       >
-                        <span className="w-8.5 h-8.5 rounded-[10px] bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
-                          <PresetIcon className="h-4 w-4 text-slate-500" strokeWidth={2.25} />
+                        <span className="w-8.5 h-8.5 rounded-[10px] bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
+                          <PresetIcon className="h-4 w-4 text-gray-500" strokeWidth={2.25} />
                         </span>
                         <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                           <span className="flex items-center gap-2 min-w-0">
                             <span
                               className={cn(
                                 "text-ui font-bold truncate",
-                                added ? "text-slate-500" : "text-slate-800"
+                                added ? "text-gray-500" : "text-gray-800"
                               )}
                             >
                               {localize(preset.title)}
                             </span>
-                            <span className="type-overline text-slate-400 shrink-0">
+                            <span className="type-overline text-gray-400 shrink-0">
                               {kindLabel(preset.kind, t)}
                             </span>
                           </span>
-                          <span className="text-ui font-medium text-slate-500 truncate">
+                          <span className="text-ui font-medium text-gray-500 truncate">
                             {localize(preset.description)}
                           </span>
                         </div>
                         {added ? (
-                          <span className="flex items-center gap-1.5 h-7.5 px-2.5 rounded-lg bg-slate-100 text-slate-500 text-caption font-bold shrink-0">
+                          <span className="flex items-center gap-1.5 h-7.5 px-2.5 rounded-lg bg-gray-100 text-gray-500 text-caption font-bold shrink-0">
                             <Check className="h-3 w-3" strokeWidth={3} />
                             {t("Added", "Pridané", "Hozzáadva")}
                           </span>
@@ -212,7 +212,7 @@ export const AddWidgetDrawer: React.FC<{
                             type="button"
                             onClick={() => onAdd(preset)}
                             aria-label={`${t("Add", "Pridať", "Hozzáadás")} ${localize(preset.title)}`}
-                            className="flex items-center gap-1.5 h-7.5 px-2.5 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-indigo-100 transition-colors type-overline cursor-pointer shrink-0"
+                            className="flex items-center gap-1.5 h-7.5 px-2.5 rounded-lg bg-indigo-50 border border-entity-border text-entity-text hover:bg-indigo-100 transition-colors type-overline cursor-pointer shrink-0"
                           >
                             <Plus className="h-3 w-3" strokeWidth={3} />
                             {t("Add", "Pridať", "Hozzáadať")}
@@ -232,7 +232,7 @@ export const AddWidgetDrawer: React.FC<{
               }}
               className="space-y-4"
             >
-              <div className="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-100 text-caption text-slate-600 leading-relaxed flex gap-2">
+              <div className="p-3.5 rounded-lg bg-indigo-50/50 border border-entity-border text-caption text-gray-600 leading-relaxed flex gap-2">
                 <Info className="h-4 w-4 text-indigo-500 shrink-0 mt-0.5" />
                 <span>
                   {t(
@@ -252,7 +252,7 @@ export const AddWidgetDrawer: React.FC<{
                   "napr. stĺpcový graf uzavretých obchodov po mesiacoch",
                   "pl. oszlopdiagram a havi megnyert üzletekről"
                 )}
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-body bg-slate-50 transition-all font-semibold resize-none"
+                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity text-body bg-gray-50 transition-all font-semibold resize-none"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -263,7 +263,7 @@ export const AddWidgetDrawer: React.FC<{
 
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between w-full gap-3">
-                  <span className="type-overline text-slate-400 shrink-0">
+                  <span className="type-overline text-gray-400 shrink-0">
                     {t("Model Power", "Výkon modelu", "Modell Teljesítmény")}
                   </span>
                   <span className="type-overline text-purple-600 whitespace-nowrap">
@@ -276,12 +276,12 @@ export const AddWidgetDrawer: React.FC<{
                   max="2"
                   value={modelIndex}
                   onChange={(e) => onModelIndex(Number(e.target.value))}
-                  className="w-full accent-purple-600 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                  className="w-full accent-purple-600 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
               </div>
 
               {error && (
-                <div className="p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-ui font-semibold flex items-start gap-2">
+                <div className="p-3 rounded-lg bg-rose-50 border border-rose-100 text-rose-700 text-ui font-semibold flex items-start gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                   <span>{error}</span>
                 </div>
@@ -290,7 +290,7 @@ export const AddWidgetDrawer: React.FC<{
               <button
                 type="submit"
                 disabled={isGenerating || !prompt.trim()}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-2xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-entity-solid hover:bg-entity-solid-hover disabled:bg-gray-200 text-white disabled:text-gray-400 rounded-lg text-ui font-bold transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
               >
                 {isGenerating ? (
                   <>
@@ -308,11 +308,11 @@ export const AddWidgetDrawer: React.FC<{
           )}
         </div>
 
-        <div className="p-4 border-t border-slate-100 shrink-0">
+        <div className="p-4 border-t border-gray-100 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="w-full h-11 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white type-overline transition-colors cursor-pointer"
+            className="w-full h-11 rounded-lg bg-gray-900 hover:bg-gray-800 text-white type-overline transition-colors cursor-pointer"
           >
             {t("Done", "Hotovo", "Kész")}
           </button>

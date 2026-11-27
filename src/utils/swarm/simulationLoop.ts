@@ -4,6 +4,7 @@
  * feed recommendation, engagement updates, and round-by-round PHP checkpointing.
  */
 
+import { AI_MODEL_LUNA } from "../aiModels";
 import { callLlmJson } from './llmProxyClient';
 import { rankFeedForAgent } from './recsysEngine';
 import { saveRoundCheckpoint } from './checkpointClient';
@@ -75,7 +76,7 @@ export class SwarmSimulationEngine {
     this.contextDocuments = params.contextDocuments || [];
     this.totalRounds = params.totalRounds;
     this.diurnalCycle = params.diurnalCycle ?? true;
-    this.modelName = params.modelName || 'gpt-5.6-luna';
+    this.modelName = params.modelName || AI_MODEL_LUNA;
     this.language = params.language || 'sk';
     this.graph = params.initialGraph;
     this.agents = params.agents;

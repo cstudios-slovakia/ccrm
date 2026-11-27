@@ -1,0 +1,137 @@
+<?php
+/**
+ * Orders pack, Hungarian edition: five e-shop orders for care products (D6) - one cancelled, one awaiting payment.
+ * Data only (contract: demo_seed/index.php). Same keys, list lengths and numbers as the other two editions.
+ * An order lists items by ref and quantity; the module takes the unit price from the cast (priceEur, converted with
+ * demo_money()), computes line totals, VAT (the edition's country) and the order totals from the converted lines, and
+ * adds a shipping line (and a cash-on-delivery fee) from shipEur / codEur. 'payment' and 'shipping' index
+ * billing.paymentMethods / billing.shippingMethods of packs/hu/company.php. A registered customer is a 'client'
+ * ref; otherwise a 'guest' record with this edition's person.
+ */
+return [
+    'numbering' => 'RND',
+    'codEur' => 1.5,
+    'texts' => ['shipping' => 'Szállítás: %method%', 'cod' => 'Utánvét kezelési díj', 'unitService' => 'szolgáltatás'],
+    'orders' => [
+        [
+            'day' => -42,
+            'status' => 'delivered',
+            'user' => 'sales',
+            'client' => 'C2',
+            'payment' => 1,
+            'shipping' => 0,
+            'shipEur' => 3.9,
+            'paidDay' => -42,
+            'deliveryDay' => -39,
+            'pickup' => 'ZB-7421',
+            'tracking' => '1029384756',
+            'deliveryNote' => 'Kérjük, csengessenek; kézbesítés 16 óráig.',
+            'note' => 'Ápolókészlet az új konyhai munkalaphoz.',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 2.0],
+                ['item' => 'I6', 'qty' => 1.0],
+            ],
+        ],
+        [
+            'day' => -29,
+            'status' => 'delivered',
+            'user' => 'sales',
+            'guest' => [
+                'name' => 'Varga Zoltán',
+                'email' => 'varga.zoltan@mail.example',
+                'phone' => '+36 30 555 0301',
+                'street' => 'Kossuth Lajos utca 8.',
+                'city' => 'Győr',
+                'zip' => '9021',
+            ],
+            'payment' => 0,
+            'shipping' => 1,
+            'shipEur' => 4.9,
+            'paidDay' => -28,
+            'deliveryDay' => -26,
+            'pickup' => '',
+            'tracking' => '2938475610',
+            'deliveryNote' => '',
+            'note' => '',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 1.0],
+            ],
+        ],
+        [
+            'day' => -21,
+            'status' => 'cancelled',
+            'user' => 'pm',
+            'guest' => [
+                'name' => 'Fehér Gergely',
+                'email' => 'feher.gergely@mail.example',
+                'phone' => '+36 70 555 0303',
+                'street' => 'Rákóczi út 17.',
+                'city' => 'Komárom',
+                'zip' => '2900',
+            ],
+            'payment' => 2,
+            'shipping' => 2,
+            'shipEur' => 3.9,
+            'paidDay' => null,
+            'deliveryDay' => null,
+            'pickup' => '',
+            'tracking' => '',
+            'deliveryNote' => '',
+            'note' => 'Kiszállítás előtt törölve.',
+            'customerNote' => 'A vásárló meggondolta magát.',
+            'lines' => [
+                ['item' => 'I6', 'qty' => 2.0],
+            ],
+        ],
+        [
+            'day' => -14,
+            'status' => 'shipped',
+            'user' => 'sales',
+            'client' => 'C3',
+            'payment' => 0,
+            'shipping' => 1,
+            'shipEur' => 12.9,
+            'paidDay' => -13,
+            'deliveryDay' => -11,
+            'pickup' => '',
+            'tracking' => '3847561029',
+            'deliveryNote' => 'A stúdió bemutatótermének recepcióján kell átadni.',
+            'note' => 'Ápolókészlet-készlet a bemutatóterembe és a stúdió ügyfeleinek.',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 12.0, 'discount' => 10],
+                ['item' => 'I6', 'qty' => 6.0],
+                ['item' => 'I5', 'qty' => 8.0],
+            ],
+        ],
+        [
+            'day' => -3,
+            'status' => 'awaiting_payment',
+            'user' => 'sales',
+            'guest' => [
+                'name' => 'Pap Dóra',
+                'email' => 'pap.dora@mail.example',
+                'phone' => '+36 20 555 0302',
+                'street' => 'Fő tér 5.',
+                'city' => 'Tata',
+                'zip' => '2890',
+            ],
+            'payment' => 0,
+            'shipping' => 0,
+            'shipEur' => 3.9,
+            'paidDay' => null,
+            'deliveryDay' => null,
+            'pickup' => '',
+            'tracking' => '',
+            'deliveryNote' => '',
+            'note' => 'Utalásra vár.',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 2.0],
+                ['item' => 'I6', 'qty' => 1.0],
+            ],
+        ],
+    ],
+];

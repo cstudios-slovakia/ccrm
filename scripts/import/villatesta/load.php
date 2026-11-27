@@ -12,6 +12,12 @@
  *  --dry-run              writes nothing (every step runs inside a rolled-back transaction) and prints what it would do
  *  --reset                first removes everything an earlier run created (ids *-vt-*), for rehearsals
  *  --overwrite-passwords  also replace the password of a user that already exists (default: keep it)
+ *  --add-only             cutover into a CRM that people already work in: creates only what the CRM does not
+ *                         hold yet and never changes an existing row. New history entries (and mail) are added
+ *                         to existing records; their fields, owners, statuses and categories stay as they are.
+ *                         A new client or lead whose e-mail or phone matches a record made in the CRM itself
+ *                         (not by this importer) is passed over and listed. Config and products never run.
+ *  --skip-leads=<list>    with --add-only: old lead codes or ids that must not be created (tests), e.g. PL26518,819
  *
  * Target: the database config.php points at. NEVER aim a half-built run at production: use --dry-run first.
  * Plan: Claude outputs/villatesta-migration/PLAN.md (C0-C9, B).
@@ -24,7 +30,12 @@ $cli = vt_cli($argv);
 $dataDir = rtrim((string)($cli['data'] ?? (__DIR__ . '/out')), '/\\');
 $dry = !empty($cli['dry-run']);
 $only = isset($cli['only']) ? array_filter(array_map('trim', explode(',', (string)$cli['only']))) : [];
-$want = fn(string $name) => !$only || in_array($name, $only, true);
+$addOnly = !empty($cli['add-only']);
+// An add-only run never touches the configuration (an admin may have changed it) or the products (a one-time import).
+$want = fn(string $name) => (!$only || in_array($name, $only, true)) && !($addOnly && in_array($name, ['config', 'products'], true));
+if ($addOnly && !empty($cli['reset'])) { fwrite(STDERR, "--reset and --add-only exclude each other\n"); exit(1); }
+$skipLeads = [];
+foreach (array_filter(array_map('trim', explode(',', (string)($cli['skip-leads'] ?? '')))) as $s) $skipLeads[strtoupper($s)] = true;
 
 $configPath = (string)($cli['config'] ?? '');
 if ($configPath === '') {
@@ -45,12 +56,15 @@ $report = new VtReport();
 $started = microtime(true);
 
 $say = function (string $m) { echo '[' . date('H:i:s') . '] ' . $m . "\n"; };
-$say(($dry ? 'DRY RUN against ' : 'Loading into ') . DB_HOST . '/' . DB_NAME . ($only ? ' (' . implode(',', $only) . ')' : ''));
+$say(($dry ? 'DRY RUN against ' : 'Loading into ') . DB_HOST . '/' . DB_NAME . ($addOnly ? ' [ADD ONLY]' : '') . ($only ? ' (' . implode(',', $only) . ')' : ''));
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/** INSERT ... ON DUPLICATE KEY UPDATE for one row; $keep lists columns an update must not touch. */
-function vt_upsert(PDO $pdo, string $table, array $row, array $keep = []): void {
+/**
+ * INSERT ... ON DUPLICATE KEY UPDATE for one row; $keep lists columns an update must not touch
+ * (all of them = insert only). Returns true when the row was new.
+ */
+function vt_upsert(PDO $pdo, string $table, array $row, array $keep = []): bool {
     static $cache = [];
     $cols = array_keys($row);
     $key = $table . '|' . implode(',', $cols) . '|' . implode(',', $keep);
@@ -61,6 +75,13 @@ function vt_upsert(PDO $pdo, string $table, array $row, array $keep = []): void 
         $cache[$key] = $pdo->prepare($sql);
     }
     $cache[$key]->execute(array_values($row));
+    // MySQL: 1 = inserted, 2 = updated, 0 = left as it was
+    return $cache[$key]->rowCount() === 1;
+}
+
+/** Insert-only variant: an existing row (same id) is left exactly as it is. */
+function vt_insert_new(PDO $pdo, string $table, array $row): bool {
+    return vt_upsert($pdo, $table, $row, array_keys($row));
 }
 
 /** Runs $fn inside a transaction; a dry run rolls it back. */
@@ -86,7 +107,7 @@ function vt_ts($v, string $fallback): string {
 }
 
 /** One timeline entry (the shape extract.php writes) into timeline_events for $ownerId. */
-function vt_put_event(PDO $pdo, string $ownerId, array $e, string $fallbackTs): void {
+function vt_put_event(PDO $pdo, string $ownerId, array $e, string $fallbackTs, bool $insertOnly = false): bool {
     $att = !empty($e['attachments']) ? json_encode($e['attachments'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null;
     $row = [
         'id' => $e['id'], 'lead_id' => $ownerId, 'type' => $e['type'], 'timestamp' => vt_ts($e['timestamp'] ?? '', $fallbackTs),
@@ -95,8 +116,48 @@ function vt_put_event(PDO $pdo, string $ownerId, array $e, string $fallbackTs): 
         'content' => vt_cut($e['content'] ?? '', 60000) ?? '', 'attachments_json' => $att,
         'is_outgoing' => !empty($e['isOutgoing']) ? 1 : 0, 'author' => $e['author'] ?? null,
     ];
-    vt_upsert($pdo, 'timeline_events', $row, ['hidden']);
+    return $insertOnly ? vt_insert_new($pdo, 'timeline_events', $row) : vt_upsert($pdo, 'timeline_events', $row, ['hidden']);
 }
+
+// ── add-only bookkeeping ─────────────────────────────────────────────────────
+
+/** Last 9 digits of a phone number; '' for numbers too short or made of one repeated digit (00000…). */
+function vt_phone_key($phone): string {
+    $d = preg_replace('/\D+/', '', (string)$phone);
+    if (strlen($d) < 9 || preg_match('/^(\d)\1*$/', $d)) return '';
+    return substr($d, -9);
+}
+
+/** Records made in the CRM itself (not by this importer), by e-mail and by phone, to recognise a person entered in both systems. */
+function vt_native_index(PDO $pdo): array {
+    $idx = ['email' => [], 'phone' => []];
+    foreach ($pdo->query("SELECT `id`, `name`, `email`, `phone` FROM `leads` WHERE `id` NOT LIKE 'lead-vt-%' AND `id` NOT LIKE 'client-vt-%' ORDER BY `created_at`")->fetchAll() as $r) {
+        $e = strtolower(trim((string)$r['email']));
+        if ($e !== '') $idx['email'][$e][] = $r;
+        $p = vt_phone_key($r['phone']);
+        if ($p !== '') $idx['phone'][$p][] = $r;
+    }
+    return $idx;
+}
+
+/** The native records a new client/lead duplicates; $prefix picks clients (client-) or leads (anything else). */
+function vt_native_match(array $idx, ?string $email, ?string $phone, string $prefix): array {
+    $hits = [];
+    $e = strtolower(trim((string)$email));
+    $p = vt_phone_key($phone);
+    foreach (array_merge($e !== '' ? ($idx['email'][$e] ?? []) : [], $p !== '' ? ($idx['phone'][$p] ?? []) : []) as $r) {
+        $isClient = strncmp($r['id'], 'client-', 7) === 0;
+        if (($prefix === 'client-') === $isClient) $hits[$r['id']] = $r;
+    }
+    return array_values($hits);
+}
+
+// Snapshot before any step runs: what the CRM already holds decides what an add-only run may create.
+$existingIds = array_flip($pdo->query("SELECT `id` FROM `leads`")->fetchAll(PDO::FETCH_COLUMN));
+$existingProjects = array_flip($pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN));
+$native = $addOnly ? vt_native_index($pdo) : ['email' => [], 'phone' => []];
+$redirect = []; // importer id of a passed-over record -> the CRM's own record of the same person (or null)
+$resolve = function (?string $id) use (&$redirect) { return $id !== null && array_key_exists($id, $redirect) ? $redirect[$id] : $id; };
 
 // ── schema ───────────────────────────────────────────────────────────────────
 
@@ -134,11 +195,16 @@ foreach ($pdo->query("SELECT `id`, `name` FROM `users`")->fetchAll() as $u) $use
 
 if ($want('users')) {
     $users = vt_json_read("{$dataDir}/users.json");
-    vt_tx($pdo, $dry, function () use ($pdo, $users, $cli, $report, &$userIdByName) {
+    vt_tx($pdo, $dry, function () use ($pdo, $users, $cli, $report, $addOnly, &$userIdByName) {
         $byEmail = $pdo->prepare("SELECT `id`, `name` FROM `users` WHERE LOWER(`email`) = ?");
         foreach ($users as $u) {
             $byEmail->execute([strtolower($u['email'])]);
             $existing = $byEmail->fetch();
+            if ($existing && $addOnly) {
+                $userIdByName[mb_strtolower($existing['name'])] = $existing['id'];
+                $report->count('users already present (untouched)');
+                continue;
+            }
             if ($existing) {
                 $set = "`name` = ?, `role` = ?";
                 $params = [$u['name'], $u['role']];
@@ -185,10 +251,23 @@ if ($want('clients')) {
     $owners = [];
     foreach ($clients as $c) $owners[$c['owner']] = ($owners[$c['owner']] ?? 0) + 1;
     vt_check_owners($pdo, $owners, $dry ? array_column(vt_json_read("{$dataDir}/users.json"), 'name') : []);
-    vt_tx($pdo, $dry, function () use ($pdo, $clients, $clientCats, $report) {
+    vt_tx($pdo, $dry, function () use ($pdo, $clients, $clientCats, $report, $addOnly, $existingIds, $native, &$redirect) {
         $delCat = $pdo->prepare("DELETE FROM `lead_categories` WHERE `lead_id` = ?");
         $insCat = $pdo->prepare("INSERT IGNORE INTO `lead_categories` (`lead_id`, `category_name`) VALUES (?, ?)");
         foreach ($clients as $c) {
+            if ($addOnly && isset($existingIds[$c['id']])) {
+                // already imported: only history the old CRM gained since then is added
+                foreach ($c['timeline'] as $e) if (vt_put_event($pdo, $c['id'], $e, $c['createdAt'] . ' 00:00:00', true)) $report->count('new history entries on existing clients');
+                $report->count('clients already present (fields untouched)');
+                continue;
+            }
+            if ($addOnly && ($dupes = vt_native_match($native, $c['email'], $c['phone'], 'client-'))) {
+                $redirect[$c['id']] = $dupes[0]['id'];
+                $report->line('Clients passed over: already entered in the CRM', "{$c['name']} ({$c['id']}) = " . implode(', ', array_map(fn($d) => "{$d['name']} ({$d['id']})", $dupes)) . ', ' . count($c['timeline']) . ' old history entries not copied');
+                $report->count('clients passed over (duplicate of a CRM record)');
+                continue;
+            }
+            if ($addOnly) $report->line('Clients created', "{$c['name']} ({$c['id']}), created {$c['createdAt']}");
             vt_upsert($pdo, 'leads', [
                 'id' => $c['id'], 'name' => $c['name'], 'city' => $c['city'], 'client_type' => $c['clientType'], 'status' => 'Akceptovaná',
                 'source' => $c['source'], 'owner' => $c['owner'], 'value' => 0, 'adjustment' => 0, 'rating' => 5,
@@ -211,12 +290,36 @@ if ($want('leads')) {
     $owners = [];
     foreach ($leads as $l) $owners[$l['owner']] = ($owners[$l['owner']] ?? 0) + 1;
     vt_check_owners($pdo, $owners, $dry ? array_column(vt_json_read("{$dataDir}/users.json"), 'name') : []);
-    $clientIds = array_flip($pdo->query("SELECT `id` FROM `leads` WHERE `id` LIKE 'client-vt-%'")->fetchAll(PDO::FETCH_COLUMN));
-    vt_tx($pdo, $dry, function () use ($pdo, $leads, $report, $clientIds, $dry) {
+    $clientIds = array_flip($pdo->query("SELECT `id` FROM `leads` WHERE `id` LIKE 'client-%'")->fetchAll(PDO::FETCH_COLUMN));
+    $current = [];
+    if ($addOnly) foreach ($pdo->query("SELECT `id`, `status`, `owner`, `archived` FROM `leads` WHERE `id` LIKE 'lead-vt-%'")->fetchAll() as $r) $current[$r['id']] = $r;
+    vt_tx($pdo, $dry, function () use ($pdo, $leads, $report, $clientIds, $dry, $addOnly, $existingIds, $native, $skipLeads, $current, $resolve, &$redirect) {
         $delCat = $pdo->prepare("DELETE FROM `lead_categories` WHERE `lead_id` = ?");
         $insCat = $pdo->prepare("INSERT IGNORE INTO `lead_categories` (`lead_id`, `category_name`) VALUES (?, ?)");
         foreach ($leads as $l) {
-            $clientId = $l['clientId'];
+            if ($addOnly && isset($existingIds[$l['id']])) {
+                foreach ($l['timeline'] as $e) if (vt_put_event($pdo, $l['id'], $e, $l['createdAt'] . ' 00:00:00', true)) $report->count('new history entries on existing leads');
+                $now = $current[$l['id']] ?? null;
+                if ($now && (mb_strtolower(trim((string)$now['status'])) !== mb_strtolower(trim((string)$l['status'])) || (string)$now['owner'] !== (string)$l['owner'] || (int)$now['archived'] !== ($l['archived'] ? 1 : 0))) {
+                    $report->line('Leads that differ between the two systems (the CRM keeps its own values)', "{$l['code']} {$l['name']} ({$l['id']}): CRM \"{$now['status']}\" / " . ($now['owner'] ?: 'no owner') . ($now['archived'] ? ' / archived' : '') . " - old CRM \"{$l['status']}\" / " . ($l['owner'] ?: 'no owner') . ($l['archived'] ? ' / archived' : ''));
+                }
+                $report->count('leads already present (fields untouched)');
+                continue;
+            }
+            if ($addOnly && (isset($skipLeads[strtoupper((string)$l['code'])]) || isset($skipLeads[(string)$l['oldId']]))) {
+                $redirect[$l['id']] = null;
+                $report->line('Leads passed over: --skip-leads', "{$l['code']} {$l['name']} ({$l['id']})");
+                $report->count('leads passed over (--skip-leads)');
+                continue;
+            }
+            if ($addOnly && ($dupes = vt_native_match($native, $l['email'], $l['phone'], 'lead-'))) {
+                $redirect[$l['id']] = $dupes[0]['id'];
+                $report->line('Leads passed over: already entered in the CRM', "{$l['code']} {$l['name']} ({$l['id']}, {$l['createdAt']}) = " . implode(', ', array_map(fn($d) => "{$d['name']} ({$d['id']})", $dupes)) . ', ' . count($l['timeline']) . ' old history entries not copied');
+                $report->count('leads passed over (duplicate of a CRM record)');
+                continue;
+            }
+            if ($addOnly) $report->line('Leads created', "{$l['code']} {$l['name']} ({$l['id']}), created {$l['createdAt']}, {$l['status']}, " . ($l['owner'] ?: 'no owner') . ($l['archived'] ? ', archived' : ''));
+            $clientId = $resolve($l['clientId']);
             if ($clientId !== null && !isset($clientIds[$clientId]) && !$dry) { $report->warn('leads', "{$l['code']}: client {$clientId} is not in the database, link left empty"); $clientId = null; }
             vt_upsert($pdo, 'leads', [
                 'id' => $l['id'], 'name' => $l['name'], 'client_type' => 'person', 'status' => $l['status'], 'source' => $l['source'],
@@ -243,15 +346,28 @@ if ($want('projects')) {
         $report->warn('projects', 'the tables of the project type do not exist yet' . ($dry ? ' (dry run does not create them): projects are counted, their data and timeline are not written' : ''));
     }
     $typeExists = (int)$pdo->query("SELECT COUNT(*) FROM `project_types` WHERE `id` = " . $pdo->quote(VT_PROJECT_TYPE_ID))->fetchColumn() === 1;
-    vt_tx($pdo, $dry, function () use ($pdo, $projects, $report, $safe, $tablesOk, $typeExists, $userIdByName) {
+    vt_tx($pdo, $dry, function () use ($pdo, $projects, $report, $safe, $tablesOk, $typeExists, $userIdByName, $addOnly, $existingProjects, $resolve) {
         if (!$typeExists) { $report->warn('projects', 'the project type is missing - run the config step first'); return; }
         $delMgr = $pdo->prepare("DELETE FROM `project_managers` WHERE `project_id` = ?");
         $insMgr = $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)");
         $delTl = $tablesOk ? $pdo->prepare("DELETE FROM `proj_timeline_{$safe}` WHERE `project_id` = ?") : null;
         $cols = $tablesOk ? array_flip($pdo->query("SHOW COLUMNS FROM `proj_data_{$safe}`")->fetchAll(PDO::FETCH_COLUMN)) : [];
         foreach ($projects as $p) {
+            if ($addOnly && isset($existingProjects[$p['id']])) {
+                // keep the project, its managers, attributes and timeline; add only timeline entries it does not have
+                if ($tablesOk) {
+                    $ins = $pdo->prepare("INSERT IGNORE INTO `proj_timeline_{$safe}` (`id`, `project_id`, `type`, `event_type`, `timestamp`, `title`, `content`) VALUES (?, ?, ?, NULL, ?, ?, ?)");
+                    foreach ($p['timeline'] as $e) {
+                        $ins->execute([$e['id'], $p['id'], in_array($e['type'], ['phone', 'email'], true) ? $e['type'] : 'note', vt_ts($e['timestamp'] ?? '', $p['createdAt'] . ' 00:00:00'), vt_cut($e['title'] ?: 'Záznam', 250), vt_cut(($e['content'] ?? null) !== null ? $e['content'] : null, 60000)]);
+                        if ($ins->rowCount() === 1) $report->count('new history entries on existing projects');
+                    }
+                }
+                $report->count('projects already present (untouched)');
+                continue;
+            }
+            if ($addOnly) $report->line('Projects created', "{$p['code']} {$p['name']} ({$p['id']}), created {$p['createdAt']}, {$p['status']}");
             vt_upsert($pdo, 'projects', [
-                'id' => $p['id'], 'project_type_id' => VT_PROJECT_TYPE_ID, 'name' => $p['name'], 'lead_id' => $p['leadId'], 'client_id' => $p['clientId'],
+                'id' => $p['id'], 'project_type_id' => VT_PROJECT_TYPE_ID, 'name' => $p['name'], 'lead_id' => $resolve($p['leadId']), 'client_id' => $resolve($p['clientId']),
                 'status' => $p['status'], 'archived' => $p['archived'] ? 1 : 0, 'created_at' => $p['createdAt'] . ' 00:00:00',
                 'ticket_public_hash' => bin2hex(random_bytes(16)),
             ], ['ticket_public_hash']);
@@ -293,7 +409,7 @@ if ($want('mail')) {
             if (ccrm_mail_event_id($u, $f, $n) !== vt_mail_event_id($u, $f, $n)) { fwrite(STDERR, "ABORT: mail event id formula differs from ccrm_mail_event_id()\n"); exit(1); }
         }
     }
-    $clientIds = array_flip($pdo->query("SELECT `id` FROM `leads` WHERE `id` LIKE 'client-vt-%'")->fetchAll(PDO::FETCH_COLUMN));
+    $clientIds = array_flip($pdo->query("SELECT `id` FROM `leads` WHERE `id` LIKE 'client-%'")->fetchAll(PDO::FETCH_COLUMN));
     // A dry run rolls the clients step back, so on an empty target the clients are not in the database yet:
     // check against the extracted list and do not write the mail rows (they would break the foreign key).
     $inDb = $clientIds;
@@ -301,19 +417,23 @@ if ($want('mail')) {
     $batch = 0;
     $pdo->beginTransaction();
     try {
-        $insBody = $pdo->prepare("INSERT INTO `filed_mail_bodies` (`event_id`, `body`, `attachments_json`) VALUES (?, ?, NULL) ON DUPLICATE KEY UPDATE `body` = VALUES(`body`)");
+        $insBody = $pdo->prepare("INSERT INTO `filed_mail_bodies` (`event_id`, `body`, `attachments_json`) VALUES (?, ?, NULL) ON DUPLICATE KEY UPDATE `body` = " . ($addOnly ? '`body`' : 'VALUES(`body`)'));
         foreach (vt_read_jsonl("{$dataDir}/mail.jsonl") as $m) {
-            if (!isset($clientIds[$m['clientId']])) { $report->skip('mail', 'client record not in the database', $m['id']); continue; }
-            if ($dry && !isset($inDb[$m['clientId']])) { $report->count('mail messages'); continue; }
+            $owner = $resolve($m['clientId']);
+            if ($owner === null || !isset($clientIds[$owner])) { $report->skip('mail', 'client record not in the database', $m['id']); continue; }
+            if ($dry && !isset($inDb[$owner])) { $report->count('mail messages'); continue; }
             $hasBody = trim((string)$m['body']) !== '';
-            vt_upsert($pdo, 'timeline_events', [
-                'id' => $m['id'], 'lead_id' => $m['clientId'], 'type' => 'email', 'timestamp' => vt_ts($m['timestamp'], '2000-01-01 00:00:00'),
+            $row = [
+                'id' => $m['id'], 'lead_id' => $owner, 'type' => 'email', 'timestamp' => vt_ts($m['timestamp'], '2000-01-01 00:00:00'),
                 'title' => vt_cut($m['title'], 250), 'content' => vt_cut($m['content'], 60000), 'is_outgoing' => $m['isOutgoing'] ? 1 : 0, 'author' => $m['author'],
                 'mail_account' => vt_cut($m['mailAccount'], 150), 'mail_owner' => null, 'mail_has_body' => $hasBody ? 1 : 0,
                 'mail_message_id' => $m['messageId'] !== '' ? $m['messageId'] : null,
-            ], ['hidden']);
+            ];
+            // add-only: a message the CRM already holds (imported, or filed by its own mailbox job) stays as it is
+            $isNew = $addOnly ? vt_insert_new($pdo, 'timeline_events', $row) : vt_upsert($pdo, 'timeline_events', $row, ['hidden']);
+            if ($addOnly && !$isNew) { $report->count('mail messages already present'); continue; }
             if ($hasBody) $insBody->execute([$m['id'], $m['body']]);
-            $report->count('mail messages');
+            $report->count($addOnly ? 'mail messages added' : 'mail messages');
             if (++$batch % 2000 === 0) { $dry ? null : $pdo->commit(); if (!$dry) $pdo->beginTransaction(); $say("  mail: {$batch}"); }
         }
         $dry ? $pdo->rollBack() : $pdo->commit();
@@ -376,6 +496,7 @@ if ($want('files')) {
             $from = $src . '/' . $rel;
             if (ccrm_safe_upload_name($f['target']) === null) { $report->skip('files', 'blocked file type', $f['target']); continue; }
             if (!is_file($from)) { $missing[] = $f['key'] . ' ' . $rel; continue; }
+            if ($addOnly && is_file($dest . $f['target'])) { $report->count('files already present (not copied again)'); continue; }
             if ($dry) { $report->count('files that would be copied'); continue; }
             if (!is_dir($dest)) mkdir($dest, 0775, true);
             if (!@copy($from, $dest . $f['target'])) { $report->skip('files', 'copy failed', $f['target']); continue; }

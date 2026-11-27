@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/brand.php';
 /**
  * WebAuthn (Passkeys) HTTP Endpoint for CCRM.
  */
@@ -48,7 +49,7 @@ if (!class_exists(\Webauthn\PublicKeyCredentialCreationOptions::class)) {
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'installed' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'installed' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;

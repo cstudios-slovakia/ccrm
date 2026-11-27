@@ -49,31 +49,31 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity animate-fade-in"
+        className="absolute inset-0 bg-gray-950/40  transition-opacity animate-fade-in"
         onClick={onClose}
       />
 
       {/* Modal Container */}
-      <div className="relative w-full max-w-3xl bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col max-h-[85vh] z-10 animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-3xl bg-white  rounded-lg shadow-xl border border-gray-200/80 overflow-hidden flex flex-col max-h-[85vh] z-10 animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between select-none">
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between select-none">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-indigo-50 text-indigo-600">
+            <div className="p-2.5 rounded-lg bg-indigo-50 text-indigo-600">
               <Sparkles className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="font-heading font-extrabold text-title-sm text-slate-800 leading-tight">
+              <h2 className="font-heading font-extrabold text-title-sm text-gray-800 leading-tight">
                 {t("Product Updates", "Novinky v systéme", "Termékfrissítések")}
               </h2>
-              <p className="type-overline text-slate-400 mt-1">
+              <p className="type-overline text-gray-400 mt-1">
                 {t("Learn about new features", "Dozvedieť sa o nových funkciách", "Ismerje meg az új funkciókat")}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+            className="p-2 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -81,17 +81,17 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
 
         {/* Content Area */}
         <div ref={contentRef} className="flex-1 overflow-y-auto p-6 md:p-8 scrollbar-thin">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-4 mb-6">
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 rounded-full bg-indigo-600 text-white type-overline">
                   v{activeUpdate.version}
                 </span>
-                <h3 className="font-heading font-extrabold text-title text-slate-800">
+                <h3 className="font-heading font-extrabold text-title text-gray-800">
                   {activeUpdate.title}
                 </h3>
               </div>
-              <div className="flex items-center gap-1 text-caption font-semibold text-slate-400 mt-1 select-none">
+              <div className="flex items-center gap-1 text-caption font-semibold text-gray-400 mt-1 select-none">
                 <Calendar className="h-3.5 w-3.5" />
                 <span>
                   {new Date(activeUpdate.postDate).toLocaleDateString(
@@ -112,8 +112,8 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
         </div>
 
         {/* Pager / Footer */}
-        <div className="p-5 border-t border-slate-100 bg-slate-50 flex items-center justify-between select-none shrink-0">
-          <div className="type-overline text-slate-400">
+        <div className="p-5 border-t border-gray-100 bg-gray-50 flex items-center justify-between select-none shrink-0">
+          <div className="type-overline text-gray-400">
             {t(
               `Update ${updates.length - activeIndex} of ${updates.length}`,
               `Aktualizácia ${updates.length - activeIndex} z ${updates.length}`,
@@ -125,10 +125,10 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
             <button
               onClick={handlePrev}
               disabled={activeIndex === updates.length - 1}
-              className={`p-2 rounded-xl border border-slate-200 flex items-center justify-center transition-all bg-white font-bold text-ui gap-1.5 shadow-xs cursor-pointer ${
+              className={`p-2 rounded-md border border-gray-200 flex items-center justify-center transition-all bg-white font-bold text-ui gap-1.5 shadow-xs cursor-pointer ${
                 activeIndex === updates.length - 1 
-                  ? "opacity-40 cursor-not-allowed border-slate-100" 
-                  : "hover:border-slate-300 text-slate-700 hover:bg-slate-50"
+                  ? "opacity-40 cursor-not-allowed border-gray-100" 
+                  : "hover:border-gray-300 text-gray-700 hover:bg-gray-50"
               }`}
               title={t("Older Update", "Staršia aktualizácia", "Régebbi frissítés")}
             >
@@ -141,10 +141,10 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
             <button
               onClick={handleNext}
               disabled={activeIndex === 0}
-              className={`p-2 rounded-xl border border-slate-200 flex items-center justify-center transition-all bg-white font-bold text-ui gap-1.5 shadow-xs cursor-pointer ${
+              className={`p-2 rounded-md border border-gray-200 flex items-center justify-center transition-all bg-white font-bold text-ui gap-1.5 shadow-xs cursor-pointer ${
                 activeIndex === 0 
-                  ? "opacity-40 cursor-not-allowed border-slate-100" 
-                  : "hover:border-slate-300 text-slate-700 hover:bg-slate-50"
+                  ? "opacity-40 cursor-not-allowed border-gray-100" 
+                  : "hover:border-gray-300 text-gray-700 hover:bg-gray-50"
               }`}
               title={t("Newer Update", "Novšia aktualizácia", "Újabb frissítés")}
             >

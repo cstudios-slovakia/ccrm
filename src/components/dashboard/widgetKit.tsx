@@ -36,25 +36,26 @@ export const WidgetCard: React.FC<{
   className?: string;
 }> = ({ icon: Icon, accent, title, titleTooltip, actions, flush, children, className }) => (
   <div
+    data-widget-card=""
     className={cn(
-      "h-full bg-white border border-slate-200 rounded-3xl shadow-sm box-border flex flex-col",
-      flush ? "px-5.5 pt-5 pb-3 gap-3.5" : "px-5.5 py-5 gap-4.5",
+      "h-full bg-white border border-gray-200 rounded-lg shadow-xs box-border flex flex-col overflow-clip",
+      flush ? "px-5 pt-4 pb-3 gap-3" : "px-5 py-4 gap-4",
       className
     )}
   >
-    <div className="flex items-center justify-between gap-3 h-7 shrink-0">
-      <div className="flex items-center gap-2.5 min-w-0">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 min-h-7 shrink-0">
+      <div className="flex items-center gap-2.5 min-w-0 flex-1 basis-40">
         <span
-          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+          className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
           style={{ backgroundColor: accent }}
         >
           <Icon className="h-4 w-4 text-white" strokeWidth={2.25} />
         </span>
-        <h2 className="m-0 type-overline text-slate-500 truncate" title={titleTooltip || title}>
+        <h2 className="m-0 type-overline text-gray-600 leading-tight line-clamp-2 ws-sm:truncate" title={titleTooltip || title}>
           {title}
         </h2>
       </div>
-      {actions ? <div className="flex items-center gap-2 shrink-0">{actions}</div> : null}
+      {actions ? <div className="flex items-center gap-2 shrink-0 flex-wrap max-w-full">{actions}</div> : null}
     </div>
     {children}
   </div>
@@ -71,7 +72,7 @@ export const SegmentedToggle: React.FC<{
   <div
     role="group"
     className={cn(
-      "flex items-center gap-0.5 p-0.75 rounded-[10px] bg-slate-100 box-border",
+      "flex items-center gap-0.5 p-0.75 rounded-md bg-gray-100 border border-gray-200 box-border",
       large ? "h-8.5" : "h-7"
     )}
   >
@@ -84,9 +85,9 @@ export const SegmentedToggle: React.FC<{
           aria-pressed={active}
           onClick={() => onChange(option.value)}
           className={cn(
-            "px-2.5 rounded-lg border-0 text-caption font-bold whitespace-nowrap transition-colors cursor-pointer",
+            "px-2.5 rounded-sm border-0 text-caption font-semibold whitespace-nowrap transition-colors cursor-pointer",
             large ? "h-7" : "h-5.5",
-            active ? "bg-white shadow-sm text-indigo-600" : "bg-transparent text-slate-500 hover:text-slate-700"
+            active ? "bg-white shadow-2xs text-entity-text" : "bg-transparent text-gray-500 hover:text-gray-800"
           )}
         >
           {option.label}
@@ -109,7 +110,7 @@ export const MoreLink: React.FC<{ label: string; onClick?: () => void; href?: st
       e.preventDefault();
       onClick();
     }}
-    className="flex items-center gap-1 h-7 px-2 rounded-lg text-ui font-bold text-indigo-600 hover:bg-indigo-50 transition-colors"
+    className="flex items-center gap-1 h-7 px-2 rounded-md text-ui font-semibold text-entity-text hover:bg-entity-subtle transition-colors"
   >
     {label}
     <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.25} />
@@ -137,7 +138,7 @@ export const StatusBadge: React.FC<{ label: string; color: string }> = ({ label,
 
 /** A person: a dot in their colour, their name, on a faint indigo chip. */
 export const PersonPill: React.FC<{ name: string; color?: string }> = ({ name, color = "#6366f1" }) => (
-  <span className="inline-flex items-center gap-1.5 h-6 max-w-full px-2 rounded-lg bg-indigo-50 text-indigo-700 text-ui font-bold">
+  <span className="inline-flex items-center gap-1.5 h-6 max-w-full px-2 rounded-lg bg-indigo-50 text-entity-text text-ui font-bold">
     <span className="w-1.25 h-1.25 rounded-full shrink-0" style={{ backgroundColor: color }} />
     <span className="truncate">{name}</span>
   </span>
@@ -149,7 +150,7 @@ export const BigNumber: React.FC<{ children: React.ReactNode; className?: string
   className
 }) => (
   <div
-    className={cn("text-display font-bold tracking-[-0.02em] leading-[1.05] text-slate-900", className)}
+    className={cn("text-display font-bold tracking-[-0.02em] leading-[1.05] text-gray-900", className)}
     style={{ fontVariantNumeric: "tabular-nums" }}
   >
     {children}
@@ -195,7 +196,7 @@ export const useFillRows = (min: number, available: number, baseRowHeight: numbe
 export const FILL_ROWS_LAYER = "absolute inset-x-0 top-0 flex flex-col";
 
 export const CardFooter: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="flex items-center justify-between border-t border-slate-100 px-3 pt-3 pb-1 shrink-0">
+  <div className="flex items-center justify-between border-t border-gray-100 px-3 pt-3 pb-1 shrink-0">
     {children}
   </div>
 );
@@ -207,7 +208,7 @@ export const SegmentBar: React.FC<{
 }> = ({ segments, thickness = 6 }) => {
   const live = segments.filter((s) => s.value > 0);
   if (live.length === 0) {
-    return <span className="block rounded-full bg-slate-100" style={{ height: thickness }} />;
+    return <span className="block rounded-full bg-gray-100" style={{ height: thickness }} />;
   }
   return (
     <div className="flex gap-0.5 rounded-full overflow-hidden" style={{ height: thickness }}>
@@ -259,7 +260,7 @@ export const labelForStatus = (status: any, known: string[]): string => {
 };
 
 export const EmptyWidgetRows: React.FC<{ t: Translate }> = ({ t }) => (
-  <div className="flex-1 flex items-center justify-center py-6 text-ui text-slate-400 font-semibold">
+  <div className="flex-1 flex items-center justify-center py-6 text-ui text-gray-400 font-semibold">
     {t("No records found", "Žiadne záznamy", "Nincs találat")}
   </div>
 );

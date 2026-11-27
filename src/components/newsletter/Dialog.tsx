@@ -1,0 +1,91 @@
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+import { entityAccentStyle } from "../../utils/entityAccent";
+
+const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** A small modal for the newsletter screens: focus moves in and stays in, backdrop and Escape close it, focus returns to where it was. */
+export const Dialog = ({
+  open,
+  title,
+  onClose,
+  children,
+  closeLabel,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  closeLabel: string;
+}) => {
+  const panel = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  // Callers pass an inline onClose; a ref keeps the effect below from re-running (and stealing focus) on every parent render.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) return undefined;
+    const before = document.activeElement as HTMLElement | null;
+    // First field of the body, else the panel itself.
+    const first = body.current?.querySelector<HTMLElement>(FOCUSABLE);
+    (first ?? panel.current)?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCloseRef.current();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      before?.focus?.({ preventScroll: true });
+    };
+  }, [open]);
+
+  /** Tab wraps inside the dialog. A portaled dropdown panel is outside it and keeps its own keys. */
+  const trap = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab" || !panel.current) return;
+    const items = Array.from(panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.offsetParent !== null);
+    if (items.length === 0) return;
+    const active = document.activeElement;
+    if (e.shiftKey && (active === items[0] || active === panel.current)) {
+      e.preventDefault();
+      items[items.length - 1].focus();
+    } else if (!e.shiftKey && active === items[items.length - 1]) {
+      e.preventDefault();
+      items[0].focus();
+    }
+  };
+
+  if (!open) return null;
+  return createPortal(
+    // Drawer layer (100000): portaled CustomSelect / ColorPicker panels (100001) must paint above it.
+    <div
+      style={entityAccentStyle("newsletter")}
+      className="fixed inset-0 z-[100000] flex items-center justify-center bg-gray-900/50 p-4"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        ref={panel}
+        tabIndex={-1}
+        onKeyDown={trap}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl outline-none"
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3.5">
+          <h3 className="type-panel-title text-gray-900">{title}</h3>
+          <button type="button" onClick={onClose} aria-label={closeLabel} className="flex size-8 cursor-pointer items-center justify-center rounded-md text-gray-500 hover:bg-gray-100">
+            <X className="size-4" />
+          </button>
+        </div>
+        <div ref={body} className="min-h-0 overflow-y-auto p-5">
+          {children}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};

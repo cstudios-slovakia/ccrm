@@ -4,8 +4,8 @@
 
 ### 0. Test Before You Ship
 
-- **Run the QA audit when a feature or fix is finished**, before the version bump
-  and build commit: `npm run test:unit` then `npm run test:qa`.
+- **Run the QA audit when a feature or fix is finished**, before the build
+  commit: `npm run test:unit` then `npm run test:qa`.
 - Full guide: [`docs/TESTING.md`](docs/TESTING.md). Deep reference:
   [`.agents/skills/ccrm-qa-audit/SKILL.md`](.agents/skills/ccrm-qa-audit/SKILL.md).
 - No Docker, PHP or database needed - the suite mocks the backend and seeds its
@@ -15,16 +15,29 @@
 - `npm run deploy` re-runs the gate and aborts the deploy if it fails.
 - Never make a finding disappear by loosening the check.
 
-The order when finishing a change: **test -> bump version -> changelog -> build
+The order when finishing a change: **test -> collect changelog (bumps the version) -> build
 -> commit**.
+
+### 0b. Time Tracking Module
+
+- Built in phases from ONE file: [`docs/TIME-TRACKING.md`](docs/TIME-TRACKING.md) (status table, decisions, per-phase checklists, spec). When asked to "make phase N", follow its Part A.
+- Second generation (parallel tracking, auto-pause, status-driven timers): [`docs/TIME-TRACKING-V2.md`](docs/TIME-TRACKING-V2.md). It overrides the first file where they disagree. When asked to "make tt2 phase N", follow its Part A.
+
+### 0c. Demo Mode Rebuild
+
+- Planned in phases in ONE file: [`docs/DEMO-MODE.md`](docs/DEMO-MODE.md). When asked to "make demo phase N", follow its Part A.
+
+### 0d. Agency & Workforce Leasing Module
+
+- Master spec and per-phase checklists live in ONE file: [`docs/AGENCY-MODULE.md`](docs/AGENCY-MODULE.md). Rented employees (`agency_workers`) are a separate permanent entity from Contacts (`leads`).
 
 ### 1. Commit & Version Bumping Protocol
 
 - **Commit After Every Significant Change**: Make atomic, clean git commits after completing each feature, fix, or significant modification.
-- **One Build = One Version Bump**: Every significant change, new build, or release milestone requires bumping the application version.
-- **Version File**: Update `export const VERSION = "1.12.X-Mango";` in [`src/utils/version.ts`](file:///Users/erik/Documents/vibe%20coding/crm/src/utils/version.ts).
-- **Changelog**: Add a structured entry in [`1.12-mango-changelog.md`](file:///Users/erik/Documents/vibe%20coding/crm/1.12-mango-changelog.md) with date and clear breakdown.
-- **Commit Message Suffix**: Append the version tag to commit messages (e.g. `feat(...): description (v1.12.X-Mango)` or `fix(...): description (v1.12.X-Mango)`).
+- **One Build = One Version Bump**: Only a build bumps the version, never an individual commit. Do not edit `src/utils/version.ts` or `1.14-orange-changelog.md` by hand.
+- **Changelog fragment**: Each feature or fix commit adds `changelog.d/<YYYY-MM-DD>-<slug>.md` with its changelog bullet(s) (format in `changelog.d/README.md`).
+- **Build**: "Make a build" runs `node scripts/release/collect-changelog.mjs`, which bumps the version, writes the changelog section and deletes the fragments.
+- **Commit Message Suffix**: Only the build commit carries the version tag (e.g. `build: ... (v1.14.X-Orange)`); feature and fix commits have none.
 
 ### 2. Verification & Build Cleanliness
 
@@ -43,7 +56,19 @@ The order when finishing a change: **test -> bump version -> changelog -> build
 - Money is summed per currency, never across currencies. Do not register columns where a total is meaningless (dates, ratings, percentages, text).
 - Full rule: [`.agents/rules/project-totals.md`](.agents/rules/project-totals.md).
 
-### 5. Audio Notification When Prompt Is Done
+### 5. Database Schema, Migrations & `sync.php` Column Healing
+
+- **The 4-Place Rule for New Columns**: Whenever you add a column to a table written by `sync.php` (or queried by name in `api/*.php`), you **must** update all 4 places in the same commit:
+  1. `CREATE TABLE IF NOT EXISTS` in `public/api/schema.php` (`ccrm_schema_statements()`).
+  2. Idempotent migration (`if (ccrm_table_exists(...) && !ccrm_column_exists(...)) ALTER TABLE ...`) in `ccrm_apply_migrations()` in `public/api/schema.php` — placed *before* any backfill/seed step that touches the column.
+  3. **Pre-transaction column healing in `public/sync.php`** right *before* `$pdo->beginTransaction()` (same pattern as `projects.value`, `projects.contact_phone`, `ai_custom_templates.layout_json`). Because `ccrm_apply_schema()` skips itself once `SCHEMA_FINGERPRINT` matches, a worker with a stale OPcache during deploy can stamp the marker without adding the column — without healing in `sync.php`, every save fails with HTTP 500 (`Unknown column '...' in 'INSERT INTO'`).
+  4. Document the column in [`entities_overview.md`](entities_overview.md).
+- **Never Run DDL Inside a Transaction**: `ALTER TABLE` / `CREATE TABLE` causes an implicit MySQL commit. All column healing in `sync.php` must stay above `$pdo->beginTransaction()`.
+- **Included Migration Helpers**: Any file `require_once`d by `schema.php` must wrap its functions in `if (!function_exists('...'))` and be added to `ccrm_schema_fingerprint()`. Any standalone `api/*.php` endpoint calling `schema.php` helpers must `require_once __DIR__ . '/schema.php';`.
+- **Mirror Backend Copies**: Always run `npm run sync:backend` so root `sync.php` and `api/*` match `public/sync.php` and `public/api/*`.
+- Full rule: [`.agents/rules/database-schema-and-sync.md`](.agents/rules/database-schema-and-sync.md).
+
+### 6. Audio Notification When Prompt Is Done
 
 - **Play Sound on Completion**: Whenever a user prompt/task is finished, play an audible macOS notification sound (e.g. `afplay /System/Library/Sounds/Glass.aiff`) so the user knows the work is done.
 

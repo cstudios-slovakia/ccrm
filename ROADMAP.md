@@ -127,6 +127,21 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
   reversible; step 4 migrates every table that references `leads.id` as
   `client_id` (tickets, SLAs, invoices, documents, tasks) and the sync, MCP, RAG
   and QA fixtures, so do it last and on its own. (L)
+- [ ] 🟡 **One time zone for every install, and two clocks writing the data.**
+  `setup.php` writes `date_default_timezone_set('Europe/Bratislava')` into every
+  `config.php`; there is no company or user time zone setting. Server-stamped times
+  (`created_at` / `updated_at`, e-mail reminders in `task_reminders.php`, the MCP
+  `today` / `overdue` buckets) follow Bratislava. Browser-stamped times
+  (`src/utils/localTime.ts`: `completed_at`, timeline entries, the app's overdue
+  display) follow the user's computer clock and are stored **without** a zone. A
+  company outside Central Europe, or a user travelling, gets mixed clocks in one
+  column that cannot be told apart later, reminders at night, and "overdue" that
+  disagrees between the app and the MCP. Fix: a **company time zone** in Settings
+  (`system_settings`), read by PHP instead of the hard-coded value and by the
+  browser instead of its own clock, so all data follows one clock. Per-user zones
+  (store UTC, convert on display) only if a customer really has staff spread across
+  zones. The MCP already returns `created_at` / `updated_at` with an offset and
+  accepts one on filters (v1.13.68). (M for the company setting, L for per-user)
 
 ---
 
@@ -199,6 +214,25 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
 - [ ] 🔵 **Docker dev passwords** hardcoded in `docker-compose.yml` — ensure they
   are never reused in production. (—)
 - [ ] 🔵 **`package.json` metadata** — `name: "temp-vite"`, `version: "0.0.0"`. (S)
+
+---
+
+## Feature ideas — to consider (not committed)
+
+Possible future work, noted so it is not forgotten. Nothing here is planned or
+scheduled yet; each needs a decision before it is built.
+
+- [ ] 🔵 **Make project managers and project employees mean something** (noted
+  2026-11-24). Today both are information only: shown, filtered, sorted and used
+  in the dashboards' "manager" column. They grant no access and send no
+  notifications. Ideas:
+  - a role scope "own projects": people see / edit only, or first, the projects
+    where they are PM or employee;
+  - the time-tracking project picker and task assignee lists suggest the
+    project's team first;
+  - the team is notified about status changes and new tasks on its projects;
+  - only the PM changes the project's settings and team, while employees log
+    time and work on tasks. (M–L)
 
 ---
 

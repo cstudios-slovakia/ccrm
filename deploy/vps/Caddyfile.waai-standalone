@@ -1,0 +1,20 @@
+# WAAI on its own domain (standalone), for the S1 setup where WAAI runs on the same VPS as the CRM.
+# Enable it only once DNS for {$WAAI_DOMAIN} points at this server: until then Caddy would keep failing
+# the certificate request for it. docker-compose.waai-standalone.yml mounts this file; the WhatsApp
+# module does not need it (it uses /waai-api on the CRM's address, Caddyfile.waai-routes).
+
+{$WAAI_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy waai-web:3000
+
+    @no_embed expression `"{$WAAI_EMBED_ORIGINS:}" == ""`
+    header @no_embed X-Frame-Options "SAMEORIGIN"
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'self' {$WAAI_EMBED_ORIGINS:}; form-action 'self'; object-src 'none'; img-src 'self' data: https:; media-src 'self'; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'"
+    }
+}

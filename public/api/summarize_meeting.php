@@ -2,8 +2,10 @@
 /**
  * AI Meeting Note Summarization Endpoint.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -21,7 +23,7 @@ ccrm_gate($sessionUser, 'meetings');
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'installed' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'installed' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -51,30 +53,18 @@ $stmt->execute();
 $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
 $integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
 
-if (empty($openAiKey)) {
+if (!ccrm_ai_is_configured($pdo, $integrationsConfig)) {
     http_response_code(400);
     echo json_encode([
         'success' => false,
-        'message' => 'OpenAI API Key is not configured. Please configure it in Settings.'
+        'code' => 'ai_key_missing',
+        'message' => 'AI provider is not configured. Please configure it in Settings.'
     ]);
     exit;
 }
 
-// Call OpenAI Chat Completion API to compile summary
-$ch = curl_init('https://api.openai.com/v1/chat/completions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    'Authorization: Bearer ' . $openAiKey
-]);
-
-$prompt = "You are an expert CRM assistant. Analyze the following meeting notes and output a JSON response containing a concise summary, sentiment classification, major topics, and action items.
+$prompt = ("You are an expert " . KOPERNIQ_PRODUCT_NAME . " assistant. Analyze the following meeting notes and output a JSON response containing a concise summary, sentiment classification, major topics, and action items.
 
 You MUST detect the language in which the provided meeting notes are written. You MUST write the \"summary\" and all \"actionItems\" in that same language (for example: if notes are in Slovak, output summary/action items in Slovak; if in Hungarian, output in Hungarian; if in English, output in English).
 
@@ -88,38 +78,40 @@ Output structure:
 }
 
 Meeting Notes:
-" . $notesText;
+") . $notesText;
 
-$meetingModel = ccrm_ai_model();
-$payload = [
-    'model' => $meetingModel,
-    'messages' => [
-        [
-            'role' => 'user',
-            'content' => $prompt
-        ]
+$meetingModel = ccrm_ai_model($integrationsConfig);
+$aiRes = ccrm_ai_chat_completion(
+    $pdo,
+    [
+        'model' => $meetingModel,
+        'messages' => [
+            [
+                'role' => 'user',
+                'content' => $prompt
+            ]
+        ],
+        'temperature' => 0.3,
     ],
-];
-if (ccrm_ai_model_supports_temperature($meetingModel)) {
-    $payload['temperature'] = 0.3;
-}
+    [
+        'feature' => 'meeting_summary',
+        'timeout' => 30,
+        'integrationsConfig' => $integrationsConfig,
+    ]
+);
 
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE));
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
-
-if ($httpCode !== 200 || !$response) {
-    $errData = json_decode($response, true);
-    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API request failed');
+if (empty($aiRes['ok'])) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'OpenAI Error: ' . $errMsg]);
+    echo json_encode([
+        'success' => false,
+        'code' => $aiRes['code'] ?: 'ai_error',
+        'message' => 'AI Error: ' . ($aiRes['error'] ?: 'AI API request failed'),
+        'providerMessage' => $aiRes['error'] ?? '',
+    ]);
     exit;
 }
 
-$resData = json_decode($response, true);
-$aiReply = $resData['choices'][0]['message']['content'] ?? '';
+$aiReply = (string)($aiRes['content'] ?? '');
 
 // Try parsing AI reply to verify it's valid JSON
 $cleanedReply = trim(preg_replace('/^```json|```$/i', '', trim($aiReply)));

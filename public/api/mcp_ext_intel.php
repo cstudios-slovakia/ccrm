@@ -366,25 +366,57 @@ function mcp_project_row(\PDO $pdo, array $p, array &$ctx, array $groups): array
     return $row;
 }
 
-/** paid / partially_paid / unpaid / overdue / planned / cancelled, from a movement's status and split. */
-function mcp_payment_status(string $status, float $settled, float $expected, ?string $due, string $today): string {
+/**
+ * THE overdue rule for money, in one sentence (every tool description that mentions overdue money
+ * uses this text): a movement or invoice payment is overdue when it is still unpaid (not paid, not
+ * cancelled, not planned) and either flagged overdue or dated before today, the due date else the
+ * issue date. Implemented by mcp_is_overdue (PHP) and mcp_overdue_date_sql (SQL); do not restate it.
+ */
+function mcp_overdue_rule_text(): string {
+    return 'overdue = not paid, not cancelled and not planned, and either flagged overdue or dated before today (due date, else issue date; today is the ' . KOPERNIQ_PRODUCT_NAME . ' date)';
+}
+
+/** The overdue rule on dates: the effective date (due date, else issue date) is before $today. */
+function mcp_dated_before_today(?string $due, ?string $issue, string $today): bool {
+    $date = mcp_iso_ok($due) ? $due : $issue;
+    return mcp_iso_ok($date) && $date < $today;
+}
+
+/** The overdue rule on one unpaid, unplanned movement: flagged overdue, or dated before today. */
+function mcp_is_overdue(string $status, ?string $due, ?string $issue, string $today): bool {
+    return $status === 'overdue' || mcp_dated_before_today($due, $issue, $today);
+}
+
+/**
+ * The same rule in SQL on financial_records columns: flagged overdue, or due date (else issue date)
+ * before ?. The caller adds the unpaid / unplanned / not cancelled conditions and binds one date, $today.
+ */
+function mcp_overdue_date_sql(string $statusCol = 'status', string $dueCol = 'due_date', string $issueCol = 'issue_date'): string {
+    return "({$statusCol} = 'overdue' OR COALESCE({$dueCol}, {$issueCol}) < ?)";
+}
+
+/**
+ * paid / partially_paid / unpaid / overdue / planned / cancelled, from a movement's status and split.
+ * $due and $issue are the movement's dates (the overdue rule, mcp_is_overdue).
+ */
+function mcp_payment_status(string $status, float $settled, float $expected, ?string $due, string $today, ?string $issue = null): string {
     if ($status === 'cancelled') return 'cancelled';
     if ($status === 'paid' || ($expected <= 0.0 && $settled > 0.0)) return 'paid';
     if ($status === 'planned') return 'planned';
-    if ($status === 'overdue' || (mcp_iso_ok($due) && $due < $today)) return 'overdue';
+    if (mcp_is_overdue($status, $due, $issue, $today)) return 'overdue';
     return $settled > 0.0 ? 'partially_paid' : 'unpaid';
 }
 
 /** One income movement of a project, as an installment of its payment schedule. */
 function mcp_installment_row(array $r, string $today): array {
-    [$settled, $expected] = mcp_fin_split($r);
+    [$settled, $expected] = mcp_fin_movement_split($r);
     return [
         'id' => $r['id'], 'title' => $r['title'], 'invoice_number' => $r['invoiceNumber'],
         'issue_date' => $r['issueDate'], 'due_date' => $r['dueDate'], 'paid_date' => $r['paidDate'],
         'amount' => mcp_round2($r['amountPlanned'] != 0.0 ? $r['amountPlanned'] : $r['amountReal']),
         'paid' => mcp_round2($settled), 'open' => mcp_round2($expected), 'currency' => $r['currency'],
         'status' => $r['status'],
-        'payment_status' => mcp_payment_status((string)$r['status'], $settled, $expected, $r['dueDate'] ?: $r['issueDate'], $today),
+        'payment_status' => mcp_payment_status((string)$r['status'], $settled, $expected, $r['dueDate'], $today, $r['issueDate']),
         'is_recurring' => !empty($r['isRecurring']),
     ];
 }
@@ -397,7 +429,14 @@ function mcp_project_financials(\PDO $pdo, array $p, array &$ctx): array {
     $records = mcp_income_by_project($pdo, [(string)$p['id']])[$p['id']] ?? [];
     $b = mcp_project_billing(mcp_project_value($pdo, $p, $ctx), $records);
     $today = mcp_today();
-    $schedule = array_map(fn($r) => mcp_installment_row($r, $today), $records);
+    // A recurring rule is a schedule, not an installment: its payments are stored rows of
+    // their own. Its row stays only while it holds a legacy payment (mcp_fin_movement_split).
+    $rules = array_values(array_filter($records, fn($r) => !empty($r['isRecurring'])));
+    $installmentRecords = array_values(array_filter(
+        $records,
+        fn($r) => empty($r['isRecurring']) || mcp_fin_recurring_own_row($r) !== null
+    ));
+    $schedule = array_map(fn($r) => mcp_installment_row($r, $today), $installmentRecords);
     usort($schedule, fn($a, $b) => [$a['due_date'] ?: $a['issue_date'], $a['id']] <=> [$b['due_date'] ?: $b['issue_date'], $b['id']]);
     $plannedOpen = 0.0;
     foreach ($schedule as $s) { if ($s['status'] === 'planned') $plannedOpen += $s['open']; }
@@ -413,6 +452,11 @@ function mcp_project_financials(\PDO $pdo, array $p, array &$ctx): array {
         'planned_not_issued' => mcp_round2($plannedOpen),
         'installment_based' => count($schedule) > 1,
         'installments' => $schedule,
+        'recurring_rules' => array_map(fn($r) => [
+            'id' => $r['id'], 'title' => $r['title'], 'frequency' => $r['recurringFrequency'],
+            'amount' => mcp_round2(mcp_rec_amount_at($r, $today)), 'currency' => $r['currency'],
+            'start_date' => $r['recurringStartDate'], 'end_date' => $r['recurringEndDate'],
+        ], $rules),
         'basis' => 'As on the project page: invoiced_total counts every income movement filed on the project (issued or planned, cancelled excluded); planned_not_issued is the part of it still only planned. remaining_billable = max(0, contract_value − invoiced_total). contract_value is the first positive of the project value, the project type\'s money attributes, the paired lead value.',
     ];
 }
@@ -433,38 +477,52 @@ function mcp_project_milestones(\PDO $pdo, array $user, array $p): array {
         $stmt = $pdo->prepare("SELECT id, title, contact_id, start_date, end_date, progress FROM `{$table}` WHERE project_id = ? ORDER BY end_date ASC, start_date ASC");
         $stmt->execute([$p['id']]);
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $g) {
-            $progress = (int)$g['progress'];
-            $status = $progress >= 100 ? 'done' : ((mcp_iso_ok($g['end_date']) && $g['end_date'] < $today) ? 'overdue' : ($progress > 0 ? 'in_progress' : 'not_started'));
-            $out[] = [
-                'id' => $g['id'], 'source' => 'gantt', 'title' => $g['title'], 'start_date' => $g['start_date'],
-                'deadline' => $g['end_date'], 'priority' => null, 'status' => $status, 'done' => $progress >= 100,
-                'progress' => $progress, 'owner' => null, 'contact_id' => $g['contact_id'] ?: null, 'deliverable' => null,
-            ];
+            $out[] = mcp_gantt_milestone_row($g, $today);
         }
     }
     if (mcp_can('tasks')) {
         [$scopeSql, $scopeParams] = mcp_task_scope($user);
         $taskStates = mcp_config_json($pdo, 'TASK_STATES', []);
         $stmt = $pdo->prepare(
-            "SELECT id, title, description, priority, start_date, deadline, status, owner, completed_at, related_lead_id
-             FROM tasks WHERE related_project_id = ? AND is_locking = 1 AND archived = 0" . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
+            "SELECT id, title, description, priority, start_date, deadline, status, owner, completed_at, related_lead_id, "
+            . mcp_moment_select('created_at', 'created_at') . ', ' . mcp_moment_select('updated_at', 'updated_at') . "
+             FROM tasks WHERE related_project_id = ? AND is_locking = 1 AND archived = 0 AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
              ORDER BY deadline ASC"
         );
         $stmt->execute(array_merge([$p['id']], $scopeParams));
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $t) {
-            $desc = trim((string)$t['description']);
-            $out[] = [
-                'id' => $t['id'], 'source' => 'task', 'title' => $t['title'], 'start_date' => $t['start_date'] ?: null,
-                'deadline' => $t['deadline'], 'priority' => $t['priority'], 'status' => $t['status'],
-                'done' => mcp_done_task_state((string)$t['status'], is_array($taskStates) ? $taskStates : []),
-                'progress' => null, 'owner' => $t['owner'], 'completed_at' => $t['completed_at'] ?: null,
-                'contact_id' => $t['related_lead_id'] ?: null,
-                'deliverable' => ($desc === '' || $desc === 'Project Milestone') ? null : $desc,
-            ];
+            $out[] = mcp_task_milestone_row($t, is_array($taskStates) ? $taskStates : []);
         }
     }
     usort($out, fn($a, $b) => [$a['deadline'] ?? '9999', $a['title']] <=> [$b['deadline'] ?? '9999', $b['title']]);
     return $out;
+}
+
+/** A Gantt row (id, title, contact_id, start_date, end_date, progress) as a milestone. */
+function mcp_gantt_milestone_row(array $g, string $today): array {
+    $progress = (int)$g['progress'];
+    $status = $progress >= 100 ? 'done' : ((mcp_iso_ok($g['end_date']) && $g['end_date'] < $today) ? 'overdue' : ($progress > 0 ? 'in_progress' : 'not_started'));
+    return [
+        'id' => $g['id'], 'source' => 'gantt', 'title' => $g['title'], 'start_date' => $g['start_date'],
+        'deadline' => $g['end_date'], 'priority' => null, 'status' => $status, 'done' => $progress >= 100,
+        'progress' => $progress, 'owner' => null, 'contact_id' => $g['contact_id'] ?: null, 'deliverable' => null,
+    ];
+}
+
+/**
+ * A blocking milestone task as a milestone. $t may carry created_at__ts / updated_at__ts
+ * (mcp_moment_select): they become created_at / updated_at as ISO moments.
+ */
+function mcp_task_milestone_row(array $t, array $taskStates): array {
+    $desc = trim((string)$t['description']);
+    return mcp_row_moments([
+        'id' => $t['id'], 'source' => 'task', 'title' => $t['title'], 'start_date' => $t['start_date'] ?: null,
+        'deadline' => $t['deadline'], 'priority' => $t['priority'], 'status' => $t['status'],
+        'done' => mcp_done_task_state((string)$t['status'], $taskStates),
+        'progress' => null, 'owner' => $t['owner'], 'completed_at' => $t['completed_at'] ?: null,
+        'contact_id' => $t['related_lead_id'] ?: null,
+        'deliverable' => ($desc === '' || $desc === 'Project Milestone') ? null : $desc,
+    ] + array_intersect_key($t, ['created_at__ts' => 1, 'updated_at__ts' => 1]));
 }
 
 // ============================================================================
@@ -493,41 +551,62 @@ function mcp_scope_invoice_docs(\PDO $pdo, array $scope, bool $withOffers = true
     );
     $stmt->execute($params);
     $today = mcp_today();
-    $out = [];
-    foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $d) {
-        $total = (float)$d['total_price'];
-        $settled = 0.0; $expected = 0.0; $payment = null;
-        if ($d['type'] !== 'price_offer') {
-            if ($d['fr_status'] !== null) {
-                [$settled, $expected] = mcp_fin_split(['status' => $d['fr_status'], 'amountPlanned' => (float)$d['fr_planned'], 'amountReal' => (float)$d['fr_real'], 'isRecurring' => false]);
-                $payment = mcp_payment_status((string)$d['fr_status'], $settled, $expected, $d['due_date'], $today);
-            } elseif ($d['status'] === 'cancelled') {
-                $payment = 'cancelled';
-            } else {
-                // No ledger movement (entered before the bridge, or removed): only the due date says anything.
-                $expected = $total;
-                $payment = mcp_payment_status($d['status'] === 'draft' ? 'planned' : 'pending', 0.0, $total, $d['due_date'], $today);
-            }
+    ccrm_invoice_status_defs($pdo);   // reads INVOICE_STATUSES once, for mcp_invoice_expects_movement
+    return array_map(fn($d) => mcp_invoice_doc_row($d, $today), $stmt->fetchAll(\PDO::FETCH_ASSOC));
+}
+
+/**
+ * Does the app book a ledger movement (fr-inv-<id>) for this document? Only a live invoice does
+ * (src/utils/invoiceFinanceBridge.ts isLiveInvoice): type invoice, in a status whose group is neither
+ * `lost` (rejected) nor `cancelled`; a status the list does not know counts as live. A proforma or a
+ * price offer never has one. The statuses are configurable (INVOICE_STATUSES): the group is read from them.
+ */
+function mcp_invoice_expects_movement(array $d): bool {
+    if ($d['type'] !== 'invoice') return false;
+    return !in_array(ccrm_invoice_status_group((string)$d['status']), ['lost', 'cancelled'], true);
+}
+
+/**
+ * One Invoicing document as a payment row. $d carries the document's columns and the ledger movement
+ * of the invoice (fr_status, fr_planned, fr_real, fr_paid_date, fr_project_id; null without one).
+ * Shared by get_client_invoices and by list_invoices / get_invoice, so "paid", "open" and the derived
+ * payment_status mean the same everywhere.
+ */
+function mcp_invoice_doc_row(array $d, string $today): array {
+    $total = (float)$d['total_price'];
+    $settled = 0.0; $expected = 0.0; $payment = null;
+    if ($d['type'] !== 'price_offer') {
+        if ($d['fr_status'] !== null) {
+            [$settled, $expected] = mcp_fin_split(['status' => $d['fr_status'], 'amountPlanned' => (float)$d['fr_planned'], 'amountReal' => (float)$d['fr_real'], 'isRecurring' => false]);
+            $payment = mcp_payment_status((string)$d['fr_status'], $settled, $expected, $d['due_date'], $today, $d['issued_at']);
+        } elseif ($d['status'] === 'cancelled') {
+            $payment = 'cancelled';
+        } elseif (!mcp_invoice_expects_movement($d)) {
+            // A proforma, or a rejected invoice: the app never books money for it, so it is no receivable.
+            $payment = null;
+        } else {
+            // A live invoice whose movement is missing (not reconciled yet): the dates say what they can.
+            $expected = $total;
+            $payment = mcp_payment_status($d['status'] === 'draft' ? 'planned' : 'pending', 0.0, $total, $d['due_date'], $today, $d['issued_at']);
         }
-        $out[] = [
-            'source' => 'invoicing', 'id' => $d['id'], 'type' => $d['type'], 'document_number' => $d['document_number'],
-            'variable_symbol' => null, 'title' => $d['title'], 'issue_date' => $d['issued_at'], 'due_date' => $d['due_date'],
-            'paid_date' => $d['fr_paid_date'] ?: null,
-            'subtotal' => mcp_round2($d['subtotal']), 'vat_amount' => mcp_round2($d['vat_amount']), 'amount' => mcp_round2($total),
-            'paid' => mcp_round2($settled), 'open' => mcp_round2($expected), 'currency' => $d['currency'],
-            'document_status' => $d['status'], 'payment_status' => $payment,
-            'project_id' => $d['fr_project_id'] ?: null,
-            'external_provider' => $d['external_provider'] ?: null, 'external_id' => $d['external_id'] ?: null,
-        ];
     }
-    return $out;
+    return [
+        'source' => 'invoicing', 'id' => $d['id'], 'type' => $d['type'], 'document_number' => $d['document_number'],
+        'variable_symbol' => null, 'title' => $d['title'], 'issue_date' => $d['issued_at'], 'due_date' => $d['due_date'],
+        'paid_date' => $d['fr_paid_date'] ?: null,
+        'subtotal' => mcp_round2($d['subtotal']), 'vat_amount' => mcp_round2($d['vat_amount']), 'amount' => mcp_round2($total),
+        'paid' => mcp_round2($settled), 'open' => mcp_round2($expected), 'currency' => $d['currency'],
+        'document_status' => $d['status'], 'payment_status' => $payment,
+        'project_id' => $d['fr_project_id'] ?: null,
+        'external_provider' => $d['external_provider'] ?: null, 'external_id' => $d['external_id'] ?: null,
+    ];
 }
 
 /**
  * Income movements of a client in the ledger that are not already an Invoicing document: invoices
  * entered by hand and planned installments, on the client's records or on its projects.
  */
-function mcp_scope_ledger_income(\PDO $pdo, array $scope, array $projectIds, array $skipIds, array $skipNumbers): array {
+function mcp_scope_ledger_income(\PDO $pdo, array $scope, array $projectIds, array $skipIds, array $skipNumbers, int $limit = 300, ?bool &$more = null): array {
     $ids = $scope['ids'];
     $where = 'client_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
     $params = $ids;
@@ -538,7 +617,10 @@ function mcp_scope_ledger_income(\PDO $pdo, array $scope, array $projectIds, arr
     $today = mcp_today();
     $skipNumbers = array_flip(array_map(fn($n) => mb_strtolower(trim((string)$n), 'UTF-8'), array_filter($skipNumbers)));
     $out = [];
-    foreach (mcp_fin_load($pdo, "type = 'income' AND is_recurring = 0 AND ($where)", $params, 'COALESCE(due_date, issue_date) DESC, id DESC', 300) as $r) {
+    // One row more than the limit tells the caller whether the ledger holds more than it was given.
+    $loaded = mcp_fin_load($pdo, "type = 'income' AND is_recurring = 0 AND ($where)", $params, 'COALESCE(due_date, issue_date) DESC, id DESC', $limit + 1);
+    $more = count($loaded) > $limit;
+    foreach (array_slice($loaded, 0, $limit) as $r) {
         if (isset($skipIds[$r['id']])) continue;
         if ($r['invoiceNumber'] && isset($skipNumbers[mb_strtolower(trim($r['invoiceNumber']), 'UTF-8')])) continue;
         $row = mcp_installment_row($r, $today);
@@ -671,7 +753,9 @@ function mcp_invoice_totals(array $rows): array {
 function mcp_search_entities(\PDO $pdo, array $user, array $args): array {
     $query = mcp_require_string($args, 'query');
     $tokens = mcp_query_tokens($query);
-    $types = is_array($args['entity_types'] ?? null) ? $args['entity_types'] : ['leads', 'clients', 'tasks', 'projects', 'invoices', 'warehouse'];
+    $types = is_array($args['entity_types'] ?? null)
+        ? $args['entity_types']
+        : ['leads', 'clients', 'tasks', 'projects', 'invoices', 'tickets', 'orders', 'warehouse', 'employees', 'meetings', 'suppliers', 'agency_workers', 'unified_entries'];
     $limit = min(max(1, (int)($args['limit'] ?? 15)), 50);
     $results = [];
 
@@ -709,7 +793,7 @@ function mcp_search_entities(\PDO $pdo, array $user, array $args): array {
         [$scopeSql, $scopeParams] = mcp_task_scope($user);
         $stmt = $pdo->prepare(
             "SELECT id, title, priority, deadline, status, owner, related_lead_id, related_project_id
-             FROM tasks WHERE {$w} AND archived = 0" . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
+             FROM tasks WHERE {$w} AND archived = 0 AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
              ORDER BY deadline DESC LIMIT {$limit}"
         );
         $stmt->execute(array_merge($p, $scopeParams));
@@ -746,6 +830,71 @@ function mcp_search_entities(\PDO $pdo, array $user, array $args): array {
         $results['warehouse_items'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
+    if (in_array('tickets', $types, true) && mcp_can('tickets') && ccrm_table_exists($pdo, 'tickets')) {
+        [$w, $p] = mcp_token_where(['ticket_number', 'title', 'description', 'reporter_name', 'reporter_email'], $tokens);
+        $stmt = $pdo->prepare("SELECT id, ticket_number, title, status, priority, assignee_name FROM tickets WHERE archived = 0 AND ({$w}) ORDER BY updated_at DESC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['tickets'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('orders', $types, true) && mcp_can('orders') && ccrm_table_exists($pdo, 'orders')) {
+        [$w, $p] = mcp_token_where(['order_number', 'guest_name', 'guest_company', 'guest_email', 'notes'], $tokens);
+        $stmt = $pdo->prepare("SELECT id, order_number, type, status, payment_status, total_gross_amount, currency, order_date FROM orders WHERE ({$w}) ORDER BY order_date DESC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['orders'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('employees', $types, true) && mcp_can('employees') && ccrm_table_exists($pdo, 'employees')) {
+        $canEmpContact = mcp_can('employees.contact');
+        $empSearchCols = ['name', 'first_name', 'last_name', 'position', 'department'];
+        $empSelCols = ['id', 'name', 'first_name', 'last_name', 'kind', 'contractor_type', 'position', 'department', 'is_active'];
+        if ($canEmpContact) {
+            $empSearchCols[] = 'email';
+            $empSearchCols[] = 'phone';
+            $empSelCols[] = 'email';
+            $empSelCols[] = 'phone';
+        }
+        [$w, $p] = mcp_token_where($empSearchCols, $tokens, 'name', $query);
+        $stmt = $pdo->prepare("SELECT " . implode(', ', $empSelCols) . " FROM employees WHERE ({$w}) ORDER BY is_active DESC, name ASC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['employees'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('meetings', $types, true) && mcp_can('meetings') && ccrm_table_exists($pdo, 'meeting_notes')) {
+        [$w, $p] = mcp_token_where(['title', 'notes', 'transcription', 'automated_notes', 'lead_name'], $tokens, 'title', $query);
+        $stmt = $pdo->prepare("SELECT id, title, date, lead_id, lead_name, duration FROM meeting_notes WHERE archived = 0 AND ({$w}) ORDER BY date DESC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['meetings'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('suppliers', $types, true) && mcp_can('warehouse') && ccrm_table_exists($pdo, 'suppliers')) {
+        [$w, $p] = mcp_token_where(['name', 'company_id', 'tax_id', 'vat_id', 'email', 'phone', 'city', 'notes'], $tokens, 'name', $query);
+        $stmt = $pdo->prepare("SELECT id, name, company_id, tax_id, vat_id, email, phone, city FROM suppliers WHERE ({$w}) ORDER BY name ASC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['suppliers'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('agency_workers', $types, true) && mcp_can('agency') && ccrm_table_exists($pdo, 'agency_workers')) {
+        $canAgencyPersonal = mcp_can('agency.personal');
+        $agCols = ['full_name', 'preferred_name', 'worker_code', 'email', 'notes'];
+        $agSel = ['id', 'worker_code', 'full_name', 'preferred_name', 'stage_id', 'worker_status', 'email'];
+        if ($canAgencyPersonal) {
+            $agCols[] = 'phone';
+            $agSel[] = 'phone';
+        }
+        [$w, $p] = mcp_token_where($agCols, $tokens, 'full_name', $query);
+        $stmt = $pdo->prepare("SELECT " . implode(', ', $agSel) . " FROM agency_workers WHERE ({$w}) ORDER BY updated_at DESC, full_name ASC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['agency_workers'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('unified_entries', $types, true) && mcp_can('unified_entries') && ccrm_table_exists($pdo, 'unified_entries')) {
+        [$w, $p] = mcp_token_where(['name', 'entry_name', 'folder_name'], $tokens, 'name', $query);
+        $stmt = $pdo->prepare("SELECT id, name, entry_name, folder_name, folders_enabled FROM unified_entries WHERE archived = 0 AND ({$w}) ORDER BY name ASC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['unified_entries'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
     return $results;
 }
 
@@ -758,12 +907,12 @@ function mcp_ext_intel_tool_definitions(): array {
     return [
         [
             'name' => 'get_client_dossier',
-            'description' => 'Everything about one client in a single call: profile (contacts, IČO/DIČ/IČ DPH, source, owner, notes), every project (active and past, with value, status, invoice date and deadline), a financial summary (contracted, invoiced, paid, outstanding, still billable), open tasks and milestones, upcoming meetings and the last 5 timeline entries. Sections the key may not see are left out.',
+            'description' => 'Everything about one client in a single call: profile (contacts, IČO/DIČ/IČ DPH, source, owner, notes), every project (active and past, with value, status, invoice date and deadline), a financial summary (contracted, invoiced, paid, outstanding, still billable), open tasks and milestones (up to 50 open tasks; open_tasks_truncated says if more exist), upcoming_meetings (dated today or later, soonest first, at most 5), recent_meetings (already past, newest first, at most 5) and the last 5 timeline entries (timestamp is local ' . mcp_zone() . ' time, timestamp_iso the same moment with the offset). profile.updated_at is the newest change of any of its records. Sections the key may not see are left out.',
             'inputSchema' => ['type' => 'object', 'properties' => ['identifier' => $client], 'required' => ['identifier']],
         ],
         [
             'name' => 'get_client_invoices',
-            'description' => 'All invoices of a client with number, variable symbol (SuperFaktúra only), issue and due date, amount, paid and open amount, currency and payment status (paid, partially_paid, unpaid, overdue, planned, cancelled). Combines the Invoicing module, invoices and planned installments in the finance ledger (on the client or its projects), and — when the SuperFaktúra integration is enabled — the invoices SuperFaktúra holds for the client (found by IČO, else by name). Works in either finance mode.',
+            'description' => 'All invoices of a client with number, variable symbol (SuperFaktúra only), issue and due date, amount, paid and open amount, currency and payment status (paid, partially_paid, unpaid, overdue, planned, cancelled). Combines the Invoicing module, invoices and planned installments in the finance ledger (on the client or its projects), and — when the SuperFaktúra integration is enabled — the invoices SuperFaktúra holds for the client (found by IČO, else by name). Works in either finance mode. Each source is capped (300 rows, SuperFaktúra one page of 100): truncated=true means a source holds more than is listed and totals leave those rows out. Invoicing and ledger rows follow the overdue rule of the other money tools: ' . mcp_overdue_rule_text() . '. A proforma or rejected invoice with no ledger movement is no receivable (payment_status null, open 0). For overdue or unpaid invoices across all clients use list_invoices with payment_status.',
             'inputSchema' => ['type' => 'object', 'properties' => [
                 'identifier' => $client,
                 'payment_status' => ['type' => 'string', 'enum' => ['paid', 'partially_paid', 'unpaid', 'overdue', 'planned', 'cancelled'], 'description' => 'Only invoices in this payment status'],
@@ -771,14 +920,7 @@ function mcp_ext_intel_tool_definitions(): array {
                 'include_offers' => ['type' => 'boolean', 'description' => 'Also list price offers (default false)'],
             ], 'required' => ['identifier']],
         ],
-        [
-            'name' => 'list_milestones',
-            'description' => 'Milestones of a project: the rows of its Gantt timeline (start, end, progress) and its blocking milestone tasks (what create_milestone adds: deadline, priority, status, owner). Each has a status and a done flag.',
-            'inputSchema' => ['type' => 'object', 'properties' => [
-                'project_id' => ['type' => 'string', 'description' => 'Project ID'],
-                'open_only' => ['type' => 'boolean', 'description' => 'Leave out finished milestones (default false)'],
-            ], 'required' => ['project_id']],
-        ],
+        mcp_money_tool_def('list_milestones'),
     ];
 }
 
@@ -796,35 +938,30 @@ function mcp_ext_intel_permissions(): array {
 
 function mcp_ext_intel_execute(\PDO $pdo, array $user, string $tool, array $args) {
     switch ($tool) {
-        case 'list_milestones': {
-            $id = mcp_require_string($args, 'project_id');
-            $stmt = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
-            $stmt->execute([$id]);
-            $p = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$p) throw new \Exception("Project not found with ID: {$id}");
-            $rows = mcp_project_milestones($pdo, $user, $p);
-            if (!empty($args['open_only'])) $rows = array_values(array_filter($rows, fn($m) => !$m['done']));
-            return [
-                'project' => ['id' => $p['id'], 'name' => $p['name'], 'status' => $p['status'], 'invoice_date' => $p['invoice_date'], 'completion_deadline' => $p['completion_deadline'], 'url' => mcp_project_url($pdo, (string)$p['id'])],
-                'milestones' => $rows,
-            ];
-        }
+        case 'list_milestones':
+            return mcp_list_milestones($pdo, $user, $args);
 
         case 'get_client_invoices': {
             $scope = mcp_resolve_client($pdo, (string)($args['identifier'] ?? $args['client_id'] ?? ''));
             $filter = mcp_enum($args, 'payment_status', ['paid', 'partially_paid', 'unpaid', 'overdue', 'planned', 'cancelled']);
-            $docs = mcp_scope_invoice_docs($pdo, $scope, !empty($args['include_offers']), 300);
+            // Each source is read one row past its cap of 300: that row only says "there is more".
+            $docs = mcp_scope_invoice_docs($pdo, $scope, !empty($args['include_offers']), 301);
+            $truncated = count($docs) > 300;
+            $docs = array_slice($docs, 0, 300);
             $rows = $docs;
             if (mcp_can('financial')) {
                 $projectIds = array_map(fn($p) => (string)$p['id'], mcp_scope_projects($pdo, $scope));
                 $skipIds = [];
                 foreach ($docs as $d) $skipIds['fr-inv-' . $d['id']] = true;
-                $rows = array_merge($rows, mcp_scope_ledger_income($pdo, $scope, $projectIds, $skipIds, array_column($docs, 'document_number')));
+                $ledgerMore = false;
+                $rows = array_merge($rows, mcp_scope_ledger_income($pdo, $scope, $projectIds, $skipIds, array_column($docs, 'document_number'), 300, $ledgerMore));
+                $truncated = $truncated || $ledgerMore;
             }
             $sfOut = ['enabled' => false];
             if (!array_key_exists('include_superfaktura', $args) || !empty($args['include_superfaktura'])) {
                 $sf = mcp_sf_client_invoices($pdo, $scope);
                 $sfOut = array_diff_key($sf, ['invoices' => true]);
+                $sfOut['truncated'] = count($sf['invoices']) >= 100;   // SuperFaktúra is asked for one page of 100
                 // An invoice issued from the CRM to SuperFaktúra is listed once: the local row gains the variable symbol.
                 $byNumber = [];
                 foreach ($rows as $i => $r) { if ($r['document_number']) $byNumber[mb_strtolower(trim($r['document_number']), 'UTF-8')] = $i; }
@@ -847,6 +984,7 @@ function mcp_ext_intel_execute(\PDO $pdo, array $user, string $tool, array $args
                 'currency' => mcp_currency($pdo),
                 'totals' => mcp_invoice_totals($rows),
                 'invoices' => $rows,
+                'truncated' => $truncated || !empty($sfOut['truncated']),
                 'superfaktura' => $sfOut,
                 'sources' => array_values(array_filter(['invoicing', mcp_can('financial') ? 'ledger' : null, !empty($sfOut['enabled']) ? 'superfaktura' : null])),
             ];
@@ -919,11 +1057,13 @@ function mcp_ext_intel_execute(\PDO $pdo, array $user, string $tool, array $args
                 $rel = "related_lead_id IN ($ph)" . ($pids ? ' OR related_project_id IN (' . implode(',', array_fill(0, count($pids), '?')) . ')' : '');
                 $stmt = $pdo->prepare(
                     "SELECT id, title, priority, deadline, deadline_time, status, owner, is_locking, related_lead_id, related_project_id
-                     FROM tasks WHERE ($rel) AND archived = 0 AND {$openSql}" . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
-                     ORDER BY deadline ASC LIMIT 50"
+                     FROM tasks WHERE ($rel) AND archived = 0 AND {$openSql} AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
+                     ORDER BY deadline ASC, id ASC LIMIT 51"
                 );
                 $stmt->execute(array_merge($ids, $pids, $openParams, $scopeParams));
-                $out['open_tasks'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                $openTasks = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                $out['open_tasks_truncated'] = count($openTasks) > 50;
+                $out['open_tasks'] = array_slice($openTasks, 0, 50);
             }
             if (mcp_can('projects')) {
                 $ms = [];
@@ -936,21 +1076,27 @@ function mcp_ext_intel_execute(\PDO $pdo, array $user, string $tool, array $args
                 $out['open_milestones'] = $ms;
             }
             if (mcp_can('meetings')) {
-                $stmt = $pdo->prepare("SELECT id, title, date, duration FROM meeting_notes WHERE lead_id IN ($ph) AND archived = 0 ORDER BY date DESC LIMIT 5");
-                $stmt->execute($ids);
+                // Upcoming = dated today or later (soonest first); recent = already past (newest first). 5 each.
+                $stmt = $pdo->prepare("SELECT id, title, date, duration FROM meeting_notes WHERE lead_id IN ($ph) AND archived = 0 AND date >= ? ORDER BY date ASC, id ASC LIMIT 5");
+                $stmt->execute(array_merge($ids, [mcp_today()]));
+                $out['upcoming_meetings'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                $stmt = $pdo->prepare("SELECT id, title, date, duration FROM meeting_notes WHERE lead_id IN ($ph) AND archived = 0 AND date < ? ORDER BY date DESC, id ASC LIMIT 5");
+                $stmt->execute(array_merge($ids, [mcp_today()]));
                 $out['recent_meetings'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             }
 
             $stmt = $pdo->prepare(
                 "SELECT id, lead_id, type, timestamp, title, content, amount, author, is_outgoing FROM timeline_events
                  WHERE lead_id IN ($ph) AND hidden = 0" . (mcp_can('email') ? '' : " AND type <> 'email'") . "
-                 ORDER BY timestamp DESC LIMIT 5"
+                 ORDER BY timestamp DESC, id ASC LIMIT 5"
             );
             $stmt->execute($ids);
-            $out['latest_timeline'] = array_map(function ($e) {
+            $out['latest_timeline'] = mcp_rows_timestamp_iso(array_map(function ($e) {
                 if ($e['content'] !== null && mb_strlen($e['content']) > 1500) $e['content'] = mb_substr($e['content'], 0, 1500) . '…';
                 return $e;
-            }, $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            }, $stmt->fetchAll(\PDO::FETCH_ASSOC)));
+            // The profile changes when any of its records does (ISO moment with the offset).
+            $out['profile']['updated_at'] = mcp_format_moment($pdo->query('SELECT UNIX_TIMESTAMP(MAX(updated_at)) FROM leads WHERE id IN (' . implode(',', array_map([$pdo, 'quote'], $ids)) . ')')->fetchColumn());
             return $out;
         }
     }

@@ -1,7 +1,11 @@
+import { PRODUCT_NAME } from "../utils/brand";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { entityAccentStyle } from "../utils/entityAccent";
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
     User,
+    UserCheck,
     PencilLine,
     Mic,
     Plus,
@@ -32,6 +36,9 @@ import { fetchUpdateNotes, type UpdateEntry } from "../utils/updateNotes";
 import { useUserPref } from "../utils/userPrefs";
 import { useFavorites } from "../utils/favorites";
 import { FavoritesDrawer } from "./FavoritesDrawer";
+import { HeaderTimerPill } from "./timeTracking/HeaderTimerPill";
+import { HeaderTeamTimers } from "./timeTracking/HeaderTeamTimers";
+import type { TimeDeps } from "./timeTracking/shared";
 import { SidebarSettings } from "./SidebarSettings";
 import { ViewSizeSettings } from "./ViewSizeSettings";
 import {
@@ -52,7 +59,8 @@ interface HeaderProps {
     isDemoMode?: boolean;
     onOpenPersonalSettings: () => void;
     onNavigateMeetings?: (action: "list" | "new" | "record") => void;
-    onAddTask?: () => void;
+    /** Gets the click, so the new-task composer can grow out of the button. */
+    onAddTask?: (e?: React.MouseEvent<HTMLElement>) => void;
     onNavigateUpdates?: () => void;
     /** Route gate from the permission resolver; search hits and shortcuts into closed modules are dropped. */
     canOpenRoute?: (routeId: string) => boolean;
@@ -61,6 +69,8 @@ interface HeaderProps {
     canCreateMeeting?: boolean;
     /** Manual workflow triggers run automations, so they follow automation edit rights. */
     canRunWorkflows?: boolean;
+    /** Lets the running-timer pill open the full timer bar under itself. */
+    timeDeps?: TimeDeps | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -79,6 +89,7 @@ export const Header: React.FC<HeaderProps> = ({
     canCreateTask = true,
     canCreateMeeting = true,
     canRunWorkflows = true,
+    timeDeps,
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -445,6 +456,8 @@ export const Header: React.FC<HeaderProps> = ({
                 return <PencilLine className="h-4 w-4 text-amber-500" />;
             case "unified_entry":
                 return <Database className="h-4 w-4 text-purple-500" />;
+            case "agency_worker":
+                return <UserCheck className="h-4 w-4 text-amber-600" />;
             default:
                 return <FileText className="h-4 w-4 text-slate-400" />;
         }
@@ -484,32 +497,19 @@ export const Header: React.FC<HeaderProps> = ({
                     : systemLanguage === "hu"
                       ? "Bejegyzés"
                       : "Registry";
+            case "agency_worker":
+                return systemLanguage === "sk"
+                    ? "Pracovník"
+                    : systemLanguage === "hu"
+                      ? "Dolgozó"
+                      : "Worker";
             default:
                 return t("Item", "Položka", "Elem");
         }
     };
 
-    const getSearchTypeBadgeColor = (type: string) => {
-        switch (type) {
-            case "client":
-                return "bg-emerald-50 text-emerald-700 border-emerald-200";
-            case "lead":
-                return "bg-indigo-50 text-indigo-700 border-indigo-200";
-            case "product":
-                return "bg-blue-50 text-blue-900 border-blue-200";
-            case "email":
-                return "bg-pink-50 text-pink-700 border-pink-200";
-            case "meeting":
-                return "bg-amber-50 text-amber-700 border-amber-200";
-            case "unified_entry":
-                return "bg-purple-50 text-purple-700 border-purple-200";
-            default:
-                return "bg-slate-50 text-slate-700 border-slate-200";
-        }
-    };
-
     return (
-        <header className="h-20 border-b border-white/40 bg-white/25 backdrop-blur-md px-2.5 sm:px-4 md:px-6 flex items-center justify-between sticky top-0 z-50 select-none">
+        <header className="h-20 border-b border-gray-200 bg-white/90 backdrop-blur-md px-2.5 sm:px-4 md:px-6 flex items-center justify-between sticky top-0 z-50 select-none">
             <style>{`
         @keyframes slideInRight {
           from { transform: translateX(100%); }
@@ -549,7 +549,7 @@ export const Header: React.FC<HeaderProps> = ({
                                       ? "Keresés..."
                                       : "Search..."
                             }
-                            className="w-full pl-9 pr-8 py-2 text-ui font-semibold rounded-xl bg-white/90 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
+                            className="w-full pl-9 pr-8 py-2 text-ui font-medium rounded-md bg-white border border-gray-300 shadow-2xs focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring transition-all text-gray-900 placeholder:text-gray-400"
                         />
                         {searchQuery && (
                             <button
@@ -576,9 +576,9 @@ export const Header: React.FC<HeaderProps> = ({
 
                     {/* Dropdown Suggestions */}
                     {showSearchDropdown && (
-                        <div className="absolute left-2 right-2 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-95 overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="absolute left-2 right-2 top-full mt-1.5 bg-white rounded-lg border border-gray-200 shadow-xl max-h-95 overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
                             {searchResults.length === 0 ? (
-                                <div className="py-6 text-center text-ui text-slate-400 font-semibold">
+                                <div className="py-6 text-center text-ui text-gray-400 font-medium">
                                     {systemLanguage === "sk"
                                         ? 'Žiadne výsledky pre "' + searchQuery + '"'
                                         : systemLanguage === "hu"
@@ -597,33 +597,37 @@ export const Header: React.FC<HeaderProps> = ({
                                                     setIsMobileSearchOpen(false);
                                                 }}
                                                 onMouseEnter={() => setSelectedIndex(idx)}
-                                                className={`px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-start gap-3 border ${
+                                                className={`px-3 py-2 rounded-md cursor-pointer transition-all flex items-start gap-3 border ${
                                                     isSelected
-                                                        ? "bg-slate-50/90 border-slate-200 text-slate-900 shadow-xs"
-                                                        : "bg-transparent border-transparent text-slate-700 hover:bg-slate-50/50"
+                                                        ? "bg-entity-subtle border-entity-border text-gray-900"
+                                                        : "bg-transparent border-transparent text-gray-700 hover:bg-gray-50"
                                                 }`}
                                             >
-                                                <div className="mt-0.5 shrink-0 bg-slate-100 p-1.5 rounded-lg border border-slate-200/50">
+                                                <div
+                                                  style={entityAccentStyle(item.type) as React.CSSProperties}
+                                                  className="mt-0.5 shrink-0 bg-entity-subtle text-entity-text p-1.5 rounded-md border border-entity-border"
+                                                >
                                                     {getSearchIcon(item.type)}
                                                 </div>
                                                 <div className="flex-1 min-w-0 text-left">
                                                     <div className="flex items-center justify-between gap-2">
-                                                        <span className="font-bold text-ui truncate text-slate-800">
+                                                        <span className="font-semibold text-ui truncate text-gray-900">
                                                             {item.title}
                                                         </span>
-                                                        <span
-                                                            className={`type-overline px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
-                                                        >
-                                                            {getSearchTypeLabel(item.type)}
-                                                        </span>
+                                                        <EntityBadge
+                                                            entity={item.type || "dashboard"}
+                                                            label={getSearchTypeLabel(item.type)}
+                                                            showIcon={false}
+                                                            size="sm"
+                                                        />
                                                     </div>
                                                     {item.subtitle && (
-                                                        <div className="text-micro text-slate-400 font-bold mt-0.5 truncate">
+                                                        <div className="text-micro text-gray-400 font-medium mt-0.5 truncate">
                                                             {item.subtitle}
                                                         </div>
                                                     )}
                                                     {item.excerpt && (
-                                                        <div className="text-micro text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
+                                                        <div className="text-micro text-gray-500 mt-1 leading-relaxed border-l-2 border-gray-200 pl-2 italic truncate">
                                                             {item.excerpt}
                                                         </div>
                                                     )}
@@ -679,7 +683,7 @@ export const Header: React.FC<HeaderProps> = ({
                                           ? "Keresés... (Cmd + K)"
                                           : "Search... (Cmd + K)"
                                 }
-                                className="w-full h-9 sm:h-10 pl-7 sm:pl-9 pr-6 sm:pr-10 py-1.5 sm:py-2 text-caption font-semibold rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
+                                className="w-full h-9 sm:h-10 pl-7 sm:pl-9 pr-6 sm:pr-10 py-1.5 sm:py-2 text-caption font-medium rounded-md bg-white border border-gray-300 shadow-2xs focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring transition-all text-gray-900 placeholder:text-gray-400"
                             />
                             {searchQuery && (
                                 <button
@@ -697,9 +701,9 @@ export const Header: React.FC<HeaderProps> = ({
 
                         {/* Dropdown Suggestions */}
                         {showSearchDropdown && (
-                            <div className="absolute left-0 right-0 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-95 overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-lg border border-gray-200 shadow-xl max-h-95 overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
                                 {searchResults.length === 0 ? (
-                                    <div className="py-6 text-center text-ui text-slate-400 font-semibold">
+                                    <div className="py-6 text-center text-ui text-gray-400 font-medium">
                                         {systemLanguage === "sk"
                                             ? 'Žiadne výsledky pre "' + searchQuery + '"'
                                             : systemLanguage === "hu"
@@ -715,33 +719,37 @@ export const Header: React.FC<HeaderProps> = ({
                                                     key={item.id || idx}
                                                     onClick={() => handleSelectSearchResult(item)}
                                                     onMouseEnter={() => setSelectedIndex(idx)}
-                                                    className={`px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-start gap-3 border ${
+                                                    className={`px-3 py-2 rounded-md cursor-pointer transition-all flex items-start gap-3 border ${
                                                         isSelected
-                                                            ? "bg-slate-50/90 border-slate-200 text-slate-900 shadow-xs"
-                                                            : "bg-transparent border-transparent text-slate-700 hover:bg-slate-50/50"
+                                                            ? "bg-entity-subtle border-entity-border text-gray-900"
+                                                            : "bg-transparent border-transparent text-gray-700 hover:bg-gray-50"
                                                     }`}
                                                 >
-                                                    <div className="mt-0.5 shrink-0 bg-slate-100 p-1.5 rounded-lg border border-slate-200/50">
+                                                    <div
+                                                      style={entityAccentStyle(item.type) as React.CSSProperties}
+                                                      className="mt-0.5 shrink-0 bg-entity-subtle text-entity-text p-1.5 rounded-md border border-entity-border"
+                                                    >
                                                         {getSearchIcon(item.type)}
                                                     </div>
                                                     <div className="flex-1 min-w-0 text-left">
                                                         <div className="flex items-center justify-between gap-2">
-                                                            <span className="font-bold text-ui truncate text-slate-800">
+                                                            <span className="font-semibold text-ui truncate text-gray-900">
                                                                 {item.title}
                                                             </span>
-                                                            <span
-                                                                className={`type-overline px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
-                                                            >
-                                                                {getSearchTypeLabel(item.type)}
-                                                            </span>
+                                                            <EntityBadge
+                                                                entity={item.type || "dashboard"}
+                                                                label={getSearchTypeLabel(item.type)}
+                                                                showIcon={false}
+                                                                size="sm"
+                                                            />
                                                         </div>
                                                         {item.subtitle && (
-                                                            <div className="text-micro text-slate-400 font-bold mt-0.5 truncate">
+                                                            <div className="text-micro text-gray-400 font-medium mt-0.5 truncate">
                                                                 {item.subtitle}
                                                             </div>
                                                         )}
                                                         {item.excerpt && (
-                                                            <div className="text-micro text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
+                                                            <div className="text-micro text-gray-500 mt-1 leading-relaxed border-l-2 border-gray-200 pl-2 italic truncate">
                                                                 {item.excerpt}
                                                             </div>
                                                         )}
@@ -762,10 +770,10 @@ export const Header: React.FC<HeaderProps> = ({
                                 onClick={() => setIsFavoritesOpen(!isFavoritesOpen)}
                                 aria-expanded={isFavoritesOpen}
                                 aria-label={t("Favorites", "Obľúbené položky", "Kedvencek")}
-                                className={`h-9 sm:h-10 w-9 sm:w-10 rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer relative ${
+                                className={`h-9 sm:h-10 w-9 sm:w-10 rounded-md border flex items-center justify-center transition-all shadow-2xs cursor-pointer relative ${
                                     isFavoritesOpen
-                                        ? "bg-[#0b1329] border-[#0b1329] text-rose-500 shadow-inner"
-                                        : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-rose-300 hover:bg-rose-50/50"
+                                        ? "bg-gray-900 border-gray-900 text-rose-500 shadow-inner"
+                                        : "bg-white border-gray-300 text-gray-700 hover:border-rose-300 hover:bg-rose-50"
                                 }`}
                                 title={t("Favorites", "Obľúbené položky", "Kedvencek")}
                             >
@@ -787,6 +795,9 @@ export const Header: React.FC<HeaderProps> = ({
 
                     {/* Utilities */}
                     <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2.5 md:gap-4 shrink-0">
+                        <HeaderTeamTimers deps={timeDeps} />
+                        <HeaderTimerPill deps={timeDeps} />
+
                         {/* Mobile Search Button */}
                         <button
                             onClick={() => {
@@ -802,7 +813,7 @@ export const Header: React.FC<HeaderProps> = ({
                         {/* Pulsing DEMO MODE badge */}
                         {isDemoMode && (
                             <a
-                                href="#settings"
+                                href="#settings/system/reset"
                                 className="px-1.5 xs:px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white type-overline xs:text-micro shadow-md shadow-amber-500/25 transition-all flex items-center gap-1 hover:scale-[1.02] shrink-0"
                             >
                                 <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-white animate-pulse" />
@@ -914,15 +925,6 @@ export const Header: React.FC<HeaderProps> = ({
                             </button>
 
                             {/* Popover Dropdown Panel */}
-                            {isMeetingsOpen && typeof document !== "undefined" &&
-                                createPortal(
-                                    <div
-                                        className="fixed inset-0 z-40"
-                                        aria-hidden="true"
-                                        onClick={() => setIsMeetingsOpen(false)}
-                                    />,
-                                    document.body,
-                                )}
                             {isMeetingsOpen && (
                                 <div role="menu" className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
                                     <div className="px-3 py-1.5 type-overline text-slate-400 border-b border-slate-100 mb-1">
@@ -1029,15 +1031,6 @@ export const Header: React.FC<HeaderProps> = ({
                                 <Workflow className="h-5 w-5 text-purple-700" />
                             </button>
 
-                            {isToolboxOpen && typeof document !== "undefined" &&
-                                createPortal(
-                                    <div
-                                        className="fixed inset-0 z-40"
-                                        aria-hidden="true"
-                                        onClick={() => setIsToolboxOpen(false)}
-                                    />,
-                                    document.body,
-                                )}
                             {isToolboxOpen && (
                                 <div role="menu" className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
                                     <div className="px-1.5 pb-2 type-overline text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">
@@ -1445,7 +1438,7 @@ export const Header: React.FC<HeaderProps> = ({
                             ),
                             createPortal(
                                 <div
-                                    className={`fixed top-20 right-0 bottom-0 w-full max-w-85 sm:max-w-md md:w-105 bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                                    className={`fixed top-20 right-0 bottom-0 w-full max-w-85 sm:max-w-md md:w-105 bg-white border-l border-gray-200 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
                                     onClick={(e) => e.stopPropagation()}
                                     key="drawer-panel"
                                 >
@@ -1530,10 +1523,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                             : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
                                                     }`}
                                                 >
-                                                    <span className="text-title-sm">
-                                                        🇬🇧
-                                                    </span>{" "}
-                                                    EN
+                                                    English
                                                 </button>
                                                 <button
                                                     type="button"
@@ -1546,10 +1536,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                             : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
                                                     }`}
                                                 >
-                                                    <span className="text-title-sm">
-                                                        🇸🇰
-                                                    </span>{" "}
-                                                    SK
+                                                    Slovenčina
                                                 </button>
                                                 <button
                                                     type="button"
@@ -1562,10 +1549,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                             : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
                                                     }`}
                                                 >
-                                                    <span className="text-title-sm">
-                                                        🇭🇺
-                                                    </span>{" "}
-                                                    HU
+                                                    Magyar
                                                 </button>
                                             </div>
                                         </div>
@@ -1669,7 +1653,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                                     {/* Lower Footer with Logout Option */}
                                     <div className="p-5 bg-slate-50 border-t border-slate-100 flex justify-between items-center type-overline text-slate-400 select-none">
-                                        <span>{systemName} CRM</span>
+                                        <span>{PRODUCT_NAME}</span>
                                         {onLogout ? (
                                             <button
                                                 onClick={() => {

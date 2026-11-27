@@ -32,6 +32,8 @@ export type MyPayrollRow = {
   items: unknown[];
   totalSalary: number;
   totalPaid: number;
+  /** Na výplatu from the payslip; employees only. Shown instead of totalPaid, which counts the company's cost. */
+  netPay?: number | null;
   status: "pending" | "partially_paid" | "paid" | string;
   dueDate: string | null;
   paymentDate: string | null;

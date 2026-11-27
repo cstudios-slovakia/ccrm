@@ -1,7 +1,7 @@
 # In-app updates — feasibility and implementation plan
 
 How CCRM could update itself from a button in the UI, and on a schedule, instead
-of requiring `php ccrm update` in an SSH session.
+of requiring `php kprnq update` in an SSH session.
 
 > **Status: proposal. Nothing in this document is implemented.** It is a design
 > written against the 1.9-jackfruit codebase (v1.9.5) after reading the existing
@@ -82,7 +82,7 @@ PHP reads the whole entry file into memory before executing, so a script can
 survive being overwritten mid-run — but anything it `require`s **after** the
 swap is the *new* file running under the *old* bootstrap. We have already been
 bitten by the first half of this: commit `b540ae3`'s publish fix only took
-effect on the *following* `php ccrm update`, because the run that delivered it
+effect on the *following* `php kprnq update`, because the run that delivered it
 was still executing the old in-memory publish logic, and that run clobbered
 `dist/` with a stale `public/index.html` — old frontend against new backend,
 which tripped the sync mass-delete guard and blocked every save. See
@@ -123,7 +123,7 @@ Two ways out:
 
 |  | **A — git wrapper** | **B — signed release bundle** |
 |---|---|---|
-| How | `api/update.php` spawns `php ccrm update` detached; UI tails the log | Download a signed `.zip` from the licence server, verify sha256 + Ed25519, stage, swap, migrate |
+| How | `api/update.php` spawns `php kprnq update` detached; UI tails the log | Download a signed `.zip` from the licence server, verify sha256 + Ed25519, stage, swap, migrate |
 | Requires | `exec()`, `git` in the web user's `PATH`, writable checkout | `curl` + `zip` — both already documented prerequisites |
 | Works on | Websupport almost certainly — `sync.php` used to spawn workers with `exec()` until `a5d759a`, so the function is not disabled there | Effectively any PHP host, including one with `disable_functions=exec` |
 | Effort | ~1 day | ~2–3 days |
@@ -145,7 +145,7 @@ Two ways out:
    on the machine that has the build step.
 3. It gives customers who are not on our git remote a real update path.
 
-One engine, two source drivers, and `php ccrm update` calls the same engine — so
+One engine, two source drivers, and `php kprnq update` calls the same engine — so
 there is never a "the CLI does it differently" bug.
 
 ---
@@ -353,7 +353,7 @@ Roughly **4–5 days** for all five, with a working button after three.
 ### Documentation and rules to update as we go
 
 - [`.agents/rules/licensing.md`](../.agents/rules/licensing.md) — the wording
-  "refuse `php ccrm update`" becomes "refuse updates, CLI or in-app". The rule
+  "refuse `php kprnq update`" becomes "refuse updates, CLI or in-app". The rule
   itself does not change: a licence gates updates and nothing else, and an
   install that stops updating keeps serving its users.
 - [`README.md`](../README.md) — the deployment section gains the in-app path

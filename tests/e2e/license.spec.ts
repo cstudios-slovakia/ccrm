@@ -116,7 +116,7 @@ test.describe('Licensing', () => {
     // Seats are rendered "4 of 25" / "4 z 25" / "4 / 25" depending on language.
     await expect(workspace).toContainText(/4\s*(of|z|\/)\s*25/i);
     // An admin gets somewhere to type a new key.
-    await expect(page.getByPlaceholder(/CCRM-XXXX/i)).toBeVisible();
+    await expect(page.getByPlaceholder(/KPRNQ-XXXX/i)).toBeVisible();
   });
 
   test('a backend that answers nothing useful produces no banner at all', async ({ page }) => {

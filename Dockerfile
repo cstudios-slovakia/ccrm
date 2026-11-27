@@ -24,10 +24,17 @@ FROM php:8.2-apache
 # `releases/latest/download/...` URL ran whatever script was current at build time as
 # root, with no version or checksum, so a swapped release asset would have executed
 # arbitrary commands inside every image build.
-COPY --from=mlocati/php-extension-installer:2.7.26 /usr/bin/install-php-extensions /usr/local/bin/
+COPY --from=mlocati/php-extension-installer:2.12.0 /usr/bin/install-php-extensions /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/install-php-extensions && \
-    install-php-extensions imap pdo_mysql zip
+    install-php-extensions imap pdo_mysql zip && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends python3 nodejs npm ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /opt/ccrm-waai && \
+    cd /opt/ccrm-waai && \
+    npm init -y >/dev/null 2>&1 && \
+    npm install @whiskeysockets/baileys qrcode pino --no-audit --no-fund
 
 # Enable apache rewrite and headers modules, and let the checked-in .htaccess
 # files actually take effect. Without AllowOverride the container ignores both
@@ -50,6 +57,9 @@ RUN cd /var/www/html && composer install --no-dev --no-interaction --prefer-dist
 COPY --from=builder /app/dist /var/www/html
 
 # Adjust permissions so Apache user (www-data) can write config.php and handle uploads
-RUN chown -R www-data:www-data /var/www/html
+RUN chown -R www-data:www-data /var/www/html && \
+    printf '#!/bin/sh\nset -e\n(while true; do sleep 60; su -s /bin/sh www-data -c "php /var/www/html/api/cron.php >/dev/null 2>&1" || true; done) &\nexec apache2-foreground "$@"\n' > /usr/local/bin/ccrm-entrypoint.sh && \
+    chmod +x /usr/local/bin/ccrm-entrypoint.sh
 
 EXPOSE 80
+CMD ["/usr/local/bin/ccrm-entrypoint.sh"]

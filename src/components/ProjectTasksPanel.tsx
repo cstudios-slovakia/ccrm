@@ -1,8 +1,9 @@
 import React from "react";
-import type { Lead, Project, Task, UserProfile } from "../types";
+import type { ClickUpProjectList, Lead, Project, Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import type { TaskAccess } from "../utils/taskSelectors";
 import { EntityTasksPanel } from "./EntityTasksPanel";
+import { ProjectClickUpListsBar } from "./projects/ProjectClickUpListsBar";
 
 interface ProjectTasksPanelProps {
   project: Project;
@@ -20,6 +21,10 @@ interface ProjectTasksPanelProps {
   currentUser?: UserProfile;
   /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
   mailConfigured?: boolean;
+  clickupConnected?: boolean;
+  clickupLists?: ClickUpProjectList[];
+  canEditProject?: boolean;
+  onClickUpListsChange?: (next: ClickUpProjectList[]) => void;
 }
 
 /**
@@ -41,26 +46,43 @@ export const ProjectTasksPanel: React.FC<ProjectTasksPanelProps> = ({
   taskAccess,
   currentUser,
   mailConfigured,
+  clickupConnected = false,
+  clickupLists,
+  canEditProject = false,
+  onClickUpListsChange,
 }) => {
+  const showClickUpBar = clickupConnected || (clickupLists?.length ?? 0) > 0;
   return (
-    <EntityTasksPanel
-      entityType="project"
-      entityId={project.id}
-      entityName={project.name || ""}
-      isNew={isNew}
-      tasks={tasks}
-      setTasks={setTasks}
-      projects={projects}
-      leads={leads}
-      users={users}
-      userLanguage={userLanguage}
-      taskStates={taskStates}
-      taskStateColors={taskStateColors}
-      taskAccess={taskAccess}
-      currentUser={currentUser}
-      mailConfigured={mailConfigured}
-      relatedLeadId={project.leadId || undefined}
-      accentColor="indigo"
-    />
+    <div className="flex-1 min-h-0 flex flex-col gap-3">
+      {showClickUpBar && onClickUpListsChange && (
+        <ProjectClickUpListsBar
+          projectId={project.id}
+          isNew={isNew}
+          value={clickupLists ?? project.clickupLists ?? []}
+          canEdit={canEditProject}
+          userLanguage={userLanguage}
+          onChange={onClickUpListsChange}
+        />
+      )}
+      <EntityTasksPanel
+        entityType="project"
+        entityId={project.id}
+        entityName={project.name || ""}
+        isNew={isNew}
+        tasks={tasks}
+        setTasks={setTasks}
+        projects={projects}
+        leads={leads}
+        users={users}
+        userLanguage={userLanguage}
+        taskStates={taskStates}
+        taskStateColors={taskStateColors}
+        taskAccess={taskAccess}
+        currentUser={currentUser}
+        mailConfigured={mailConfigured}
+        relatedLeadId={project.leadId || undefined}
+        accentColor="indigo"
+      />
+    </div>
   );
 };

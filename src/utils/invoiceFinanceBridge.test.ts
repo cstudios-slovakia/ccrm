@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { FinancialRecord, InvoiceOffer } from "../types";
-import { invoiceMovementId, reconcileInvoiceMovements } from "./invoiceFinanceBridge.ts";
+import { effectiveDocumentAmount, invoiceMovementId, markInvoiceMovementPaid, reconcileInvoiceMovements } from "./invoiceFinanceBridge.ts";
 import type { OfferStatusDef } from "./offerStatuses.ts";
 
 const NOW = "2026-09-18T10:00:00.000Z";
@@ -151,4 +151,40 @@ test("a configured status decides by its group whether an invoice is expected in
 test("an invoice with nothing to tax gets no invented VAT rate", () => {
   const [m] = reconcileInvoiceMovements([], [invoice({ subtotal: 0, vatAmount: 0, totalPrice: 0 })], [], NOW);
   assert.equal(m.taxRate, 0);
+});
+
+// --- Stored-vs-derived audit, finance #8: an invoice from a paid order settles its movement ---
+
+test("an invoice issued from a paid order settles its ledger movement", () => {
+  const records = reconcileInvoiceMovements([], [invoice()], [], NOW);
+  const paid = markInvoiceMovementPaid(records, "io-1", 1230, "2026-09-10");
+  const m = paid.find((r) => r.id === invoiceMovementId("io-1"))!;
+  assert.equal(m.status, "paid");
+  assert.equal(m.amountReal, 1230);
+  assert.equal(m.paidDate, "2026-09-10");
+});
+
+test("a movement already paid is never re-priced or re-dated", () => {
+  const records = markInvoiceMovementPaid(reconcileInvoiceMovements([], [invoice()], [], NOW), "io-1", 1230, "2026-09-10");
+  assert.equal(markInvoiceMovementPaid(records, "io-1", 999, "2026-10-01"), records);
+});
+
+test("no linked movement: nothing changes", () => {
+  const records: FinancialRecord[] = [];
+  assert.equal(markInvoiceMovementPaid(records, "io-1", 1230, "2026-09-10"), records);
+});
+
+test("netMode uses subtotal (VAT-excluded) in reconcileInvoiceMovements and effectiveDocumentAmount", () => {
+  const doc = invoice({ subtotal: 1000, vatAmount: 230, totalPrice: 1230 });
+  assert.equal(effectiveDocumentAmount(doc, false), 1230);
+  assert.equal(effectiveDocumentAmount(doc, true), 1000);
+  assert.equal(effectiveDocumentAmount(invoice({ subtotal: 0, vatAmount: 230, totalPrice: 1230 }), true), 1000);
+
+  const [m] = reconcileInvoiceMovements([], [doc], [], NOW, undefined, { netMode: true });
+  assert.equal(m.amountPlanned, 1000);
+  assert.equal(m.taxRate, 23);
+
+  const edited = invoice({ subtotal: 1500, vatAmount: 345, totalPrice: 1845 });
+  const [updated] = reconcileInvoiceMovements([doc], [edited], [m], NOW, undefined, { netMode: true });
+  assert.equal(updated.amountPlanned, 1500);
 });

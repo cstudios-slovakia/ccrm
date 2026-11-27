@@ -234,8 +234,10 @@ function ccrm_mail_store_event(PDO $pdo, array $m): string {
  * read its body and file it. Returns the outcome of ccrm_mail_store_event(), or
  * 'skipped' (no customer, or gone from the server) / 'old' (before the cut-off date).
  */
-function ccrm_mail_process_uid(PDO $pdo, $stream, int $uid, array $ctx): string {
-    $msgNo = @imap_msgno($stream, $uid);
+function ccrm_mail_process_uid(PDO $pdo, $stream, int $uid, array $ctx, ?int $msgNo = null): string {
+    if ($msgNo === null || $msgNo <= 0) {
+        $msgNo = (int)@imap_msgno($stream, $uid);
+    }
     if (!$msgNo) return 'skipped';
     $h = @imap_headerinfo($stream, $msgNo);
     if (!$h) return 'skipped';
@@ -253,8 +255,8 @@ function ccrm_mail_process_uid(PDO $pdo, $stream, int $uid, array $ctx): string 
     );
     if ($leadId === null) return 'skipped';
 
-    $subject = isset($h->subject) ? safe_utf8(imap_utf8($h->subject)) : '(No Subject)';
-    $personal = fn($list) => isset($list[0]->personal) ? safe_utf8(imap_utf8($list[0]->personal)) : '';
+    $subject = isset($h->subject) ? ccrm_decode_mime_header($h->subject) : '(No Subject)';
+    $personal = fn($list) => isset($list[0]->personal) ? ccrm_decode_mime_header($list[0]->personal) : '';
     $fromName = $personal($h->from ?? []);
     $toName = $personal($h->to ?? []);
     $content = "From: " . $fromName . " <" . $fromAddress . ">\nTo: " . $toName . " <" . ($to[0] ?? '') . ">\nSubject: " . $subject;
@@ -310,6 +312,11 @@ function ccrm_company_mailbox_settings(array $row): array {
 function ccrm_mail_filing_sources(PDO $pdo): array {
     $sources = [];
     foreach ($pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `name`")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $settings = ccrm_company_mailbox_settings($r);
+        $connectorType = (string)($settings['connectorType'] ?? '');
+        if (in_array($connectorType, ['whatsapp', 'claude', 'antigravity', 'chatgpt', 'claude_api', 'gemini_api', 'openai_api'], true)) {
+            continue;
+        }
         $owner = null;
         if (!empty($r['owner_user_id'])) {
             $o = $pdo->prepare("SELECT `name`, `email` FROM `users` WHERE `id` = ?");
@@ -318,7 +325,8 @@ function ccrm_mail_filing_sources(PDO $pdo): array {
         }
         $sources[] = [
             'key' => 'c:' . $r['id'], 'kind' => 'company', 'id' => $r['id'], 'label' => $r['name'] !== '' ? $r['name'] : $r['address'],
-            'address' => strtolower(trim((string)$r['address'])), 'settings' => ccrm_company_mailbox_settings($r),
+            'address' => strtolower(trim((string)$r['address'])), 'settings' => $settings,
+            'backend' => ($settings['provider'] ?? '') === 'microsoft365' ? 'graph' : 'imap',
             // A company mailbox is nobody's personal mail: everyone reads its filed mail from the stored body.
             'owner_email' => null, 'owner_name' => $owner['name'] ?? null,
             'cutoff' => !empty($r['backfill_since']) ? (int)strtotime($r['backfill_since'] . ' 00:00:00') : null,
@@ -328,13 +336,27 @@ function ccrm_mail_filing_sources(PDO $pdo): array {
     foreach ($pdo->query("SELECT `id`, `name`, `email`, `metadata_json` FROM `users`")->fetchAll(PDO::FETCH_ASSOC) as $u) {
         $meta = !empty($u['metadata_json']) ? json_decode($u['metadata_json'], true) : null;
         $settings = ccrm_decrypt_email_settings(is_array($meta) ? ($meta['emailSettings'] ?? null) : null);
+        // A mailbox signed in with Microsoft is read through Graph. One whose sign-in ran out is
+        // still a source, so that the run records "sign in again" where an admin can see it.
+        if (($settings['provider'] ?? '') === 'microsoft365') {
+            if (!empty($settings['isValidated'])) {
+                $account = strtolower(trim((string)($settings['graphAccount'] ?? '')));
+                $sources[] = [
+                    'key' => 'u:' . $u['id'], 'kind' => 'user', 'id' => $u['id'], 'label' => $account !== '' ? $account : (string)$u['email'],
+                    'address' => '', 'settings' => $settings, 'backend' => 'graph',
+                    'owner_email' => strtolower((string)$u['email']), 'owner_name' => $u['name'], 'cutoff' => null,
+                ];
+            }
+            continue;
+        }
         $hasHost = !empty($settings['imapHost']) || (($settings['provider'] ?? '') === 'exchange' && !empty($settings['exchangeUrl']));
         if (!$settings || !$hasHost || empty($settings['imapUsername'] ?? $settings['username'] ?? '') || ccrm_demo_mailbox_active($pdo, $settings)) {
             continue;
         }
         $sources[] = [
             'key' => 'u:' . $u['id'], 'kind' => 'user', 'id' => $u['id'], 'label' => (string)($settings['imapUsername'] ?? $settings['username'] ?? $u['email']),
-            'address' => '', 'settings' => $settings, 'owner_email' => strtolower((string)$u['email']), 'owner_name' => $u['name'], 'cutoff' => null,
+            'address' => '', 'settings' => $settings, 'backend' => 'imap',
+            'owner_email' => strtolower((string)$u['email']), 'owner_name' => $u['name'], 'cutoff' => null,
         ];
     }
     return $sources;
@@ -388,11 +410,11 @@ function ccrm_mail_run_folder(PDO $pdo, array $source, string $folder, array $ct
                 'backfill_upper_uid' => $nextUid, 'backfill_done' => $nextUid <= 1 ? 1 : 0, 'filed_count' => 0,
             ];
         }
-        $step = function (int $uid) use ($pdo, $stream, $ctx, &$counts, &$budget, &$st): ?string {
+        $step = function (int $uid, ?int $msgNo = null) use ($pdo, $stream, $ctx, &$counts, &$budget, &$st): ?string {
             if ($budget['left'] <= 0 || microtime(true) >= $budget['deadline']) return null;
             $budget['left']--;
             $counts['seen']++;
-            $r = ccrm_mail_process_uid($pdo, $stream, $uid, $ctx);
+            $r = ccrm_mail_process_uid($pdo, $stream, $uid, $ctx, $msgNo);
             if (isset($counts[$r])) $counts[$r]++;
             if ($r === 'filed') $st['filed_count'] = (int)($st['filed_count'] ?? 0) + 1;
             return $r;
@@ -401,13 +423,16 @@ function ccrm_mail_run_folder(PDO $pdo, array $source, string $folder, array $ct
         // 1. New mail (UIDs above the high-water mark), oldest first so the mark only moves up.
         if ($nextUid - 1 > (int)$st['last_uid']) {
             $overview = @imap_fetch_overview($stream, ((int)$st['last_uid'] + 1) . ':' . ($nextUid - 1), FT_UID);
-            $uids = [];
+            $newItems = [];
             foreach (is_array($overview) ? $overview : [] as $o) {
-                if ((int)$o->uid > (int)$st['last_uid']) $uids[] = (int)$o->uid;
+                if ((int)$o->uid > (int)$st['last_uid']) {
+                    $newItems[(int)$o->uid] = (int)($o->msgno ?? 0);
+                }
             }
-            sort($uids, SORT_NUMERIC);
-            foreach ($uids as $uid) {
-                if ($step($uid) === null) break;
+            ksort($newItems, SORT_NUMERIC);
+            $uids = array_keys($newItems);
+            foreach ($newItems as $uid => $msgNo) {
+                if ($step($uid, $msgNo) === null) break;
                 $st['last_uid'] = $uid;
             }
             // Everything up to the server's UIDNEXT was looked at when the list was exhausted.
@@ -417,20 +442,31 @@ function ccrm_mail_run_folder(PDO $pdo, array $source, string $folder, array $ct
         }
 
         // 2. Backlog, newest first, in chunks, back to the cut-off date.
+        // Search by sequence number (without SE_UID) so c-client never scans 1:N UIDs on huge mailboxes.
         if (empty($st['backfill_done']) && $budget['left'] > 0 && microtime(true) < $budget['deadline']) {
             $criteria = !empty($ctx['cutoff']) ? 'SINCE "' . date('d-M-Y', (int)$ctx['cutoff']) . '"' : 'ALL';
-            $found = @imap_search($stream, $criteria, SE_UID);
-            $upper = (int)($st['backfill_upper_uid'] ?? 0);
-            $pool = [];
-            foreach (is_array($found) ? $found : [] as $uid) {
-                if ((int)$uid < $upper) $pool[] = (int)$uid;
+            if ($criteria === 'ALL') {
+                $numMsg = (int)@imap_num_msg($stream);
+                $foundSeqs = $numMsg > 0 ? range(1, $numMsg) : [];
+            } else {
+                $found = @imap_search($stream, $criteria);
+                $foundSeqs = is_array($found) ? array_map('intval', $found) : [];
             }
-            rsort($pool, SORT_NUMERIC);
+            rsort($foundSeqs, SORT_NUMERIC);
+            $upper = (int)($st['backfill_upper_uid'] ?? 0);
             $stoppedEarly = false;
-            foreach ($pool as $uid) {
-                $r = $step($uid);
-                if ($r === null) { $stoppedEarly = true; break; }
-                $st['backfill_upper_uid'] = $uid;
+            foreach (array_chunk($foundSeqs, 50) as $seqChunk) {
+                $ovChunk = @imap_fetch_overview($stream, implode(',', $seqChunk), 0);
+                if (!is_array($ovChunk)) continue;
+                usort($ovChunk, fn($a, $b) => ((int)($b->uid ?? 0)) <=> ((int)($a->uid ?? 0)));
+                foreach ($ovChunk as $o) {
+                    $uid = (int)($o->uid ?? 0);
+                    $msgNo = (int)($o->msgno ?? 0);
+                    if ($uid <= 0 || $uid >= $upper) continue;
+                    $r = $step($uid, $msgNo);
+                    if ($r === null) { $stoppedEarly = true; break 2; }
+                    $st['backfill_upper_uid'] = $uid;
+                }
             }
             if (!$stoppedEarly) {
                 $st['backfill_done'] = 1;
@@ -450,8 +486,8 @@ function ccrm_mail_run_folder(PDO $pdo, array $source, string $folder, array $ct
     return $counts;
 }
 
-/** One mailbox: INBOX and Sent. Errors are recorded on the mailbox and rethrown to the caller. */
-function ccrm_mail_run_source(PDO $pdo, array $source, array $index, array $internal, array &$budget): array {
+/** The IMAP side of one mailbox: INBOX and Sent. Returns [counters, error messages]. */
+function ccrm_mail_run_source_imap(PDO $pdo, array $source, array $index, array $internal, array &$budget): array {
     $settings = $source['settings'];
     $own = ccrm_mailbox_addresses($settings);
     if ($source['address'] !== '') $own[] = $source['address'];
@@ -461,6 +497,9 @@ function ccrm_mail_run_source(PDO $pdo, array $source, array $index, array $inte
     ];
     $total = ['seen' => 0, 'filed' => 0, 'updated' => 0, 'duplicate' => 0, 'hidden' => 0];
     $errors = [];
+    if (!function_exists('imap_open')) {
+        return [$total, ['PHP IMAP extension is not available.']];
+    }
     $folders = ['INBOX'];
     try {
         $folders[] = ccrm_resolve_sent_folder($settings);
@@ -473,6 +512,21 @@ function ccrm_mail_run_source(PDO $pdo, array $source, array $index, array $inte
         } catch (\Throwable $e) {
             $errors[] = $e->getMessage();
         }
+    }
+    return [$total, $errors];
+}
+
+/**
+ * One mailbox, through the backend it lives on: IMAP, or Microsoft Graph for a mailbox signed
+ * in with Microsoft (graph_filing.php). Everything else is shared. Errors are recorded on the
+ * mailbox and returned to the caller.
+ */
+function ccrm_mail_run_source(PDO $pdo, array $source, array $index, array $internal, array &$budget): array {
+    if (($source['backend'] ?? 'imap') === 'graph') {
+        require_once __DIR__ . '/graph_filing.php';
+        list($total, $errors) = ccrm_graph_run_source($pdo, $source, $index, $internal, $budget);
+    } else {
+        list($total, $errors) = ccrm_mail_run_source_imap($pdo, $source, $index, $internal, $budget);
     }
     if ($source['kind'] === 'company') {
         $pdo->prepare("UPDATE `company_mailboxes` SET `last_run_at` = NOW(), `last_success_at` = IF(?, `last_success_at`, NOW()), `last_error` = ? WHERE `id` = ?")
@@ -487,8 +541,16 @@ function ccrm_mail_run_source(PDO $pdo, array $source, array $index, array $inte
  * Returns a summary with one entry per mailbox; never throws for a broken mailbox.
  */
 function ccrm_run_mail_filing(PDO $pdo, array $opts = []): array {
+    // Without the IMAP extension only the Microsoft 365 mailboxes can be read. With none of
+    // those either there is nothing to do, which is said as it always was.
     if (!function_exists('imap_open')) {
-        return ['success' => false, 'ran' => false, 'message' => 'PHP IMAP extension is not available.'];
+        $hasGraph = false;
+        foreach (ccrm_mail_filing_sources($pdo) as $s) {
+            if (($s['backend'] ?? 'imap') === 'graph') { $hasGraph = true; break; }
+        }
+        if (!$hasGraph) {
+            return ['success' => false, 'ran' => false, 'message' => 'PHP IMAP extension is not available.'];
+        }
     }
     $lock = (int)$pdo->query("SELECT GET_LOCK('ccrm_mail_filing', 0)")->fetchColumn();
     if ($lock !== 1) {

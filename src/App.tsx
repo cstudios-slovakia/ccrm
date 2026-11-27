@@ -1,21 +1,39 @@
-import { useState, useEffect, useMemo, useRef, lazy, Suspense, type ComponentType } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, type ComponentType, type MouseEvent as ReactMouseEvent } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import { QuickTaskModal } from "./components/QuickTaskModal";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
+import { TaskDetailView } from "./components/TaskDetailView";
+import type { TaskHubData } from "./components/tasks/MultiCalendarPanel";
+import { TimeTrackingProvider } from "./hooks/useTimeTracking";
+import { TimeTrackingView } from "./components/timeTracking/TimeTrackingView";
+import { WhatsAppModule } from "./components/whatsapp/WhatsAppModule";
+import { buildDemoDirectory } from "./components/whatsapp/demo/demoDirectory";
+import { crmHashForRecord } from "./components/whatsapp/lib/routes";
+import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDialog";
+import { PresenceDialog } from "./components/timeTracking/PresenceDialog";
+import { TaskStatusTimerBridge } from "./components/timeTracking/TaskStatusTimerBridge";
+import { reportLocalTaskEdit } from "./utils/taskStatusTimerHook";
+import type { TimeDeps } from "./components/timeTracking/shared";
+import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
+import { QuickTaskModal, composerOriginFrom, type ComposerOrigin } from "./components/QuickTaskModal";
+import { TableFullscreenEnhancer } from "./components/ui/TableFullscreenEnhancer";
+import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, ProjectAttribute, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, ClientContact, OfferCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
+import { clearedSecretKeys } from "./utils/secretClears";
+import { findSelf, isDifferentSessionUser } from "./utils/sessionIdentity";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
+import { normalizeLeadAttributes } from "./utils/leadAttributes";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { DEFAULT_TASK_SETTINGS, normalizeTaskSettings } from "./utils/taskConclusion";
-import { normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
+import { defaultProjectStatus, normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
 import { normalizeInvoiceStatusDefs, normalizeOfferStatusDefs, type OfferStatusDef } from "./utils/offerStatuses";
 import { normalizePriceLevels, type PriceLevel } from "./utils/priceLevels";
 import { ProjectStatusesProvider } from "./hooks/useProjectStatuses";
 import { normalizeOrderStatusDefs, type OrderStatusDef } from "./utils/orders";
 import { OrderStatusesProvider } from "./hooks/useOrderStatuses";
 import { TaskSettingsProvider } from "./hooks/useTaskSettings";
-import { normalizeTicketStatuses, normalizeTicketSettings } from "./utils/tickets";
+import { RecurringTemplatesProvider } from "./hooks/useRecurringTemplates";
+import { normalizeTicketStatuses, normalizeTicketSettings, isClosedTicketStatus } from "./utils/tickets";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
 import {
@@ -25,9 +43,14 @@ import {
   registerWebPushSubscription,
 } from "./utils/browserNotifications";
 import { isDoneTaskState } from "./utils/projectTasks";
-import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
+import { sanitizeTimerActions, type TaskStateTimerActions } from "./utils/taskStateTimerActions";
+import { normalizeListIds, type ListIds } from "./utils/listIds";
+import { computeSettingsSig, computePushSig } from "./utils/settingsSig";
+import { agencyRightsFrom } from "./utils/agencyRights";
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
+import { materializeDueCharges } from "./utils/recurringRuleDeletion";
+import { todayLocal } from "./utils/localTime";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
 import { isClientRecord, recordHref } from "./utils/clientRecord";
 import { hasLaunchIntent } from "./utils/launchIntent";
@@ -38,6 +61,16 @@ import { HOME_DASHBOARD_ID, buildDefaultHomeDashboard } from "./utils/dashboardW
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation, formatTranslation } from "./utils/translations";
+import {
+  DEFAULT_LANGUAGE,
+  isLang,
+  personalLanguage,
+  readCachedSystemLanguage,
+  readRememberedLanguage,
+  resolveLanguage,
+  writeCachedSystemLanguage,
+  writeRememberedLanguage,
+} from "./utils/languagePrefs";
 import { orderLeadStates } from "./utils/leadStates";
 import { buildAccess, firstAllowedRoute, permissionKeyForRoute } from "./utils/permissions";
 import { employeeRightsFrom } from "./utils/employeeRights";
@@ -47,21 +80,27 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AiKeyBanner } from "./components/ui/AiKeyBanner";
 import { ModuleSetupRequired } from "./components/ui/ModuleSetupRequired";
 import { isPersonalMailboxConfigured, isVectorDbConfigured } from "./utils/moduleRequirements";
+import { listMyConnectors } from "./utils/companyMailboxes";
 import { hasOpenAiKey, openAiSettings } from "./utils/aiConfig";
 import { QuickAddClientProvider } from "./components/ui/QuickAddClient";
 import FilePreviewPane from "./components/FilePreviewPane";
 import { FloatingCopilotOrb, type CopilotCorner } from "./components/executive/FloatingCopilotOrb";
 import { CopilotSidebar } from "./components/executive/CopilotSidebar";
 import { AuroraBackground } from "./components/ui/AuroraBackground";
+import { EntityScope } from "./components/tremor/EntityScope";
+import { resolveRouteEntityHex } from "./utils/entityAccent";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
 import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail, Bell, X, Plus, ArrowUpRight } from "lucide-react";
-import { FeralGradientBackground } from "./components/FeralGradientBackground";
-import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
+import { AppLoadingScreen } from "./components/AppLoadingScreen";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
-import { baselineOf, diffRecords, skipHoldsBaseline, skipIsLostWork, type RecordBaseline } from "./utils/syncDiff";
+import { baselineOf, diffRecords, FINANCIAL_BLOB_KEYS, omitUnchangedGithubPairing, skipHoldsBaseline, skipIsLostWork, withStockRowIds, type FinancialBlobKey, type RecordBaseline } from "./utils/syncDiff";
+import { pickerProjectTypes, withPickerClients, workableProjectStubs } from "./utils/workableProjects";
+import { canCreateProjectFromTime, createPickerProject } from "./components/timeTracking/createPickerProject";
 import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
 import { ReadScopeContext } from "./hooks/useReadScope";
+import { WhatsAppLinksContext } from "./hooks/useWhatsAppLinks";
+import { EMPTY_WHATSAPP_DATA, parseWhatsAppData, sameWhatsAppData, type WhatsAppData } from "./utils/whatsappLinks";
 import { adoptableSessionUser } from "./utils/sessionUser";
 import { parseUnifiedEntryKey, pendingDeletionIds, pendingDeletionKeys, pendingDeletionRecords, unifiedEntryKey, withoutPendingDeletions } from "./utils/pendingDeletions";
 import { createUndoQueue } from "./utils/undoQueue";
@@ -101,8 +140,11 @@ import {
 } from "./utils/financialTrend";
 import { flushPendingSaves } from "./utils/pendingSaves";
 import { updatePwaManifest } from "./utils/pwaManifest";
+import { PRODUCT_NAME, normalizeSystemTitleOverride, resolveSystemTitle, resolveTitleWithProduct, setSystemTitle } from "./utils/brand";
 import { HoldToConfirmButton } from "./components/ui/HoldToConfirm";
 import { clearErrorLogsWithUndo } from "./utils/errorLogs";
+import { setNameOrderEmployees, setNameOrderLanguage } from "./utils/nameOrder";
+import { DASHBOARD_SECTION_ALIASES, DASHBOARD_SECTION_LABEL_KEY, LEGACY_WIDGET_DASHBOARD, NEW_DASHBOARD_EDITION } from "./utils/dashboardSection";
 
 /**
  * Routes whose whole purpose depends on OpenAI. Visiting one without a
@@ -120,6 +162,8 @@ const SYNC_REQUEST_TIMEOUT_MS = 30_000;
 // page has loaded and signed in, so a reload during a freeze does not drop the
 // edit. Only bodies written before this page opened are replayed.
 const PENDING_PUSH_STORAGE_KEY = "ccrm_pending_push_v1";
+/** The company's own brand name only ("" = default). Not `crm_system_name`, which holds the resolved name for index.html's boot title. */
+const SYSTEM_NAME_OVERRIDE_KEY = "crm_system_name_override";
 const pageOpenedAt = Date.now();
 
 // Helper for resilient lazy loading: automatically reloads page if a build update changed chunk hash filenames
@@ -154,10 +198,14 @@ const safeLazy = <T extends ComponentType<any>>(importFn: () => Promise<{ defaul
     }
   });
 
-const Dashboard = safeLazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
+// The edition switch picks the Performance Dashboard: the KPI overview, or the one every customer keeps.
+const Dashboard = safeLazy(() => NEW_DASHBOARD_EDITION
+  ? import("./components/Dashboard").then(m => ({ default: m.Dashboard }))
+  : import("./components/LegacyPerformanceDashboard").then(m => ({ default: m.Dashboard })));
 const SettingsView = safeLazy(() => import("./components/SettingsView").then(m => ({ default: m.SettingsView })));
 const LeadsDatagrid = safeLazy(() => import("./components/LeadsDatagrid").then(m => ({ default: m.LeadsDatagrid })));
 const ClientsView = safeLazy(() => import("./components/ClientsView").then(m => ({ default: m.ClientsView })));
+const NewsletterView = safeLazy(() => import("./components/newsletter/NewsletterView").then(m => ({ default: m.NewsletterView })));
 const FilesView = safeLazy(() => import("./components/FilesView").then(m => ({ default: m.FilesView })));
 const PersonalSettingsView = safeLazy(() => import("./components/PersonalSettingsView").then(m => ({ default: m.PersonalSettingsView })));
 const EmailView = safeLazy(() => import("./components/EmailView").then(m => ({ default: m.EmailView })));
@@ -174,105 +222,10 @@ const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m
 const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
 const PriceOffersView = safeLazy(() => import("./components/PriceOffersView").then(m => ({ default: m.PriceOffersView })));
 const EmployeesView = safeLazy(() => import("./components/employees/EmployeesView").then(m => ({ default: m.EmployeesView })));
+const AgencyView = safeLazy(() => import("./components/agency/AgencyView").then(m => ({ default: m.AgencyView })));
 const OrdersView = safeLazy(() => import("./components/OrdersView").then(m => ({ default: m.OrdersView })));
 const TicketsView = safeLazy(() => import("./components/TicketsView").then(m => ({ default: m.TicketsView })));
 const PublicProjectTicketsView = safeLazy(() => import("./components/PublicProjectTicketsView").then(m => ({ default: m.PublicProjectTicketsView })));
-
-// Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
-// user edit apart from merely re-receiving the server's own settings, so the
-// settings-sync effect never echoes server data back. Field order must be fixed
-// (hence an array) and must match on both the client-state and server-data sides.
-//
-// Empty containers are normalised to null because the two sides represent "empty"
-// differently: the server falls back to `[]` for colour maps but `{}` for
-// leadStateParents/leadStateFollowUp (and `null` for a malformed column), while
-// the client defaults to `{}`. Without this an "empty" field would look different
-// depending on which side you asked, so saving settings from an empty field would
-// continuously fight with the initial sync.
-const computeSettingsSig = (s: any): string => {
-  if (!s || typeof s !== "object") return "null";
-  return JSON.stringify([
-    s.systemName ?? "",
-    s.systemLanguage ?? "",
-    s.systemCurrency ?? "",
-    s.leadStates ?? [],
-    s.leadSources ?? [],
-    s.leadCategories ?? [],
-    s.divisions ?? [],
-    // Normalized on both sides so an install that has never stored an id map
-    // compares equal to the one the server derives. Reduced to a sorted array
-    // of pairs because two equal maps with their keys written in a different
-    // order would stringify differently and push forever. See listIdsSignature.
-    listIdsSignature(normalizeListIds(s.leadSources ?? [], s.leadSourceIds)),
-    listIdsSignature(normalizeListIds(s.leadCategories ?? [], s.leadCategoryIds)),
-    s.leadStateColors && Object.keys(s.leadStateColors).length ? s.leadStateColors : null,
-    s.leadSourceColors && Object.keys(s.leadSourceColors).length ? s.leadSourceColors : null,
-    s.leadCategoryColors && Object.keys(s.leadCategoryColors).length ? s.leadCategoryColors : null,
-    s.divisionColors && Object.keys(s.divisionColors).length ? s.divisionColors : null,
-    s.leadStageGroups && Object.keys(s.leadStageGroups).length ? s.leadStageGroups : null,
-    s.leadStateParents && Object.keys(s.leadStateParents).length ? s.leadStateParents : null,
-    s.leadStateFollowUp && Object.keys(s.leadStateFollowUp).length ? s.leadStateFollowUp : null,
-    // Normalized on both sides so "no SLA anywhere" has one spelling whichever
-    // side you ask. See normalizeLeadStateSla / ccrm_normalize_lead_state_sla.
-    normalizeLeadStateSla(s.leadStateSla),
-    // Normalized on both sides so an absent value and an explicit "off" blob
-    // (which is what the server sends back) compare equal instead of pushing
-    // forever. See normalizeLeadAssignment / ccrm_normalize_lead_assignment.
-    normalizeLeadAssignment(s.leadAssignment),
-    // Normalized on both sides for the same reason. See normalizeProjectAutoCreate
-    // / ccrm_normalize_project_auto_create.
-    normalizeProjectAutoCreate(s.projectAutoCreate),
-    s.taskStates ?? [],
-    s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
-    // Normalized on both sides, like the project auto-creation blob above. See
-    // normalizeTaskSettings / ccrm_normalize_task_settings.
-    normalizeTaskSettings(s.taskSettings),
-    // Normalized on both sides: an install that never opened the editor has
-    // nothing stored, and that must compare equal to the built-ins it is shown.
-    normalizeProjectStatusDefs(s.projectStatuses),
-    normalizeOfferStatusDefs(s.offerStatuses),
-    normalizeInvoiceStatusDefs(s.invoiceStatuses),
-    normalizePriceLevels(s.priceLevels),
-    normalizeOrderStatusDefs(s.orderStatuses),
-    normalizeTicketStatuses(s.ticketStatuses),
-    normalizeTicketSettings(s.ticketSettings),
-    s.integrationsConfig ?? null,
-    s.companyBillingSettings ?? null,
-    s.invoicingIntegrations ?? null,
-    s.financialMode ?? "connected",
-    s.financialSimplifiedTable ?? null,
-  ]);
-};
-
-// Signature of an entire sync.php push payload (minus baseSyncedAt, which is
-// just a concurrency token and changes on every request regardless of content).
-// Used to tell a genuine unsaved edit apart from an automatic background push
-// (e.g. the settings-resync effect) that happens to land after the session died.
-const computePushSig = (p: {
-  leads?: unknown; tasks?: unknown; users?: unknown; roles?: unknown;
-  meetingNotes?: unknown; unifiedEntries?: unknown; unifiedEntriesData?: unknown;
-  customDashboards?: unknown; projectTypes?: unknown; projects?: unknown;
-  warehouses?: unknown; suppliers?: unknown; warehouseItems?: unknown;
-  warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
-  financialCategories?: unknown; financialRecords?: unknown;
-  financialMode?: unknown; financialSimplifiedTable?: unknown;
-  invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown;
-  employees?: unknown; employeeSalaries?: unknown; employeeVacations?: unknown; employeeSettings?: unknown;
-  orders?: unknown;
-  tickets?: unknown; supportContracts?: unknown;
-  settings?: any;
-}): string => JSON.stringify([
-  p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
-  p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
-  p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
-  p.financialCategories, p.financialRecords,
-  p.financialMode, p.financialSimplifiedTable,
-  p.invoicesOffers, p.aiCustomTemplates, p.clientCategories,
-  p.employees, p.employeeSalaries, p.employeeVacations, p.employeeSettings,
-  p.orders,
-  p.tickets, p.supportContracts,
-  computeSettingsSig(p.settings),
-]);
 
 
 function App() {
@@ -293,6 +246,7 @@ function App() {
   // freshly-created rows — the root cause of "assignment/recording resets" bugs).
   const leadsRef = useRef<Lead[]>([]);
   const tasksRef = useRef<Task[]>([]);
+  const recurringTasksRef = useRef<RecurringTaskTemplate[]>([]);
   const rolesRef = useRef<RolePermission[]>([]);
   const usersRef = useRef<UserProfile[]>([]);
   const meetingNotesRef = useRef<MeetingNote[]>([]);
@@ -304,6 +258,21 @@ function App() {
   // connection vanished: the server's secret merge kept the password, the
   // default integrationsConfig wiped vectorDb, host, user and database name.
   const serverSettingsAppliedRef = useRef(false);
+  // Integration secrets the user emptied since the last push. Sent once as
+  // `clearSecrets`; without it the server keeps a stored secret when it receives a blank.
+  const pendingClearSecretsRef = useRef<Set<string>>(new Set());
+  // The integrations config as this tab last received it from, or confirmed to, the
+  // server. A push carries the config only when it differs: every push used to send
+  // it whole, so a tab holding an older copy (a background tab, one that missed a
+  // pull) wrote it back with any unrelated edit and wiped the SMTP server another
+  // tab had just saved. sync.php keeps the stored config when the key is absent.
+  const integrationsSigRef = useRef<string | null>(null);
+  // The unified-entry registry as the server last sent or accepted it. Every push
+  // carries the registry whole (sync.php walks it to reach each entry's rows), and
+  // sync.php refuses it from anyone without general_config edit. That refusal is
+  // only lost work when the registry differs from this; otherwise every push by
+  // such a user warned "Some changes were not saved".
+  const unifiedEntriesSigRef = useRef<string | null>(null);
   const unifiedEntriesRef = useRef<UnifiedEntryRegistry[]>([]);
   const unifiedEntriesDataRef = useRef<Record<string, UnifiedEntryRow[]>>({});
   const customDashboardsRef = useRef<CustomDashboard[]>([]);
@@ -320,6 +289,8 @@ function App() {
   const invoicesOffersRef = useRef<InvoiceOffer[]>([]);
   const aiCustomTemplatesRef = useRef<AiCustomTemplate[]>([]);
   const clientCategoriesRef = useRef<ClientCategory[]>([]);
+  const clientContactsRef = useRef<ClientContact[]>([]);
+  const offerCategoriesRef = useRef<OfferCategory[]>([]);
   const financialTrendRef = useRef<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
   const financialModeRef = useRef<FinancialOperatingMode>("connected");
   const financialSimplifiedTableRef = useRef<FinancialSimplifiedTable>({});
@@ -330,6 +301,16 @@ function App() {
   const employeeSalariesRef = useRef<EmployeeSalary[]>([]);
   const employeeVacationsRef = useRef<EmployeeVacation[]>([]);
   const employeeSettingsRef = useRef<EmployeeSettings | null>(null);
+  // What the server last showed this session. The push echoes the blob on every
+  // save; when it still matches, leave it out so a role that may read People but
+  // not edit general settings is not told the echo failed to save.
+  const employeeSettingsSigRef = useRef<string | null>(null);
+  // The same for the three finance blobs, which are sent whole on every push. A
+  // role without finance edit (or read) was told after every save — the first one
+  // right after login — that these had not reached the server.
+  const financialBlobSigRef = useRef<Record<FinancialBlobKey, string | null>>({
+    financialTrend: null, financialMode: null, financialSimplifiedTable: null,
+  });
   const ticketsRef = useRef<Ticket[]>([]);
   const supportContractsRef = useRef<SupportContract[]>([]);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
@@ -392,6 +373,7 @@ function App() {
 
     // Map common synonyms & aliases directly to canonical app tabs
     const aliasMap: Record<string, string> = {
+      ...DASHBOARD_SECTION_ALIASES,
       finances: "financial",
       financials: "financial",
       cashflow: "financial",
@@ -432,12 +414,12 @@ function App() {
 
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
-    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("orders") || resolvedBase.startsWith("order-") || resolvedBase.startsWith("tickets") || resolvedBase.startsWith("ticket-") || resolvedBase.startsWith("public-tickets") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
+    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("task-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("orders") || resolvedBase.startsWith("order-") || resolvedBase.startsWith("tickets") || resolvedBase.startsWith("ticket-") || resolvedBase.startsWith("public-tickets") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees") || resolvedBase.startsWith("agency")) {
       // An alias maps to its canonical tab; anything else keeps its original case.
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tickets", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tickets", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "time-tracking", "whatsapp", "newsletter", "updates", "warehouse", "financial", "employees", "agency", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
       if (!hashLower || hashLower === "" || hashLower === "dashboard") {
         return "tasks";
@@ -449,6 +431,12 @@ function App() {
   };
 
   const [activeTab, setActiveTab] = useState(getTabFromHash);
+  // The WhatsApp module keeps its frame alive (hidden) once opened, so coming back is instant and the badge stays live.
+  const [whatsappOpened, setWhatsappOpened] = useState(false);
+  const [whatsappUnread, setWhatsappUnread] = useState(0);
+  useEffect(() => {
+    if (activeTab.split("?")[0].split("/")[0].toLowerCase() === "whatsapp") setWhatsappOpened(true);
+  }, [activeTab]);
   const [isInitialSyncResolved, setIsInitialSyncResolved] = useState(false);
 
   // Executive Copilot State
@@ -624,22 +612,48 @@ function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [undoToast]);
-  const [systemName, setSystemName] = useState(() => {
-    const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_system_name") : null;
-    return stored || "CCRM";
+  // Only the company's OWN choice (Settings → System title) is stored; "" means
+  // "none". `systemName` below is the title to display: the override, or Koperniq.
+  // The product name itself (Koperniq) is not stored anywhere: see utils/brand.ts.
+  const [systemNameOverride, setSystemNameOverride] = useState(() => {
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(SYSTEM_NAME_OVERRIDE_KEY);
+      // First load after the update: the name older versions cached, so an install
+      // that kept "CCRM" does not flash Koperniq until the server answers.
+      if (stored === null) {
+        const old = localStorage.getItem("crm_system_name");
+        if (old && old !== PRODUCT_NAME) stored = old;
+      }
+    } catch (_) {}
+    const override = normalizeSystemTitleOverride(stored);
+    // Before the first render, so nothing paints under the wrong name.
+    setSystemTitle(override);
+    return override;
   });
+  const systemName = resolveSystemTitle(systemNameOverride);
+  // Title and product together, for the browser tab and the installed app: "Lapidea (Koperniq)".
+  const systemTitleWithProduct = resolveTitleWithProduct(systemNameOverride);
+  useLayoutEffect(() => {
+    setSystemTitle(systemNameOverride);
+    try { localStorage.setItem(SYSTEM_NAME_OVERRIDE_KEY, systemNameOverride); } catch (_) {}
+  }, [systemNameOverride]);
 
-  // Synchronize PWA manifest & mobile app title with systemName
+  // Synchronize PWA manifest & mobile app title with the system title
   useEffect(() => {
-    updatePwaManifest(systemName);
-  }, [systemName]);
-  const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">(() => {
-    const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
-    return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";
-  });
+    updatePwaManifest(systemNameOverride);
+  }, [systemNameOverride]);
+  // The company language. Starts from the last value the server reported (so a
+  // reload does not flash the default) and is replaced by the server's answer,
+  // which reaches even the login screen (see sync.php's 401 body).
+  const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">(
+    () => readCachedSystemLanguage() ?? DEFAULT_LANGUAGE
+  );
+  // The language on screen. Only the first paint reads the mirror; the effect
+  // below owns it from then on (see utils/languagePrefs.ts for the rules).
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">(() => {
     const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
-    return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";
+    return isLang(stored) ? stored : readCachedSystemLanguage() ?? DEFAULT_LANGUAGE;
   });
   const currentScreenContext = useCurrentScreenContext(activeTab, userLanguage);
   // Appearance (light/dark/system/auto) and the light palette are independent:
@@ -676,6 +690,12 @@ function App() {
   // Meeting Room state
   const [meetingsAction, setMeetingsAction] = useState<"list" | "new" | "record">("list");
   const [quickTaskOpen, setQuickTaskOpen] = useState(false);
+  // The header button the composer grew out of; it shrinks back into it on close.
+  const [quickTaskOrigin, setQuickTaskOrigin] = useState<ComposerOrigin | undefined>(undefined);
+  const openQuickTask = (e?: ReactMouseEvent<HTMLElement>) => {
+    setQuickTaskOrigin(composerOriginFrom(e, "plain"));
+    setQuickTaskOpen(true);
+  };
   // Server-backed state. The real rows arrive with the first sync GET (see
   // meeting_notes / project_types / projects in sync.php) and every edit is
   // pushed back through updateMeetingNotesAndSync & friends, exactly like leads
@@ -702,6 +722,8 @@ function App() {
   const [invoicesOffers, setInvoicesOffers] = useState<InvoiceOffer[]>([]);
   const [aiCustomTemplates, setAiCustomTemplates] = useState<AiCustomTemplate[]>([]);
   const [clientCategories, setClientCategories] = useState<ClientCategory[]>([]);
+  const [clientContacts, setClientContacts] = useState<ClientContact[]>([]);
+  const [offerCategories, setOfferCategories] = useState<OfferCategory[]>([]);
   /**
    * Manual weekly bank-balance anchors behind the finance trend chart. Shared
    * workspace data (stored in `system_settings.FINANCIAL_TREND`), not a browser
@@ -713,6 +735,9 @@ function App() {
   const [companyBillingSettings, setCompanyBillingSettings] = useState<CompanyBillingSettings | null>(null);
   const [invoicingIntegrations, setInvoicingIntegrations] = useState<ExternalInvoicingConfig | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  // Display-only name order (surname first in Hungarian), by the language on screen; see utils/nameOrder.ts.
+  setNameOrderLanguage(userLanguage);
+  useMemo(() => setNameOrderEmployees(employees), [employees]);
   const [employeeSalaries, setEmployeeSalaries] = useState<EmployeeSalary[]>([]);
   const [employeeVacations, setEmployeeVacations] = useState<EmployeeVacation[]>([]);
   const [employeeSettings, setEmployeeSettings] = useState<EmployeeSettings | null>(null);
@@ -755,11 +780,19 @@ function App() {
   }, []);
   // What the server withheld from this session (sync.php `readScope`).
   const [readScope, setReadScope] = useState<ReadScope>(EMPTY_READ_SCOPE);
+  // Projects created from the time-tracking picker without the projects module, until a sync lists them.
+  const [timeCreatedProjects, setTimeCreatedProjects] = useState<Project[]>([]);
+  // WhatsApp chats WAAI paired with clients, leads and projects. Read-only: never pushed back.
+  const [whatsAppData, setWhatsAppData] = useState<WhatsAppData>(EMPTY_WHATSAPP_DATA);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
+  // What the WhatsApp module's demo chats link to (docs/WHATSAPP-DEMO-MODULE.md C5.4); only read in demo mode.
+  const whatsappDemoDirectory = useMemo(() => buildDemoDirectory(leads, projects), [leads, projects]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [recurringTasks, setRecurringTasks] = useState<RecurringTaskTemplate[]>([]);
   const lastKnownTasksRef = useRef<Task[] | null>(null);
+  const lastKnownRecurringTasksRef = useRef<RecurringTaskTemplate[] | null>(null);
 
   const [unifiedEntries, setUnifiedEntries] = useState<UnifiedEntryRegistry[]>([]);
   const [unifiedEntriesData, setUnifiedEntriesData] = useState<Record<string, UnifiedEntryRow[]>>({});
@@ -780,6 +813,9 @@ function App() {
     "Done": "#10b981"
   });
 
+  // Status → timer action (TT2 D10.1). Nothing is mapped on an existing install.
+  const [taskStateTimerActions, setTaskStateTimerActions] = useState<TaskStateTimerActions>({});
+
   // The project statuses, configured in Settings → Project settings. Handed to
   // every view through ProjectStatusesProvider.
   const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDef[]>(() => normalizeProjectStatusDefs(null));
@@ -799,14 +835,9 @@ function App() {
     "Products", "Services"
   ]);
 
-  const [divisions, setDivisions] = useState<string[]>([
-    "Cstudios", "Cstudios Budapest"
-  ]);
+  const [divisions, setDivisions] = useState<string[]>([]);
 
-  const [divisionColors, setDivisionColors] = useState<Record<string, string>>({
-    "Cstudios": "#3b82f6",
-    "Cstudios Budapest": "#8b5cf6"
-  });
+  const [divisionColors, setDivisionColors] = useState<Record<string, string>>({});
 
   // The permanent id each source / category answers to when a website form
   // names it (`source_id` / `category_id` in the /api/pipeline.php payload).
@@ -868,6 +899,7 @@ function App() {
   // every device and by leads that never pass through this app at all (the
   // public webhook, workflow actions, imports).
   const [leadAssignment, setLeadAssignment] = useState<LeadAssignmentSettings>(DEFAULT_LEAD_ASSIGNMENT);
+  const [leadAttributes, setLeadAttributes] = useState<ProjectAttribute[]>([]);
 
   // Whether every new lead is paired with a freshly created project, and of
   // which type (Projects → Settings). Like the rules above, the creation itself
@@ -878,6 +910,7 @@ function App() {
   // Settings → Tasks. Today only whether the "Requires conclusion" checkbox is
   // offered when a task is created.
   const [taskSettings, setTaskSettings] = useState<TaskSettings>(DEFAULT_TASK_SETTINGS);
+  const [clickupConnected, setClickupConnected] = useState(false);
 
   const [integrationsConfig, setIntegrationsConfig] = useState<any>({
     emailProvider: "smtp",
@@ -887,7 +920,7 @@ function App() {
     smtpAuth: true,
     smtpUser: "",
     smtpPassword: "",
-    senderName: "CCRM",
+    senderName: PRODUCT_NAME,
     senderEmail: "",
     exchUrl: "https://outlook.office365.com/EWS/Exchange.asmx",
     exchDomain: "",
@@ -1012,7 +1045,7 @@ function App() {
   };
 
   const handleCopyLogDetails = (log: any) => {
-    const text = `### CCRM Exception Report
+    const text = `### ${PRODUCT_NAME} Exception Report
 - **Timestamp**: ${log.created_at}
 - **Request**: ${log.request_method} ${log.request_uri}
 - **Error Message**: ${log.message}
@@ -1039,24 +1072,27 @@ ${log.payload || ''}
   // Per-user language lives in metadata_json.language — the same durable, server-synced
   // place we keep their default landing page and nav layout — NOT sessionStorage, which
   // is per-tab, wiped on browser close, and doesn't follow the user across devices.
-  // Returns null when the user hasn't chosen one, so we fall back to the system language.
-  const getUserLanguage = (user: UserProfile | null): "en" | "sk" | "hu" | null => {
-    if (!user?.metadata_json) return null;
-    try {
-      const meta = typeof user.metadata_json === "string"
-        ? JSON.parse(user.metadata_json || "{}")
-        : (user.metadata_json || {});
-      const lang = meta?.language;
-      return (lang === "en" || lang === "sk" || lang === "hu") ? lang : null;
-    } catch (e) {
-      return null;
-    }
-  };
+  // personalLanguage() returns null when the user hasn't chosen one, so we fall
+  // back to the system language.
+  //
+  // Logged in:  personal language -> company language.
+  // Logged out: the language this browser's last user chose personally -> company
+  //             language. A user without a personal choice clears that memory, so
+  //             an uncustomised browser's login screen follows the company language.
+  useEffect(() => {
+    const personal = personalLanguage(currentUser);
+    if (currentUser) writeRememberedLanguage(personal);
+    setUserLanguage(resolveLanguage({
+      loggedIn: !!currentUser,
+      personal,
+      remembered: readRememberedLanguage(),
+      system: systemLanguage,
+    }));
+  }, [currentUser, systemLanguage]);
 
   useEffect(() => {
-    const stored = typeof window !== 'undefined' ? (localStorage.getItem("crm_language") as "en" | "sk" | "hu") : null;
-    setUserLanguage(getUserLanguage(currentUser) || (stored === "en" || stored === "sk" || stored === "hu" ? stored : systemLanguage));
-  }, [currentUser, systemLanguage]);
+    writeCachedSystemLanguage(systemLanguage);
+  }, [systemLanguage]);
 
   // Mirror the active language into localStorage. Components that render OUTSIDE
   // the App tree — the ErrorBoundary that wraps it — have no other way to know
@@ -1163,6 +1199,9 @@ ${log.payload || ''}
         case "employees":
           viewName = getTranslation(userLanguage, "sidebar.employees");
           break;
+        case "agency":
+          viewName = getTranslation(userLanguage, "sidebar.agency");
+          break;
         case "invoices":
           viewName = t("Price Offers", "Cenové ponuky", "Árajánlatok");
           break;
@@ -1173,7 +1212,7 @@ ${log.payload || ''}
           viewName = getTranslation(userLanguage, "sidebar.tickets");
           break;
         case "dashboard":
-          viewName = getTranslation(userLanguage, "sidebar.dashboard");
+          viewName = getTranslation(userLanguage, DASHBOARD_SECTION_LABEL_KEY);
           break;
         default:
           viewName = getTranslation(userLanguage, "sidebar.tasks");
@@ -1185,14 +1224,16 @@ ${log.payload || ''}
     // vite ports are distinguishable by tab title; import.meta.env.DEV is
     // false in a production build, so this never reaches deployed instances.
     document.title = import.meta.env.DEV
-      ? `${viewName} | ${systemName} — ${VERSION}`
-      : `${viewName} | ${systemName}`;
-  }, [activeTab, systemName, userLanguage, leads, customDashboards, unifiedEntries]);
+      ? `${viewName} | ${systemTitleWithProduct} — ${VERSION}`
+      : `${viewName} | ${systemTitleWithProduct}`;
+  }, [activeTab, systemTitleWithProduct, userLanguage, leads, customDashboards, unifiedEntries]);
   // Single permission resolver for the shell: sidebar, launcher, header
   // shortcuts and the route guard all read from it. Views receive their own
   // `ModuleAccess` slice so none of them has to know about roles.
   const access = useMemo(() => buildAccess(currentUser, roles), [currentUser, roles]);
   const employeeRights = useMemo(() => employeeRightsFrom(access), [access]);
+  const agencyRights = useMemo(() => agencyRightsFrom(access), [access]);
+  const agencyEnabled = !!currentUser?.id && access.can("agency") && !(integrationsConfig?.disabledModules || []).includes("agency");
   const dashboardSourceAccess = useMemo(() => ({ can: access.can, isAdmin: access.isAdmin }), [access]);
 
   const taskAccess = (() => {
@@ -1203,9 +1244,23 @@ ${log.payload || ''}
       edit: m.edit,
       delete: m.delete,
       viewAll: access.can("tasks.view_all"),
+      weeklyPlanView: access.can("tasks.weekly_plan"),
+      weeklyPlanEdit: access.canEdit("tasks.weekly_plan"),
     };
   })();
 
+
+  const taskHubData = useMemo<TaskHubData>(() => ({
+    projectTypes, projectStatuses, financialRecords, invoicesOffers, invoiceStatuses,
+    employeeSalaries, employeeVacations, orders, warehouseBatches, meetingNotes,
+    unifiedEntries, unifiedEntriesData, supportContracts, systemCurrency,
+    rbac: {
+      projects: access.can("projects"), financial: access.can("financial"), invoices: access.can("invoices"),
+      employees: access.can("employees"), leads: access.can("leads"), meetings: access.can("meetings"),
+      orders: access.can("orders"), warehouse: access.can("warehouse"), newsletter: access.can("newsletter"),
+      social: access.can("social"), tickets: access.can("tickets"),
+    },
+  }), [projectTypes, projectStatuses, financialRecords, invoicesOffers, invoiceStatuses, employeeSalaries, employeeVacations, orders, warehouseBatches, meetingNotes, unifiedEntries, unifiedEntriesData, supportContracts, systemCurrency, access]);
 
   // --- DYNAMICALLY DERIVED COMPATIBILITY PARAMETERS ---
   const projectManagers = users.map(u => u.name);
@@ -1230,6 +1285,7 @@ ${log.payload || ''}
   // the freshest state for any entity the caller did not explicitly update.
   leadsRef.current = leads;
   tasksRef.current = tasks;
+  recurringTasksRef.current = recurringTasks;
   rolesRef.current = roles;
   usersRef.current = users;
   meetingNotesRef.current = meetingNotes;
@@ -1250,6 +1306,8 @@ ${log.payload || ''}
   invoicesOffersRef.current = invoicesOffers;
   aiCustomTemplatesRef.current = aiCustomTemplates;
   clientCategoriesRef.current = clientCategories;
+  clientContactsRef.current = clientContacts;
+  offerCategoriesRef.current = offerCategories;
   financialTrendRef.current = financialTrend;
   financialModeRef.current = financialMode;
   financialSimplifiedTableRef.current = financialSimplifiedTable;
@@ -1289,6 +1347,7 @@ ${log.payload || ''}
     nextAiCustomTemplates?: AiCustomTemplate[],
     nextClientCategories?: ClientCategory[],
     nextOrders?: Order[],
+    nextOfferCategories?: OfferCategory[],
     options?: { showIndicator?: boolean }
   ): Promise<void> => {
     if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
@@ -1311,6 +1370,7 @@ ${log.payload || ''}
     // actually transmit.
     const liveLeads = nextLeads ?? leadsRef.current;
     const liveTasks = nextTasks ?? tasksRef.current;
+    const liveRecurringTasks = recurringTasksRef.current;
     const liveUsers = nextUsers ?? usersRef.current;
     const liveMeetingNotes = nextMeetingNotes ?? meetingNotesRef.current;
     const liveUnifiedEntries = nextUnifiedEntries ?? unifiedEntriesRef.current;
@@ -1329,6 +1389,8 @@ ${log.payload || ''}
     const liveInvoicesOffers = nextInvoicesOffers ?? invoicesOffersRef.current;
     const liveAiCustomTemplates = nextAiCustomTemplates ?? aiCustomTemplatesRef.current;
     const liveClientCategories = nextClientCategories ?? clientCategoriesRef.current;
+    const liveClientContacts = clientContactsRef.current;
+    const liveOfferCategories = nextOfferCategories ?? offerCategoriesRef.current;
     const liveEmployees = employeesRef.current;
     const liveEmployeeSalaries = employeeSalariesRef.current;
     const liveEmployeeVacations = employeeVacationsRef.current;
@@ -1341,6 +1403,7 @@ ${log.payload || ''}
       baseSyncedAt: baseSyncedAtRef.current,
       leads: liveLeads,
       tasks: liveTasks,
+      recurringTasks: liveRecurringTasks,
       users: liveUsers,
       roles: nextRoles ?? rolesRef.current,
       meetingNotes: liveMeetingNotes,
@@ -1360,6 +1423,8 @@ ${log.payload || ''}
       invoicesOffers: liveInvoicesOffers,
       aiCustomTemplates: liveAiCustomTemplates,
       clientCategories: liveClientCategories,
+      clientContacts: liveClientContacts,
+      offerCategories: liveOfferCategories,
       employees: liveEmployees,
       employeeSalaries: liveEmployeeSalaries,
       employeeVacations: liveEmployeeVacations,
@@ -1374,7 +1439,7 @@ ${log.payload || ''}
       financialMode: financialModeRef.current,
       financialSimplifiedTable: financialSimplifiedTableRef.current,
       settings: {
-        systemName,
+        systemName: systemNameOverride,
         systemLanguage,
         systemCurrency,
         leadStates,
@@ -1392,9 +1457,11 @@ ${log.payload || ''}
         leadStateFollowUp,
         leadStateSla,
         leadAssignment,
+        leadAttributes,
         projectAutoCreate,
         taskStates,
         taskStateColors,
+        taskStateTimerActions,
         taskSettings,
         projectStatuses,
         offerStatuses,
@@ -1404,6 +1471,7 @@ ${log.payload || ''}
         ticketStatuses,
         ticketSettings,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
+        clearSecrets: [...pendingClearSecretsRef.current],
         companyBillingSettings: companyBillingSettingsRef.current,
         invoicingIntegrations: invoicingIntegrationsRef.current,
         financialMode: financialModeRef.current,
@@ -1413,6 +1481,25 @@ ${log.payload || ''}
     // No server settings seen yet → these are defaults, not edits. sync.php
     // leaves every stored setting untouched when the block is absent.
     if (!serverSettingsAppliedRef.current) delete payload.settings;
+    if (
+      payload.settings &&
+      payload.settings.clearSecrets.length === 0 &&
+      integrationsSigRef.current !== null &&
+      JSON.stringify(payload.settings.integrationsConfig ?? null) === integrationsSigRef.current
+    ) {
+      delete payload.settings.integrationsConfig;
+    }
+    if (
+      employeeSettingsSigRef.current !== null &&
+      JSON.stringify(payload.employeeSettings ?? null) === employeeSettingsSigRef.current
+    ) {
+      delete payload.employeeSettings;
+    }
+    // sync.php keeps a finance blob untouched when its key is absent.
+    for (const key of FINANCIAL_BLOB_KEYS) {
+      const sig = financialBlobSigRef.current[key];
+      if (sig !== null && JSON.stringify(payload[key] ?? null) === sig) delete payload[key];
+    }
 
     // Narrow the payload to what actually changed, but only once the server has
     // said it speaks v2. Under v1 an omitted record means "deleted", so sending a
@@ -1424,12 +1511,13 @@ ${log.payload || ''}
       const deleted: Record<string, unknown> = {};
       const narrow = (key: string, records: any[]) => {
         const { changed, deletedIds, next } = diffRecords(records, syncedRecordsRef.current[key], pendingDeletionIds(key));
-        payload[key] = changed;
+        payload[key] = key === "projects" ? omitUnchangedGithubPairing(changed, syncedRecordsRef.current[key]) : changed;
         if (deletedIds.length) deleted[key] = deletedIds;
         pendingBaselines[key] = next;
       };
       narrow("leads", liveLeads);
       narrow("tasks", liveTasks);
+      narrow("recurringTasks", liveRecurringTasks);
       narrow("users", liveUsers);
       narrow("meetingNotes", liveMeetingNotes);
       narrow("customDashboards", liveCustomDashboards);
@@ -1438,7 +1526,9 @@ ${log.payload || ''}
       narrow("warehouses", liveWarehouses);
       narrow("suppliers", liveSuppliers);
       narrow("warehouseItems", liveWarehouseItems);
-      narrow("warehouseStock", liveWarehouseStock);
+      // Stock rows carry no id of their own; without one every row would be re-sent
+      // as an absolute quantity on every push (see withStockRowIds).
+      narrow("warehouseStock", withStockRowIds(liveWarehouseStock));
       narrow("warehouseBatches", liveWarehouseBatches);
       narrow("warehouseMovements", liveWarehouseMovements);
       narrow("financialCategories", liveFinancialCategories);
@@ -1446,6 +1536,8 @@ ${log.payload || ''}
       narrow("invoicesOffers", liveInvoicesOffers);
       narrow("aiCustomTemplates", liveAiCustomTemplates);
       narrow("clientCategories", liveClientCategories);
+      narrow("clientContacts", liveClientContacts);
+      narrow("offerCategories", liveOfferCategories);
       narrow("employees", liveEmployees);
       narrow("employeeSalaries", liveEmployeeSalaries);
       narrow("employeeVacations", liveEmployeeVacations);
@@ -1526,6 +1618,11 @@ ${log.payload || ''}
         // The server now holds this exact payload — remember it so a later 401
         // can tell a genuine unsaved edit apart from an echoed no-op push.
         lastConfirmedPushSigRef.current = computePushSig(payload);
+        // The clears this push carried are stored now; a failed push keeps them queued.
+        for (const k of payload.settings?.clearSecrets ?? []) pendingClearSecretsRef.current.delete(k);
+        if (payload.settings?.integrationsConfig !== undefined) {
+          integrationsSigRef.current = JSON.stringify(payload.settings.integrationsConfig);
+        }
         let out: any = null;
         try {
           out = await res.json();
@@ -1558,7 +1655,7 @@ ${log.payload || ''}
               custom_dashboards: "customDashboards", warehouses: "warehouses",
               suppliers: "suppliers", warehouse_items: "warehouseItems",
               warehouse_batches: "warehouseBatches", warehouse_movements: "warehouseMovements",
-              financial_categories: "financialCategories", client_categories: "clientCategories",
+              financial_categories: "financialCategories", client_categories: "clientCategories", client_contacts: "clientContacts", offer_categories: "offerCategories",
               financial_records: "financialRecords", invoices_offers: "invoicesOffers",
               ai_custom_templates: "aiCustomTemplates",
               employees: "employees", employee_salaries: "employeeSalaries",
@@ -1594,7 +1691,22 @@ ${log.payload || ''}
           if (!skipHoldsBaseline(skipped, "unifiedEntriesData")) {
             Object.assign(ueSyncedRecordsRef.current, pendingUeBaselines);
           }
-          const skippedWork = [...skipped].filter((tag) => skipIsLostWork(tag, payload as { [key: string]: unknown }));
+          if (payload.employeeSettings !== undefined && !skipHoldsBaseline(skipped, "employeeSettings")) {
+            employeeSettingsSigRef.current = JSON.stringify(payload.employeeSettings ?? null);
+          }
+          for (const key of FINANCIAL_BLOB_KEYS) {
+            if (payload[key] !== undefined && !skipHoldsBaseline(skipped, key)) {
+              financialBlobSigRef.current[key] = JSON.stringify(payload[key] ?? null);
+            }
+          }
+          const registrySig = JSON.stringify(payload.unifiedEntries ?? null);
+          const workPayload = registrySig === unifiedEntriesSigRef.current
+            ? { ...payload, unifiedEntries: undefined }
+            : payload;
+          if (payload.unifiedEntries !== undefined && !skipHoldsBaseline(skipped, "unifiedEntries")) {
+            unifiedEntriesSigRef.current = registrySig;
+          }
+          const skippedWork = [...skipped].filter((tag) => skipIsLostWork(tag, workPayload as { [key: string]: unknown }));
           const conflictCount = Object.values(conflicted).reduce((n, ids) => n + ids.length, 0);
           if (conflictCount > 0) pullAfterConflictRef.current = true;
           const blockedCount = [...deleteBlockedKeys].length;
@@ -1782,6 +1894,7 @@ ${log.payload || ''}
   const updateIntegrationsConfigAndSync = (next: any) => {
     setIntegrationsConfig((prev: any) => {
       const updated = typeof next === "function" ? next(prev) : next;
+      for (const k of clearedSecretKeys(prev, updated)) pendingClearSecretsRef.current.add(k);
       pushStateToServer(undefined, undefined, undefined, updated);
       return updated;
     });
@@ -1789,6 +1902,7 @@ ${log.payload || ''}
 
   const syncIntegrationsConfig = (config: any) => {
     if (!config) return;
+    integrationsSigRef.current = JSON.stringify(config);
     setIntegrationsConfig((prev: any) => {
       if (JSON.stringify(config) === JSON.stringify(prev)) return prev;
       return config;
@@ -1808,8 +1922,41 @@ ${log.payload || ''}
     setTasks(prev => {
       const nextTasks = typeof newTasks === "function" ? newTasks(prev) : newTasks;
       tasksRef.current = nextTasks;
+      reportLocalTaskEdit(prev, nextTasks); // D10.2: status -> the current user's own timer
       pushStateToServer(undefined, nextTasks);
       return nextTasks;
+    });
+  };
+
+  useEffect(() => {
+    const onTaskMetaPatch = (e: Event) => {
+      const detail = (e as CustomEvent<{ taskId?: string; commentCount?: number; reactions?: Record<string, string[]> | null; fileCount?: number }>).detail;
+      if (!detail?.taskId) return;
+      setTasks(prev => {
+        const next = prev.map(tk =>
+          tk.id === detail.taskId
+            ? {
+                ...tk,
+                ...(detail.commentCount !== undefined ? { commentCount: detail.commentCount } : {}),
+                ...(detail.reactions !== undefined ? { reactions: detail.reactions } : {}),
+                ...(detail.fileCount !== undefined ? { fileCount: detail.fileCount } : {}),
+              }
+            : tk
+        );
+        tasksRef.current = next;
+        return next;
+      });
+    };
+    window.addEventListener("ccrm-task-meta-patch", onTaskMetaPatch);
+    return () => window.removeEventListener("ccrm-task-meta-patch", onTaskMetaPatch);
+  }, []);
+
+  const updateRecurringTasksAndSync = (newRec: RecurringTaskTemplate[] | ((prev: RecurringTaskTemplate[]) => RecurringTaskTemplate[])) => {
+    setRecurringTasks(prev => {
+      const next = typeof newRec === "function" ? newRec(prev) : newRec;
+      recurringTasksRef.current = next;
+      pushStateToServer();
+      return next;
     });
   };
 
@@ -1949,7 +2096,14 @@ ${log.payload || ''}
     const heldInvoices = (pendingDeletionRecords("invoicesOffers") as InvoiceOffer[])
       .filter((inv) => !next.some((o) => o.id === inv.id));
     ledgerStaleRef.current = heldInvoices.length > 0;
-    const nextRecords = reconcileInvoiceMovements(prev, heldInvoices.length ? [...next, ...heldInvoices] : next, prevRecords, undefined, invoiceStatusesRef.current);
+    const nextRecords = reconcileInvoiceMovements(
+      prev,
+      heldInvoices.length ? [...next, ...heldInvoices] : next,
+      prevRecords,
+      undefined,
+      invoiceStatusesRef.current,
+      { netMode: Boolean(companyBillingSettingsRef.current?.financeNetMode) },
+    );
     if (nextRecords !== prevRecords) {
       financialRecordsRef.current = nextRecords;
       setFinancialRecords(nextRecords);
@@ -1962,6 +2116,24 @@ ${log.payload || ''}
       const next = typeof newCats === "function" ? newCats(prev) : newCats;
       clientCategoriesRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateClientContactsAndSync = (newContacts: ClientContact[] | ((prev: ClientContact[]) => ClientContact[])) => {
+    setClientContacts(prev => {
+      const next = typeof newContacts === "function" ? newContacts(prev) : newContacts;
+      clientContactsRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
+  const updateOfferCategoriesAndSync = (newCats: OfferCategory[] | ((prev: OfferCategory[]) => OfferCategory[])) => {
+    setOfferCategories(prev => {
+      const next = typeof newCats === "function" ? newCats(prev) : newCats;
+      offerCategoriesRef.current = next;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
   };
@@ -2074,7 +2246,7 @@ ${log.payload || ''}
     // everything that keys off the currentUser identity.
     setCurrentUser(me => {
       if (!me) return me;
-      const updatedMe = nextUsers.find(u => u.email === me.email);
+      const updatedMe = findSelf(nextUsers, me);
       if (!updatedMe || JSON.stringify(updatedMe) === JSON.stringify(me)) return me;
       return updatedMe;
     });
@@ -2151,6 +2323,30 @@ ${log.payload || ''}
     });
   };
 
+  // A recurring rule's payment is written to the database when its day arrives,
+  // not recomputed from the schedule on every read (see recurringRuleDeletion.ts).
+  // Only a session that may edit finance and was handed the finance records does
+  // it, and only after the first sync, so it never works from an empty or
+  // withheld list. Deterministic ids make two sessions writing the same payment
+  // converge on one row.
+  const canMaterializeCharges =
+    isInitialSyncResolved && !isDemoMode && access.module("financial").edit && !readScope.restricted.includes("financialRecords");
+  const materializeChargesRef = useRef<() => void>(() => {});
+  materializeChargesRef.current = () => {
+    if (!canMaterializeCharges) return;
+    const prev = financialRecordsRef.current;
+    const next = materializeDueCharges(prev, todayLocal(), new Date().toISOString());
+    if (next !== prev) updateFinancialRecordsAndSync(next);
+  };
+  useEffect(() => {
+    materializeChargesRef.current();
+  }, [financialRecords, canMaterializeCharges]);
+  useEffect(() => {
+    // An app left open across midnight must still notice the new day.
+    const timer = window.setInterval(() => materializeChargesRef.current(), 10 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   // The context value must not close over a stale setter: pushStateToServer reads
   // isInitialSyncResolved from its own closure and silently drops pushes when it
   // is still false, so a memoised setter captured on first render would never
@@ -2164,6 +2360,11 @@ ${log.payload || ''}
     setPref: (key, value) => setUserPrefRef.current(key, value),
     setListFilter: (key, value) => setListFilterRef.current(key, value)
   }), [userPrefs]);
+
+  const whatsAppContext = useMemo(
+    () => ({ ...whatsAppData, viewerId: currentUser?.id ?? null }),
+    [whatsAppData, currentUser?.id],
+  );
 
   const errorSidebarEnabled = userPrefs.errorSidebarEnabled;
 
@@ -2535,9 +2736,9 @@ ${log.payload || ''}
     if (!isInstalled || !isInitialSyncResolved) return;
     const currentSig = computeSettingsSig({
       leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds,
-      systemName, systemLanguage, systemCurrency,
+      systemName: systemNameOverride, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskSettings,
+      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, taskStateTimerActions, taskSettings,
       projectStatuses,
       offerStatuses,
       invoiceStatuses,
@@ -2573,7 +2774,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemNameOverride, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, taskStateTimerActions, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2628,11 +2829,7 @@ ${log.payload || ''}
        header keeps showing the old name while sync.php files every change under
        the new one. The server now reports whose session it is, so treat a
        disagreement as "this tab is no longer logged in as who it thinks". */
-    const sessionUserChanged = (data: any) => {
-      const serverEmail = String(data?.sessionUser?.email || "").trim().toLowerCase();
-      const shownEmail = String(currentUser?.email || "").trim().toLowerCase();
-      return serverEmail !== "" && shownEmail !== "" && serverEmail !== shownEmail;
-    };
+    const sessionUserChanged = (data: any) => isDifferentSessionUser(data?.sessionUser, currentUser);
 
     // A pull hands back the same data as a brand-new object. Keep the old
     // identity when nothing changed: editors seed their drafts from these
@@ -2660,7 +2857,8 @@ ${log.payload || ''}
         if (Array.isArray(data.users)) setUsers(data.users);
         const s = data.settings;
         if (s) {
-          if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
+          // An empty name is a real answer ("use the default"), so it is adopted too.
+          if (s.systemName !== undefined) setSystemNameOverride(normalizeSystemTitleOverride(s.systemName));
           if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
           if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
         }
@@ -2690,6 +2888,10 @@ ${log.payload || ''}
         const incomingScope = parseReadScope(data.readScope);
         setReadScope((prev) => (sameReadScope(prev, incomingScope) ? prev : incomingScope));
       }
+      {
+        const incomingWa = parseWhatsAppData(data.whatsappLinks, data.whatsappNumbers);
+        setWhatsAppData((prev) => (sameWhatsAppData(prev, incomingWa) ? prev : incomingWa));
+      }
       if (data.leads && Array.isArray(data.leads)) {
         setLeads((prev) => JSON.stringify(prev) === JSON.stringify(data.leads) ? prev : data.leads);
       }
@@ -2717,6 +2919,7 @@ ${log.payload || ''}
           const currentStates = Array.isArray(data.settings?.taskStates) ? data.settings.taskStates : taskStates;
 
           incomingTasks.forEach((task) => {
+            if (task.externalSource === "clickup") return;
             const old = prevMap.get(task.id);
 
             // 1. Newly created or reassigned task assigned to current user (and not created by me)
@@ -2757,6 +2960,10 @@ ${log.payload || ''}
         lastKnownTasksRef.current = incomingTasks;
         setTasks((prev) => JSON.stringify(prev) === JSON.stringify(data.tasks) ? prev : data.tasks);
       }
+      if (data.recurringTasks && Array.isArray(data.recurringTasks)) {
+        lastKnownRecurringTasksRef.current = data.recurringTasks;
+        setRecurringTasks((prev) => JSON.stringify(prev) === JSON.stringify(data.recurringTasks) ? prev : data.recurringTasks);
+      }
       if (data.users && Array.isArray(data.users)) {
         setUsers((prev) => JSON.stringify(prev) === JSON.stringify(data.users) ? prev : data.users);
         // Compare against the CURRENT user via the updater, not the one captured
@@ -2767,7 +2974,7 @@ ${log.payload || ''}
         // reset itself every few seconds — which wiped forms while typing.
         setCurrentUser((prev) => {
           if (!prev) return adoptSession ? (adoptableSessionUser(data) ?? prev) : prev;
-          const updatedMe = data.users.find((u: UserProfile) => u.email === prev.email);
+          const updatedMe = findSelf(data.users as UserProfile[], prev);
           if (!updatedMe) return prev;
           const getNormUser = (u: UserProfile) => {
             const meta = typeof u.metadata_json === "string"
@@ -2789,6 +2996,7 @@ ${log.payload || ''}
         setMeetingNotes((prev) => JSON.stringify(prev) === JSON.stringify(data.meetingNotes) ? prev : data.meetingNotes);
       }
       if (data.unifiedEntries && Array.isArray(data.unifiedEntries)) {
+        unifiedEntriesSigRef.current = JSON.stringify(data.unifiedEntries);
         setUnifiedEntries((prev) => JSON.stringify(prev) === JSON.stringify(data.unifiedEntries) ? prev : data.unifiedEntries);
       }
       if (data.unifiedEntriesData) {
@@ -2836,6 +3044,12 @@ ${log.payload || ''}
       if (data.clientCategories && Array.isArray(data.clientCategories)) {
         setClientCategories(sameOr(data.clientCategories));
       }
+      if (data.clientContacts && Array.isArray(data.clientContacts)) {
+        setClientContacts(sameOr(data.clientContacts));
+      }
+      if (data.offerCategories && Array.isArray(data.offerCategories)) {
+        setOfferCategories(sameOr(data.offerCategories));
+      }
       if (data.employees && Array.isArray(data.employees)) {
         setEmployees(sameOr(data.employees));
       }
@@ -2859,11 +3073,13 @@ ${log.payload || ''}
         // every sync poll re-ran the employee form's init effect and blanked a
         // half-typed "new employee" form at random.
         setEmployeeSettings(sameOr(data.employeeSettings));
+        employeeSettingsSigRef.current = JSON.stringify(data.employeeSettings ?? null);
       }
       // Absent key = a sync.php that predates the trend anchors. Keep whatever
       // is in memory rather than blanking the chart back to the default curve.
       if (data.financialTrend !== undefined) {
         const incoming = normalizeFinancialTrend(data.financialTrend);
+        financialBlobSigRef.current.financialTrend = JSON.stringify(incoming);
         setFinancialTrend((prev) =>
           JSON.stringify(incoming) !== JSON.stringify(prev) ? incoming : prev
         );
@@ -2872,19 +3088,21 @@ ${log.payload || ''}
         const rawMode = data.financialMode ?? data.settings?.financialMode;
         const incomingMode: FinancialOperatingMode = rawMode === "simplified" ? "simplified" : "connected";
         financialModeRef.current = incomingMode;
+        financialBlobSigRef.current.financialMode = JSON.stringify(incomingMode);
         setFinancialMode((prev) => prev !== incomingMode ? incomingMode : prev);
       }
       if (data.financialSimplifiedTable !== undefined || (data.settings && data.settings.financialSimplifiedTable !== undefined)) {
         const rawTable = data.financialSimplifiedTable ?? data.settings?.financialSimplifiedTable;
         const incomingTable: FinancialSimplifiedTable = (rawTable && typeof rawTable === "object") ? rawTable : {};
         financialSimplifiedTableRef.current = incomingTable;
+        financialBlobSigRef.current.financialSimplifiedTable = JSON.stringify(incomingTable);
         setFinancialSimplifiedTable((prev) =>
           JSON.stringify(incomingTable) !== JSON.stringify(prev) ? incomingTable : prev
         );
       }
       if (data.settings) {
         const s = data.settings;
-        if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
+        if (s.systemName !== undefined) setSystemNameOverride(normalizeSystemTitleOverride(s.systemName));
         if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
         if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
         if (s.companyBillingSettings) setCompanyBillingSettings(sameOr(s.companyBillingSettings));
@@ -2920,16 +3138,22 @@ ${log.payload || ''}
           const next = normalizeLeadAssignment(s.leadAssignment);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
         });
+        setLeadAttributes((prev) => {
+          const next = normalizeLeadAttributes(s.leadAttributes);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         setProjectAutoCreate((prev) => {
           const next = normalizeProjectAutoCreate(s.projectAutoCreate);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
         });
         setTaskStates((prev) => Array.isArray(s.taskStates) && s.taskStates.length > 0 && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
+        setTaskStateTimerActions((prev) => { const next = sanitizeTimerActions(s.taskStateTimerActions); return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev; });
         setTaskSettings((prev) => {
           const next = normalizeTaskSettings(s.taskSettings);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
         });
+        setClickupConnected(Boolean(s.clickupConnected));
         setProjectStatuses((prev) => {
           const next = normalizeProjectStatusDefs(s.projectStatuses);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
@@ -2978,6 +3202,7 @@ ${log.payload || ''}
       syncedRecordsRef.current = {
         leads: baselineOf(rawData.leads ?? leadsRef.current),
         tasks: baselineOf(rawData.tasks ?? tasksRef.current),
+        recurringTasks: baselineOf(rawData.recurringTasks ?? recurringTasksRef.current),
         users: baselineOf(rawData.users ?? usersRef.current),
         meetingNotes: baselineOf(rawData.meetingNotes ?? meetingNotesRef.current),
         customDashboards: baselineOf(rawData.customDashboards ?? customDashboardsRef.current),
@@ -2986,7 +3211,7 @@ ${log.payload || ''}
         warehouses: baselineOf(rawData.warehouses ?? warehousesRef.current),
         suppliers: baselineOf(rawData.suppliers ?? suppliersRef.current),
         warehouseItems: baselineOf(rawData.warehouseItems ?? warehouseItemsRef.current),
-        warehouseStock: baselineOf(rawData.warehouseStock ?? warehouseStockRef.current),
+        warehouseStock: baselineOf(withStockRowIds(rawData.warehouseStock ?? warehouseStockRef.current)),
         warehouseBatches: baselineOf(rawData.warehouseBatches ?? warehouseBatchesRef.current),
         warehouseMovements: baselineOf(rawData.warehouseMovements ?? warehouseMovementsRef.current),
         financialCategories: baselineOf(rawData.financialCategories ?? financialCategoriesRef.current),
@@ -2994,6 +3219,8 @@ ${log.payload || ''}
         invoicesOffers: baselineOf(rawData.invoicesOffers ?? invoicesOffersRef.current),
         aiCustomTemplates: baselineOf(rawData.aiCustomTemplates ?? aiCustomTemplatesRef.current),
         clientCategories: baselineOf(rawData.clientCategories ?? clientCategoriesRef.current),
+        clientContacts: baselineOf(rawData.clientContacts ?? clientContactsRef.current),
+        offerCategories: baselineOf(rawData.offerCategories ?? offerCategoriesRef.current),
         employees: baselineOf(rawData.employees ?? employeesRef.current),
         employeeSalaries: baselineOf(rawData.employeeSalaries ?? employeeSalariesRef.current),
         employeeVacations: baselineOf(rawData.employeeVacations ?? employeeVacationsRef.current),
@@ -3012,6 +3239,7 @@ ${log.payload || ''}
       lastConfirmedPushSigRef.current = computePushSig({
         leads: data.leads ?? leadsRef.current,
         tasks: data.tasks ?? tasksRef.current,
+        recurringTasks: data.recurringTasks ?? recurringTasksRef.current,
         users: data.users ?? usersRef.current,
         roles: data.roles ?? rolesRef.current,
         meetingNotes: data.meetingNotes ?? meetingNotesRef.current,
@@ -3033,6 +3261,8 @@ ${log.payload || ''}
         invoicesOffers: data.invoicesOffers ?? invoicesOffersRef.current,
         aiCustomTemplates: data.aiCustomTemplates ?? aiCustomTemplatesRef.current,
         clientCategories: data.clientCategories ?? clientCategoriesRef.current,
+        clientContacts: data.clientContacts ?? clientContactsRef.current,
+        offerCategories: data.offerCategories ?? offerCategoriesRef.current,
         employees: data.employees ?? employeesRef.current,
         employeeSalaries: data.employeeSalaries ?? employeeSalariesRef.current,
         employeeVacations: data.employeeVacations ?? employeeVacationsRef.current,
@@ -3053,6 +3283,14 @@ ${log.payload || ''}
         // hanging on the loader forever.
         setIsInstalled(true);
         setCurrentUser(null);
+        // The 401 body carries the company language, so a browser nobody has
+        // customised shows the login screen in it (sync.php, publicSettings).
+        try {
+          const lang = (await res.json())?.publicSettings?.systemLanguage;
+          if (isLang(lang)) setSystemLanguage(lang);
+        } catch {
+          // not our JSON (proxy error page, etc.): keep the language we have
+        }
         return;
       }
       if (!res.ok) throw new Error(`sync.php answered ${res.status}`);
@@ -3202,11 +3440,56 @@ ${log.payload || ''}
     return () => clearInterval(interval);
   }, [currentUser]);
 
+  // Track whether the current user is authorized to see at least one shared communication connector
+  const [hasAuthorizedConnector, setHasAuthorizedConnector] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!currentUser) {
+      setHasAuthorizedConnector(false);
+      return;
+    }
+    const refreshConnectors = () => {
+      listMyConnectors()
+        .then((res) => {
+          const list = res.mailboxes ?? res.connectors ?? [];
+          setHasAuthorizedConnector(Array.isArray(list) && list.length > 0);
+        })
+        .catch(() => {
+          setHasAuthorizedConnector(false);
+        });
+    };
+    refreshConnectors();
+    window.addEventListener("ccrm:connectors-updated", refreshConnectors);
+    return () => window.removeEventListener("ccrm:connectors-updated", refreshConnectors);
+  }, [currentUser]);
+
+  const canOpenRouteWithComm = (route: string) =>
+    (route.split("/")[0].toLowerCase() === "email" && Boolean(hasAuthorizedConnector)) || access.canOpenRoute(route);
+
   // Modules that stay in the navigation before their setup is done and open to
   // ModuleSetupRequired instead of the real view until it is.
   const isModuleSetupPending = (route: string) =>
     (route === "rag_ai" && !isVectorDbConfigured(integrationsConfig)) ||
-    (route === "email" && !isPersonalMailboxConfigured(currentUser || users[0]));
+    (route === "email" && hasAuthorizedConnector === false && !isPersonalMailboxConfigured(currentUser || users[0]));
+
+  // What the RAG AI view and the Executive Copilot (same chat_rag.php backend) show
+  // while the vector database is not connected. One source, so they never drift.
+  const ragAiSetupCard = {
+    description: t(
+      `The assistant answers from a vector index of your ${PRODUCT_NAME} data, so it stays inactive until a vector database is connected.`,
+      `Asistent odpovedá z vektorového indexu dát ${PRODUCT_NAME}, preto zostane neaktívny, kým nebude pripojená vektorová databáza.`,
+      `Az asszisztens a ${PRODUCT_NAME}-adatok vektorindexéből válaszol, ezért inaktív marad, amíg nincs csatlakoztatott vektoradatbázis.`
+    ),
+    missing: [
+      ...(hasOpenAiKey(integrationsConfig) ? [] : [t("OpenAI API key", "OpenAI API kľúč", "OpenAI API kulcs")]),
+      t(
+        "Vector database connection (MariaDB, Qdrant or Pinecone), verified with “Test Vector DB Connection”",
+        "Pripojenie vektorovej databázy (MariaDB, Qdrant alebo Pinecone) overené tlačidlom „Otestovať pripojenie k vektorovej DB“",
+        "Vektoradatbázis-kapcsolat (MariaDB, Qdrant vagy Pinecone), a „Vektoradatbázis-kapcsolat tesztelése” gombbal ellenőrizve"
+      ),
+    ],
+    settingsLocation: t("Settings → AI integration", "Nastavenia → AI integrácia", "Beállítások → AI integráció"),
+    onOpenSettings: getPermission("ai_config") === "edit" ? openAiSettings : undefined,
+  };
 
   // Embedded Tasks Mode: the compact "My tasks" window (Pop out button, Picture-in-Picture
   // or popup), loaded as `#tasks?embed=tasks`.
@@ -3225,6 +3508,11 @@ ${log.payload || ''}
       return false;
     }
   }, [activeTab]);
+
+  const activeEntityHex = useMemo(
+    () => resolveRouteEntityHex(activeTab, customDashboards, unifiedEntries),
+    [activeTab, customDashboards, unifiedEntries]
+  );
 
   // Badge on the installed app's icon: missed + today tasks of the signed-in user.
   // Recomputed every minute because a task turns "missed" when its time passes.
@@ -3263,8 +3551,12 @@ ${log.payload || ''}
         <TaskDashboardView 
           tasks={tasks}
           setTasks={updateTasksAndSync}
+          recurringTasks={recurringTasks}
+          setRecurringTasks={updateRecurringTasksAndSync}
           leads={leads}
           projects={projects}
+          tickets={tickets}
+          employees={employees}
           users={users}
           systemLanguage={userLanguage}
           currentUser={activeUser}
@@ -3272,8 +3564,10 @@ ${log.payload || ''}
           taskStateColors={taskStateColors}
           taskAccess={taskAccess}
           mailConfigured={isSystemMailConfigured(integrationsConfig)}
+          agencyEnabled={agencyEnabled}
           leadStageGroups={leadStageGroups}
           leadStateParents={leadStateParents}
+          hubData={taskHubData}
         />
       );
     }
@@ -3290,7 +3584,7 @@ ${log.payload || ''}
     // here. Unknown routes fall through to the tasks board below, and
     // permissionKeyForRoute maps them to "tasks" so that case is covered too.
     const routeKey = permissionKeyForRoute(activeRoute);
-    if (routeKey !== null && !access.canOpenRoute(activeRoute)) {
+    if (routeKey !== null && !canOpenRouteWithComm(activeRoute)) {
       return (
         <AccessDeniedView
           systemLanguage={userLanguage}
@@ -3315,10 +3609,11 @@ ${log.payload || ''}
     if (activeRoute.startsWith("user-")) {
       const username = decodeURIComponent(activeRoute.replace("user-", ""));
       return (
-        <SettingsView 
+        <SettingsView
+          settingsRoute="settings/access/users" 
           employees={employeeRights.view ? employees : undefined}
-          systemName={systemName} 
-          setSystemName={setSystemName} 
+          systemName={systemNameOverride} 
+          setSystemName={setSystemNameOverride} 
           leadStates={orderedLeadStates}
           setLeadStates={setLeadStates}
           leadSources={leadSources}
@@ -3354,6 +3649,8 @@ ${log.payload || ''}
           setLeadStateSla={setLeadStateSla}
           leadAssignment={leadAssignment}
           setLeadAssignment={setLeadAssignment}
+          leadAttributes={leadAttributes}
+          setLeadAttributes={setLeadAttributes}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           systemCurrency={systemCurrency}
@@ -3366,6 +3663,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          taskStateTimerActions={taskStateTimerActions}
+          setTaskStateTimerActions={setTaskStateTimerActions}
           taskSettings={taskSettings}
           setTaskSettings={setTaskSettings}
           isDemoMode={isDemoMode}
@@ -3393,6 +3692,7 @@ ${log.payload || ''}
           licenseState={licenseState}
           onLicenseStateChange={setLicenseState}
           customDashboards={customDashboards}
+          onClickUpConnectionChange={setClickupConnected}
         />
       );
     }
@@ -3428,6 +3728,7 @@ ${log.payload || ''}
             invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
+            companyBillingSettings={companyBillingSettings}
           />
         );
       }
@@ -3475,6 +3776,7 @@ ${log.payload || ''}
           setEmployeeSettings={updateEmployeeSettingsAndSync}
           financialCategories={financialCategories}
           isDemoMode={isDemoMode}
+          integrationsConfig={integrationsConfig}
         />
       );
     }
@@ -3487,6 +3789,7 @@ ${log.payload || ''}
       );
       return (
         <ClientsView
+          newsletterEnabled={newsletterEnabled}
           priceLevels={priceLevels} 
           leads={leads}
           setLeads={updateLeadsAndSync}
@@ -3496,6 +3799,7 @@ ${log.payload || ''}
           companyBillingSettings={companyBillingSettings}
           warehouseItems={warehouseItems}
           warehouses={warehouses}
+          warehouseMovements={warehouseMovements}
           setWarehouseMovements={updateWarehouseMovementsAndSync}
           invoicesOffers={invoicesOffers}
           setInvoicesOffers={updateInvoicesOffersAndSync}
@@ -3509,6 +3813,8 @@ ${log.payload || ''}
           taskAccess={taskAccess}
           clientCategories={clientCategories}
           setClientCategories={updateClientCategoriesAndSync}
+          clientContacts={clientContacts}
+          setClientContacts={updateClientContactsAndSync}
           systemLanguage={userLanguage}
           tasks={tasks}
           setTasks={updateTasksAndSync}
@@ -3527,6 +3833,8 @@ ${log.payload || ''}
           taskStateColors={taskStateColors}
           tickets={tickets}
           ticketStatuses={ticketStatuses}
+          agencyEnabled={agencyEnabled}
+          agencyRights={agencyRights}
         />
       );
     }
@@ -3546,7 +3854,6 @@ ${log.payload || ''}
       const leadId = matchedLead ? matchedLead.id : rawLeadId;
       return (
         <LeadsDatagrid 
-          systemName={systemName}
           leads={leads}
           setLeads={updateLeadsAndSync}
           leadStates={orderedLeadStates}
@@ -3578,21 +3885,18 @@ ${log.payload || ''}
           leadStateFollowUp={leadStateFollowUp}
           leadStateSla={leadStateSla}
           leadAssignment={leadAssignment}
+          leadAttributes={leadAttributes}
           currencyCode={currencyCode}
           taskAccess={taskAccess}
         />
       );
     }
     if (activeRoute.startsWith("settings")) {
-      const parts = activeRoute.split("/");
-      const subTab = parts[1] || "branding";
-      const settingsAction = parts[2] || null;
-      const settingsActionId = parts[3] || null;
       return (
         <SettingsView 
           employees={employeeRights.view ? employees : undefined}
-          systemName={systemName} 
-          setSystemName={setSystemName} 
+          systemName={systemNameOverride} 
+          setSystemName={setSystemNameOverride} 
           leadStates={orderedLeadStates}
           setLeadStates={setLeadStates}
           leadSources={leadSources}
@@ -3628,6 +3932,8 @@ ${log.payload || ''}
           setLeadStateSla={setLeadStateSla}
           leadAssignment={leadAssignment}
           setLeadAssignment={setLeadAssignment}
+          leadAttributes={leadAttributes}
+          setLeadAttributes={setLeadAttributes}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           systemCurrency={systemCurrency}
@@ -3645,6 +3951,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          taskStateTimerActions={taskStateTimerActions}
+          setTaskStateTimerActions={setTaskStateTimerActions}
           taskSettings={taskSettings}
           setTaskSettings={setTaskSettings}
           setLeads={updateLeadsAndSync}
@@ -3672,6 +3980,10 @@ ${log.payload || ''}
           financialCategories={financialCategories}
           setFinancialCategories={updateFinancialCategoriesAndSync}
           setFinancialRecords={updateFinancialRecordsAndSync}
+          offerCategories={offerCategories}
+          setOfferCategories={updateOfferCategoriesAndSync}
+          invoicesOffers={invoicesOffers}
+          setInvoicesOffers={updateInvoicesOffersAndSync}
           financialMode={financialMode}
           setFinancialMode={updateFinancialModeAndSync}
           companyBillingSettings={companyBillingSettings}
@@ -3679,18 +3991,19 @@ ${log.payload || ''}
           unifiedEntries={unifiedEntries}
           setUnifiedEntries={updateUnifiedEntriesAndSync}
           unifiedEntriesData={unifiedEntriesData}
-          initialSubTab={subTab}
-          settingsAction={settingsAction}
-          settingsActionId={settingsActionId}
+          settingsRoute={activeRoute}
           licenseState={licenseState}
           onLicenseStateChange={setLicenseState}
           customDashboards={customDashboards}
+          onClickUpConnectionChange={setClickupConnected}
         />
       );
     }
 
     const rawBaseTab = activeRoute.split("/")[0];
-    const baseTab = rawBaseTab.startsWith("project-") ? "projects" : rawBaseTab.startsWith("ticket-") ? "tickets" : (rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab);
+    const sectionTab = rawBaseTab.startsWith("project-") ? "projects" : rawBaseTab.startsWith("ticket-") ? "tickets" : rawBaseTab.startsWith("task-") ? "tasks" : (rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab);
+    // The Performance Dashboard (case "overview") took the widget board's place; see utils/dashboardSection.ts.
+    const baseTab = sectionTab === "dashboard" && !LEGACY_WIDGET_DASHBOARD ? "overview" : sectionTab;
     switch (baseTab) {
       case "tickets": {
         const subTicketId = (activeRoute.startsWith("tickets/") && activeRoute.length > "tickets/".length)
@@ -3717,6 +4030,9 @@ ${log.payload || ''}
             currentUser={activeUser}
             userLanguage={userLanguage}
             access={access.module("tickets")}
+            canSeeTicketTime={access.can("tickets.time")}
+            canTrackTime={access.canEdit("time_tracking")}
+            agencyEnabled={agencyEnabled}
             initialSelectedTicketId={subTicketId}
             onNavigate={(route: string) => {
               setActiveTab(route);
@@ -3731,7 +4047,6 @@ ${log.payload || ''}
           : undefined;
         return (
           <LeadsDatagrid 
-            systemName={systemName}
             access={access.module("leads")}
             orderAccess={access.module("orders")}
             leads={leads}
@@ -3762,6 +4077,7 @@ ${log.payload || ''}
             leadStateFollowUp={leadStateFollowUp}
             leadStateSla={leadStateSla}
             leadAssignment={leadAssignment}
+            leadAttributes={leadAttributes}
             currencyCode={currencyCode}
             taskAccess={taskAccess}
             initialSelectedLeadId={subLeadId}
@@ -3812,6 +4128,11 @@ ${log.payload || ''}
             ticketSettings={ticketSettings}
             supportContracts={supportContracts}
             setSupportContracts={updateSupportContractsAndSync}
+            employees={employeeRights.view ? employees : undefined}
+            employeeSalaries={employeeRights.salaries ? employeeSalaries : undefined}
+            employeeRights={employeeRights}
+            orderLinks={ordersModuleEnabled ? { orders, setOrders: updateOrdersAndSync, canEdit: access.canEdit("orders") } : undefined}
+            clickupConnected={clickupConnected}
           />
         );
       }
@@ -3821,6 +4142,7 @@ ${log.payload || ''}
           : undefined;
         return (
           <ClientsView
+          newsletterEnabled={newsletterEnabled}
           priceLevels={priceLevels}
             leads={leads}
             orders={orders}
@@ -3829,6 +4151,7 @@ ${log.payload || ''}
             companyBillingSettings={companyBillingSettings}
             warehouseItems={warehouseItems}
             warehouses={warehouses}
+            warehouseMovements={warehouseMovements}
             setWarehouseMovements={updateWarehouseMovementsAndSync}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
@@ -3855,12 +4178,16 @@ ${log.payload || ''}
             setFinancialCategories={updateFinancialCategoriesAndSync}
             clientCategories={clientCategories}
             setClientCategories={updateClientCategoriesAndSync}
+            clientContacts={clientContacts}
+            setClientContacts={updateClientContactsAndSync}
             currentUser={currentUser}
             users={users}
             projects={projects}
             taskStateColors={taskStateColors}
             tickets={tickets}
             ticketStatuses={ticketStatuses}
+            agencyEnabled={agencyEnabled}
+            agencyRights={agencyRights}
           />
         );
       }
@@ -3907,8 +4234,10 @@ ${log.payload || ''}
             setInvoiceStatuses={setInvoiceStatuses}
             access={access.module("invoices")}
             canConfigure={access.canEdit("general_config")}
+            openOnSettings={activeRoute.split("?")[0].split("/")[1] === "settings"}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
+            offerCategories={offerCategories}
             leads={leads}
             setLeads={updateLeadsAndSync}
             warehouseItems={warehouseItems}
@@ -3923,8 +4252,8 @@ ${log.payload || ''}
             systemLanguage={userLanguage}
             systemCurrency={currencyCode}
             onOpenSettings={() => {
-              window.location.hash = "settings/invoicing";
-              setActiveTab("settings/invoicing");
+              window.location.hash = "settings/company/billing";
+              setActiveTab("settings/company/billing");
             }}
           />
         );
@@ -3935,7 +4264,7 @@ ${log.payload || ''}
         // `orders/new?customer=<leads row id>&from=<page to return to>` opens a prefilled draft.
         const subOrderId = subOrder === "new" ? undefined : subOrder;
         const newOrderRequest = subOrder === "new"
-          ? { customerId: routeParams.get("customer"), from: routeParams.get("from"), key: activeTab }
+          ? { customerId: routeParams.get("customer"), projectId: routeParams.get("project"), from: routeParams.get("from"), key: activeTab }
           : undefined;
         return (
           <OrdersView
@@ -3946,6 +4275,7 @@ ${log.payload || ''}
             setLeads={updateLeadsAndSync}
             warehouseItems={warehouseItems}
             warehouses={warehouses}
+            warehouseMovements={warehouseMovements}
             setWarehouseMovements={updateWarehouseMovementsAndSync}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
@@ -3971,6 +4301,7 @@ ${log.payload || ''}
             companyBillingSettings={companyBillingSettings}
             initialSelectedOrderId={subOrderId}
             newOrderRequest={newOrderRequest}
+            projects={projects}
             onOpenSettings={() => {
               window.location.hash = "settings/orders";
               setActiveTab("settings/orders");
@@ -4047,8 +4378,14 @@ ${log.payload || ''}
                   "A postafiók kapcsolata (IMAP / SMTP szerver, felhasználónév és jelszó), a kapcsolatteszttel ellenőrizve"
                 ),
               ]}
-              settingsLocation={t("Personal settings → Email", "Osobné nastavenia → E-mail", "Személyes beállítások → E-mail")}
-              onOpenSettings={() => { window.location.hash = "personal-settings/email"; }}
+              settingsLocation={
+                access.hasSettingsAccess
+                  ? t("Settings → Email → Connectors & mailboxes", "Nastavenia → E-mail → Konektory a schránky", "Beállítások → E-mail → Konektorok és postafiókok")
+                  : t("Personal settings → Email", "Osobné nastavenia → E-mail", "Személyes beállítások → E-mail")
+              }
+              onOpenSettings={() => {
+                window.location.hash = access.hasSettingsAccess ? "settings/email/mailboxes" : "personal-settings/email";
+              }}
             />
           );
         }
@@ -4065,6 +4402,7 @@ ${log.payload || ''}
             setTasks={updateTasksAndSync}
             users={users}
             taskStates={taskStates}
+            tickets={tickets} setTickets={updateTicketsAndSync} ticketStatuses={ticketStatuses}
           />
         );
 
@@ -4099,6 +4437,64 @@ ${log.payload || ''}
             invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
+            companyBillingSettings={companyBillingSettings}
+          />
+        );
+      case "whatsapp":
+        // The frame itself is the persistent host in the workspace (see whatsappHost); the route only reveals it.
+        return whatsappEnabled ? null : (
+          <AccessDeniedView
+            systemLanguage={userLanguage}
+            fallbackRoute={firstAllowedRoute(access)}
+            onNavigate={(route) => { setActiveTab(route); window.location.hash = route; }}
+            roleName={currentUser?.role}
+            hasKnownRole={access.hasKnownRole}
+            onLogout={() => { setCurrentUser(null); window.location.href = "/"; }}
+          />
+        );
+      case "newsletter":
+        return newsletterEnabled && currentUser ? (
+            <NewsletterView
+              language={userLanguage}
+              route={activeRoute}
+              onNavigate={(route) => { setActiveTab(route); window.location.hash = route; }}
+              canEdit={access.canEdit("newsletter")}
+              canSend={access.canEdit("newsletter_send")}
+              leads={leads}
+              clientCategories={clientCategories}
+              leadStates={orderedLeadStates}
+              leadCategories={leadCategories}
+              userEmail={currentUser.email || ""}
+              companyBilling={companyBillingSettings}
+            />
+        ) : (
+          <AccessDeniedView
+            systemLanguage={userLanguage}
+            fallbackRoute={firstAllowedRoute(access)}
+            onNavigate={(route) => { setActiveTab(route); window.location.hash = route; }}
+            roleName={currentUser?.role}
+            hasKnownRole={access.hasKnownRole}
+            onLogout={() => { setCurrentUser(null); window.location.href = "/"; }}
+          />
+        );
+      case "time-tracking":
+        return timeDeps && timeEnabled ? (
+          <TimeTrackingView
+            deps={timeDeps}
+            route={activeRoute}
+            onNavigate={(route) => {
+              setActiveTab(route);
+              window.location.hash = route;
+            }}
+          />
+        ) : (
+          <AccessDeniedView
+            systemLanguage={userLanguage}
+            fallbackRoute={firstAllowedRoute(access)}
+            onNavigate={(route) => { setActiveTab(route); window.location.hash = route; }}
+            roleName={currentUser?.role}
+            hasKnownRole={access.hasKnownRole}
+            onLogout={() => { setCurrentUser(null); window.location.href = "/"; }}
           />
         );
       case "overview":
@@ -4118,8 +4514,11 @@ ${log.payload || ''}
             projects={projects}
             projectTypes={projectTypes}
             financialRecords={financialRecords}
+            financialCategories={financialCategories} financialMode={financialMode} financialSimplifiedTable={financialSimplifiedTable}
             invoicesOffers={invoicesOffers}
             invoiceStatuses={invoiceStatuses}
+            companyBillingSettings={companyBillingSettings}
+            tasks={tasks} taskStates={taskStates} employees={employees} tickets={tickets} ticketStatuses={ticketStatuses} ticketSettings={ticketSettings} offerStatuses={offerStatuses} canSeeFinancials={access.module("financial").view}
           />
         );
       case "rag_ai":
@@ -4129,21 +4528,7 @@ ${log.payload || ''}
               language={userLanguage}
               icon={Brain}
               moduleName={t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens")}
-              description={t(
-                "The assistant answers from a vector index of your CRM data, so it stays inactive until a vector database is connected.",
-                "Asistent odpovedá z vektorového indexu dát CRM, preto zostane neaktívny, kým nebude pripojená vektorová databáza.",
-                "Az asszisztens a CRM-adatok vektorindexéből válaszol, ezért inaktív marad, amíg nincs csatlakoztatott vektoradatbázis."
-              )}
-              missing={[
-                ...(hasOpenAiKey(integrationsConfig) ? [] : [t("OpenAI API key", "OpenAI API kľúč", "OpenAI API kulcs")]),
-                t(
-                  "Vector database connection (MariaDB, Qdrant or Pinecone), verified with “Test Vector DB Connection”",
-                  "Pripojenie vektorovej databázy (MariaDB, Qdrant alebo Pinecone) overené tlačidlom „Otestovať pripojenie k vektorovej DB“",
-                  "Vektoradatbázis-kapcsolat (MariaDB, Qdrant vagy Pinecone), a „Vektoradatbázis-kapcsolat tesztelése” gombbal ellenőrizve"
-                ),
-              ]}
-              settingsLocation={t("Settings → AI integration", "Nastavenia → AI integrácia", "Beállítások → AI integráció")}
-              onOpenSettings={getPermission("ai_config") === "edit" ? openAiSettings : undefined}
+              {...ragAiSetupCard}
             />
           );
         }
@@ -4253,29 +4638,90 @@ ${log.payload || ''}
             setEmployeeSettings={updateEmployeeSettingsAndSync}
             financialCategories={financialCategories}
             isDemoMode={isDemoMode}
+            integrationsConfig={integrationsConfig}
           />
         );
-      default:
-        return (
-          <TaskDashboardView 
+      case "agency":
+        return agencyEnabled ? (
+          <AgencyView
+            route={activeRoute}
+            onNavigate={(route) => {
+              setActiveTab(route);
+              window.location.hash = route;
+            }}
+            lang={userLanguage}
+            rights={agencyRights}
+            isAdmin={access.isAdmin}
+            currentUser={activeUser}
+            leads={leads}
             tasks={tasks}
             setTasks={updateTasksAndSync}
-            leads={leads}
             projects={projects}
-            tickets={tickets}
             users={users}
-            systemLanguage={userLanguage}
-            currentUser={activeUser}
             taskStates={taskStates}
             taskStateColors={taskStateColors}
             taskAccess={taskAccess}
+            tickets={tickets}
+            setTickets={updateTicketsAndSync}
+            ticketStatuses={ticketStatuses}
+            financialCategories={financialCategories}
             mailConfigured={isSystemMailConfigured(integrationsConfig)}
-            leadStageGroups={leadStageGroups}
-            leadStateParents={leadStateParents}
+            integrationsConfig={integrationsConfig}
+          />
+        ) : (
+          <AccessDeniedView
+            systemLanguage={userLanguage}
+            fallbackRoute={firstAllowedRoute(access)}
+            onNavigate={(route) => {
+              setActiveTab(route);
+              window.location.hash = route;
+            }}
+            roleName={currentUser?.role}
+            hasKnownRole={access.hasKnownRole}
+            onLogout={() => {
+              commitPendingUndos().then(() => fetch("/api/logout.php", { method: "POST" }))
+                .finally(() => {
+                  setCurrentUser(null);
+                  window.location.href = "/";
+                });
+            }}
           />
         );
+      default: {
+        const sharedTaskProps = {
+          tasks, setTasks: updateTasksAndSync, leads, projects, tickets, users,
+          taskStates, taskStateColors, systemLanguage: userLanguage, currentUser: activeUser,
+          taskAccess, mailConfigured: isSystemMailConfigured(integrationsConfig),
+          agencyEnabled, leadStageGroups, leadStateParents,
+        };
+        const routeTaskId = activeRoute.startsWith("tasks/")
+          ? decodeURIComponent(activeRoute.slice("tasks/".length))
+          : activeRoute.startsWith("task-") ? decodeURIComponent(activeRoute.slice("task-".length)) : "";
+        return routeTaskId ? (
+          <TaskDetailView {...sharedTaskProps} taskId={routeTaskId} onBackToTasks={() => { setActiveTab("tasks"); window.location.hash = "tasks"; }} />
+        ) : (
+          <TaskDashboardView {...sharedTaskProps} recurringTasks={recurringTasks} setRecurringTasks={updateRecurringTasksAndSync} employees={employees} hubData={taskHubData} />
+        );
+      }
     }
   };
+
+  // Time-tracking picker lists. Hooks: they must stay above the early returns below.
+  // Without the projects module the list arrives empty, but anyone who tracks time may pick any
+  // active project and create one: the server sends a slim list in readScope.timePicker.
+  const canSeeProjects = access.can("projects");
+  const pickerDefaultStatus = defaultProjectStatus(projectStatuses);
+  const workableProjects = useMemo(
+    () => (canSeeProjects ? [] : workableProjectStubs(readScope, pickerDefaultStatus, timeCreatedProjects)),
+    [canSeeProjects, readScope, pickerDefaultStatus, timeCreatedProjects],
+  );
+  // Projects view without edit creates through the server too: show the new one until a sync lists it.
+  const pickerProjects = useMemo(
+    () => (canSeeProjects ? [...projects, ...timeCreatedProjects.filter((c) => !projects.some((p) => p.id === c.id))] : workableProjects),
+    [canSeeProjects, projects, timeCreatedProjects, workableProjects],
+  );
+  const pickerTypes = useMemo(() => (canSeeProjects ? projectTypes : pickerProjectTypes(readScope)), [canSeeProjects, projectTypes, readScope]);
+  const pickerLeads = useMemo(() => (canSeeProjects ? leads : withPickerClients(readScope, leads)), [canSeeProjects, leads, readScope]);
 
   if (activeTab.startsWith("public-tickets/")) {
     const publicHash = decodeURIComponent(activeTab.slice("public-tickets/".length));
@@ -4299,50 +4745,13 @@ ${log.payload || ''}
     );
   }
 
-  // While loading initial sync data from the database, show a premium timelapse atmospheric loader
+  // While loading initial sync data from the database, show a clean theme-aware loader
   if (isInstalled && !isInitialSyncResolved) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center p-6 relative overflow-hidden select-none font-sans">
-        <style dangerouslySetInnerHTML={{__html: `
-          @keyframes pulse-ring {
-            0% { transform: scale(0.95); opacity: 0.8; }
-            50% { transform: scale(1.05); opacity: 0.4; }
-            100% { transform: scale(0.95); opacity: 0.8; }
-          }
-          @keyframes spin-slow {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          .loader-spin {
-            animation: spin-slow 2.4s linear infinite;
-          }
-          .pulse-ring {
-            animation: pulse-ring 3s ease-in-out infinite;
-          }
-        `}} />
-
-        {/* Dynamic Animated Timelapse Atmospheric Background (matching Login View) */}
-        <FeralGradientBackground timelapse timelapseSpeed={0.16} />
-
-        {/* Glassmorphic Executive Card */}
-        <div className="relative z-10 flex flex-col items-center max-w-sm text-center px-10 py-8 rounded-[36px] border backdrop-blur-2xl bg-white/40 dark:bg-slate-950/40 border-white/50 dark:border-white/10 shadow-2xl shadow-indigo-950/20 transition-all duration-700 animate-in fade-in zoom-in-95">
-          {/* Organic Node Database Construction Animation */}
-          <div className="relative mb-3 flex items-center justify-center">
-            <OrganicNodeDatabaseLoader size={155} />
-          </div>
-          
-          <h2 className="text-title font-heading font-bold text-slate-900 dark:text-white drop-shadow-sm">
-            {systemName || "CCRM"}
-          </h2>
-          
-          <div className="flex items-center gap-2 mt-3.5 px-4 py-1.5 rounded-full bg-white/50 dark:bg-slate-900/50 border border-white/60 dark:border-white/10 backdrop-blur-md shadow-sm">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-sm shadow-emerald-500/50"></span>
-            <p className="type-overline text-slate-800 dark:text-slate-200">
-              {t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
-            </p>
-          </div>
-        </div>
-      </div>
+      <AppLoadingScreen
+        systemName={systemName}
+        label={t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
+      />
     );
   }
 
@@ -4371,14 +4780,14 @@ ${log.payload || ''}
             pendingPushRef.current = false;
             setTimeout(() => {
               pushStateToServer(
-                // 23 positional "next…" slots precede the options object. Keep this
+                // 24 positional "next…" slots precede the options object. Keep this
                 // padding in step with the pushStateToServer signature: when the
                 // invoices/AI-template/orders slots were added the options object silently
                 // slid into payload arguments, corrupting the replayed payload.
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined, undefined,
-                undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined, undefined,
                 { showIndicator: false }
               );
             }, 0);
@@ -4406,12 +4815,87 @@ ${log.payload || ''}
     );
   }
 
+  // Everything the Time Tracking module needs from the rest of the app (see components/timeTracking/shared.tsx).
+  const timeEnabled = !!currentUser?.id && access.can("time_tracking") && !(integrationsConfig?.disabledModules || []).includes("time-tracking");
+  const whatsappEnabled = !!currentUser?.id && access.can("whatsapp") && !(integrationsConfig?.disabledModules || []).includes("whatsapp");
+  const newsletterEnabled = !!currentUser?.id && access.can("newsletter") && !(integrationsConfig?.disabledModules || []).includes("newsletter");
+  const ordersModuleEnabled = !!currentUser?.id && access.can("orders") && !(integrationsConfig?.disabledModules || []).includes("orders");
+  const whatsappRoute = parseAppHash(activeTab);
+  const whatsappActive = whatsappRoute.route.split("/")[0].toLowerCase() === "whatsapp";
+  const whatsappHost = whatsappEnabled && currentUser && (whatsappOpened || whatsappActive) ? (
+    <WhatsAppModule
+      active={whatsappActive}
+      route={whatsappRoute.route}
+      params={whatsappRoute.params}
+      language={userLanguage}
+      currentUserId={String(currentUser.id)}
+      isDemoMode={isDemoMode}
+      demoDirectory={whatsappDemoDirectory}
+      onUnread={setWhatsappUnread}
+      onOpenRecord={(kind, id) => {
+        window.location.hash = crmHashForRecord(kind, id, (leadId) => leads.find((l) => l.id === leadId));
+      }}
+    />
+  ) : null;
+  const timeDeps: TimeDeps | null = currentUser ? {
+    language: userLanguage,
+    currency: systemCurrency || "EUR",
+    currentUser,
+    users,
+    employees,
+    projects: pickerProjects,
+    projectTypes: pickerTypes,
+    leads: pickerLeads,
+    tasks,
+    tickets,
+    canLinkTicket: access.can("tickets"),
+    canSeeTicketTime: access.can("tickets.time"),
+    canEditTicket: () => access.canEdit("tickets"),
+    onRenameTicket: (ticketId, title) =>
+      updateTicketsAndSync((prev) => prev.map((tk) => (tk.id === ticketId ? { ...tk, title, subject: title } : tk))),
+    isTaskDone: (task) => isDoneTaskState(task.status, taskStates),
+    canPickProject: canSeeProjects || workableProjects.length > 0 || canCreateProjectFromTime(access),
+    onCreateProject: access.canEdit("projects")
+      ? ({ name, clientId, projectTypeId }) => {
+          const record = clientId ? leads.find((l) => l.id === clientId) : undefined;
+          const created: Project = {
+            id: "proj-" + Date.now(),
+            projectTypeId,
+            name,
+            leadId: record && !isClientRecord(record) ? record.id : null,
+            clientId: record && isClientRecord(record) ? record.id : null,
+            status: defaultProjectStatus(projectStatuses),
+            managers: [],
+            data: {},
+            timeline: [],
+            gantt: [],
+            archived: false,
+          };
+          updateProjectsAndSync((prev) => [created, ...prev]);
+          return created;
+        }
+      : canCreateProjectFromTime(access)
+        ? (input) => createPickerProject(input, (p) => setTimeCreatedProjects((prev) => [...prev, p]), userLanguage)
+        : undefined,
+    canEditTask: (task) => task.externalSource !== "clickup" && userMayEditTask(task, currentUser, taskAccess),
+    onRenameTask: (taskId, title) =>
+      updateTasksAndSync((prev) =>
+        prev.map((tk) => (tk.id === taskId && tk.externalSource !== "clickup" ? { ...tk, title } : tk)),
+      ),
+    vacations: employeeVacations,
+    salaries: employeeSalaries,
+    canSalaryReport: access.can("time_tracking_salary_report"),
+  } : null;
+
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
     <ReadScopeContext.Provider value={readScope}>
+    <WhatsAppLinksContext.Provider value={whatsAppContext}>
     <ProjectStatusesProvider value={projectStatuses}>
     <OrderStatusesProvider value={orderStatuses}>
     <TaskSettingsProvider value={taskSettings}>
+    <RecurringTemplatesProvider value={recurringTasks}>
+    <TimeTrackingProvider enabled={timeEnabled} language={userLanguage} userId={currentUser?.id ?? null}>
     {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
     <QuickAddClientProvider
       setLeads={updateLeadsAndSync}
@@ -4420,6 +4904,7 @@ ${log.payload || ''}
       leadSources={leadSources}
       canCreate={access.canEdit("leads") || access.canEdit("clients")}
     >
+    {timeDeps && timeEnabled && <><ProjectRequestDialog deps={timeDeps} /><PresenceDialog /><TaskStatusTimerBridge deps={timeDeps} actions={taskStateTimerActions} /></>}
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50 transition-colors duration-[230ms]">
       {/* Dynamic Aurora Ambient Background Blobs (Themed per active view) */}
       <AuroraBackground
@@ -4431,21 +4916,21 @@ ${log.payload || ''}
       {/* Blurred application background layout if not logged in */}
       <div className={`flex flex-1 overflow-hidden transition-all duration-500 relative z-10 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
         {isEmbeddedTasks ? (
-          <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-50/60 overflow-hidden">
+          <EntityScope color={activeEntityHex} className="flex-1 flex flex-col min-w-0 h-full bg-gray-50/40 overflow-hidden">
             {/* Minimal extension header bar */}
-            <header className="h-10 px-3 bg-white/95 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between shrink-0 select-none z-20">
+            <header className="h-10 px-3 bg-white/95 backdrop-blur-md border-b border-gray-200 flex items-center justify-between shrink-0 select-none z-20">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
-                <span className="font-heading font-extrabold text-body text-slate-900 tracking-tight flex items-center gap-1.5">
-                  <span>CCRM</span>
-                  <span className="text-micro font-bold uppercase px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                <span className="w-2.5 h-2.5 rounded-full bg-entity-solid animate-pulse" />
+                <span className="font-heading font-extrabold text-body text-gray-900 tracking-tight flex items-center gap-1.5">
+                  <span>{systemName}</span>
+                  <span className="text-micro font-bold uppercase px-1.5 py-0.5 rounded-md bg-entity-subtle text-entity-text border border-entity-border">
                     Tasks
                   </span>
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 {currentUser && (
-                  <span className="text-caption font-semibold text-slate-600 flex items-center gap-1">
+                  <span className="text-caption font-semibold text-gray-600 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     {currentUser.name}
                   </span>
@@ -4453,8 +4938,8 @@ ${log.payload || ''}
                 {taskAccess.create && (
                   <button
                     type="button"
-                    onClick={() => setQuickTaskOpen(true)}
-                    className="px-2 py-0.5 rounded-lg text-micro font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
+                    onClick={(e) => openQuickTask(e)}
+                    className="px-2.5 py-1 rounded-md text-micro font-semibold bg-entity-solid text-white hover:bg-entity-solid-hover transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
                     <span>{t("New Task", "Nová úloha", "Új feladat")}</span>
@@ -4464,8 +4949,8 @@ ${log.payload || ''}
                   href="/#tasks"
                   target="_blank"
                   rel="noreferrer"
-                  className="px-2 py-0.5 rounded-lg text-micro font-bold text-slate-600 hover:text-indigo-600 hover:bg-slate-100 transition-colors flex items-center gap-1 border border-slate-200"
-                  title={t("Open full CCRM", "Otvoriť plné CCRM", "Teljes CCRM megnyitása")}
+                  className="px-2.5 py-1 rounded-md text-micro font-semibold text-gray-700 hover:text-entity-text hover:bg-gray-50 transition-colors flex items-center gap-1 border border-gray-300 bg-white shadow-2xs"
+                  title={t(`Open full ${systemName}`, `Otvoriť plné ${systemName}`, `Teljes ${systemName} megnyitása`)}
                 >
                   <ArrowUpRight className="w-3 h-3" />
                   <span>{t("Open App", "Otvoriť aplikáciu", "Alkalmazás")}</span>
@@ -4483,9 +4968,12 @@ ${log.payload || ''}
                 systemLanguage={userLanguage}
                 currentUserName={displayUser.name}
                 mailConfigured={isSystemMailConfigured(integrationsConfig)}
+                agencyEnabled={agencyEnabled}
                 leadStageGroups={leadStageGroups}
                 leadStateParents={leadStateParents}
                 onCreate={(created) => updateTasksAndSync((prev) => [...created, ...prev])}
+                onCreateRecurring={(template) => updateRecurringTasksAndSync((prev) => [template, ...(prev || [])])}
+                origin={quickTaskOrigin}
                 onClose={() => setQuickTaskOpen(false)}
               />
             )}
@@ -4493,24 +4981,23 @@ ${log.payload || ''}
             {/* Embedded Workspace main */}
             <main className="workspace flex-1 overflow-y-auto [scrollbar-gutter:stable] relative flex flex-col p-2 ws-sm:p-3">
               <ErrorBoundary contained resetKey="embedded-tasks">
-                <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
+                <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-entity-text animate-spin" /></div>}>
                   {renderWorkspaceView()}
                 </Suspense>
               </ErrorBoundary>
             </main>
-          </div>
+          </EntityScope>
         ) : (
           <>
             {/* Sidebar navigation with role-gated settings visibility */}
             <Sidebar 
               activeTab={activeTab} 
               setActiveTab={(tab) => { 
-                if (!access.canOpenRoute(tab)) return;
+                if (!canOpenRouteWithComm(tab)) return;
                 window.location.hash = tab; 
               }} 
-              systemName={systemName}
               showSettings={access.hasSettingsAccess}
-              canOpenRoute={access.canOpenRoute}
+              canOpenRoute={canOpenRouteWithComm}
               onLogout={() => {
                 commitPendingUndos().then(() => fetch("/api/logout.php", { method: "POST" }))
                   .finally(() => {
@@ -4530,10 +5017,11 @@ ${log.payload || ''}
               defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
               onSaveDefaultPage={handleSaveDefaultPage}
               disabledModules={integrationsConfig?.disabledModules || []}
+              badges={{ whatsapp: whatsappUnread, tickets: tickets.filter((t) => !isClosedTicketStatus(t.status, ticketStatuses)).length, tasks: tasks.filter((t) => !t.archived && !isDoneTaskState(t.status, taskStates) && !!t.deadline && t.deadline.slice(0, 10) <= todayLocal()).length }}
             />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
-        <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
+        <EntityScope color={activeEntityHex} className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
           <Header
             activeTab={activeTab}
             systemName={systemName}
@@ -4553,17 +5041,17 @@ ${log.payload || ''}
               window.location.hash = "personal-settings";
             }}
             onNavigateMeetings={(action) => {
+              const targetHash =
+                action === "record"
+                  ? "meetings/new?record=true"
+                  : action === "new"
+                    ? "meetings/new"
+                    : "meetings";
               setMeetingsAction(action);
-              setActiveTab("meetings");
-              if (action === "record") {
-                window.location.hash = "meetings/new?record=true";
-              } else if (action === "new") {
-                window.location.hash = "meetings/new";
-              } else {
-                window.location.hash = "meetings";
-              }
+              setActiveTab(targetHash);
+              window.location.hash = targetHash;
             }}
-            onAddTask={() => setQuickTaskOpen(true)}
+            onAddTask={(e) => openQuickTask(e)}
             onNavigateUpdates={() => {
               setActiveTab("updates");
               window.location.hash = "updates";
@@ -4572,6 +5060,7 @@ ${log.payload || ''}
             canCreateTask={access.canEdit("tasks")}
             canCreateMeeting={access.canEdit("meetings")}
             canRunWorkflows={access.canEdit("automation")}
+            timeDeps={timeEnabled ? timeDeps : null}
           />
           {quickTaskOpen && taskAccess.create && (
             <QuickTaskModal
@@ -4583,9 +5072,12 @@ ${log.payload || ''}
               systemLanguage={userLanguage}
               currentUserName={displayUser.name}
               mailConfigured={isSystemMailConfigured(integrationsConfig)}
+              agencyEnabled={agencyEnabled}
               leadStageGroups={leadStageGroups}
               leadStateParents={leadStateParents}
               onCreate={(created) => updateTasksAndSync((prev) => [...created, ...prev])}
+                onCreateRecurring={(template) => updateRecurringTasksAndSync((prev) => [template, ...(prev || [])])}
+              origin={quickTaskOrigin}
               onClose={() => setQuickTaskOpen(false)}
             />
           )}
@@ -4594,16 +5086,16 @@ ${log.payload || ''}
             <div className="shrink-0 w-full">
               {currentUser && <PwaInstallBanner language={userLanguage} userKey={currentUser.email || currentUser.name || "anon"} />}
               {showNotifBanner && currentUser && getBrowserNotificationPermission() === "default" && (
-                <div className="mb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3 rounded-2xl flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="mb-4 rounded-lg border border-entity-border bg-white px-4 py-3 flex items-center justify-between gap-3 shadow-xs animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-white/20 rounded-xl shrink-0">
-                      <Bell className="h-5 w-5 text-white animate-pulse" />
+                    <div className="p-2 bg-entity-subtle text-entity-text border border-entity-border rounded-md shrink-0">
+                      <Bell className="h-4.5 w-4.5" />
                     </div>
                     <div>
-                      <p className="text-ui font-bold">
+                      <p className="text-ui font-bold text-gray-900">
                         {t("Enable Desktop Notifications", "Zapnúť upozornenia na ploche", "Asztali értesítések engedélyezése")}
                       </p>
-                      <p className="text-caption text-blue-100 font-medium">
+                      <p className="text-caption text-gray-500 font-medium">
                         {t(
                           "Get instant alerts when tasks are assigned to you or marked as completed.",
                           "Dostávajte okamžité hlásenia pri priradení novej úlohy alebo jej dokončení.",
@@ -4626,7 +5118,7 @@ ${log.payload || ''}
                           });
                         }
                       }}
-                      className="px-3.5 py-1.5 bg-white text-blue-700 hover:bg-blue-50 text-ui font-bold rounded-xl shadow-sm transition active:scale-95"
+                      className="px-3.5 py-1.5 bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold rounded-md shadow-2xs transition active:scale-95 cursor-pointer"
                     >
                       {t("Enable", "Povoliť", "Engedélyezés")}
                     </button>
@@ -4636,7 +5128,7 @@ ${log.payload || ''}
                         setShowNotifBanner(false);
                         sessionStorage.setItem("ccrm_notif_banner_dismissed", "1");
                       }}
-                      className="p-1.5 hover:bg-white/10 rounded-xl text-white/80 hover:text-white transition"
+                      className="p-1.5 hover:bg-gray-100 rounded-md text-gray-400 hover:text-gray-700 transition cursor-pointer"
                       title={t("Dismiss", "Zavrieť", "Bezárás")}
                     >
                       <X className="h-4 w-4" />
@@ -4653,7 +5145,7 @@ ${log.payload || ''}
                 language={userLanguage}
                 isAdmin={access.isAdmin}
                 onOpenLicenseSettings={() => {
-                  window.location.hash = "settings/license";
+                  window.location.hash = "settings/system/license";
                 }}
               />
               {/* Whole views (RAG assistant, automations, meeting summaries, the
@@ -4679,31 +5171,34 @@ ${log.payload || ''}
                 </Suspense>
               </ErrorBoundary>
             </div>
-            <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-end items-center type-overline text-slate-400 select-none">
+            <TableFullscreenEnhancer userLanguage={userLanguage} />
+            {whatsappHost}
+            <footer className={`mt-12 pt-4 border-t border-gray-200/70 flex justify-end items-center type-overline text-gray-400 select-none${whatsappActive ? " hidden" : ""}`}>
               <span>
                 v{VERSION}
                 {cerpVersion ? ` with ${cerpVersion.startsWith("v") ? cerpVersion : `v${cerpVersion}`}` : ""}
               </span>
             </footer>
           </main>
-        </div>
+        </EntityScope>
         </>
         )}
 
         {/* Global Executive Copilot Sidebar (contracts workspace side-by-side on desktop) */}
-        {currentUser && !isEmbeddedTasks && isCopilotOpen && (
+        {currentUser && !isEmbeddedTasks && access.can("rag_ai") && isCopilotOpen && (
           <CopilotSidebar
             isOpen={isCopilotOpen}
             onClose={() => setIsCopilotOpen(false)}
             systemLanguage={userLanguage}
             screenContext={currentScreenContext}
             currentUser={currentUser}
+            setupRequired={isModuleSetupPending("rag_ai") ? ragAiSetupCard : undefined}
           />
         )}
       </div>
 
       {/* Global Floating Copilot Orb (Draggable to any of the 4 corners) */}
-      {currentUser && !isEmbeddedTasks && (
+      {currentUser && !isEmbeddedTasks && access.can("rag_ai") && (
         <FloatingCopilotOrb
           isOpen={isCopilotOpen}
           onOpen={() => setIsCopilotOpen(true)}
@@ -4729,18 +5224,27 @@ ${log.payload || ''}
         disabledModules={integrationsConfig?.disabledModules || []}
         onConfirm={handleModuleWizardConfirm}
         onSkip={handleModuleWizardSkip}
+        users={users.map((u) => ({
+          id: (u.id || u.email || "").trim(),
+          name: (u.name || u.email || "").trim(),
+          role: u.role || "",
+        })).filter((u) => u.id)}
+        roles={roles}
+        onTrackingRoles={updateRolesAndSync}
       />
 
       {/* Bottom-right notification stack. The save indicator and the toast share one
           column so they can never land on top of each other — they used to be two
           independently positioned "fixed" banners 4px apart, which read as a single
           garbled banner whenever both were up. */}
-      <div className="fixed bottom-20 right-6 z-[20001] flex flex-col items-end gap-2 pointer-events-none lg:bottom-6">
+      {/* Above every app layer, including the Start menu and its edit-mode menus
+          (z 99999–100070): an Undo toast hidden behind a dialog cannot be used. */}
+      <div data-app-notifications="" className="fixed bottom-20 right-6 z-[100090] flex flex-col items-end gap-2 pointer-events-none lg:bottom-6">
         {/* Global save indicator — reassures the user their change is being saved
             and, together with the beforeunload guard, that they should not leave or
             reload the page until it disappears. */}
         {isSyncIndicatorVisible && (
-          <div className="pointer-events-auto flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
             <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
             <span className="type-overline">
               {userLanguage === "sk" ? "Ukladá sa…" : userLanguage === "hu" ? "Mentés…" : "Saving…"}
@@ -4771,8 +5275,8 @@ ${log.payload || ''}
         <PasskeySetupOffer systemLanguage={userLanguage} loginMethod={loginMethod} />
         {toast && (
           <div role="status" aria-live="polite" className="pointer-events-auto animate-in slide-in-from-bottom duration-300">
-            <div className={`bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-ui font-bold border ${
-              toast.variant === "error" ? "border-rose-500/70" : toast.variant === "warning" ? "border-amber-500/70" : "border-slate-800"
+            <div className={`bg-gray-900 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-4 text-ui font-semibold border ${
+              toast.variant === "error" ? "border-rose-500/70" : toast.variant === "warning" ? "border-amber-500/70" : "border-gray-800"
             }`}>
               <span>{toast.message}</span>
               {toast.action && (
@@ -4781,14 +5285,14 @@ ${log.payload || ''}
                     toast.action?.onClick();
                     setToast(null);
                   }}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer transition-all active:scale-95 text-micro"
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-semibold cursor-pointer transition-all active:scale-95 text-micro"
                 >
                   {toast.action.label}
                 </button>
               )}
               <button
                 onClick={() => setToast(null)}
-                className="text-slate-400 hover:text-white font-bold ml-2 cursor-pointer"
+                className="text-gray-400 hover:text-white font-bold ml-2 cursor-pointer"
               >
                 ✕
               </button>
@@ -4798,17 +5302,17 @@ ${log.payload || ''}
       </div>
       {/* Global File Preview Modal overlay */}
       {previewFile && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
           <div 
             className="fixed inset-0" 
             onClick={() => setPreviewFile(null)} 
           />
-          <div className="w-full max-w-5xl h-[85vh] bg-white rounded-t-[32px] rounded-b-[32px] border border-slate-200/80 shadow-2xl p-6 flex flex-col justify-between text-left relative z-10 animate-in zoom-in-95 duration-300">
+          <div className="w-full max-w-5xl h-[85vh] bg-white rounded-lg border border-gray-200 shadow-2xl p-5 flex flex-col justify-between text-left relative z-10 animate-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+            <div className="flex items-center justify-between border-b border-gray-200 pb-3 shrink-0">
               <div className="min-w-0 pr-4">
                 <span className="type-overline text-amber-700">{t("File Preview", "Náhľad súboru", "Fájl előnézet")}</span>
-                <h3 className="text-body font-heading font-bold truncate">{previewFile.name}</h3>
+                <h3 className="text-body font-heading font-bold text-gray-900 truncate">{previewFile.name}</h3>
               </div>
               <div className="flex items-center gap-2">
                 {/* The browser's own viewer reports why a document failed to open,
@@ -4817,21 +5321,21 @@ ${log.payload || ''}
                   href={previewFile.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 type-overline flex items-center gap-1 transition-all"
+                  className="px-3 py-1.5 rounded-md bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 type-overline flex items-center gap-1 transition-all shadow-2xs"
                 >
                   {t("Open in a new tab", "Otvoriť na novej karte", "Megnyitás új lapon")}
                 </a>
                 <a
                   href={previewFile.url}
                   download={previewFile.name}
-                  className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white type-overline flex items-center gap-1 transition-all"
+                  className="px-3 py-1.5 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white type-overline flex items-center gap-1 transition-all shadow-2xs"
                 >
                   {t("Download", "Stiahnuť", "Letöltés")}
                 </a>
                 <button
                   type="button"
                   onClick={() => setPreviewFile(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                  className="text-gray-400 hover:text-gray-700 p-1.5 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                 >
                   ✕
                 </button>
@@ -4839,7 +5343,7 @@ ${log.payload || ''}
             </div>
 
             {/* Content preview pane */}
-            <div className="flex-1 mt-4 border border-slate-200 rounded-2xl overflow-hidden bg-slate-50 flex items-center justify-center">
+            <div className="flex-1 mt-4 border border-gray-200 rounded-md overflow-hidden bg-gray-50 flex items-center justify-center">
               <FilePreviewPane
                 key={previewFile.url}
                 url={previewFile.url}
@@ -5004,9 +5508,12 @@ ${log.payload || ''}
       )}
     </div>
     </QuickAddClientProvider>
+    </TimeTrackingProvider>
+    </RecurringTemplatesProvider>
     </TaskSettingsProvider>
     </OrderStatusesProvider>
     </ProjectStatusesProvider>
+    </WhatsAppLinksContext.Provider>
     </ReadScopeContext.Provider>
     </UserPrefsContext.Provider>
   );

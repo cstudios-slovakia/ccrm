@@ -15,10 +15,11 @@ import * as Icons from "lucide-react";
 import type { FavoriteEntityType } from "../types";
 import {
   useFavorites,
-  isColorDark,
   getFavoriteTypeLabel,
   DEFAULT_ENTITY_COLORS,
 } from "../utils/favorites";
+import { entityAccentStyle } from "../utils/entityAccent";
+import { EntityBadge } from "./tremor/EntityBadge";
 
 interface FavoritesDrawerProps {
   isOpen: boolean;
@@ -155,25 +156,25 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
               stiffness: 300,
               mass: 0.8,
             }}
-            className="fixed top-15.5 sm:top-18 inset-x-3 sm:inset-x-6 lg:inset-x-8 max-w-(--drawer-xl) mx-auto z-50 rounded-2xl sm:rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/80 shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-85px)] sm:max-h-[calc(100vh-100px)] pointer-events-auto"
+            className="fixed top-15.5 sm:top-18 inset-x-3 sm:inset-x-6 lg:inset-x-8 max-w-(--drawer-xl) mx-auto z-50 rounded-lg bg-white border border-gray-200 shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-85px)] sm:max-h-[calc(100vh-100px)] pointer-events-auto"
           >
         {/* Top Control Bar */}
-        <div className="px-4 sm:px-7 py-3.5 sm:py-4 border-b border-slate-200/60 flex flex-col md:flex-row md:items-center justify-between gap-3.5 shrink-0 bg-slate-50/70">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-3.5 shrink-0 bg-gray-50/90">
           {/* Title & Count */}
           <div className="flex items-center gap-3 shrink-0">
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20">
-              <Heart className="h-5 w-5 fill-white" />
+            <div className="h-9 w-9 rounded-md bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shadow-2xs">
+              <Heart className="h-4.5 w-4.5 fill-rose-600" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-title-sm font-heading font-extrabold text-slate-900 tracking-tight">
+                <h3 className="text-title-sm font-heading font-bold text-gray-900 tracking-tight">
                   {t("Favorites", "Moje obľúbené", "Kedvenceim")}
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-ui font-bold bg-rose-100 text-rose-700">
+                <span className="px-2 py-0.5 rounded-full text-caption font-semibold bg-rose-50 text-rose-700 border border-rose-200">
                   {favorites.length}
                 </span>
               </div>
-              <p className="text-caption text-slate-400 font-semibold">
+              <p className="text-caption text-gray-500 font-medium">
                 {t(
                   "Quick access to your pinned entities",
                   "Rýchly prístup k pripnutým položkám",
@@ -188,10 +189,10 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
             <button
               type="button"
               onClick={() => setSelectedFilter("all")}
-              className={`px-3 py-1.5 rounded-xl text-ui font-heading font-bold transition-all cursor-pointer shrink-0 ${
+              className={`px-3 py-1.5 rounded-md text-ui font-semibold transition-all cursor-pointer shrink-0 border ${
                 selectedFilter === "all"
-                  ? "bg-slate-900 text-white shadow-xs"
-                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60"
+                  ? "bg-gray-900 border-gray-900 text-white shadow-2xs"
+                  : "bg-white text-gray-600 hover:bg-gray-50 border-gray-300"
               }`}
             >
               {t("All", "Všetko", "Összes")} ({counts.all})
@@ -199,10 +200,11 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
             <button
               type="button"
               onClick={() => setSelectedFilter("project")}
-              className={`px-3 py-1.5 rounded-xl text-ui font-heading font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+              style={entityAccentStyle("project") as React.CSSProperties}
+              className={`px-3 py-1.5 rounded-md text-ui font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 border ${
                 selectedFilter === "project"
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60"
+                  ? "bg-entity-solid border-transparent text-white shadow-2xs"
+                  : "bg-white text-gray-600 hover:bg-entity-subtle hover:text-entity-text border-gray-300"
               }`}
             >
               <FolderKanban className="h-3.5 w-3.5" />
@@ -211,10 +213,11 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
             <button
               type="button"
               onClick={() => setSelectedFilter("client")}
-              className={`px-3 py-1.5 rounded-xl text-ui font-heading font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+              style={entityAccentStyle("client") as React.CSSProperties}
+              className={`px-3 py-1.5 rounded-md text-ui font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 border ${
                 selectedFilter === "client"
-                  ? "bg-emerald-600 text-white shadow-xs"
-                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60"
+                  ? "bg-entity-solid border-transparent text-white shadow-2xs"
+                  : "bg-white text-gray-600 hover:bg-entity-subtle hover:text-entity-text border-gray-300"
               }`}
             >
               <Building2 className="h-3.5 w-3.5" />
@@ -223,10 +226,11 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
             <button
               type="button"
               onClick={() => setSelectedFilter("lead")}
-              className={`px-3 py-1.5 rounded-xl text-ui font-heading font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+              style={entityAccentStyle("lead") as React.CSSProperties}
+              className={`px-3 py-1.5 rounded-md text-ui font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 border ${
                 selectedFilter === "lead"
-                  ? "bg-amber-600 text-white shadow-xs"
-                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60"
+                  ? "bg-entity-solid border-transparent text-white shadow-2xs"
+                  : "bg-white text-gray-600 hover:bg-entity-subtle hover:text-entity-text border-gray-300"
               }`}
             >
               <UserCheck className="h-3.5 w-3.5" />
@@ -235,10 +239,11 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
             <button
               type="button"
               onClick={() => setSelectedFilter("entry")}
-              className={`px-3 py-1.5 rounded-xl text-ui font-heading font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+              style={entityAccentStyle("unified_entry") as React.CSSProperties}
+              className={`px-3 py-1.5 rounded-md text-ui font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 border ${
                 selectedFilter === "entry"
-                  ? "bg-purple-600 text-white shadow-xs"
-                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60"
+                  ? "bg-entity-solid border-transparent text-white shadow-2xs"
+                  : "bg-white text-gray-600 hover:bg-entity-subtle hover:text-entity-text border-gray-300"
               }`}
             >
               <FileBox className="h-3.5 w-3.5" />
@@ -319,7 +324,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5">
               {filteredFavorites.map((item) => {
                 const entityColor = item.color || DEFAULT_ENTITY_COLORS[item.type] || "#4f46e5";
-                const dark = isColorDark(entityColor);
+                const entityRefKey = item.type === "entry" ? "unified_entry" : item.type;
                 const DefaultIcon = getEntityDefaultIcon(item.type);
                 const CustomIcon = item.icon ? (Icons as any)[item.icon] : null;
                 const IconComponent = CustomIcon || DefaultIcon;
@@ -328,37 +333,25 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
                   <div
                     key={`${item.type}-${item.id}`}
                     onClick={() => handleCardClick(item.url)}
-                    style={{ backgroundColor: entityColor }}
-                    className={`group relative rounded-xl p-2.5 sm:p-3 transition-all duration-200 cursor-pointer flex flex-col justify-between shadow-xs hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] border select-none overflow-hidden ${
-                      dark
-                        ? "text-white border-white/20 shadow-slate-900/20"
-                        : "text-slate-900 border-black/10 shadow-slate-400/20"
-                    }`}
+                    style={{
+                      ...(entityAccentStyle(entityRefKey, item.color || entityColor) as React.CSSProperties),
+                      borderTopColor: "var(--entity-accent-solid)",
+                    }}
+                    className="group relative rounded-lg p-3 transition-all duration-150 cursor-pointer flex flex-col justify-between bg-white border border-gray-200 border-t-2 shadow-xs hover:shadow-md hover:border-entity-border active:scale-[0.98] select-none overflow-hidden"
                   >
-                    {/* Top glass sheen & decorative circle */}
-                    <div className="absolute -top-8 -right-8 w-20 h-20 rounded-full bg-white/10 blur-lg pointer-events-none" />
-
                     {/* Card Header: Type Badge + Icon + Remove Button */}
-                    <div className="flex items-center justify-between gap-1.5 mb-2 relative z-10">
+                    <div className="flex items-center justify-between gap-1.5 mb-2.5">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <div
-                          className={`p-1 rounded-lg backdrop-blur-md flex items-center justify-center shrink-0 ${
-                            dark
-                              ? "bg-white/20 text-white"
-                              : "bg-black/10 text-slate-900"
-                          }`}
-                        >
-                          <IconComponent className="h-3 w-3" />
+                        <div className="p-1.5 rounded-md bg-entity-subtle text-entity-text border border-entity-border flex items-center justify-center shrink-0">
+                          <IconComponent className="h-3.5 w-3.5" />
                         </div>
-                        <span
-                          className={`type-overline px-1.5 py-0.5 rounded backdrop-blur-md truncate ${
-                            dark
-                              ? "bg-black/25 text-white/90"
-                              : "bg-white/40 text-slate-900"
-                          }`}
-                        >
-                          {getFavoriteTypeLabel(item.type, systemLanguage)}
-                        </span>
+                        <EntityBadge
+                          entity={entityRefKey}
+                          color={item.color}
+                          label={getFavoriteTypeLabel(item.type, systemLanguage)}
+                          showIcon={false}
+                          size="sm"
+                        />
                       </div>
 
                       {/* Remove Favorite Button */}
@@ -368,11 +361,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
                           e.stopPropagation();
                           removeFavorite(item.id);
                         }}
-                        className={`p-1 rounded-lg transition-all duration-200 cursor-pointer shrink-0 opacity-80 group-hover:opacity-100 hover:scale-110 active:scale-95 ${
-                          dark
-                            ? "bg-black/20 hover:bg-rose-600 text-white"
-                            : "bg-white/40 hover:bg-rose-500 hover:text-white text-slate-800"
-                        }`}
+                        className="p-1 rounded-md bg-gray-100 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer shrink-0 opacity-80 group-hover:opacity-100"
                         title={t("Remove from favorites", "Odstrániť z obľúbených", "Eltávolítás a kedvencek közül")}
                       >
                         <Heart className="h-3 w-3 fill-current" />
@@ -380,18 +369,16 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
                     </div>
 
                     {/* Card Body: Title & Subtitle */}
-                    <div className="mb-2 relative z-10 text-left">
+                    <div className="mb-2.5 text-left">
                       <h4
-                        className="font-heading font-extrabold text-ui leading-snug line-clamp-2 drop-shadow-xs"
+                        className="font-heading font-bold text-ui text-gray-900 leading-snug line-clamp-2"
                         title={item.title}
                       >
                         {item.title}
                       </h4>
                       {item.subtitle && (
                         <p
-                          className={`text-micro font-medium mt-0.5 line-clamp-1 ${
-                            dark ? "text-white/80" : "text-slate-700 font-semibold"
-                          }`}
+                          className="text-micro text-gray-500 font-medium mt-0.5 line-clamp-1"
                           title={item.subtitle}
                         >
                           {item.subtitle}
@@ -400,13 +387,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
                     </div>
 
                     {/* Card Footer: Open link prompt */}
-                    <div
-                      className={`pt-1.5 border-t flex items-center justify-between type-overline relative z-10 ${
-                        dark
-                          ? "border-white/20 text-white/90"
-                          : "border-black/10 text-slate-800"
-                      }`}
-                    >
+                    <div className="pt-2 border-t border-gray-100 flex items-center justify-between type-overline text-entity-text">
                       <span className="flex items-center gap-1 group-hover:underline">
                         {t("Open", "Otvoriť", "Megnyitás")}
                       </span>

@@ -1,0 +1,180 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  getNextOccurrence,
+  applyWeekendRule,
+  getStartDate,
+  getNextAfterCompletion,
+  shiftCursorOnResume,
+  describeRecurrence,
+  getNextDueDates,
+  getPlannedOccurrencesInRange,
+  leadDaysApplies,
+} from './recurringTasks.ts';
+import type { TaskRecurrence } from '../types/index.ts';
+
+describe('Recurring Tasks: Pure TS Engine against shared fixture', () => {
+  const fixturePath = path.resolve(process.cwd(), 'scripts/fixtures/recurring-tasks-cases.json');
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+
+  describe('Schedule Cases from worked-examples table', () => {
+    for (const testCase of fixture.scheduleCases) {
+      it(testCase.name, () => {
+        const rec: TaskRecurrence = testCase.recurrence;
+
+        if (testCase.expect) {
+          const scheduledDate = getNextOccurrence(rec, testCase.cursor);
+          assert.strictEqual(scheduledDate, testCase.expect.scheduledDate, `scheduledDate mismatch in ${testCase.name}`);
+
+          const deadline = applyWeekendRule(scheduledDate!, rec.weekendRule, rec.frequency);
+          assert.strictEqual(deadline, testCase.expect.deadline, `deadline mismatch in ${testCase.name}`);
+
+          const startDate = getStartDate(deadline, rec.leadDays);
+          assert.strictEqual(startDate, testCase.expect.startDate, `startDate mismatch in ${testCase.name}`);
+        } else if (testCase.sequence) {
+          for (let i = 0; i < testCase.sequence.length; i++) {
+            const step = testCase.sequence[i];
+            const scheduledDate = getNextOccurrence(rec, step.cursor);
+            assert.strictEqual(scheduledDate, step.scheduledDate, `step ${i} mismatch in ${testCase.name}`);
+          }
+        }
+      });
+    }
+  });
+
+  describe('Pause / Resume Cases', () => {
+    for (const testCase of fixture.pauseResumeCases) {
+      it(testCase.name, () => {
+        const rec: TaskRecurrence = testCase.recurrence;
+        const newCursor = shiftCursorOnResume(rec, testCase.resumeDate);
+        const nextDue = getNextOccurrence(rec, newCursor);
+        assert.strictEqual(nextDue, testCase.expectNextDue);
+      });
+    }
+  });
+
+  describe('After Completion Cases', () => {
+    for (const testCase of fixture.afterCompletionCases) {
+      it(testCase.name, () => {
+        const result = getNextAfterCompletion(
+          testCase.frequency,
+          testCase.interval,
+          testCase.completedDate,
+          testCase.weekendRule,
+          testCase.leadDays
+        );
+        assert.ok(result !== null);
+        assert.strictEqual(result.deadline, testCase.expectDeadline);
+        assert.strictEqual(result.startDate, testCase.expectStartDate);
+      });
+    }
+  });
+
+  describe('Additional edge cases & preview generation', () => {
+    it('generates next 5 due dates preview', () => {
+      const rec: TaskRecurrence = {
+        mode: 'schedule',
+        frequency: 'monthly',
+        interval: 1,
+        config: { monthlyType: 'day_of_month', dayOfMonth: 15 },
+        weekendRule: 'after',
+        leadDays: 3,
+        startsOn: '2026-11-01',
+      };
+
+      const dates = getNextDueDates(rec, 5);
+      assert.strictEqual(dates.length, 5);
+      assert.strictEqual(dates[0].scheduledDate, '2026-11-15'); // Sun
+      assert.strictEqual(dates[0].deadline, '2026-11-16'); // Mon
+      assert.strictEqual(dates[0].startDate, '2026-11-13'); // Mon - 3 days
+
+      assert.strictEqual(dates[1].scheduledDate, '2026-12-15');
+      assert.strictEqual(dates[1].deadline, '2026-12-15');
+    });
+
+    it('formats describeRecurrence in en, sk, hu', () => {
+      const rec: TaskRecurrence = {
+        mode: 'schedule',
+        frequency: 'monthly',
+        interval: 2,
+        config: { monthlyType: 'day_of_month', dayOfMonth: 15 },
+        weekendRule: 'after',
+        leadDays: 3,
+        startsOn: '2026-11-01',
+      };
+
+      const en = describeRecurrence(rec, 'en');
+      assert.ok(en.includes('Every 2 months on the 15th'));
+      assert.ok(en.includes('weekends → Monday'));
+      assert.ok(en.includes('shows 3 days before'));
+
+      const sk = describeRecurrence(rec, 'sk');
+      assert.ok(sk.includes('Každé 2 mesiace 15. dňa'));
+      assert.ok(sk.includes('víkend → pondelok'));
+
+      const hu = describeRecurrence(rec, 'hu');
+      assert.ok(hu.includes('Minden 2. hónap 15. napján'));
+      assert.ok(hu.includes('hétvége → hétfő'));
+    });
+
+    it('formats after completion describeRecurrence', () => {
+      const rec: TaskRecurrence = {
+        mode: 'after_completion',
+        frequency: 'monthly',
+        interval: 3,
+        weekendRule: 'keep',
+        leadDays: 14,
+        startsOn: '2026-11-01',
+      };
+
+      assert.strictEqual(describeRecurrence(rec, 'en'), '3 months after completion');
+      assert.strictEqual(describeRecurrence(rec, 'sk'), '3 mesiace po dokončení');
+      assert.strictEqual(describeRecurrence(rec, 'hu'), '3 hónap a befejezés után');
+    });
+  });
+});
+
+describe("Slovak cadence", () => it("inflects 2–4 and 5+ differently", () => {
+  const base = { mode: "schedule", weekendRule: "keep", leadDays: 0, startsOn: "2026-01-01", endsOn: null, paused: false } as const;
+  assert.ok(describeRecurrence({ ...base, frequency: "daily", interval: 3 } as any, "sk").startsWith("Každé 3 dni"));
+  assert.ok(describeRecurrence({ ...base, frequency: "daily", interval: 6 } as any, "sk").startsWith("Každých 6 dní"));
+  assert.ok(describeRecurrence({ ...base, frequency: "weekly", interval: 5, config: { dayOfWeek: 1 } } as any, "sk").startsWith("Každých 5 týždňov v pondelok"));
+  assert.ok(describeRecurrence({ ...base, frequency: "yearly", interval: 2 } as any, "sk").startsWith("Každé 2 roky"));
+}));
+
+describe('calendar ghost occurrences (open-ended series)', () => {
+  const weekdaysDaily: TaskRecurrence = {
+    mode: 'schedule',
+    frequency: 'daily',
+    interval: 1,
+    config: {},
+    weekendRule: 'before',
+    leadDays: 3,
+    startsOn: '2026-11-09',
+    lastOccurrence: '2026-11-09',
+  };
+
+  it('draws a weekdays-only daily series far beyond 40 occurrences', () => {
+    const feb = getPlannedOccurrencesInRange(weekdaysDaily, '2027-02-01', '2027-02-28');
+    assert.equal(feb.length, 20);
+    assert.equal(feb[0].deadline, '2027-02-01');
+    assert.equal(feb[feb.length - 1].deadline, '2027-02-26');
+    assert.ok(getPlannedOccurrencesInRange(weekdaysDaily, '2029-06-01', '2029-06-30').length > 0);
+  });
+
+  it('starts after the cursor and respects endsOn and pause', () => {
+    const nov = getPlannedOccurrencesInRange(weekdaysDaily, '2026-11-01', '2026-11-30');
+    assert.equal(nov[0].deadline, '2026-11-10');
+    assert.deepEqual(getPlannedOccurrencesInRange({ ...weekdaysDaily, endsOn: '2026-12-31' }, '2027-01-01', '2027-01-31'), []);
+    assert.deepEqual(getPlannedOccurrencesInRange({ ...weekdaysDaily, paused: true }, '2026-11-01', '2026-11-30'), []);
+  });
+
+  it('lead days apply to every series except plain every-day', () => {
+    assert.equal(leadDaysApplies({ frequency: 'daily', interval: 1, weekendRule: 'keep' }), false);
+    assert.equal(leadDaysApplies({ frequency: 'daily', interval: 1, weekendRule: 'before' }), true);
+    assert.equal(leadDaysApplies({ frequency: 'daily', interval: 2, weekendRule: 'keep' }), true);
+    assert.equal(leadDaysApplies({ frequency: 'weekly', interval: 1, weekendRule: 'keep' }), true);
+  });
+});

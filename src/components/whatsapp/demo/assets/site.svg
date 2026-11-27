@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-label="Building site">
+  <rect width="640" height="420" fill="#dbeafe"/>
+  <rect y="330" width="640" height="90" fill="#a8a29e"/>
+  <g stroke="#475569" stroke-width="3">
+    <rect x="120" y="110" width="300" height="220" fill="#d6d3d1"/>
+    <rect x="150" y="140" width="50" height="50" fill="#e0f2fe"/>
+    <rect x="235" y="140" width="50" height="50" fill="#e0f2fe"/>
+    <rect x="320" y="140" width="50" height="50" fill="#e0f2fe"/>
+    <rect x="150" y="225" width="50" height="50" fill="#e0f2fe"/>
+    <rect x="235" y="225" width="50" height="50" fill="#e0f2fe"/>
+    <rect x="320" y="225" width="50" height="50" fill="#e0f2fe"/>
+    <path d="M110 110 H440 M120 330 V80 M420 330 V80 M120 190 H420 M120 275 H420" fill="none" stroke="#f59e0b"/>
+  </g>
+  <path d="M470 330 V60 H560 M470 90 H590" stroke="#f59e0b" stroke-width="8" fill="none"/>
+</svg>

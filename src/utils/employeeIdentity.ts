@@ -2,26 +2,32 @@ import type { Employee } from "../types";
 import type { CompanyDetails } from "./companyRegistry";
 
 /**
- * Who a staff record is: a person on the payroll, an outside company, or a payroll-only line
+ * Who a staff record is: a person on the payroll, an outside supplier, or a payroll-only line
  * such as commission. Mirrors CCRM_EMPLOYEE_KINDS in public/api/employee_name.php.
  *
- * `Employee.name` stays the display name every other module reads. A person's is
- * "first last"; a contractor's or ledger item's is the single name field. A contractor is any
- * external supplier, a company or a sole trader (živnostník): it keeps a contact person's name
- * beside the trade name, and the IČO / DIČ / IČ DPH the business register can fill in.
+ * `Employee.name` stays the display name every other module reads. A person's (or a freelancer
+ * person supplier's) is "first last"; a business contractor's (sole trader or company) or ledger
+ * item's is the single name field. A business contractor keeps a contact person's name beside the
+ * trade name, and the IČO / DIČ / IČ DPH the business register can fill in.
  */
 export type EmployeeKind = "employee" | "contractor" | "ledger";
 
 export const EMPLOYEE_KINDS: EmployeeKind[] = ["employee", "contractor", "ledger"];
 
+export type ContractorType = "person" | "sole_trader" | "company";
+
+export const CONTRACTOR_TYPES: ContractorType[] = ["person", "sole_trader", "company"];
+
 export interface EmployeeIdentity {
   kind: EmployeeKind;
-  /** A person's name; for a contractor the contact person (a sole trader is their own). */
+  /** Subtype when `kind === "contractor"`: person (freelancer), sole_trader (živnostník), or company (firma). */
+  contractorType: ContractorType;
+  /** A person's name; for a business contractor the contact person (a sole trader is their own). */
   firstName: string;
   lastName: string;
-  /** Company / trade / item name; only used when kind is not "employee". */
+  /** Company / trade / item name; only used when the record is not a person. */
   name: string;
-  /** Register numbers of an external supplier (company or sole trader); empty for the other kinds. */
+  /** Register numbers of a business external supplier (company or sole trader); empty for person freelancers and other kinds. */
   companyId: string;
   taxId: string;
   vatId: string;
@@ -31,6 +37,10 @@ export interface EmployeeIdentity {
 
 export function employeeKind(emp: Pick<Employee, "kind">): EmployeeKind {
   return emp.kind && EMPLOYEE_KINDS.includes(emp.kind) ? emp.kind : "employee";
+}
+
+export function contractorTypeOf(emp?: Pick<Employee, "kind" | "contractorType"> | null): ContractorType {
+  return emp?.contractorType && CONTRACTOR_TYPES.includes(emp.contractorType) ? emp.contractorType : "company";
 }
 
 /**
@@ -44,53 +54,71 @@ function legacyPersonName(name: string | undefined): { firstName: string; lastNa
   return { firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1] };
 }
 
+/** True when the record is identified by first + last name (an employee or a freelancer person supplier). */
+export function usesPersonFullName(i: { kind: EmployeeKind; contractorType?: ContractorType | null }): boolean {
+  return i.kind === "employee" || (i.kind === "contractor" && i.contractorType === "person");
+}
+
+/** True when the record is an external supplier with business register fields (živnostník or firma). */
+export function hasCompanyRegistryFields(i: { kind: EmployeeKind; contractorType?: ContractorType | null }): boolean {
+  return i.kind === "contractor" && i.contractorType !== "person";
+}
+
 export function identityOf(emp?: Employee | null): EmployeeIdentity {
   const kind = emp ? employeeKind(emp) : "employee";
-  const legacy = emp && kind === "employee" && !emp.firstName?.trim() && !emp.lastName?.trim() ? legacyPersonName(emp.name) : null;
+  const contractorType = emp ? contractorTypeOf(emp) : "company";
+  const personOnly = usesPersonFullName({ kind, contractorType });
+  const businessSupplier = hasCompanyRegistryFields({ kind, contractorType });
+  const legacy = emp && personOnly && !emp.firstName?.trim() && !emp.lastName?.trim() ? legacyPersonName(emp.name) : null;
   return {
     kind,
+    contractorType,
     firstName: legacy?.firstName ?? emp?.firstName ?? "",
     lastName: legacy?.lastName ?? emp?.lastName ?? "",
-    name: kind === "employee" ? "" : emp?.name ?? "",
-    companyId: kind === "contractor" ? emp?.companyId ?? "" : "",
-    taxId: kind === "contractor" ? emp?.taxId ?? "" : "",
-    vatId: kind === "contractor" ? emp?.vatId ?? "" : "",
+    name: personOnly ? "" : emp?.name ?? "",
+    companyId: businessSupplier ? emp?.companyId ?? "" : "",
+    taxId: businessSupplier ? emp?.taxId ?? "" : "",
+    vatId: businessSupplier ? emp?.vatId ?? "" : "",
     position: emp?.position ?? "",
     department: emp?.department ?? "",
   };
 }
 
-/** A contractor is an external supplier: a company or a sole trader (živnostník). */
+/** A contractor is an external supplier: person (freelancer), sole trader (živnostník), or company (firma). */
 export const isSupplier = (kind: EmployeeKind): boolean => kind === "contractor";
 
-/** Kinds that carry a person's name: an employee, or the contact person of an external supplier. */
+/** Kinds that carry a person's name: an employee, a freelancer person, or the contact person of a business supplier. */
 export const hasPersonName = (kind: EmployeeKind): boolean => kind !== "ledger";
 
 /** The display name for an identity, the same rule the server applies when it saves. */
-export function composeName(i: Pick<EmployeeIdentity, "kind" | "firstName" | "lastName" | "name">): string {
-  if (i.kind === "employee") return `${i.firstName.trim()} ${i.lastName.trim()}`.trim();
+export function composeName(
+  i: Pick<EmployeeIdentity, "kind" | "firstName" | "lastName" | "name"> & { contractorType?: ContractorType | null }
+): string {
+  if (usesPersonFullName(i)) return `${i.firstName.trim()} ${i.lastName.trim()}`.trim();
   return i.name.trim();
 }
 
-/** True when the identity is complete: first and last name for a person, a name for the rest. */
+/** True when the identity is complete: first and last name for a person/freelancer, a name for the rest. */
 export function identityComplete(i: EmployeeIdentity): boolean {
-  return i.kind === "employee" ? !!i.firstName.trim() && !!i.lastName.trim() : !!i.name.trim();
+  return usesPersonFullName(i) ? !!i.firstName.trim() && !!i.lastName.trim() : !!i.name.trim();
 }
 
 /** The fields to merge into an Employee when saving. Empty position / department / register numbers are cleared. */
 export function identityFields(
   i: EmployeeIdentity
-): Pick<Employee, "name" | "firstName" | "lastName" | "kind" | "companyId" | "taxId" | "vatId" | "position" | "department"> {
+): Pick<Employee, "name" | "firstName" | "lastName" | "kind" | "contractorType" | "companyId" | "taxId" | "vatId" | "position" | "department"> {
   const named = hasPersonName(i.kind);
   const supplier = isSupplier(i.kind);
+  const businessSupplier = hasCompanyRegistryFields(i);
   return {
     name: composeName(i),
     firstName: named ? i.firstName.trim() || null : null,
     lastName: named ? i.lastName.trim() || null : null,
     kind: i.kind,
-    companyId: supplier ? i.companyId.trim() || null : null,
-    taxId: supplier ? i.taxId.trim() || null : null,
-    vatId: supplier ? i.vatId.trim() || null : null,
+    contractorType: supplier ? i.contractorType : null,
+    companyId: businessSupplier ? i.companyId.trim() || null : null,
+    taxId: businessSupplier ? i.taxId.trim() || null : null,
+    vatId: businessSupplier ? i.vatId.trim() || null : null,
     position: i.position.trim() || null,
     department: i.department.trim() || null,
   };
@@ -135,9 +163,10 @@ export function identityFromCompany(
   return patch;
 }
 
-/** A person whose record still lacks a surname (a nickname such as "Tomi"). */
+/** A person (or freelancer person supplier) whose record still lacks a surname (a nickname such as "Tomi"). */
 export function needsFullName(emp: Employee): boolean {
-  return employeeKind(emp) === "employee" && !(emp.firstName?.trim() && emp.lastName?.trim());
+  const kind = employeeKind(emp);
+  return usesPersonFullName({ kind, contractorType: contractorTypeOf(emp) }) && !(emp.firstName?.trim() && emp.lastName?.trim());
 }
 
 /** Suggested job titles and departments, offered next to the values already used in the roster. */

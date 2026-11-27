@@ -17,7 +17,9 @@
  * INSERT IGNORE before it is sent, so two overlapping runs cannot both send it,
  * and moving the task to another date or time earns a fresh reminder.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/task_done.php';
 require_once __DIR__ . '/mail_broker.php';
 
 if (!defined('CCRM_TASK_REMINDER_MORNING')) {
@@ -142,7 +144,7 @@ function ccrm_task_reminder_message(array $task, array $schedule, string $lang, 
     }
     if ($appUrl !== '') {
         $html .= '<p style="margin:0 0 16px"><a href="' . $esc($appUrl) . '" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:bold">'
-            . $esc($t('Open the CRM', 'Otvoriť CRM', 'CRM megnyitása')) . '</a></p>';
+            . $esc($t(('Open ' . KOPERNIQ_PRODUCT_NAME), ('Otvoriť ' . KOPERNIQ_PRODUCT_NAME), (KOPERNIQ_PRODUCT_NAME . ' megnyitása'))) . '</a></p>';
     }
     $html .= '<p style="font-size:12px;color:#94a3b8;margin:0">'
         . $esc($t(
@@ -176,7 +178,7 @@ function ccrm_process_task_reminders(PDO $pdo, ?string $now = null): array {
         $settings[$row['key']] = $row['value'];
     }
     $taskStates = json_decode($settings['TASK_STATES'] ?? '[]', true) ?: [];
-    $lastState = $taskStates ? (string)end($taskStates) : null;
+    $taskStates = is_array($taskStates) ? array_values($taskStates) : [];
     $systemLang = $settings['SYSTEM_LANGUAGE'] ?? 'sk';
 
     // A "1 day before" reminder for a task due tomorrow can be due today; nothing
@@ -187,6 +189,8 @@ function ccrm_process_task_reminders(PDO $pdo, ?string $now = null): array {
            FROM `tasks` t
            LEFT JOIN `leads` l ON l.`id` = t.`related_lead_id`
           WHERE t.`archived` = 0
+            AND " . ccrm_sql_real_tasks('t') . "
+            AND IFNULL(t.`external_source`, '') <> 'clickup'
             AND t.`email_reminders_json` IS NOT NULL AND t.`email_reminders_json` <> ''
             AND t.`deadline` BETWEEN ? AND ?"
     );
@@ -212,7 +216,7 @@ function ccrm_process_task_reminders(PDO $pdo, ?string $now = null): array {
 
     foreach ($tasks as $task) {
         $status = (string)$task['status'];
-        if (strtolower($status) === 'done' || ($lastState !== null && $status === $lastState)) continue;
+        if (ccrm_task_status_is_done($status, $taskStates)) continue;
         $map = json_decode((string)$task['email_reminders_json'], true);
         if (!is_array($map)) continue;
 
@@ -274,11 +278,53 @@ function ccrm_maybe_process_task_reminders(PDO $pdo): void {
 }
 
 /**
- * Send an email notification when a task is assigned to a user.
- * Silently skipped if outgoing mail is not configured.
+ * Mail headers that set the message's own importance. Outlook, Apple Mail and
+ * Thunderbird read them (Outlook shows a red "!" for high, a blue down arrow
+ * for low); Gmail ignores them, so the body also shows the priority as a badge.
+ *
+ * Mail has high / normal / low, which maps one to one onto the task levels.
+ * Medium is "normal", which is what a message without these headers already
+ * is, so it sends none.
+ */
+function ccrm_task_priority_mail_headers(?string $priority): array {
+    if ($priority === 'high') {
+        return [
+            'X-Priority' => '1 (Highest)',
+            'X-MSMail-Priority' => 'High',
+            'Importance' => 'High',
+        ];
+    }
+    if ($priority === 'low') {
+        return [
+            'X-Priority' => '5 (Lowest)',
+            'X-MSMail-Priority' => 'Low',
+            'Importance' => 'Low',
+        ];
+    }
+    return [];
+}
+
+/**
+ * Only mid ("medium") or higher ("high") priority tasks trigger delegation
+ * email and push notifications; "low" priority stays quiet.
+ */
+function ccrm_task_priority_notifies_assignee(?string $priority): bool {
+    return strtolower(trim((string)($priority ?? 'medium'))) !== 'low';
+}
+
+/**
+ * Send an email notification when a task is assigned/delegated to a user
+ * with medium or higher priority. Silently skipped if outgoing mail is not configured.
+ *
+ * The priority is shown as a coloured badge in the body and set as the
+ * message's importance through the mail headers, never written into the
+ * subject.
  */
 function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?string $actorName = null): bool {
     try {
+        if (!ccrm_task_priority_notifies_assignee($task['priority'] ?? null)) {
+            return false;
+        }
         $config = ccrm_load_integrations_config($pdo);
         if (!ccrm_system_mail_configured($config)) {
             return false;
@@ -324,8 +370,8 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
             $leadName = $lStmt->fetchColumn() ?: null;
         }
 
-        $creator = !empty($task['createdBy']) ? $task['createdBy'] : ($actorName ?: 'System');
-        $actorLower = mb_strtolower(trim((string)$creator));
+        $creator = trim((string)($actorName ?: ($task['createdBy'] ?? 'System')));
+        $actorLower = mb_strtolower($creator);
 
         $sentCount = 0;
         foreach ($assignees as $assignee) {
@@ -342,6 +388,7 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
             };
             $esc = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
 
+            $priorityKey = (string)($task['priority'] ?? 'medium');
             $subject = $t('New Task Assigned', 'Priradená nová úloha', 'Új feladat kijelölve') . ': ' . $task['title'];
 
             $deadlineStr = !empty($task['deadline']) ? $task['deadline'] : $t('No deadline', 'Bez termínu', 'Nincs határidő');
@@ -351,7 +398,14 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
                 'high' => $t('High', 'Vysoká', 'Magas'),
                 'medium' => $t('Medium', 'Stredná', 'Közepes'),
                 'low' => $t('Low', 'Nízka', 'Alacsony'),
-            ][$task['priority'] ?? 'medium'] ?? ($task['priority'] ?? 'medium');
+            ][$priorityKey] ?? $priorityKey;
+            // Status colours, as in the app: rose for high, amber for medium.
+            $badgeStyle = [
+                'high' => 'background:#ffe4e6;color:#be123c;border:1px solid #fecdd3',
+                'medium' => 'background:#fef3c7;color:#b45309;border:1px solid #fde68a',
+            ][$priorityKey] ?? 'background:#f1f5f9;color:#475569;border:1px solid #e2e8f0';
+            $priorityHtml = '<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:bold;' . $badgeStyle . '">'
+                . $esc($priority) . '</span>';
 
             $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#1e293b;border:1px solid #e2e8f0;border-radius:12px">'
                 . '<p style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#4f46e5;font-weight:bold;margin:0 0 8px">'
@@ -361,7 +415,7 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
                 . $esc($t('A task has been assigned to you by', 'Bola vám priradená nová úloha používateľom', 'Új feladatot jelölt ki Önnek')) . ' <strong>' . $esc($creator) . '</strong>.</p>'
                 . '<table style="font-size:14px;border-collapse:collapse;margin:0 0 16px;width:100%">'
                 . '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Deadline', 'Termín', 'Határidő')) . '</td><td style="padding:6px 0;font-weight:bold">' . $esc($deadlineStr) . '</td></tr>'
-                . '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Priority', 'Priorita', 'Prioritás')) . '</td><td style="padding:6px 0;font-weight:bold">' . $esc($priority) . '</td></tr>';
+                . '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Priority', 'Priorita', 'Prioritás')) . '</td><td style="padding:6px 0">' . $priorityHtml . '</td></tr>';
             if ($leadName) {
                 $html .= '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Client / Lead', 'Klient / Lead', 'Ügyfél / Lead')) . '</td><td style="padding:6px 0;font-weight:bold">' . $esc($leadName) . '</td></tr>';
             }
@@ -372,17 +426,62 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
             }
             if ($appUrl !== '') {
                 $html .= '<p style="margin:0 0 16px"><a href="' . $esc($appUrl) . '#tasks" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:bold">'
-                    . $esc($t('Open in CRM', 'Otvoriť v CRM', 'Megnyitás a CRM-ben')) . '</a></p>';
+                    . $esc($t(('Open in ' . KOPERNIQ_PRODUCT_NAME), ('Otvoriť v ' . KOPERNIQ_PRODUCT_NAME), ('Megnyitás a ' . KOPERNIQ_PRODUCT_NAME . '-ben'))) . '</a></p>';
             }
             $html .= '</div>';
 
-            ccrm_send_system_mail($config, $recipient['email'], $subject, $html);
+            ccrm_send_system_mail($config, $recipient['email'], $subject, $html, ccrm_task_priority_mail_headers($priorityKey));
             $sentCount++;
         }
         return $sentCount > 0;
     } catch (\Throwable $e) {
         error_log('[ccrm task assignment mail] ' . $e->getMessage());
         return false;
+    }
+}
+
+/**
+ * Tell the owner and assignees of a task that was just created, by e-mail and
+ * push, whatever created it: a workflow, the voice assistant, an MCP client or
+ * the integration API. sync.php and recurring_tasks.php build the task array
+ * themselves and call the two senders directly; every other creator writes
+ * straight to the tables and calls this with the new id, so the task is read
+ * back in the shape those senders expect. A task created as already finished
+ * notifies nobody. Never throws: a failed notification must not fail the write.
+ */
+function ccrm_notify_new_task_assignees(PDO $pdo, string $taskId, ?string $actorName = null): void {
+    try {
+        // `task_kind IS NULL` is ccrm_sql_real_tasks(), written out because not
+        // every caller has recurring_tasks.php or schema.php loaded.
+        $stmt = $pdo->prepare(
+            "SELECT `id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `owner`, `created_by`,
+                    `related_lead_id`, `completed_at`
+               FROM `tasks` WHERE `id` = ? AND `task_kind` IS NULL LIMIT 1" /* recurring-template: notify reads one just-created real task */
+        );
+        $stmt->execute([$taskId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row || !empty($row['completed_at'])) return;
+
+        $assStmt = $pdo->prepare("SELECT `user_name` FROM `task_assignees` WHERE `task_id` = ?");
+        $assStmt->execute([$taskId]);
+
+        $task = [
+            'id' => $row['id'],
+            'title' => $row['title'],
+            'description' => $row['description'],
+            'priority' => $row['priority'],
+            'deadline' => $row['deadline'],
+            'deadlineTime' => $row['deadline_time'],
+            'owner' => $row['owner'],
+            'createdBy' => $row['created_by'],
+            'relatedLeadId' => $row['related_lead_id'],
+            'assignedUsers' => $assStmt->fetchAll(PDO::FETCH_COLUMN) ?: [],
+        ];
+        ccrm_send_task_assigned_email_notification($pdo, $task, $actorName);
+        require_once __DIR__ . '/webpush.php';
+        ccrm_send_task_assigned_push_notification($pdo, $task, $actorName);
+    } catch (\Throwable $e) {
+        error_log('[ccrm new task notification] ' . $taskId . ': ' . $e->getMessage());
     }
 }
 
@@ -435,7 +534,7 @@ function ccrm_send_task_completed_email_notification(PDO $pdo, array $task, ?str
             . '</table>';
         if ($appUrl !== '') {
             $html .= '<p style="margin:0 0 16px"><a href="' . $esc($appUrl) . '#tasks" style="display:inline-block;background:#10b981;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:bold">'
-                . $esc($t('View in CRM', 'Zobraziť v CRM', 'Megtekintés a CRM-ben')) . '</a></p>';
+                . $esc($t(('View in ' . KOPERNIQ_PRODUCT_NAME), ('Zobraziť v ' . KOPERNIQ_PRODUCT_NAME), ('Megtekintés a ' . KOPERNIQ_PRODUCT_NAME . '-ben'))) . '</a></p>';
         }
         $html .= '</div>';
 

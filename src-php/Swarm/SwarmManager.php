@@ -265,7 +265,9 @@ class SwarmManager {
             'swarm_scale' => (int)$row['swarm_scale'],
             'total_rounds' => (int)$row['total_rounds'],
             'current_round' => (int)$row['current_round'],
-            'model_name' => $state['model_name'] ?? 'gpt-5.6-luna',
+            'model_name' => function_exists('ccrm_ai_upgrade_model')
+                ? ccrm_ai_upgrade_model($state['model_name'] ?? '', 'gpt-6-luna')
+                : ($state['model_name'] ?? 'gpt-6-luna'),
             'diurnal_cycle' => $state['diurnal_cycle'] ?? true,
             'status' => $row['status'],
             'final_report' => $finalReport,

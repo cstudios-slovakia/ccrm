@@ -31,10 +31,32 @@ export type LeadEventType =
   // it), so it survives the sync round-trip like any other logged event and its
   // date/time stay editable afterwards.
   | "status_change"
+  | "whatsapp"
+  // The trace a note leaves ("Note added / edited / deleted" + a snippet). Notes themselves are their
+  // own entity (see Note); this entry is read-only on the timeline. Built by utils/noteActivity.ts.
+  | "note_activity"
   // Written when a proforma is issued from Invoicing. It is not a hand-loggable
   // document type, so it is not in DOCUMENT_EVENT_TYPES.
   | "proforma_invoice"
   | DocumentEventType;
+
+/** The kinds of record a note can be attached to. A new module adds its kind here and in api/notes.php. */
+export type NoteEntityType = "lead" | "project";
+
+/** A free-text note on one record: its own entity, managed only from the record's Notes tab. */
+export interface Note {
+  id: string;
+  entityType: NoteEntityType;
+  entityId: string;
+  content: string;
+  /** The user who wrote it; null for a note migrated from an entry nobody signed. */
+  author: string | null;
+  /** Voice recording of a note migrated from the old lead timeline; new notes never have one. */
+  audioFile: string | null;
+  /** Local wall-clock "YYYY-MM-DD HH:MM:SS", like timeline timestamps. */
+  createdAt: string;
+  updatedAt: string;
+}
 
 // One file attached to a timeline event. Events can carry several (e.g. a batch
 // of advance invoices logged in one go).
@@ -77,6 +99,7 @@ export interface TimelineEvent {
   // Mail entries only: removed from the lead timeline by the user. The row is
   // kept so the mailbox importer does not file the message again.
   hidden?: boolean;
+  externalUrl?: string; // deep link into the external system (e.g. /c/xyz?m=abc)
 }
 
 /**
@@ -134,6 +157,21 @@ export interface ProjectAutoCreateSettings {
   assignOwner: boolean;
 }
 
+export interface ClientContact {
+  id: string;
+  companyClientId?: string | null;
+  name: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string;
+  phone?: string;
+  contactRole?: string | null;
+  contactTags?: string[];
+  notes?: string;
+  archived?: boolean;
+  createdAt?: string;
+}
+
 export interface Lead {
   id: string;
   name: string;             // Client name
@@ -142,7 +180,8 @@ export interface Lead {
   status: string;           // Lead state
   source: string;           // Lead source
   owner: string;            // Project manager
-  division?: string | null; // Assigned business division (e.g. Cstudios, Cstudios Budapest)
+  assignedEmployees?: string[]; // People working on it besides the project manager (user names)
+  division?: string | null; // Assigned business division (e.g. Head office, Branch Budapest)
   value: number;            // Lead value
   adjustment?: number;      // Client value adjustment (independent from deals/pipeline)
   createdAt: string;
@@ -158,6 +197,12 @@ export interface Lead {
   taxId?: string;
   vatId?: string;
   contactPerson?: string;
+  /**
+   * The contact person's first and last name as typed; `contactPerson` is composed from them (docs/NEWSLETTER.md C18).
+   * For `clientType: "person"` they are the person's own name instead, and `contactPerson` is not composed (B1.7).
+   */
+  contactFirstName?: string;
+  contactLastName?: string;
   website?: string;
   establishmentDate?: string;
   legalForm?: string;
@@ -198,6 +243,13 @@ export interface Lead {
   // that no client has been created for or linked to yet.
   clientId?: string | null;
 
+  // For Person clients (`clientType === "person"`): optional link to a Business/Partner
+  // company client (`client-*`) where this person serves as a client-side contact (HR,
+  // site manager, billing contact). Rented agency employees NEVER live in `leads`.
+  companyClientId?: string | null;
+  contactRole?: string | null;
+  contactTags?: string[] | null;
+
   // Which channel first brought the visitor to the website (facebook,
   // instagram, google, direct, ...) and a free-text detail (medium, campaign,
   // referrer, landing page). Reported by the public web-form webhook and
@@ -224,6 +276,10 @@ export interface Lead {
   // restored. Like clientCategoryId, set on every lead of the profile.
   archived?: boolean;
 
+  // Custom fields configured under Settings -> Leads -> Custom fields (`LEAD_ATTRIBUTES`).
+  // Keyed by attribute id, mirroring `Project.data` (stored in `leads.custom_fields_json`).
+  data?: Record<string, any>;
+
   // Whitelist of e-mail addresses (or @domain patterns) allowed to submit tickets
   // for this client. Empty or absent means any sender is accepted verbatim.
   ticketAllowedEmails?: string[];
@@ -235,6 +291,25 @@ export interface Lead {
  * split. Clients carry one through Lead.clientCategoryId.
  */
 export interface ClientCategory {
+  id: string;
+  name: string;
+  parentId?: string | null;
+  level: 1 | 2 | 3;
+  /** Position among the siblings under the same parent, lowest first. */
+  sortOrder?: number;
+  color?: string | null;
+  icon?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * A price-offer category — the same tree as ClientCategory (up to three levels,
+ * a colour, a hand-set position among siblings), kept as its own list so offers
+ * are filed independently of the finance and customer trees. Offers carry one
+ * through InvoiceOffer.categoryId.
+ */
+export interface OfferCategory {
   id: string;
   name: string;
   parentId?: string | null;
@@ -277,19 +352,19 @@ export interface MarketingChannel {
   leadsCount: number;
 }
 
-export interface NewsletterCampaign {
+export interface ClickUpProjectList {
   id: string;
-  subject: string;
-  content: string;
-  segment: "all" | "leads" | "won_clients" | "employees";
-  status: "draft" | "sent";
-  sentAt?: string;
-  stats: {
-    opens: number;
-    clicks: number;
-    bounce: number;
-    conversions: number;
-  };
+  name: string;
+  folderName?: string | null;
+  spaceName?: string | null;
+}
+
+export interface ClickUpTaskMeta {
+  clickupId: string;
+  listId: string;
+  listName?: string;
+  statusName?: string;
+  statusColor?: string;
 }
 
 export interface Task {
@@ -314,6 +389,8 @@ export interface Task {
   relatedProjectId?: string;
   /** The support ticket this task was created from or linked to, if any. */
   relatedTicketId?: string;
+  /** The rented employee / agency candidate (`agency_workers.id`) this task belongs to, if any. */
+  relatedAgencyWorkerId?: string | null;
   isLocking?: boolean; // if true, it blocks related lead from transitioning stages until done
   completedBy?: string; // name of user who completed the task
   completedAt?: string; // timestamp (YYYY-MM-DD HH:MM) when completed
@@ -334,6 +411,43 @@ export interface Task {
   requiresConclusion?: boolean;
   /** How the task was finished — a short note or report, written when it is completed. */
   conclusion?: string;
+  /** Expected effort, in minutes. Compared with tracked time; null when unset. */
+  estimateMinutes?: number | null;
+  /** Task category: null / absent = none, "bug" = Bug. A string so more categories need no migration. */
+  category?: string | null;
+  /**
+   * The deadline the task was first given. Kept by the server on every save (set when the task is
+   * created, or pinned to the previous date at its first postponement); never sent by a client.
+   */
+  originalDeadline?: string | null;
+  /** How many times the deadline was pushed to a later date. Kept by the server; read-only. */
+  deadlineMoves?: number;
+  /** Server-maintained timestamp of when the task first moved out of its initial unstarted status or completed. */
+  firstStartedAt?: string | null;
+  /** Server-maintained count of how many times this task was reopened from a done status. */
+  reopenedCount?: number;
+  /** Every reopening of a finished task, oldest first: `at` is a UTC ISO instant, `by` the user's name. Written by the server only; read-only. */
+  reopens?: { at: string; by: string | null }[];
+  /** Integration that pushed the task in over the machine API ("waai" or "clickup"); read-only, set by the server. */
+  externalSource?: string | null;
+  /** Path of the source chat or external task URL (`https://app.clickup.com/t/...`); read-only. */
+  externalUrl?: string | null;
+  /** The chat gave no deadline, so CCRM filled one in and nobody has moved it since; read-only. */
+  dueInferred?: boolean;
+  /** Parent Koperniq task id when synced as a ClickUp subtask. */
+  parentTaskId?: string | null;
+  /** ClickUp display metadata (list, native status name & color, ClickUp id). */
+  clickupMeta?: ClickUpTaskMeta | null;
+  /** ID of the RecurringTaskTemplate series that generated this task occurrence, if any. */
+  recurringSourceId?: string | null;
+  /** The unshifted scheduled date (YYYY-MM-DD) this occurrence was created for. */
+  recurringOccurrenceDate?: string | null;
+  /** Denormalized count of active comments in task_activities. */
+  commentCount?: number;
+  /** Denormalized count of active attachments in task_files. */
+  fileCount?: number;
+  /** Task-level emoji reactions map (`emoji -> userNames[]`). */
+  reactions?: Record<string, string[]> | null;
 }
 
 /** Settings → Tasks. Stored as one blob, like {@link ProjectAutoCreateSettings}. */
@@ -346,6 +460,63 @@ export interface TaskSettings {
 
 /** When a task e-mail reminder goes out: the deadline's morning, 1 hour or 1 day before. */
 export type TaskEmailReminder = "morning" | "1h" | "1d";
+
+export type TaskRecurrenceMode = "schedule" | "after_completion";
+export type TaskRecurrenceFrequency = "daily" | "weekly" | "monthly" | "yearly";
+export type TaskWeekendRule = "keep" | "before" | "after";
+
+export interface TaskRecurrenceConfig {
+  /** For weekly: 1 = Monday ... 7 = Sunday */
+  dayOfWeek?: number;
+  /** For monthly: day of month (e.g. 15th) vs nth weekday (e.g. 3rd Friday, last Friday) */
+  monthlyType?: "day_of_month" | "nth_weekday";
+  /** For monthly day_of_month: 1-31 */
+  dayOfMonth?: number;
+  /** For monthly nth_weekday: 1 = 1st, 2 = 2nd, 3 = 3rd, 4 = 4th, -1 = last */
+  weekOfMonth?: number;
+  /** For yearly: month 1-12 */
+  month?: number;
+}
+
+export interface TaskRecurrence {
+  mode: TaskRecurrenceMode;
+  frequency: TaskRecurrenceFrequency;
+  interval: number; // >= 1
+  config?: TaskRecurrenceConfig;
+  weekendRule: TaskWeekendRule;
+  leadDays: number; // 0 - 365
+  startsOn: string; // YYYY-MM-DD
+  endsOn?: string | null; // YYYY-MM-DD
+  paused?: boolean;
+  lastOccurrence?: string | null; // YYYY-MM-DD
+  lastOccurrenceId?: string | null;
+}
+
+export interface RecurringTaskTemplate {
+  id: string;
+  title: string;
+  description: string;
+  priority: "low" | "medium" | "high";
+  owner: string;
+  assignedUsers: string[];
+  createdBy?: string;
+  createdAt?: string;
+  startDate?: string | null; // YYYY-MM-DD (next appearance date)
+  deadline?: string | null; // YYYY-MM-DD (next due date)
+  deadlineTime?: string | null;
+  relatedLeadId?: string | null;
+  relatedProjectId?: string | null;
+  relatedTicketId?: string | null;
+  relatedAgencyWorkerId?: string | null;
+  isLocking?: boolean;
+  requiresConclusion?: boolean;
+  estimateMinutes?: number | null;
+  /** Copied onto every occurrence; see `Task.category`. */
+  category?: string | null;
+  emailReminders?: Record<string, TaskEmailReminder>;
+  tags?: string[];
+  recurrence: TaskRecurrence;
+}
 
 export interface TimeLog {
   id: string;
@@ -480,6 +651,8 @@ export type ProjectAttributeType =
   | "files"
   | "contact";
 
+export type LeadAttributeType = ProjectAttributeType;
+
 export interface ProjectAttribute {
   id: string;
   name: string;
@@ -494,6 +667,8 @@ export interface ProjectAttribute {
    */
   requiredOptions?: string[];
 }
+
+export type LeadAttribute = ProjectAttribute;
 
 /**
  * A checkbox added to one project only, on top of its type's options — the
@@ -634,6 +809,21 @@ export interface ProjectGanttRow {
  */
 export type ProjectStatus = string;
 
+/**
+ * One acceptance criterion of a project. `createdAt` / `removedAt` are UTC ISO 8601 with `Z`; `removedAt` is
+ * null while it is live. The server owns the stamps (`createdAt`, `createdBy`, `removedAt`, `removedBy`);
+ * the browser's are provisional until the next pull. `createdAt` is null only for a stored entry without one.
+ */
+export interface AcceptanceCriterion {
+  id: string;
+  title: string;
+  done: boolean;
+  createdAt: string | null;
+  createdBy: string | null;
+  removedAt: string | null;
+  removedBy: string | null;
+}
+
 export interface Project {
   id: string;
   projectTypeId: string;
@@ -654,7 +844,7 @@ export interface Project {
   leadId?: string | null;
   clientId?: string | null;
   status: string; // a ProjectStatusDef key (utils/projects.ts)
-  division?: string | null; // Assigned business division (e.g. Cstudios, Cstudios Budapest)
+  division?: string | null; // Assigned business division (e.g. Head office, Branch Budapest)
   /**
    * How important this project is, 1-5 stars — the same hand-set priority a
    * lead carries (see {@link Lead.rating}), and filtered and sorted by the same
@@ -667,6 +857,11 @@ export interface Project {
    */
   rating?: number;
   managers: string[]; // employee ids or names
+  /**
+   * Employees assigned to the project besides its managers (one PM, many employees). Same id kind as
+   * `managers`; stored in `project_employees`. Absent from a sync payload means "unchanged".
+   */
+  employees?: string[];
   data: Record<string, any>; // keyed by attribute.id
   /**
    * Invoice date as "YYYY-MM-DD", or null when none is set ("Termín fakturácie").
@@ -719,6 +914,43 @@ export interface Project {
    */
   customFileFields?: ProjectCustomFileField[];
   archived?: boolean;
+  /**
+   * Phone of the project's contact, as typed. WAAI pairs WhatsApp chats to the project by it.
+   * Absent on save means "unchanged", so an older client cannot wipe it.
+   */
+  contactPhone?: string | null;
+  /** E-mail of the project's contact, as typed; copied from the lead on conversion. Absent on save means "unchanged". */
+  contactEmail?: string | null;
+  /**
+   * Acceptance criteria of the project; a removed one stays in the list (soft removal, `removedAt`).
+   * Stored whole in `projects.acceptance_criteria_json`; absent from a payload means "unchanged".
+   * Rules: utils/acceptanceCriteria.ts.
+   */
+  acceptanceCriteria?: AcceptanceCriterion[];
+  /**
+   * When the scope was approved (UTC ISO 8601 with `Z`); null = not approved. Criteria created after it are
+   * scope creep. Read-only: the server stamps it through its own action (api/project_scope_action.php); a
+   * project save never carries it.
+   */
+  scopeApprovedAt?: string | null;
+  /** Name of the user who approved the scope. Read-only, like `scopeApprovedAt`. */
+  scopeApprovedBy?: string | null;
+  /**
+   * The GitHub repository this project is paired with, "owner/name"; pushes to it are stored by the
+   * webhook (api/github_webhook.php). Normalised by the server (utils/githubRepo.ts has the same rules);
+   * absent on save means "unchanged", null or "" clears it.
+   */
+  githubRepo?: string | null;
+  /** The server branch whose pushes count; empty or null = the repository's default branch. Same save rules. */
+  githubBranch?: string | null;
+  /** Hours the project is expected to take. Null while unset. */
+  hoursBudget?: number | null;
+  /** Default billable hourly rate for time logged on this project. */
+  billableRate?: number | null;
+  /** Internal work. Time on it is not client work in the salary allocation report. */
+  isInternal?: boolean;
+  /** Linked ClickUp lists whose tasks & subtasks mirror into this project. */
+  clickupLists?: ClickUpProjectList[];
 
   // Support Tickets, Floating Widget & Monthly Retainer Configuration (stored on the project)
   ticketWidgetEnabled?: boolean;
@@ -803,6 +1035,8 @@ export interface WarehouseItem {
 }
 
 export interface WarehouseStock {
+  /** Synthetic `<warehouseId>:<itemId>`, emitted by sync.php so the delta diff can track the row. */
+  id?: string;
   warehouseId: string;
   itemId: string;
   quantity: number;
@@ -889,6 +1123,11 @@ export interface FinancialRecurrenceConfig {
   dayOfMonth?: number; // 1-31 (for monthly day_of_month)
   weekOfMonth?: number; // 1 = 1st, 2 = 2nd, 3 = 3rd, 4 = 4th, -1 = last (for monthly nth_weekday)
   month?: number; // 1-12 (for yearly)
+  /**
+   * Every N weeks / months / years (1 when absent). Counted from the rule's
+   * first charge on or after `recurringStartDate` — see `recurringInterval`.
+   */
+  interval?: number;
 }
 
 /**
@@ -951,6 +1190,15 @@ export interface FinancialRecord {
    * day here, so the table, trend, ledger and forecast all stop charging it.
    */
   recurringSkippedDates?: string[] | null;
+  /**
+   * On a recurring rule: every charge on or before this day (`YYYY-MM-DD`) is
+   * either a stored movement or deliberately absent (deleted by the user, or a
+   * day the rule was paused). The materializer advances it to today on every
+   * run, and `recurringCharges` never draws a day on or before it, so editing
+   * the schedule or resuming a paused rule changes only the future.
+   * `null` until the first run (see `recurringRuleDeletion.ts`).
+   */
+  recurringMaterializedThrough?: string | null;
   /**
    * On a one-off movement: the recurring rule it replaces one charge of, and
    * the scheduled day (`YYYY-MM-DD`) it stands in for. Deleting the movement
@@ -1073,6 +1321,8 @@ export interface InvoiceOffer {
   nextStepsNote?: string | null;
   closingNote?: string | null;
   signOffTeam?: string | null; // e.g. "Tím SIGNUM Slovakia s.r.o."
+  /** Values the reconstructed template introduced. Capped at 24 strings. */
+  customFields?: Record<string, string> | null;
   
   // Custom AI Template metadata
   customTemplateId?: string | null;
@@ -1086,6 +1336,8 @@ export interface InvoiceOffer {
   dueDate?: string | null; // YYYY-MM-DD
   fileName?: string | null;
   filePath?: string | null;
+  /** offer_categories.id a price offer is filed under; null = no category. */
+  categoryId?: string | null;
   createdAt?: string;
   updatedAt?: string;
   createdBy?: string | null;
@@ -1114,6 +1366,8 @@ export interface CompanyBillingSettings {
   // here must match the forms that write them: Settings → Invoicing (identity, bank, VAT) and the Price Offers settings (offer texts).
   defaultPaymentDueDays: number;
   defaultVatRate: number;
+  /** When true, finance ledger bridge, offer-to-lead sync, and lead→project inheritance use net (VAT-excluded) amounts. */
+  financeNetMode?: boolean;
   vatRates?: number[]; // Configured VAT rates for orders & invoices (defaults to [23, 19, 10, 5, 0])
   shippingMethods?: string[]; // Configured shipping methods for orders (e.g. DPD, Packeta, GLS, etc.)
   paymentMethods?: string[]; // Configured payment methods for orders (e.g. Prevod na účet, Dobierka, etc.)
@@ -1175,6 +1429,11 @@ export interface AiCustomTemplate {
     fontFamily?: string;
     headings?: { usp?: string; items?: string; nextStep?: string };
   } | null;
+  /**
+   * The reconstructed PDF. Absent (or null) on a template that is still a
+   * colour skin of the Signum document — those keep CustomAiOfferTemplate.
+   */
+  document?: import("../utils/offerDocument").OfferDocument | null;
   createdAt: string;
 }
 
@@ -1202,9 +1461,11 @@ export interface Employee {
   name: string;
   firstName?: string | null;
   lastName?: string | null;
-  /** employee = a person; contractor = an external supplier (company or sole trader); ledger = a payroll-only line such as commission. */
+  /** employee = a person; contractor = an external supplier (person/freelancer, sole trader, or company); ledger = a payroll-only line such as commission. */
   kind?: 'employee' | 'contractor' | 'ledger';
-  /** IČO, DIČ and IČ DPH of a contractor; null for the other kinds. */
+  /** Subtype of an external supplier (`kind === 'contractor'`): person (freelancer, no IČO/DIČ/company name), sole_trader (živnostník), or company (firma). */
+  contractorType?: 'person' | 'sole_trader' | 'company' | null;
+  /** IČO, DIČ and IČ DPH of a business contractor (sole trader or company); null for person freelancers and other kinds. */
   companyId?: string | null;
   taxId?: string | null;
   vatId?: string | null;
@@ -1220,9 +1481,17 @@ export interface Employee {
   addressCity?: string | null;
   addressZip?: string | null;
   addressCountry?: string | null;
+  /**
+   * Whose public-holiday calendar this person works by (SK or HU), which decides how many working
+   * days a month has for their monthly cost rate in time tracking. Null = the company's own
+   * country. Never derived from the UI language.
+   */
+  workCountry?: 'SK' | 'HU' | null;
   salaryType?: 'monthly' | 'daily' | 'hourly';
   salaryAmount?: number;
   salaryDueDay?: number | null;
+  /** Contracted hours per day (part-time). Null = the company's hoursPerDay time tracking setting. */
+  hoursPerDay?: number | null;
   vacationAllowances?: Record<string, number>;
   timeTrackingProvider?: 'toggl' | 'clockify' | 'manual';
   timeTrackingUserId?: string | null;
@@ -1262,12 +1531,31 @@ export interface EmployeeSalary {
   items: SalaryCategoryItem[];
   totalSalary: number;
   totalPaid: number;
+  /**
+   * Cena práce from the month's payslip: what the person cost the company in total. Typed by
+   * hand each month, never computed; employees only (contractors and ledger lines leave it null).
+   */
+  laborCost?: number | null;
+  /** Na výplatu from the payslip: the net amount the employee receives. Typed by hand; employees only. */
+  netPay?: number | null;
   status: 'pending' | 'partially_paid' | 'paid';
   dueDate?: string | null;
   paymentDate?: string | null;
   paymentMethod?: string | null;
   financialRecordId?: string | null;
   note?: string | null;
+  /**
+   * When the month was closed: stamped by the server the first time it becomes paid in full, and
+   * kept when a later edit (a higher Cena práce) makes it partially paid again. The time-entry lock
+   * reads this, not `status`. Cleared only by an admin's explicit reopen. Server-owned.
+   */
+  closedAt?: string | null;
+  closedBy?: string | null;
+  /**
+   * An admin's request to reopen the month: the `closedAt` being reopened. The server clears the
+   * stamp only while it still equals this value, so a copy re-sent later cannot undo a newer close.
+   */
+  reopenClosedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -1405,6 +1693,7 @@ export interface Order {
   customerType: CustomerType;
   clientId?: string | null;   // References Lead.id for registered sales clients
   supplierId?: string | null; // References Supplier.id for purchase orders
+  projectId?: string | null;  // References Project.id: the project this order belongs to
   guest?: GuestCustomer;
 
   // Delivery & Billing
@@ -1511,12 +1800,27 @@ export interface TicketCapturedError {
   detail?: string;
 }
 
+export interface TicketLinkedEmail {
+  id: string;
+  uid: number | string;
+  folder: string;
+  mailboxId?: string;
+  eventId?: string;
+  messageId?: string;
+  subject: string;
+  fromName?: string;
+  fromAddress?: string;
+  date?: string;
+  linkedAt: string;
+}
+
 export interface TicketMetadata {
   url?: string;
   userAgent?: string;
   viewport?: string;
   errors?: TicketCapturedError[];
   consoleErrors?: string[];
+  linkedEmails?: TicketLinkedEmail[];
   [key: string]: any;
 }
 
@@ -1583,6 +1887,7 @@ export interface Ticket {
   projectId?: string | null;
   leadId?: string | null;
   clientId?: string | null;
+  agencyWorkerId?: string | null;
   contractId?: string | null;
   reporterName?: string | null;
   reporterEmail?: string | null;
@@ -1612,8 +1917,14 @@ export interface Ticket {
   updatedAt?: string;
   resolvedAt?: string | null;
   closedAt?: string | null;
+  reopenedCount?: number;
   messages?: TicketMessage[];
   taskLinks?: TicketTaskLink[];
+  /**
+   * Deprecated. Ticket time is stored in `time_entries` and read from
+   * `api/time_entries.php`. The sync blob always sends `[]`. `loggedMinutes`
+   * is still a derived total for older clients.
+   */
   timeEntries?: TicketTimeEntry[];
 }
 
@@ -1637,6 +1948,17 @@ export interface SupportContract {
   currency?: string;
   slaFirstResponseMins?: number | null;
   slaResolutionMins?: number | null;
+  /** Per-priority SLA hours, synced from `support_contracts.sla_response_*_hours`. */
+  slaResponseCriticalHours?: number | null;
+  slaResponseHighHours?: number | null;
+  slaResponseNormalHours?: number | null;
+  slaResponseLowHours?: number | null;
+  slaResolveCriticalHours?: number | null;
+  slaResolveHighHours?: number | null;
+  slaResolveNormalHours?: number | null;
+  slaResolveLowHours?: number | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
   periodStart?: string | null;
   periodEnd?: string | null;
   isActive?: boolean;
@@ -1690,5 +2012,98 @@ export interface TicketSettingsConfig {
 
 export type TicketSettings = TicketSettingsConfig;
 export type TicketSystemSettings = TicketSettingsConfig;
+
+export interface CustomCalendar {
+  id: string;
+  name: string;
+  color: string;
+  description?: string | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface CustomCalendarEvent {
+  id: string;
+  calendarId: string;
+  title: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  startTime?: string | null; // HH:MM
+  endTime?: string | null;   // HH:MM
+  notes?: string | null;
+  color?: string | null;
+  owner?: string | null;
+  relatedLeadId?: string | null;
+  relatedProjectId?: string | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface TaskChatImage {
+  url: string;
+  name: string;
+  w: number;
+  h: number;
+  size?: number;
+}
+
+export type TaskActivityEventType =
+  | "created"
+  | "status"
+  | "priority"
+  | "deadline"
+  | "assignees"
+  | "archived"
+  | "conclusion"
+  | "file_uploaded"
+  | "file_deleted";
+
+export type TaskActivityFilter = "all" | "comments" | "history" | "files";
+
+export interface TaskFile {
+  id: string;
+  taskId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  isImage: boolean;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
+  isCodePreviewable: boolean;
+  language?: string;
+  uploadedBy: string;
+  createdAt: string;
+  url: string;
+  downloadUrl: string;
+}
+
+export interface TaskActivityItem {
+  id: number;
+  taskId: string;
+  kind: "comment" | "state_change";
+  eventType?: TaskActivityEventType | null;
+  authorName: string;
+  body: string;
+  meta?: {
+    images?: TaskChatImage[];
+    editedAt?: string;
+    from?: string;
+    to?: string;
+    postponed?: boolean;
+    added?: string[];
+    removed?: string[];
+    archived?: boolean;
+    text?: string;
+    [key: string]: unknown;
+  } | null;
+  reactions?: Record<string, string[]> | null;
+  deleted?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
 
 

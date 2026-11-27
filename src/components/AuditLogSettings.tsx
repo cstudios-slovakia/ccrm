@@ -1,5 +1,6 @@
 import React from "react";
-import { ScrollText, RefreshCw, Download, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { SectionCard } from "./settings/SectionCard";
+import { RefreshCw, Download, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { formatTimestampLocalized } from "../utils/localTime";
 
@@ -30,6 +31,7 @@ const ACTION_GROUPS: { value: string; en: string; sk: string; hu: string }[] = [
   { value: "revoke_mcp_key", en: "MCP keys (revoked)", sk: "MCP kľúče (zrušenie)", hu: "MCP kulcsok (visszavonás)" },
   { value: "license.", en: "Licence", sk: "Licencia", hu: "Licenc" },
   { value: "error_logs.", en: "Error logs", sk: "Chybové záznamy", hu: "Hibanaplók" },
+  { value: "workflow.", en: "Automations", sk: "Automatizácie", hu: "Automatizálások" },
 ];
 
 /** Security-relevant actions get a stronger chip so they stand out in a long list. */
@@ -98,43 +100,40 @@ export const AuditLogSettings: React.FC<AuditLogSettingsProps> = ({ language }) 
 
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
   const inputClass =
-    "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-ui font-medium text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all";
+    "w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-ui font-medium text-gray-800 outline-none focus:border-entity-border focus:ring-2 focus:ring-entity-solid/25 transition-all";
 
   return (
     <div className="ws-lg:col-span-12 space-y-6">
-      <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
-          <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-            <ScrollText className="h-4.5 w-4.5 text-indigo-600" /> {t("Audit log", "Auditný záznam", "Audit napló")}
-          </h3>
-          <div className="flex gap-2">
+      <SectionCard
+        title={t("Audit log", "Auditný záznam", "Audit napló")}
+        description={t(
+            "Who signed in, changed roles, created keys or cleared logs. Entries are append-only: nothing here can be edited or deleted. Administrators are notified by push when roles change, users are removed, MCP keys are created or logins are locked out.",
+            "Kto sa prihlásil, zmenil roly, vytvoril kľúče alebo vymazal záznamy. Záznamy sa iba pridávajú: nič tu nemožno upraviť ani zmazať. Administrátori dostanú push upozornenie pri zmene rolí, odstránení používateľa, vytvorení MCP kľúča alebo zámku prihlásenia.",
+            "Ki lépett be, ki módosított szerepköröket, hozott létre kulcsot vagy törölt naplót. A bejegyzések csak bővülnek: itt semmi sem szerkeszthető vagy törölhető. Az adminisztrátorok push értesítést kapnak szerepkörváltásról, felhasználó törléséről, MCP kulcs létrehozásáról vagy bejelentkezési zárolásról."
+          )}
+        action={
+<div className="flex gap-2">
             <button
               type="button"
               onClick={load}
-              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl type-overline flex items-center gap-1 cursor-pointer"
+              className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-md type-overline flex items-center gap-1 cursor-pointer"
             >
               <RefreshCw className="h-3.5 w-3.5" /> {t("Refresh", "Obnoviť", "Frissítés")}
             </button>
             <a
               href={`/api/audit_log.php?${query({ format: "csv" })}`}
-              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl type-overline flex items-center gap-1 cursor-pointer"
+              className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-md type-overline flex items-center gap-1 cursor-pointer"
             >
               <Download className="h-3.5 w-3.5" /> CSV
             </a>
           </div>
-        </div>
-
-        <p className="text-ui text-slate-500 font-medium max-w-3xl">
-          {t(
-            "Who signed in, changed roles, created keys or cleared logs. Entries are append-only: nothing here can be edited or deleted. Administrators are notified by push when roles change, users are removed, MCP keys are created or logins are locked out.",
-            "Kto sa prihlásil, zmenil roly, vytvoril kľúče alebo vymazal záznamy. Záznamy sa iba pridávajú: nič tu nemožno upraviť ani zmazať. Administrátori dostanú push upozornenie pri zmene rolí, odstránení používateľa, vytvorení MCP kľúča alebo zámku prihlásenia.",
-            "Ki lépett be, ki módosított szerepköröket, hozott létre kulcsot vagy törölt naplót. A bejegyzések csak bővülnek: itt semmi sem szerkeszthető vagy törölhető. Az adminisztrátorok push értesítést kapnak szerepkörváltásról, felhasználó törléséről, MCP kulcs létrehozásáról vagy bejelentkezési zárolásról."
-          )}
-        </p>
+}
+      >
+        
 
         <div className="grid grid-cols-1 ws-md:grid-cols-4 gap-3">
           <label className="space-y-1">
-            <span className="type-overline text-slate-400 block">{t("Event", "Udalosť", "Esemény")}</span>
+            <span className="type-overline text-gray-400 block">{t("Event", "Udalosť", "Esemény")}</span>
             <select value={action} onChange={(e) => setAction(e.target.value)} className={inputClass}>
               {ACTION_GROUPS.map((g) => (
                 <option key={g.value || "all"} value={g.value}>
@@ -144,36 +143,36 @@ export const AuditLogSettings: React.FC<AuditLogSettingsProps> = ({ language }) 
             </select>
           </label>
           <label className="space-y-1">
-            <span className="type-overline text-slate-400 block">{t("User (e-mail)", "Používateľ (e-mail)", "Felhasználó (e-mail)")}</span>
+            <span className="type-overline text-gray-400 block">{t("User (e-mail)", "Používateľ (e-mail)", "Felhasználó (e-mail)")}</span>
             <input value={actor} onChange={(e) => setActor(e.target.value)} className={inputClass} placeholder="anna@" />
           </label>
           <label className="space-y-1">
-            <span className="type-overline text-slate-400 block">{t("From", "Od", "Ettől")}</span>
+            <span className="type-overline text-gray-400 block">{t("From", "Od", "Ettől")}</span>
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass} />
           </label>
           <label className="space-y-1">
-            <span className="type-overline text-slate-400 block">{t("To", "Do", "Eddig")}</span>
+            <span className="type-overline text-gray-400 block">{t("To", "Do", "Eddig")}</span>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} />
           </label>
         </div>
 
         {loading && entries.length === 0 ? (
           <div className="flex justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
         ) : error ? (
           <div className="text-center py-12 text-rose-600 font-bold text-ui">
             {t("Could not load the audit log.", "Audit log sa nepodarilo načítať.", "Az audit naplót nem sikerült betölteni.")}
           </div>
         ) : entries.length === 0 ? (
-          <div className="text-center py-12 text-slate-500 font-bold text-ui">
+          <div className="text-center py-12 text-gray-500 font-bold text-ui">
             {t("No matching events.", "Žiadne zodpovedajúce udalosti.", "Nincs egyező esemény.")}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-ui border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-500 type-overline">
+                <tr className="border-b border-gray-200 text-gray-500 type-overline">
                   <th className="py-3 px-4">{t("Time", "Čas", "Idő")}</th>
                   <th className="py-3 px-4">{t("User", "Používateľ", "Felhasználó")}</th>
                   <th className="py-3 px-4">{t("Event", "Udalosť", "Esemény")}</th>
@@ -183,22 +182,22 @@ export const AuditLogSettings: React.FC<AuditLogSettingsProps> = ({ language }) 
               </thead>
               <tbody>
                 {entries.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-100 align-top font-medium text-slate-700">
-                    <td className="py-3 px-4 font-mono text-micro whitespace-nowrap text-slate-500">
+                  <tr key={row.id} className="border-b border-gray-100 align-top font-medium text-gray-700">
+                    <td className="py-3 px-4 font-mono text-micro whitespace-nowrap text-gray-500">
                       {formatTimestampLocalized(row.created_at, language)}
                     </td>
                     <td className="py-3 px-4 break-all">{row.actor_email || "—"}</td>
                     <td className="py-3 px-4 whitespace-nowrap">
                       <span
                         className={`px-2 py-0.5 rounded-md type-overline ${
-                          isAlertAction(row.action) ? "bg-rose-50 text-rose-700" : "bg-slate-50 text-slate-700"
+                          isAlertAction(row.action) ? "bg-rose-50 text-rose-700" : "bg-gray-50 text-gray-700"
                         }`}
                       >
                         {row.action}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-slate-600 break-words max-w-md">{row.detail || "—"}</td>
-                    <td className="py-3 px-4 font-mono text-micro whitespace-nowrap text-slate-500">{row.ip || "—"}</td>
+                    <td className="py-3 px-4 text-gray-600 break-words max-w-md">{row.detail || "—"}</td>
+                    <td className="py-3 px-4 font-mono text-micro whitespace-nowrap text-gray-500">{row.ip || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -206,7 +205,7 @@ export const AuditLogSettings: React.FC<AuditLogSettingsProps> = ({ language }) 
           </div>
         )}
 
-        <div className="flex items-center justify-between text-ui text-slate-500 font-bold">
+        <div className="flex items-center justify-between text-ui text-gray-500 font-bold">
           <span>
             {total} {t("events", "udalostí", "esemény")}
           </span>
@@ -215,7 +214,7 @@ export const AuditLogSettings: React.FC<AuditLogSettingsProps> = ({ language }) 
               type="button"
               disabled={page <= 1 || loading}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="p-1.5 rounded-md bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               aria-label={t("Previous page", "Predchádzajúca strana", "Előző oldal")}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -227,14 +226,14 @@ export const AuditLogSettings: React.FC<AuditLogSettingsProps> = ({ language }) 
               type="button"
               disabled={page >= pages || loading}
               onClick={() => setPage((p) => p + 1)}
-              className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="p-1.5 rounded-md bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               aria-label={t("Next page", "Ďalšia strana", "Következő oldal")}
             >
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         </div>
-      </div>
+      </SectionCard>
     </div>
   );
 };

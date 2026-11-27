@@ -1,4 +1,5 @@
 import type { Language } from "./translations";
+import { PRODUCT_NAME } from "./brand.ts";
 
 /**
  * Shared client-side view of the AI configuration.
@@ -23,16 +24,57 @@ export const SECRET_MASK = "********";
 /** True when a field holds the server's placeholder rather than a real secret. */
 export const isSecretMask = (value: unknown): boolean => value === SECRET_MASK;
 
-/**
- * Whether an OpenAI key is stored server-side. The browser only ever sees the
- * mask, so a non-empty value is the strongest signal available here — it cannot
- * tell a valid key from a revoked one (that only surfaces as `ai_key_invalid`
- * when an endpoint actually calls OpenAI).
- */
-export const hasOpenAiKey = (integrationsConfig: any): boolean => {
+/** True when a direct manual OpenAI API key is configured in INTEGRATIONS_CONFIG. */
+export const hasDirectOpenAiKey = (integrationsConfig: any): boolean => {
   const key = integrationsConfig?.openAiKey;
   return typeof key === "string" && key.trim() !== "";
 };
+
+/** True when INTEGRATIONS_CONFIG points AI features to an existing LLM connector. */
+export const hasAiConnector = (integrationsConfig: any): boolean => {
+  const id = integrationsConfig?.aiConnectorId;
+  return (
+    integrationsConfig?.aiSourceMode === "connector" &&
+    typeof id === "string" &&
+    id.trim() !== ""
+  );
+};
+
+/** True when general AI features have either a manual OpenAI key or an active LLM connector. */
+export const hasAiConfigured = (integrationsConfig: any): boolean =>
+  hasAiConnector(integrationsConfig) || hasDirectOpenAiKey(integrationsConfig);
+
+/**
+ * Whether an OpenAI key (or active LLM connector) is configured server-side.
+ * The browser only sees SECRET_MASK for secrets, so a non-empty value or
+ * selected connector id indicates AI features are ready.
+ */
+export const hasOpenAiKey = (integrationsConfig: any): boolean =>
+  hasAiConfigured(integrationsConfig);
+
+/** True when 768-d OpenAI Vector DB embeddings / Live WebRTC voice have an OpenAI credential source. */
+export const hasOpenAiEmbeddingSource = (integrationsConfig: any): boolean =>
+  hasDirectOpenAiKey(integrationsConfig) ||
+  (hasAiConnector(integrationsConfig) && integrationsConfig?.aiConnectorType === "openai_api");
+
+/** True when audio transcription (OpenAI Whisper or Gemini multimodal audio) has a credential source. */
+export const hasAudioTranscriptionSource = (integrationsConfig: any): boolean =>
+  hasDirectOpenAiKey(integrationsConfig) ||
+  (hasAiConnector(integrationsConfig) &&
+    ["openai_api", "gemini_api", "antigravity"].includes(String(integrationsConfig?.aiConnectorType || "")));
+
+/** Whether a Soniox key is stored (meeting transcription with speaker diarization). */
+export const hasSonioxKey = (integrationsConfig: any): boolean => {
+  const key = integrationsConfig?.sonioxApiKey;
+  return typeof key === "string" && key.trim() !== "";
+};
+
+/**
+ * Whether recordings can be transcribed: Soniox (tells speakers apart) or an audio-capable
+ * OpenAI/Gemini source (plain text). Summaries still need an AI source, see hasOpenAiKey.
+ */
+export const hasTranscriptionKey = (integrationsConfig: any): boolean =>
+  hasAudioTranscriptionSource(integrationsConfig) || hasSonioxKey(integrationsConfig);
 
 export interface AiApiError {
   /** Stable identifier emitted by the endpoint, or a synthetic client-side one. */
@@ -84,37 +126,51 @@ export const translateAiApiError = (error: AiApiError, lang: Language): string =
     case "ai_key_missing":
       return pick(
         lang,
-        "The OpenAI API key is not configured. Add it in Settings → AI integration.",
-        "OpenAI API kľúč nie je nastavený. Doplňte ho v Nastaveniach → AI integrácia.",
-        "Az OpenAI API kulcs nincs beállítva. Adja meg a Beállítások → AI integráció alatt."
+        "The AI source is not configured. Add an API key or select an LLM connector in Settings → AI integration.",
+        "Zdroj AI nie je nastavený. Doplňte API kľúč alebo vyberte LLM konektor v Nastaveniach → AI integrácia.",
+        "Az AI forrás nincs beállítva. Adjon meg API kulcsot vagy válasszon LLM csatlakozót a Beállítások → AI integráció alatt."
+      );
+    case "ai_connector_unconfigured":
+      return pick(
+        lang,
+        "The selected LLM connector has missing credentials or is inactive. Check it in Settings → Connectors or AI integration.",
+        "Vybratý LLM konektor nemá platné prihlasovacie údaje alebo nie je aktívny. Skontrolujte ho v Nastaveniach → Konektory alebo AI integrácia.",
+        "A kiválasztott LLM csatlakozó hitelesítő adatai hiányoznak vagy inaktív. Ellenőrizze a Beállítások → Csatlakozók vagy AI integráció alatt."
       );
     case "ai_key_invalid":
       return pick(
         lang,
-        "OpenAI rejected the stored API key. Check it in Settings → AI integration.",
-        "OpenAI odmietol uložený API kľúč. Skontrolujte ho v Nastaveniach → AI integrácia.",
-        "Az OpenAI elutasította a tárolt API kulcsot. Ellenőrizze a Beállítások → AI integráció alatt."
+        "The AI provider rejected the stored credentials. Check them in Settings → AI integration.",
+        "Poskytovateľ AI odmietol uložené prihlasovacie údaje. Skontrolujte ich v Nastaveniach → AI integrácia.",
+        "Az AI szolgáltató elutasította a tárolt hitelesítő adatokat. Ellenőrizze őket a Beállítások → AI integráció alatt."
       );
     case "ai_rate_limited":
       return pick(
         lang,
-        "OpenAI rate limit or quota reached. Try again in a moment.",
-        "Dosiahnutý limit alebo kredit OpenAI. Skúste to o chvíľu znova.",
-        "Elérte az OpenAI korlátját vagy keretét. Próbálja újra később."
+        "AI provider rate limit or quota reached. Try again in a moment.",
+        "Dosiahnutý limit alebo kredit poskytovateľa AI. Skúste to o chvíľu znova.",
+        "Elérte az AI szolgáltató korlátját vagy keretét. Próbálja újra később."
       );
     case "ai_error":
       return pick(
         lang,
-        "OpenAI could not process the request",
-        "OpenAI nedokázal spracovať požiadavku",
-        "Az OpenAI nem tudta feldolgozni a kérést"
+        "The AI provider could not process the request",
+        "Poskytovateľ AI nedokázal spracovať požiadavku",
+        "Az AI szolgáltató nem tudta feldolgozni a kérést"
       ) + (error.providerMessage ? `: ${error.providerMessage}` : ".");
     case "ai_empty":
       return pick(
         lang,
-        "OpenAI returned an empty answer. Try generating it again.",
-        "OpenAI vrátil prázdnu odpoveď. Skúste generovanie zopakovať.",
-        "Az OpenAI üres választ adott. Próbálja meg újra."
+        "The AI provider returned an empty answer. Try generating it again.",
+        "Poskytovateľ AI vrátil prázdnu odpoveď. Skúste generovanie zopakovať.",
+        "Az AI szolgáltató üres választ adott. Próbálja meg újra."
+      );
+    case "ai_unusable":
+      return pick(
+        lang,
+        "The model did not return a usable document. Try generating it again.",
+        "Model nevrátil použiteľný dokument. Skúste generovanie zopakovať.",
+        "A modell nem adott használható dokumentumot. Próbálja meg újra."
       );
     case "company_not_found":
       return pick(
@@ -161,9 +217,9 @@ export const translateAiApiError = (error: AiApiError, lang: Language): string =
     case "not_installed":
       return pick(
         lang,
-        "The CRM is not installed yet.",
-        "CRM ešte nie je nainštalovaný.",
-        "A CRM még nincs telepítve."
+        `${PRODUCT_NAME} is not installed yet.`,
+        `${PRODUCT_NAME} ešte nie je nainštalovaný.`,
+        `A ${PRODUCT_NAME} még nincs telepítve.`
       );
     case "db_error":
       return pick(
@@ -198,9 +254,9 @@ export const translateAiApiError = (error: AiApiError, lang: Language): string =
 
 /** Codes the user fixes in Settings → AI integration. */
 export const isAiKeyProblem = (code: string): boolean =>
-  code === "ai_key_missing" || code === "ai_key_invalid";
+  code === "ai_key_missing" || code === "ai_key_invalid" || code === "ai_connector_unconfigured";
 
 /** Send the user straight to the field they need to fill in. */
 export const openAiSettings = (): void => {
-  window.location.hash = "settings/ai";
+  window.location.hash = "settings/integrations/ai";
 };

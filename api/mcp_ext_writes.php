@@ -16,6 +16,10 @@
  * Settling money stays a decision made in the app.
  */
 
+// ccrm_column_exists(), and the payroll definitions (due, status, period key) shared with sync.php
+require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/payroll_lib.php';
+
 // ---------------------------------------------------------------------------
 // Small shared helpers
 // ---------------------------------------------------------------------------
@@ -29,7 +33,14 @@ function mcp_user_exists(\PDO $pdo, string $name): string {
 }
 
 function mcp_row_exists(\PDO $pdo, string $table, string $id, string $label): void {
-    static $allowed = ['leads', 'projects', 'tasks', 'warehouses', 'warehouse_items', 'employees', 'financial_categories', 'project_types'];
+    static $allowed = [
+        'leads', 'projects', 'tasks', 'warehouses', 'warehouse_items', 'warehouse_movements',
+        'employees', 'employee_vacations', 'financial_categories', 'financial_records',
+        'project_types', 'client_categories', 'offer_categories', 'meeting_notes', 'suppliers',
+        'tickets', 'orders', 'invoices_offers', 'support_contracts', 'workflows',
+        'agency_workers', 'agency_workplaces', 'newsletter_campaigns', 'unified_entries',
+        'custom_dashboards', 'time_entries', 'weekly_plan_cards',
+    ];
     if (!in_array($table, $allowed, true)) throw new \LogicException('table not allowed');
     $stmt = $pdo->prepare("SELECT 1 FROM `{$table}` WHERE id = ? LIMIT 1");
     $stmt->execute([$id]);
@@ -105,17 +116,29 @@ function mcp_create_project_row(\PDO $pdo, array $a): string {
         if (!$typeId) throw new \Exception('No project type is configured; create one in Settings first.');
     }
 
+    $division = isset($a['division']) && trim((string)$a['division']) !== '' ? mb_substr(trim((string)$a['division']), 0, 100) : null;
+    $contactPhone = isset($a['contact_phone']) ? trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$a['contact_phone'])) : '';
+    $contactPhone = $contactPhone === '' ? null : mb_substr($contactPhone, 0, 50);
+    $contactEmail = isset($a['contact_email']) ? trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$a['contact_email'])) : '';
+    $contactEmail = $contactEmail === '' ? null : mb_substr($contactEmail, 0, 190);
+
     $id = 'proj_' . bin2hex(random_bytes(8));
     $pdo->prepare(
-        "INSERT INTO projects (id, project_type_id, name, lead_id, client_id, budget, value, start_date, invoice_date, completion_deadline, status, finished_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())"
-    )->execute([$id, $typeId, $name, $clientId, $clientId, $budget, $value, $start, $invoiceDate, $completionDeadline, $status, mcp_finished_at_for_status($pdo, $status, null)]);
+        "INSERT INTO projects (id, project_type_id, name, lead_id, client_id, budget, value, division, contact_phone, contact_email, start_date, invoice_date, completion_deadline, status, finished_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())"
+    )->execute([$id, $typeId, $name, $clientId, $clientId, $budget, $value, $division, $contactPhone, $contactEmail, $start, $invoiceDate, $completionDeadline, $status, mcp_finished_at_for_status($pdo, $status, null)]);
+    if (!empty($a['managers']) && is_array($a['managers']) && function_exists('mcp_crm_plus_sync_project_managers')) {
+        mcp_crm_plus_sync_project_managers($pdo, $id, $a['managers']);
+    }
+    if (!empty($a['custom_fields']) && is_array($a['custom_fields']) && function_exists('mcp_crm_plus_upsert_project_data')) {
+        mcp_crm_plus_upsert_project_data($pdo, $typeId, $id, $a['custom_fields']);
+    }
     return $id;
 }
 
 function mcp_do_update_project(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
-    $cur = $pdo->prepare("SELECT status, finished_at, start_date, completion_deadline FROM projects WHERE id = ?");
+    $cur = $pdo->prepare("SELECT project_type_id, status, finished_at, start_date, completion_deadline, acceptance_criteria_json, scope_approved_at, scope_approved_by FROM projects WHERE id = ?");
     $cur->execute([$id]);
     $row = $cur->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Project not found with ID: {$id}");
@@ -152,13 +175,171 @@ function mcp_do_update_project(\PDO $pdo, array $user, array $args): array {
         $d = trim((string)$args['division']);
         $add('division', $d === '' ? null : mb_substr($d, 0, 100));
     }
+    if (array_key_exists('contact_phone', $args)) {
+        $cp = trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$args['contact_phone']));
+        $add('contact_phone', $cp === '' ? null : mb_substr($cp, 0, 50));
+    }
+    if (array_key_exists('contact_email', $args)) {
+        $ce = trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$args['contact_email']));
+        $add('contact_email', $ce === '' ? null : mb_substr($ce, 0, 190));
+    }
     if (array_key_exists('archived', $args)) $add('archived', !empty($args['archived']) ? 1 : 0);
+    if (array_key_exists('acceptance_criteria', $args)) {
+        if (!is_array($args['acceptance_criteria'])) {
+            throw new \InvalidArgumentException("'acceptance_criteria' must be an array.");
+        }
+        require_once __DIR__ . '/project_scope.php';
+        $nowIso = gmdate('Y-m-d\TH:i:s\Z');
+        $incoming = [];
+        foreach ($args['acceptance_criteria'] as $item) {
+            if (is_string($item)) {
+                $title = trim($item);
+                if ($title === '') continue;
+                $incoming[] = ['id' => mcp_new_id('ac_'), 'title' => $title, 'done' => false];
+                continue;
+            }
+            if (!is_array($item)) continue;
+            $cid = isset($item['id']) && trim((string)$item['id']) !== '' ? trim((string)$item['id']) : mcp_new_id('ac_');
+            $title = trim((string)($item['title'] ?? ''));
+            if ($title === '') continue;
+            $incoming[] = [
+                'id' => $cid,
+                'title' => $title,
+                'done' => !empty($item['done']),
+                'removedAt' => !empty($item['remove']) || !empty($item['removedAt']) ? $nowIso : null,
+            ];
+        }
+        $stored = ccrm_scope_criteria_decode($row['acceptance_criteria_json'] ?? null);
+        $merged = ccrm_scope_merge_criteria($stored, $incoming, $nowIso, (string)($user['name'] ?? ''));
+        $add('acceptance_criteria_json', $merged ? json_encode($merged, JSON_UNESCAPED_UNICODE) : null);
+    }
 
-    if (!$sets) return ['success' => true, 'message' => 'No fields updated'];
-    $params[] = $id;
-    $pdo->prepare("UPDATE projects SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
+    $extraTouched = false;
+    if (array_key_exists('managers', $args) && is_array($args['managers']) && function_exists('mcp_crm_plus_sync_project_managers')) {
+        mcp_crm_plus_sync_project_managers($pdo, $id, $args['managers']);
+        $extraTouched = true;
+    }
+    if (array_key_exists('custom_fields', $args) && is_array($args['custom_fields']) && function_exists('mcp_crm_plus_upsert_project_data')) {
+        mcp_crm_plus_upsert_project_data($pdo, (string)$row['project_type_id'], $id, $args['custom_fields']);
+        $extraTouched = true;
+    }
+    $scopeAction = array_key_exists('scope_action', $args) && $args['scope_action'] !== null && $args['scope_action'] !== ''
+        ? mcp_enum($args, 'scope_action', ['approve', 'withdraw'])
+        : null;
+
+    if (!$sets && !$extraTouched && $scopeAction === null) return ['success' => true, 'message' => 'No fields updated'];
+    if ($sets) {
+        $params[] = $id;
+        $pdo->prepare("UPDATE projects SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
+    } elseif ($extraTouched) {
+        $pdo->prepare("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([$id]);
+    }
+    if ($scopeAction !== null) {
+        require_once __DIR__ . '/project_scope.php';
+        ccrm_scope_apply_action($pdo, $id, $scopeAction, (string)($user['name'] ?? ''));
+    }
     mcp_audit($pdo, $user, 'project_update', "Updated project $id");
-    return ['success' => true, 'id' => $id, 'updated_fields' => array_values(array_intersect(array_keys($args), ['name', 'status', 'budget', 'value', 'start_date', 'invoice_date', 'completion_deadline', 'delay_reason', 'rating', 'division', 'archived']))];
+    $out = ['success' => true, 'id' => $id, 'updated_fields' => array_values(array_intersect(array_keys($args), ['name', 'status', 'budget', 'value', 'start_date', 'invoice_date', 'completion_deadline', 'delay_reason', 'rating', 'division', 'contact_phone', 'contact_email', 'archived', 'managers', 'custom_fields', 'acceptance_criteria', 'scope_action']))];
+    if (array_key_exists('acceptance_criteria', $args) || $scopeAction !== null) {
+        $fresh = $pdo->prepare("SELECT acceptance_criteria_json, scope_approved_at, scope_approved_by FROM projects WHERE id = ?");
+        $fresh->execute([$id]);
+        $fRow = $fresh->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $out += mcp_project_scope_summary($fRow['acceptance_criteria_json'] ?? null, $fRow['scope_approved_at'] ?? null, $fRow['scope_approved_by'] ?? null);
+    }
+    return $out;
+}
+
+function mcp_do_manage_project_acceptance_criteria(\PDO $pdo, array $user, array $args): array {
+    require_once __DIR__ . '/project_scope.php';
+    $projectId = mcp_require_string($args, 'project_id');
+    $cur = $pdo->prepare("SELECT id, acceptance_criteria_json, scope_approved_at, scope_approved_by FROM projects WHERE id = ? LIMIT 1");
+    $cur->execute([$projectId]);
+    $row = $cur->fetch(\PDO::FETCH_ASSOC);
+    if (!$row) throw new \Exception("Project not found with ID: {$projectId}");
+
+    $nowIso = gmdate('Y-m-d\TH:i:s\Z');
+    $actor = (string)($user['name'] ?? '');
+    $stored = ccrm_scope_criteria_decode($row['acceptance_criteria_json'] ?? null);
+    $working = $stored;
+    $touched = false;
+
+    if (!empty($args['update']) && is_array($args['update'])) {
+        $byId = [];
+        foreach ($working as $idx => $c) $byId[$c['id']] = $idx;
+        foreach ($args['update'] as $u) {
+            if (!is_array($u)) continue;
+            $cid = trim((string)($u['id'] ?? ''));
+            if ($cid === '' || !isset($byId[$cid])) {
+                throw new \InvalidArgumentException("Acceptance criterion not found: {$cid}");
+            }
+            $idx = $byId[$cid];
+            if ($working[$idx]['removedAt'] !== null) {
+                throw new \InvalidArgumentException("Removed acceptance criterion cannot be edited: {$cid}");
+            }
+            if (array_key_exists('title', $u)) {
+                $t = trim((string)$u['title']);
+                if ($t === '') throw new \InvalidArgumentException("Criterion title cannot be empty for {$cid}.");
+                $working[$idx]['title'] = mb_substr($t, 0, 300);
+                $touched = true;
+            }
+            if (array_key_exists('done', $u)) {
+                $working[$idx]['done'] = !empty($u['done']);
+                $touched = true;
+            }
+        }
+    }
+
+    if (!empty($args['remove']) && is_array($args['remove'])) {
+        $removeIds = array_flip(array_map('strval', $args['remove']));
+        foreach ($working as $idx => $c) {
+            if (isset($removeIds[$c['id']]) && $c['removedAt'] === null) {
+                $working[$idx]['removedAt'] = $nowIso;
+                $touched = true;
+            }
+        }
+    }
+
+    if (!empty($args['add']) && is_array($args['add'])) {
+        foreach ($args['add'] as $item) {
+            if (is_string($item)) {
+                $title = trim($item);
+                if ($title === '') continue;
+                $working[] = ['id' => mcp_new_id('ac_'), 'title' => mb_substr($title, 0, 300), 'done' => false, 'removedAt' => null];
+                $touched = true;
+            } elseif (is_array($item)) {
+                $title = trim((string)($item['title'] ?? ''));
+                if ($title === '') continue;
+                $working[] = ['id' => mcp_new_id('ac_'), 'title' => mb_substr($title, 0, 300), 'done' => !empty($item['done']), 'removedAt' => null];
+                $touched = true;
+            }
+        }
+    }
+
+    if ($touched) {
+        $merged = ccrm_scope_merge_criteria($stored, $working, $nowIso, $actor);
+        $pdo->prepare("UPDATE projects SET acceptance_criteria_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            ->execute([$merged ? json_encode($merged, JSON_UNESCAPED_UNICODE) : null, $projectId]);
+    }
+
+    $scopeAction = array_key_exists('scope_action', $args) && $args['scope_action'] !== null && $args['scope_action'] !== ''
+        ? mcp_enum($args, 'scope_action', ['approve', 'withdraw'])
+        : null;
+    if ($scopeAction !== null) {
+        ccrm_scope_apply_action($pdo, $projectId, $scopeAction, $actor);
+    }
+
+    if ($touched || $scopeAction !== null) {
+        mcp_audit($pdo, $user, 'project_scope_update', "Updated acceptance criteria / scope on project $projectId");
+    }
+
+    $fresh = $pdo->prepare("SELECT acceptance_criteria_json, scope_approved_at, scope_approved_by FROM projects WHERE id = ?");
+    $fresh->execute([$projectId]);
+    $fRow = $fresh->fetch(\PDO::FETCH_ASSOC) ?: [];
+    return ['success' => true, 'project_id' => $projectId] + mcp_project_scope_summary(
+        $fRow['acceptance_criteria_json'] ?? null,
+        $fRow['scope_approved_at'] ?? null,
+        $fRow['scope_approved_by'] ?? null
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -170,18 +351,40 @@ function mcp_task_state_check(\PDO $pdo, string $status): string {
     $states = mcp_config_json($pdo, 'TASK_STATES', []);
     if (!is_array($states) || !$states) return $status;
     foreach ($states as $s) { if (strtolower($s) === strtolower($status)) return $s; }
-    if (strtolower($status) === 'done') return end($states);
+    if (strtolower($status) === 'done') return mcp_task_done_state($pdo);
     throw new \InvalidArgumentException("Unknown task status '{$status}'. Configured statuses: " . implode(', ', $states) . '.');
 }
 
 function mcp_task_done_state(\PDO $pdo): string {
+    require_once __DIR__ . '/task_done.php';
     $states = mcp_config_json($pdo, 'TASK_STATES', []);
-    return (is_array($states) && $states) ? (string)end($states) : 'done';
+    return ccrm_task_done_state(is_array($states) ? $states : []) ?? 'done';
+}
+
+/**
+ * The optional 'category' argument of create_task / update_task as [write?, value]: omitted leaves the
+ * task alone, null or "" clears, a slug ("bug") sets, anything else is an argument error (the rule is
+ * ccrm_task_category_write(), the one sync.php uses). While `tasks.category` is not migrated yet a
+ * clear is a no-op and a set is refused with a clear message; no statement ever names a missing column.
+ */
+function mcp_task_category_arg(\PDO $pdo, array $args): array {
+    if (!array_key_exists('category', $args)) return [false, null];
+    $w = ccrm_task_category_checked($args);
+    if ($w === null) {
+        throw new \InvalidArgumentException("'category' must be \"bug\" (or another short lowercase slug), or null / an empty string to clear it.");
+    }
+    if (!ccrm_tasks_have_category($pdo)) {
+        if ($w[0] !== null) throw new \InvalidArgumentException("Task categories are not available on this database yet (an update is still rolling out). Try again shortly.");
+        return [false, null];
+    }
+    return [true, $w[0]];
 }
 
 function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
     $title = mcp_require_string($args, 'title');
     $deadline = mcp_require_date($args, 'deadline');
+    $startDate = mcp_optional_date($args, 'start_date');
+    if ($startDate !== null && $startDate > $deadline) throw new \InvalidArgumentException("'start_date' cannot be after 'deadline'.");
     $time = isset($args['deadline_time']) && $args['deadline_time'] !== '' ? (string)$args['deadline_time'] : null;
     if ($time !== null && !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $time)) throw new \InvalidArgumentException("'deadline_time' must be HH:MM.");
     $priority = mcp_enum($args, 'priority', ['low', 'medium', 'high'], 'medium');
@@ -190,24 +393,54 @@ function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
     $owner = isset($args['owner']) && $args['owner'] !== '' ? mcp_user_exists($pdo, (string)$args['owner']) : $user['name'];
     $projId = !empty($args['project_id']) ? (string)$args['project_id'] : null;
     $leadId = !empty($args['client_id']) ? (string)$args['client_id'] : null;
+    $agencyWorkerId = !empty($args['related_agency_worker_id']) ? (string)$args['related_agency_worker_id'] : null;
+    $ticketId = !empty($args['ticket_id']) ? (string)$args['ticket_id'] : null;
+    $isLocking = !empty($args['is_locking']) ? 1 : 0;
+    $requiresConclusion = !empty($args['requires_conclusion']) ? 1 : 0;
     if ($projId !== null) mcp_row_exists($pdo, 'projects', $projId, 'Project');
     if ($leadId !== null) mcp_row_exists($pdo, 'leads', $leadId, 'Client/lead');
+    if ($agencyWorkerId !== null) mcp_row_exists($pdo, 'agency_workers', $agencyWorkerId, 'Agency worker');
+    if ($ticketId !== null) mcp_row_exists($pdo, 'tickets', $ticketId, 'Ticket');
+    [$catWrite, $category] = mcp_task_category_arg($pdo, $args);
     $assignees = [$owner];
     if (is_array($args['assignees'] ?? null)) {
         foreach ($args['assignees'] as $a) { if (trim((string)$a) !== '') $assignees[] = mcp_user_exists($pdo, (string)$a); }
     }
 
     $id = 'tsk_' . bin2hex(random_bytes(8));
-    mcp_tx($pdo, function () use ($pdo, $id, $title, $args, $priority, $deadline, $time, $status, $owner, $user, $projId, $leadId, $assignees) {
+    mcp_tx($pdo, function () use ($pdo, $id, $title, $args, $priority, $startDate, $deadline, $time, $status, $owner, $user, $projId, $leadId, $agencyWorkerId, $ticketId, $isLocking, $requiresConclusion, $assignees, $catWrite, $category) {
+        // The category column is named only when the database has it (mcp_task_category_arg checked).
         $pdo->prepare(
-            "INSERT INTO tasks (id, title, description, priority, deadline, deadline_time, status, owner, created_by, related_project_id, related_lead_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        )->execute([$id, $title, $args['description'] ?? null, $priority, $deadline, $time, $status, $owner, $user['name'], $projId, $leadId]);
+            "INSERT INTO tasks (id, title, description, priority, start_date, deadline, deadline_time, status, owner, created_by, related_project_id, related_lead_id, related_agency_worker_id, is_locking, requires_conclusion"
+            . ($catWrite ? ', category' : '') . ")
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?" . ($catWrite ? ', ?' : '') . ")" /* recurring-template: mcp creates normal tasks */
+        )->execute(array_merge([$id, $title, $args['description'] ?? null, $priority, $startDate, $deadline, $time, $status, $owner, $user['name'], $projId, $leadId, $agencyWorkerId, $isLocking, $requiresConclusion], $catWrite ? [$category] : []));
         $ins = $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)");
         foreach (array_unique($assignees) as $a) $ins->execute([$id, $a]);
+        if (!empty($args['tags']) && is_array($args['tags'])) {
+            $insTag = $pdo->prepare("INSERT IGNORE INTO tags (name) VALUES (?)");
+            $insLink = $pdo->prepare("INSERT IGNORE INTO task_tags (task_id, tag_name) VALUES (?, ?)");
+            foreach ($args['tags'] as $tg) {
+                $tg = trim((string)$tg);
+                if ($tg !== '') { $insTag->execute([$tg]); $insLink->execute([$id, $tg]); }
+            }
+        }
+        if ($ticketId !== null) {
+            $pdo->prepare("INSERT IGNORE INTO ticket_task_links (ticket_id, task_id, sync_mode) VALUES (?, ?, 'auto_resolve')")
+                ->execute([$ticketId, $id]);
+        }
+        if ($isLocking && $projId !== null) {
+            $pdo->prepare("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([$projId]);
+        }
     });
     mcp_audit($pdo, $user, 'task_create', "Created task '$title' (ID: $id, deadline: $deadline)");
-    return ['success' => true, 'id' => $id, 'title' => $title, 'status' => $status, 'deadline' => $deadline, 'assignees' => array_values(array_unique($assignees))];
+    require_once __DIR__ . '/task_activity_lib.php';
+    ccrm_migrate_task_activities($pdo);
+    ccrm_record_task_created($pdo, $id, $user['name']);
+    // After the commit, so a rolled-back create never mails anyone.
+    require_once __DIR__ . '/task_reminders.php';
+    ccrm_notify_new_task_assignees($pdo, $id, $user['name']);
+    return ['success' => true, 'id' => $id, 'title' => $title, 'status' => $status, 'deadline' => $deadline, 'assignees' => array_values(array_unique($assignees)), 'category' => $catWrite ? $category : null];
 }
 
 /**
@@ -221,22 +454,53 @@ function mcp_require_conclusion_to_finish(array $row, $incoming): void {
     throw new \InvalidArgumentException("This task requires a conclusion before it can be completed. Pass 'conclusion' with a short note on how it was finished.");
 }
 
+/**
+ * TT2 phase 8 (D10.2, C14): after a committed status change, pause or stop the MCP key user's own
+ * timer on that task (never a start, never anyone else's). A timer failure never fails the task
+ * write that already committed; it is logged and left out of the answer.
+ */
+function mcp_task_status_timer(\PDO $pdo, array $user, string $taskId, string $oldStatus, string $newStatus): ?array {
+    $uid = (string)($user['id'] ?? '');
+    if ($uid === '' || $oldStatus === $newStatus) return null;
+    try {
+        require_once __DIR__ . '/time_status_lib.php';
+        $r = ccrm_tt_task_status_changed($pdo, $taskId, $oldStatus, $newStatus, $uid);
+        return $r['applied'] ? $r : null;
+    } catch (\Throwable $e) {
+        if (function_exists('ccrm_log_exception')) ccrm_log_exception($e);
+        return null;
+    }
+}
+
 function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
+    require_once __DIR__ . '/task_done.php';
     $id = mcp_require_string($args, 'id');
+    $chkKind = $pdo->prepare("SELECT task_kind FROM tasks WHERE id = ? LIMIT 1"); /* recurring-template: template refusal */
+    $chkKind->execute([$id]);
+    if ($chkKind->fetchColumn() === 'recurring') {
+        throw new \InvalidArgumentException("Recurring task templates cannot be updated through MCP: {$id}");
+    }
     // Same visibility rule as the read tools: a caller without tasks.view_all may
     // only touch their own, created and assigned tasks (judged on the stored row,
     // like sync.php's visibleTaskIds check).
     [$scopeSql, $scopeParams] = mcp_task_scope($user);
-    $cur = $pdo->prepare("SELECT status, completed_at, requires_conclusion, conclusion FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+    $cur = $pdo->prepare("SELECT status, priority, deadline, archived, completed_at, requires_conclusion, conclusion FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
     $cur->execute(array_merge([$id], $scopeParams));
     $row = $cur->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Task not found with ID: {$id}");
 
-    $sets = []; $params = []; $newOwner = null;
+    $assStmtBefore = $pdo->prepare("SELECT user_name FROM task_assignees WHERE task_id = ?");
+    $assStmtBefore->execute([$id]);
+    $oldAssMcp = $assStmtBefore->fetchAll(\PDO::FETCH_COLUMN) ?: [];
+
+    $sets = []; $params = []; $newOwner = null; $becameDone = false; $reopened = false;
     $add = function (string $col, $val) use (&$sets, &$params) { $sets[] = "`{$col}` = ?"; $params[] = $val; };
     if (array_key_exists('title', $args)) $add('title', mcp_require_string($args, 'title'));
     if (array_key_exists('description', $args)) $add('description', $args['description']);
     if (array_key_exists('priority', $args)) $add('priority', mcp_enum($args, 'priority', ['low', 'medium', 'high']));
+    if (array_key_exists('start_date', $args)) {
+        $add('start_date', $args['start_date'] === null || $args['start_date'] === '' ? null : mcp_require_date($args, 'start_date'));
+    }
     if (array_key_exists('deadline', $args)) $add('deadline', mcp_require_date($args, 'deadline'));
     if (array_key_exists('deadline_time', $args)) {
         $t = $args['deadline_time'] === null || $args['deadline_time'] === '' ? null : (string)$args['deadline_time'];
@@ -249,54 +513,155 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
         $wasDone = mcp_done_task_state((string)$row['status'], (array)mcp_config_json($pdo, 'TASK_STATES', []));
         $isDone = mcp_done_task_state($status, (array)mcp_config_json($pdo, 'TASK_STATES', []));
         if ($isDone && !$wasDone) {
-            mcp_require_conclusion_to_finish($row, $args['conclusion'] ?? null);
+            $effectiveRow = $row;
+            if (array_key_exists('requires_conclusion', $args)) {
+                $effectiveRow['requires_conclusion'] = !empty($args['requires_conclusion']) ? 1 : 0;
+            }
+            if (array_key_exists('conclusion', $args)) {
+                $effectiveRow['conclusion'] = trim((string)$args['conclusion']);
+            }
+            mcp_require_conclusion_to_finish($effectiveRow, $args['conclusion'] ?? null);
             $add('completed_by', $user['name']); $add('completed_at', date('Y-m-d H:i'));
+            $becameDone = true;
         }
-        if (!$isDone && $wasDone) { $add('completed_by', null); $add('completed_at', null); }
+        if (!$isDone && $wasDone) {
+            $add('completed_by', null); $add('completed_at', null);
+        }
+        require_once __DIR__ . '/project_breakdown_migrations.php';
+        $taskStates = (array)mcp_config_json($pdo, 'TASK_STATES', []);
+        if ($isDone || !ccrm_task_is_initial_state($status, $taskStates)) {
+            $sets[] = "`first_started_at` = COALESCE(`first_started_at`, NOW())";
+        }
+        // A finished task moved to an open state is a reopening (the block above already cleared who finished it); ccrm_task_record_reopen() below logs it and counts it.
+        $reopened = ccrm_task_is_reopened($row, $status, $taskStates);
     }
+    if (array_key_exists('requires_conclusion', $args)) $add('requires_conclusion', !empty($args['requires_conclusion']) ? 1 : 0);
+    if (array_key_exists('is_locking', $args)) $add('is_locking', !empty($args['is_locking']) ? 1 : 0);
     if (array_key_exists('conclusion', $args)) {
         $c = trim((string)$args['conclusion']);
         $add('conclusion', $c === '' ? null : mb_substr($c, 0, 5000));
     }
     if (array_key_exists('owner', $args)) { $newOwner = mcp_user_exists($pdo, mcp_require_string($args, 'owner')); $add('owner', $newOwner); }
-    foreach (['related_project_id' => 'project_id', 'related_lead_id' => 'client_id'] as $col => $arg) {
-        foreach ([$col, $arg] as $k) {
+    foreach (['related_project_id' => 'project_id', 'related_lead_id' => 'client_id', 'related_agency_worker_id' => 'related_agency_worker_id'] as $col => $arg) {
+        foreach ($col === $arg ? [$col] : [$col, $arg] as $k) {
             if (array_key_exists($k, $args)) {
                 $v = $args[$k] === null || $args[$k] === '' ? null : (string)$args[$k];
-                if ($v !== null) mcp_row_exists($pdo, $col === 'related_project_id' ? 'projects' : 'leads', $v, 'Linked record');
+                if ($v !== null) {
+                    $refTable = $col === 'related_project_id' ? 'projects' : ($col === 'related_agency_worker_id' ? 'agency_workers' : 'leads');
+                    mcp_row_exists($pdo, $refTable, $v, 'Linked record');
+                }
                 $add($col, $v);
                 break;
             }
         }
     }
-    if (!$sets) return ['success' => true, 'message' => 'No fields updated'];
+    // Archive instead of delete: MCP never deletes rows; list_tasks hides archived tasks by default.
+    if (array_key_exists('archived', $args)) {
+        $arch = filter_var($args['archived'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($arch === null) throw new \InvalidArgumentException("'archived' must be true or false.");
+        $add('archived', $arch ? 1 : 0);
+    }
+    $ticketId = array_key_exists('ticket_id', $args) ? trim((string)$args['ticket_id']) : null;
+    if ($ticketId !== null && $ticketId !== '') mcp_row_exists($pdo, 'tickets', $ticketId, 'Ticket');
+    [$catWrite, $category] = mcp_task_category_arg($pdo, $args);
+    if ($catWrite) $add('category', $category);
+    $hasTags = !empty($args['tags']) && is_array($args['tags']);
+    if (!$sets && $ticketId === null && !$hasTags) return ['success' => true, 'message' => 'No fields updated'];
     $params[] = $id;
-    mcp_tx($pdo, function () use ($pdo, $sets, $params, $id, $newOwner) {
-        $pdo->prepare("UPDATE tasks SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
+    require_once __DIR__ . '/task_activity_lib.php';
+    ccrm_migrate_task_activities($pdo);
+    mcp_tx($pdo, function () use ($pdo, $sets, $params, $id, $newOwner, $becameDone, $reopened, $ticketId, $args, $hasTags, $row, $oldAssMcp, $user) {
+        if ($sets) {
+            $pdo->prepare("UPDATE tasks SET " . implode(', ', $sets) . " WHERE id = ? AND " . ccrm_sql_real_tasks())->execute($params);
+        }
+        if ($reopened) {
+            try { ccrm_task_record_reopen($pdo, $id, (string)($user['name'] ?? '')); }
+            catch (\PDOException $e) { // only a column not migrated yet is tolerated (the update stands); a deadlock must roll back
+                if (stripos($e->getMessage(), 'Unknown column') === false) throw $e;
+                if (function_exists('ccrm_log_exception')) ccrm_log_exception($e);
+            }
+        }
         // The assignee list is the visibility rule, so a new owner must be on it.
         if ($newOwner !== null) $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)")->execute([$id, $newOwner]);
+        if ($hasTags) {
+            $insTag = $pdo->prepare("INSERT IGNORE INTO tags (name) VALUES (?)");
+            $insLink = $pdo->prepare("INSERT IGNORE INTO task_tags (task_id, tag_name) VALUES (?, ?)");
+            foreach ($args['tags'] as $tg) {
+                $tg = trim((string)$tg);
+                if ($tg !== '') { $insTag->execute([$tg]); $insLink->execute([$id, $tg]); }
+            }
+        }
+        if ($ticketId !== null && $ticketId !== '') {
+            $pdo->prepare("INSERT IGNORE INTO ticket_task_links (ticket_id, task_id, sync_mode) VALUES (?, ?, 'auto_resolve')")
+                ->execute([$ticketId, $id]);
+        }
+        $afterAssMcp = $oldAssMcp;
+        if ($newOwner !== null && !in_array($newOwner, $afterAssMcp, true)) {
+            $afterAssMcp[] = $newOwner;
+        }
+        ccrm_record_task_changes($pdo, $id, [
+            'status' => $row['status'] ?? null,
+            'priority' => $row['priority'] ?? null,
+            'deadline' => $row['deadline'] ?? null,
+            'archived' => !empty($row['archived']),
+            'conclusion' => $row['conclusion'] ?? null,
+            'assignees' => $oldAssMcp,
+        ], [
+            'status' => array_key_exists('status', $args) ? (string)$args['status'] : ($row['status'] ?? null),
+            'priority' => array_key_exists('priority', $args) ? (string)$args['priority'] : ($row['priority'] ?? null),
+            'deadline' => array_key_exists('deadline', $args) ? (string)$args['deadline'] : ($row['deadline'] ?? null),
+            'archived' => array_key_exists('archived', $args) ? (bool)filter_var($args['archived'], FILTER_VALIDATE_BOOLEAN) : !empty($row['archived']),
+            'conclusion' => array_key_exists('conclusion', $args) ? trim((string)$args['conclusion']) : ($row['conclusion'] ?? null),
+            'assignees' => $afterAssMcp,
+        ], $user['name']);
+        if (function_exists('mcp_crm_plus_bump_locking_projects')) mcp_crm_plus_bump_locking_projects($pdo, $id);
+        if ($becameDone && function_exists('mcp_crm_plus_resolve_linked_tickets')) mcp_crm_plus_resolve_linked_tickets($pdo, $id);
     });
     mcp_audit($pdo, $user, 'task_update', "Updated task $id");
-    return ['success' => true, 'id' => $id];
+    $out = ['success' => true, 'id' => $id];
+    if (isset($status) && $status !== (string)$row['status']) {
+        $timer = mcp_task_status_timer($pdo, $user, $id, (string)$row['status'], $status);
+        if ($timer !== null) $out['timer'] = $timer;
+    }
+    return $out;
 }
 
 function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
+    $chkKind = $pdo->prepare("SELECT task_kind FROM tasks WHERE id = ? LIMIT 1"); /* recurring-template: template refusal */
+    $chkKind->execute([$id]);
+    if ($chkKind->fetchColumn() === 'recurring') {
+        throw new \InvalidArgumentException("Recurring task templates cannot be completed through MCP: {$id}");
+    }
     $done = mcp_task_done_state($pdo);
     // Judged on the stored row, like sync.php: without tasks.view_all only the
     // caller's own, created and assigned tasks may be completed.
     [$scopeSql, $scopeParams] = mcp_task_scope($user);
-    $chk = $pdo->prepare("SELECT requires_conclusion, conclusion FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+    $chk = $pdo->prepare("SELECT status, requires_conclusion, conclusion FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
     $chk->execute(array_merge([$id], $scopeParams));
     $row = $chk->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Task not found with ID: {$id}");
     // `note` is the older name of the same field.
     $conclusion = trim((string)($args['conclusion'] ?? $args['note'] ?? ''));
     mcp_require_conclusion_to_finish($row, $conclusion);
-    $stmt = $pdo->prepare("UPDATE tasks SET status = ?, completed_by = ?, completed_at = ?, conclusion = COALESCE(?, conclusion) WHERE id = ?");
+    require_once __DIR__ . '/task_activity_lib.php';
+    ccrm_migrate_task_activities($pdo);
+    $stmt = $pdo->prepare("UPDATE tasks SET status = ?, completed_by = ?, completed_at = ?, conclusion = COALESCE(?, conclusion) WHERE id = ? AND " . ccrm_sql_real_tasks());
     $stmt->execute([$done, $user['name'], date('Y-m-d H:i'), $conclusion === '' ? null : mb_substr($conclusion, 0, 5000), $id]);
+    ccrm_record_task_changes($pdo, $id, [
+        'status' => $row['status'] ?? null,
+        'conclusion' => $row['conclusion'] ?? null,
+    ], [
+        'status' => $done,
+        'conclusion' => $conclusion !== '' ? mb_substr($conclusion, 0, 5000) : ($row['conclusion'] ?? null),
+    ], $user['name']);
+    if (function_exists('mcp_crm_plus_bump_locking_projects')) mcp_crm_plus_bump_locking_projects($pdo, $id);
+    if (function_exists('mcp_crm_plus_resolve_linked_tickets')) mcp_crm_plus_resolve_linked_tickets($pdo, $id);
     mcp_audit($pdo, $user, 'task_complete', "Marked task $id as done");
-    return ['success' => true, 'id' => $id, 'status' => $done, 'completed_by' => $user['name']];
+    $out = ['success' => true, 'id' => $id, 'status' => $done, 'completed_by' => $user['name']];
+    $timer = mcp_task_status_timer($pdo, $user, $id, (string)($row['status'] ?? ''), $done);
+    if ($timer !== null) $out['timer'] = $timer;
+    return $out;
 }
 
 // ---------------------------------------------------------------------------
@@ -306,8 +671,14 @@ function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
 function mcp_do_list_clients(\PDO $pdo, array $args): array {
     $profiles = mcp_client_profiles($pdo, ['include_archived' => !empty($args['include_archived'])]);
     $term = isset($args['search']) ? strtolower(trim((string)$args['search'])) : '';
+    // A profile's updated_at is the newest of its records (mcp_client_profiles): the window applies to that moment.
+    $from = mcp_optional_moment($args, 'updated_from', false);
+    $to = mcp_optional_moment($args, 'updated_to', true);
     $out = [];
     foreach ($profiles as $p) {
+        $ts = $p['updated_at__ts'] ?? null;
+        if ($from !== null && ($ts === null || $ts < $from)) continue;
+        if ($to !== null && ($ts === null || $ts >= $to)) continue;
         if (!empty($args['city']) && strtolower((string)$p['city']) !== strtolower((string)$args['city'])) continue;
         if (!empty($args['client_type']) && $p['client_type'] !== $args['client_type']) continue;
         if ($term !== '') {
@@ -318,11 +689,19 @@ function mcp_do_list_clients(\PDO $pdo, array $args): array {
         $p['url'] = mcp_client_url($pdo, (string)$p['name']);
         $out[] = $p;
     }
-    $sort = in_array($args['sort_by'] ?? '', ['name', 'created_at', 'value'], true) ? $args['sort_by'] : 'name';
-    $key = $sort === 'value' ? 'total_value' : $sort;
-    $dir = strtolower((string)($args['sort_order'] ?? '')) === 'desc' ? -1 : 1;
-    usort($out, fn($a, $b) => $dir * (is_numeric($a[$key]) ? $a[$key] <=> $b[$key] : strcasecmp((string)$a[$key], (string)$b[$key])));
-    return array_slice($out, max(0, (int)($args['offset'] ?? 0)), mcp_limit($args));
+    $sort = in_array($args['sort_by'] ?? '', ['name', 'created_at', 'value', 'updated_at'], true) ? $args['sort_by'] : 'name';
+    $key = ['value' => 'total_value', 'updated_at' => 'updated_at__ts'][$sort] ?? $sort;
+    // name, value and created_at ascend (oldest first, as list_clients always did); updated_at starts with the newest.
+    $dir = $sort === 'updated_at' ? -1 : 1;
+    $order = strtolower((string)($args['sort_order'] ?? ''));
+    if ($order === 'desc') $dir = -1; elseif ($order === 'asc') $dir = 1;
+    // id breaks ties, so a row never moves between pages.
+    usort($out, function ($a, $b) use ($key, $dir) {
+        $c = ($key === 'total_value' || $key === 'updated_at__ts') ? ((float)($a[$key] ?? 0) <=> (float)($b[$key] ?? 0)) : strcasecmp((string)$a[$key], (string)$b[$key]);
+        return $c !== 0 ? $dir * $c : strcmp((string)$a['id'], (string)$b['id']);
+    });
+    $page = array_slice($out, max(0, (int)($args['offset'] ?? 0)), mcp_limit($args));
+    return array_map('mcp_row_moments', mcp_profiles_activity($pdo, $page));
 }
 
 function mcp_do_create_client(\PDO $pdo, array $user, array $args): array {
@@ -331,23 +710,51 @@ function mcp_do_create_client(\PDO $pdo, array $user, array $args): array {
     $dup->execute([$name]);
     if ($existing = $dup->fetchColumn()) throw new \Exception("A client named '{$name}' already exists ({$existing}).");
 
+    $owner = !empty($args['owner']) ? mcp_user_exists($pdo, (string)$args['owner']) : $user['name'];
+    $clientCategoryId = !empty($args['client_category_id']) ? trim((string)$args['client_category_id']) : null;
+    if ($clientCategoryId !== null) mcp_row_exists($pdo, 'client_categories', $clientCategoryId, 'Client category');
+    $companyClientId = !empty($args['company_client_id']) ? trim((string)$args['company_client_id']) : null;
+    if ($companyClientId !== null) mcp_row_exists($pdo, 'leads', $companyClientId, 'Company client');
+
+    $first = array_key_exists('contact_first_name', $args) ? (trim((string)$args['contact_first_name']) ?: null) : null;
+    $last = array_key_exists('contact_last_name', $args) ? (trim((string)$args['contact_last_name']) ?: null) : null;
+    $contactPerson = $args['contact_person'] ?? (($first !== null || $last !== null) ? trim(($first ?? '') . ' ' . ($last ?? '')) : null);
+    $ticketEmails = null;
+    if (array_key_exists('ticket_allowed_emails', $args)) {
+        $rawList = is_array($args['ticket_allowed_emails']) ? $args['ticket_allowed_emails'] : [$args['ticket_allowed_emails']];
+        $cleanList = array_values(array_filter(array_map(fn($x) => trim((string)$x), $rawList)));
+        $ticketEmails = $cleanList ? json_encode($cleanList, JSON_UNESCAPED_UNICODE) : null;
+    }
+    $cfJson = null;
+    if (!empty($args['custom_fields']) && is_array($args['custom_fields']) && function_exists('mcp_crm_plus_merge_lead_custom_fields')) {
+        $mergedCf = mcp_crm_plus_merge_lead_custom_fields($pdo, $args['custom_fields'], []);
+        $cfJson = $mergedCf ? json_encode($mergedCf, JSON_UNESCAPED_UNICODE) : null;
+    }
+
     // Same record the Clients register creates: id client-*, an accepted (won) stage, a registration note.
     $id = 'client-' . (int)round(microtime(true) * 1000);
     $won = mcp_won_lead_state($pdo);
-    mcp_tx($pdo, function () use ($pdo, $user, $args, $id, $name, $won) {
+    mcp_tx($pdo, function () use ($pdo, $user, $args, $id, $name, $won, $owner, $clientCategoryId, $companyClientId, $first, $last, $contactPerson, $ticketEmails, $cfJson) {
         $pdo->prepare(
-            "INSERT INTO leads (id, name, company_id, tax_id, vat_id, contact_person, email, phone, street, city, postal_code, country, interest_note, status, client_type, source, owner, value, adjustment, rating, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ai_assistant', ?, 0, 0, 5, ?)"
+            "INSERT INTO leads (id, name, company_id, tax_id, vat_id, website, contact_person, contact_first_name, contact_last_name, email, phone, street, city, postal_code, country, interest_note, status, client_type, division, client_category_id, price_level_id, company_client_id, contact_role, ticket_allowed_emails, custom_fields_json, source, owner, value, adjustment, rating, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ai_assistant', ?, 0, ?, 5, ?)"
         )->execute([
-            $id, $name, $args['company_id'] ?? null, $args['tax_id'] ?? null, $args['vat_id'] ?? null, $args['contact_person'] ?? null,
-            $args['email'] ?? null, $args['phone'] ?? null, $args['street'] ?? null, $args['city'] ?? null, $args['postal_code'] ?? null,
-            $args['country'] ?? 'Slovakia', $args['notes'] ?? null, $won,
-            mcp_enum($args, 'client_type', ['business', 'person', 'partner'], 'business'), $user['name'], date('Y-m-d'),
+            $id, $name, $args['company_id'] ?? null, $args['tax_id'] ?? null, $args['vat_id'] ?? null, $args['website'] ?? null,
+            $contactPerson, $first, $last, $args['email'] ?? null, $args['phone'] ?? null,
+            $args['street'] ?? null, $args['city'] ?? null, $args['postal_code'] ?? null, $args['country'] ?? 'Slovakia',
+            $args['notes'] ?? null, $won, mcp_enum($args, 'client_type', ['business', 'person', 'partner'], 'business'),
+            !empty($args['division']) ? trim((string)$args['division']) : null, $clientCategoryId,
+            !empty($args['price_level_id']) ? trim((string)$args['price_level_id']) : null, $companyClientId,
+            !empty($args['contact_role']) ? trim((string)$args['contact_role']) : null, $ticketEmails, $cfJson,
+            $owner, (float)($args['adjustment'] ?? 0), date('Y-m-d'),
         ]);
+        if ($first === null && $last === null) {
+            ccrm_set_contact_parts_from_person($pdo, $id);
+        }
         $pdo->prepare(
             "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-             VALUES (?, ?, 'note', NOW(), 'Client Registered', 'Client profile registered via MCP.', ?)"
-        )->execute([mcp_new_id('ev_'), $id, $user['name']]);
+             VALUES (?, ?, 'note', ?, 'Client Registered', 'Client profile registered via MCP.', ?)"
+        )->execute([mcp_new_id('ev_'), $id, mcp_now_local(), $user['name']]);
     });
     mcp_audit($pdo, $user, 'client_create', "Created client '$name' (IČO: " . ($args['company_id'] ?? '') . ", ID: $id)");
     return ['success' => true, 'id' => $id, 'name' => $name, 'company_id' => $args['company_id'] ?? null];
@@ -397,16 +804,26 @@ function mcp_do_create_invoice(\PDO $pdo, array $user, array $args): array {
         $vat = mcp_number(['v' => $item['vat_rate'] ?? $defaultVat], 'v', true, 0, 100);
         $disc = mcp_number(['v' => $item['discount_pct'] ?? 0], 'v', true, 0, 100);
         $net = round($qty * $price * (1 - $disc / 100), 2);
-        $lines[] = ['name' => $name, 'qty' => $qty, 'price' => $price, 'vat' => $vat, 'disc' => $disc, 'net' => $net];
+        $lines[] = [
+            'name' => $name,
+            'description' => isset($item['description']) && trim((string)$item['description']) !== '' ? trim((string)$item['description']) : null,
+            'unit' => isset($item['unit']) && trim((string)$item['unit']) !== '' ? mb_substr(trim((string)$item['unit']), 0, 20) : 'ks',
+            'sku' => isset($item['sku']) && trim((string)$item['sku']) !== '' ? mb_substr(trim((string)$item['sku']), 0, 100) : null,
+            'warehouse_item_id' => !empty($item['warehouse_item_id']) ? (string)$item['warehouse_item_id'] : null,
+            'qty' => $qty, 'price' => $price, 'vat' => $vat, 'disc' => $disc, 'net' => $net,
+        ];
         $subtotal += $net;
         $vatTotal += $net * ($vat / 100);
     }
     $subtotal = round($subtotal, 2); $vatTotal = round($vatTotal, 2); $total = round($subtotal + $vatTotal, 2);
+    $projectId = !empty($args['project_id']) ? trim((string)$args['project_id']) : null;
+    if ($projectId !== null) mcp_row_exists($pdo, 'projects', $projectId, 'Project');
+    $notes = isset($args['notes']) && trim((string)$args['notes']) !== '' ? trim((string)$args['notes']) : null;
 
     $year = (int)substr($issuedAt, 0, 4);
     $invId = 'inv_' . bin2hex(random_bytes(8));
 
-    $result = mcp_with_lock($pdo, 'ccrm_invoice_number', function () use ($pdo, $user, $args, $clientId, $client, $title, $issuedAt, $dueDate, $currency, $lines, $subtotal, $vatTotal, $total, $year, $invId) {
+    $result = mcp_with_lock($pdo, 'ccrm_invoice_number', function () use ($pdo, $user, $args, $clientId, $client, $title, $notes, $projectId, $issuedAt, $dueDate, $currency, $lines, $subtotal, $vatTotal, $total, $year, $invId) {
         if (!empty($args['document_number'])) {
             $docNum = trim((string)$args['document_number']);
             $dup = $pdo->prepare("SELECT 1 FROM invoices_offers WHERE document_number = ? LIMIT 1");
@@ -417,20 +834,20 @@ function mcp_do_create_invoice(\PDO $pdo, array $user, array $args): array {
         }
         $clientName = $client['name'] ?: ('Client ' . $clientId);
 
-        mcp_tx($pdo, function () use ($pdo, $user, $clientId, $client, $clientName, $title, $docNum, $issuedAt, $dueDate, $currency, $lines, $subtotal, $vatTotal, $total, $invId) {
+        mcp_tx($pdo, function () use ($pdo, $user, $clientId, $client, $clientName, $title, $notes, $projectId, $docNum, $issuedAt, $dueDate, $currency, $lines, $subtotal, $vatTotal, $total, $invId) {
             $pdo->prepare(
-                "INSERT INTO invoices_offers (id, document_number, type, mode, lead_id, client_id, client_name, client_email, client_phone, client_street, client_city, client_postal_code, client_country, client_ico, client_dic, client_icdph, title, subject, subtotal, vat_amount, total_price, currency, status, status_changed_at, issued_at, due_date, created_by)
-                 VALUES (?, ?, 'invoice', 'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)"
+                "INSERT INTO invoices_offers (id, document_number, type, mode, lead_id, client_id, client_name, client_email, client_phone, client_street, client_city, client_postal_code, client_country, client_ico, client_dic, client_icdph, title, subject, closing_note, subtotal, vat_amount, total_price, currency, status, status_changed_at, issued_at, due_date, created_by)
+                 VALUES (?, ?, 'invoice', 'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)"
             )->execute([
                 $invId, $docNum, $clientId, $clientId, $clientName, $client['email'], $client['phone'], $client['street'], $client['city'],
                 $client['postal_code'], $client['country'] ?: 'Slovakia', $client['company_id'], $client['tax_id'], $client['vat_id'],
-                $title, $title, $subtotal, $vatTotal, $total, $currency, mcp_today(), $issuedAt, $dueDate, $user['name'],
+                $title, $title, $notes, $subtotal, $vatTotal, $total, $currency, mcp_today(), $issuedAt, $dueDate, $user['name'],
             ]);
             $ins = $pdo->prepare(
-                "INSERT INTO invoice_offer_items (id, invoice_offer_id, name, quantity, unit, unit_price, vat_rate, discount_pct, total_price)
-                 VALUES (?, ?, ?, ?, 'ks', ?, ?, ?, ?)"
+                "INSERT INTO invoice_offer_items (id, invoice_offer_id, warehouse_item_id, sku, name, description, quantity, unit, unit_price, vat_rate, discount_pct, total_price)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
-            foreach ($lines as $l) $ins->execute([mcp_new_id('it_'), $invId, $l['name'], $l['qty'], $l['price'], $l['vat'], $l['disc'], $l['net']]);
+            foreach ($lines as $l) $ins->execute([mcp_new_id('it_'), $invId, $l['warehouse_item_id'], $l['sku'], $l['name'], $l['description'], $l['qty'], $l['unit'], $l['price'], $l['vat'], $l['disc'], $l['net']]);
 
             // The linked ledger movement the app derives from every live invoice: pending, nothing received.
             // Skipped when the same invoice number was already entered by hand (double-entry guard).
@@ -438,10 +855,10 @@ function mcp_do_create_invoice(\PDO $pdo, array $user, array $args): array {
             $hand->execute([$docNum]);
             if (!$hand->fetchColumn()) {
                 $pdo->prepare(
-                    "INSERT INTO financial_records (id, type, subtype, title, description, amount_planned, amount_real, currency, status, issue_date, due_date, client_id, invoice_number, tax_rate, payment_method, created_by)
-                     VALUES (?, 'income', 'invoice', ?, ?, ?, 0, ?, 'pending', ?, ?, ?, ?, ?, 'bank_transfer', ?)"
+                    "INSERT INTO financial_records (id, type, subtype, title, description, amount_planned, amount_real, currency, status, issue_date, due_date, project_id, client_id, invoice_number, tax_rate, payment_method, created_by)
+                     VALUES (?, 'income', 'invoice', ?, ?, ?, 0, ?, 'pending', ?, ?, ?, ?, ?, ?, 'bank_transfer', ?)"
                 )->execute([
-                    'fr-inv-' . $invId, $docNum . ' — ' . $clientName, $title, $total, $currency, $issuedAt, $dueDate, $clientId, $docNum,
+                    'fr-inv-' . $invId, $docNum . ' — ' . $clientName, $title, $total, $currency, $issuedAt, $dueDate, $projectId, $clientId, $docNum,
                     $subtotal > 0 ? round($vatTotal / $subtotal * 100) : ccrm_default_vat_rate($pdo), $user['name'],
                 ]);
             }
@@ -483,6 +900,9 @@ function mcp_do_update_invoice_status(\PDO $pdo, array $user, array $args): arra
             throw new \InvalidArgumentException("A {$doc['status']} document cannot be changed through MCP.");
         }
     } else {
+        if (!mcp_can_edit('financial')) {
+            throw new \Exception("Updating invoice or proforma status requires 'financial' edit permission.");
+        }
         // Proformas and invoices have a configurable list of their own (Price offers → Settings →
         // Invoice statuses), judged by group exactly like an offer's: approving, invoicing and
         // settling money change the books, so MCP may only move a document between draft, open
@@ -540,12 +960,16 @@ function mcp_do_record_expense(\PDO $pdo, array $user, array $args): array {
     $clientId = !empty($args['client_id']) ? (string)$args['client_id'] : null;
     if ($projId !== null) mcp_row_exists($pdo, 'projects', $projId, 'Project');
     if ($clientId !== null) mcp_row_exists($pdo, 'leads', $clientId, 'Client/lead');
+    $desc = isset($args['description']) && trim((string)$args['description']) !== '' ? trim((string)$args['description']) : null;
+    $taxRate = mcp_number($args, 'tax_rate', false, 0, 100) ?? ccrm_default_vat_rate($pdo);
+    $payMethod = isset($args['payment_method']) && trim((string)$args['payment_method']) !== '' ? trim((string)$args['payment_method']) : 'bank_transfer';
+    $invNum = isset($args['invoice_number']) && trim((string)$args['invoice_number']) !== '' ? trim((string)$args['invoice_number']) : null;
 
     $id = 'fin_' . bin2hex(random_bytes(8));
     $pdo->prepare(
-        "INSERT INTO financial_records (id, type, subtype, title, category_id, amount_planned, amount_real, currency, status, issue_date, due_date, paid_date, project_id, client_id, created_by)
-         VALUES (?, 'expense', 'expense', ?, ?, ?, 0, ?, ?, ?, ?, NULL, ?, ?, ?)"
-    )->execute([$id, $title, $catId, $amount, $currency, $status, $issue, $due, $projId, $clientId, $user['name']]);
+        "INSERT INTO financial_records (id, type, subtype, title, description, category_id, amount_planned, amount_real, currency, status, issue_date, due_date, paid_date, payment_method, project_id, client_id, invoice_number, tax_rate, created_by)
+         VALUES (?, 'expense', 'expense', ?, ?, ?, ?, 0, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)"
+    )->execute([$id, $title, $desc, $catId, $amount, $currency, $status, $issue, $due, $payMethod, $projId, $clientId, $invNum, $taxRate, $user['name']]);
     mcp_audit($pdo, $user, 'expense_record', "Recorded {$status} expense '{$title}' for {$amount} {$currency}");
     return ['success' => true, 'id' => $id, 'title' => $title, 'amount' => $amount, 'status' => $status];
 }
@@ -626,10 +1050,11 @@ function mcp_do_adjust_stock(\PDO $pdo, array $user, array $args): array {
 
             $docNum = mcp_next_document_number($pdo, 'warehouse_movements', 'document_number', $prefix, (int)date('Y'), 4);
             $movId = 'mov-' . bin2hex(random_bytes(6));
+            // issued_at is app-local wall time (the app writes nowLocalDateTime()), not MySQL NOW() (UTC on a server).
             $pdo->prepare(
                 "INSERT INTO warehouse_movements (id, document_number, type, status, warehouse_id, total_cost_value, total_sell_value, total_profit_value, created_by, note, issued_at)
-                 VALUES (?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?, NOW())"
-            )->execute([$movId, $docNum, $type, $whId, round($costValue, 2), round($sellValue, 2), $type === 'outward' ? round($sellValue - $costValue, 2) : 0, $user['email'], trim("Reason: {$reason}. {$notes}")]);
+                 VALUES (?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?, ?)"
+            )->execute([$movId, $docNum, $type, $whId, round($costValue, 2), round($sellValue, 2), $type === 'outward' ? round($sellValue - $costValue, 2) : 0, $user['email'], trim("Reason: {$reason}. {$notes}"), mcp_now_local()]);
             $pdo->prepare(
                 "INSERT INTO warehouse_movement_items (id, movement_id, item_id, quantity, unit_purchase_price, unit_sell_price, total_price, note)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -674,9 +1099,12 @@ function mcp_do_record_salary_payout(\PDO $pdo, array $user, array $args): array
     $ex->execute([$empId, $periodKey]);
     $existing = $ex->fetch(\PDO::FETCH_ASSOC);
     $itemName = 'Base salary';
+    // A closed month (first paid in full, not reopened by an admin) is not changed from here
+    $hasClosedAt = ccrm_column_exists($pdo, 'employee_salaries', 'closed_at');
     if ($existing) {
-        if ($existing['status'] === 'paid') {
-            throw new \InvalidArgumentException("The {$periodKey} payout for this employee is already paid; correct it in the app.");
+        $isClosed = $hasClosedAt ? !empty($existing['closed_at']) : $existing['status'] === 'paid';
+        if ($isClosed) {
+            throw new \InvalidArgumentException("The {$periodKey} payout for this employee is already paid and the month is closed; correct it in the app.");
         }
         $items = json_decode((string)$existing['items_json'], true);
         if (is_array($items) && (count($items) > 1 || (count($items) === 1 && ($items[0]['categoryId'] ?? 'base') !== 'base'))) {
@@ -686,7 +1114,17 @@ function mcp_do_record_salary_payout(\PDO $pdo, array $user, array $args): array
     }
 
     $salId = $existing['id'] ?? ('sal-' . $empId . '-' . $periodKey);
-    $status = ($totalPaid >= $totalSalary && $totalSalary > 0) ? 'paid' : ($totalPaid > 0 ? 'partially_paid' : 'pending');
+    // Paid against Cena práce once the payslip is in, otherwise the gross.
+    $laborCost = array_key_exists('labor_cost', $args)
+        ? ($args['labor_cost'] === null || $args['labor_cost'] === '' ? null : mcp_number($args, 'labor_cost', true, 0, 100000000))
+        : ($existing['labor_cost'] ?? null);
+    $netPay = array_key_exists('net_pay', $args)
+        ? ($args['net_pay'] === null || $args['net_pay'] === '' ? null : mcp_number($args, 'net_pay', true, 0, 100000000))
+        : ($existing['net_pay'] ?? null);
+    $due = ccrm_salary_due(['labor_cost' => $laborCost, 'total_salary' => $totalSalary]);
+    $status = ccrm_salary_status($due, $totalPaid);
+    // The month closes the first time it becomes paid in full
+    $closedAt = ($hasClosedAt && $status === 'paid' && ($existing['status'] ?? null) !== 'paid') ? date('Y-m-d H:i:s') : null;
 
     if (!$dueDate) {
         $dueDay = (int)($emp['salary_due_day'] ?: $defaults['dueDay']);
@@ -699,20 +1137,22 @@ function mcp_do_record_salary_payout(\PDO $pdo, array $user, array $args): array
     $autoExpense = $emp['auto_expense'] !== null ? ((int)$emp['auto_expense'] === 1) : $defaults['autoExpense'];
     $finId = $existing['financial_record_id'] ?? null;
 
-    mcp_tx($pdo, function () use ($pdo, $user, $emp, $empId, $periodKey, $year, $month, $totalSalary, $totalPaid, $status, $dueDate, $payDate, $method, $args, $salId, $itemName, $autoExpense, $defaults, &$finId) {
-        if ($autoExpense && ($totalSalary > 0 || $totalPaid > 0)) {
+    mcp_tx($pdo, function () use ($pdo, $user, $emp, $empId, $periodKey, $year, $month, $totalSalary, $totalPaid, $laborCost, $netPay, $due, $status, $closedAt, $dueDate, $payDate, $method, $args, $salId, $itemName, $autoExpense, $defaults, &$finId) {
+        if ($autoExpense && ($due > 0 || $totalPaid > 0)) {
             $catId = $emp['expense_category_id'] ?: $defaults['expenseCategoryId'];
             $finId = $finId ?: ('fr-sal-' . $salId);
-            $frStatus = $totalPaid >= $totalSalary && $totalSalary > 0 ? 'paid' : ($totalPaid > 0 ? 'partially_paid' : 'planned');
+            $frStatus = $status === 'pending' ? 'planned' : $status;
+            // Like sync.php: amounts, status and dates follow the payroll month; title and category
+            // are set when the expense is created only.
             $pdo->prepare(
                 "INSERT INTO financial_records (id, type, subtype, title, description, category_id, amount_planned, amount_real, currency, status, issue_date, due_date, paid_date, payment_method, created_by)
                  VALUES (?, 'expense', 'salary', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                 ON DUPLICATE KEY UPDATE title = VALUES(title), description = VALUES(description), category_id = VALUES(category_id),
+                 ON DUPLICATE KEY UPDATE
                     amount_planned = VALUES(amount_planned), amount_real = VALUES(amount_real), status = VALUES(status),
                     due_date = VALUES(due_date), paid_date = VALUES(paid_date), payment_method = VALUES(payment_method)"
             )->execute([
                 $finId, "Salary: {$emp['name']} ({$periodKey})", "Monthly payroll salary payout for {$emp['name']}", $catId,
-                $totalSalary, $totalPaid, mcp_currency($pdo), $frStatus, sprintf('%04d-%02d-01', $year, $month), $dueDate,
+                $due, $totalPaid, mcp_currency($pdo), $frStatus, sprintf('%04d-%02d-01', $year, $month), $dueDate,
                 $totalPaid > 0 ? $payDate : null, $method, $user['email'],
             ]);
         } else {
@@ -720,37 +1160,69 @@ function mcp_do_record_salary_payout(\PDO $pdo, array $user, array $args): array
         }
         $items = json_encode([['categoryId' => 'base', 'categoryName' => $itemName, 'salary' => $totalSalary, 'paid' => $totalPaid]], JSON_UNESCAPED_UNICODE);
         $pdo->prepare(
-            "INSERT INTO employee_salaries (id, employee_id, period_type, period_key, year, period_number, items_json, total_salary, total_paid, status, due_date, payment_date, payment_method, financial_record_id, note)
-             VALUES (?, ?, 'monthly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO employee_salaries (id, employee_id, period_type, period_key, year, period_number, items_json, total_salary, total_paid, labor_cost, net_pay, status, due_date, payment_date, payment_method, financial_record_id, note)
+             VALUES (?, ?, 'monthly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE items_json = VALUES(items_json), total_salary = VALUES(total_salary), total_paid = VALUES(total_paid),
-                status = VALUES(status), due_date = VALUES(due_date), payment_date = VALUES(payment_date), payment_method = VALUES(payment_method),
+                labor_cost = VALUES(labor_cost), net_pay = VALUES(net_pay), status = VALUES(status), due_date = VALUES(due_date), payment_date = VALUES(payment_date), payment_method = VALUES(payment_method),
                 financial_record_id = VALUES(financial_record_id), note = VALUES(note)"
-        )->execute([$salId, $empId, $periodKey, $year, $month, $items, $totalSalary, $totalPaid, $status, $dueDate, $payDate, $method, $finId, $args['note'] ?? null]);
+        )->execute([$salId, $empId, $periodKey, $year, $month, $items, $totalSalary, $totalPaid, $laborCost, $netPay, $status, $dueDate, $payDate, $method, $finId, $args['note'] ?? null]);
+        if ($closedAt !== null) {
+            $pdo->prepare("UPDATE employee_salaries SET closed_at = ?, closed_by = ? WHERE id = ? AND closed_at IS NULL")
+                ->execute([$closedAt, $user['email'] ?? null, $salId]);
+        }
     });
 
-    mcp_audit($pdo, $user, 'record_salary_payout', "Recorded salary payout {$salId} for employee {$empId} ({$periodKey}): {$totalPaid} of {$totalSalary}");
-    return ['success' => true, 'id' => $salId, 'status' => $status, 'total_salary' => $totalSalary, 'total_paid' => $totalPaid, 'financial_record_id' => $finId, 'due_date' => $dueDate];
+    mcp_audit($pdo, $user, 'record_salary_payout', "Recorded salary payout {$salId} for employee {$empId} ({$periodKey}): {$totalPaid} of {$due} due (gross {$totalSalary})");
+    return ['success' => true, 'id' => $salId, 'status' => $status, 'total_salary' => $totalSalary, 'labor_cost' => $laborCost, 'net_pay' => $netPay, 'amount_due' => $due, 'total_paid' => $totalPaid, 'financial_record_id' => $finId, 'due_date' => $dueDate];
 }
 
 // ---------------------------------------------------------------------------
 // Vacations
 // ---------------------------------------------------------------------------
 
+function mcp_working_days_between(\PDO $pdo, ?string $workCountry, string $start, string $end): int {
+    require_once __DIR__ . '/holidays_lib.php';
+    $country = ($workCountry === 'SK' || $workCountry === 'HU') ? $workCountry : ccrm_holiday_company_country($pdo);
+    $hols = [];
+    for ($y = (int)substr($start, 0, 4); $y <= (int)substr($end, 0, 4); $y++) {
+        foreach (ccrm_holidays_year($pdo, $country, $y, false)['days'] as $d) {
+            $hols[$d['date']] = true;
+        }
+    }
+    $count = 0;
+    $cur = new \DateTimeImmutable($start, new \DateTimeZone('UTC'));
+    $last = new \DateTimeImmutable($end, new \DateTimeZone('UTC'));
+    while ($cur <= $last) {
+        $iso = $cur->format('Y-m-d');
+        if (ccrm_holiday_is_weekday($iso) && !isset($hols[$iso])) $count++;
+        $cur = $cur->modify('+1 day');
+    }
+    return $count;
+}
+
 function mcp_do_record_vacation(\PDO $pdo, array $user, array $args): array {
     $empId = mcp_require_string($args, 'employee_id');
-    mcp_row_exists($pdo, 'employees', $empId, 'Employee');
+    $empStmt = $pdo->prepare("SELECT id, work_country FROM employees WHERE id = ? LIMIT 1");
+    $empStmt->execute([$empId]);
+    $empRow = $empStmt->fetch(\PDO::FETCH_ASSOC);
+    if (!$empRow) throw new \InvalidArgumentException("Employee not found: {$empId}");
     $start = mcp_require_date($args, 'start_date');
     $end = mcp_require_date($args, 'end_date');
     if ($end < $start) throw new \InvalidArgumentException("'end_date' cannot be before 'start_date'.");
     $spanDays = (int)((strtotime($end) - strtotime($start)) / 86400) + 1;
-    $days = mcp_number($args, 'days_count', false, 0.5, 366) ?? (float)$spanDays;
+    if (array_key_exists('days_count', $args) && $args['days_count'] !== null && $args['days_count'] !== '') {
+        $days = mcp_number($args, 'days_count', true, 0.5, 366);
+    } else {
+        $days = (float)max(0, mcp_working_days_between($pdo, $empRow['work_country'] ?? null, $start, $end));
+        if ($days < 0.5) throw new \InvalidArgumentException("No working days in range {$start}..{$end}; pass 'days_count' explicitly if intentional.");
+    }
     if ($days > $spanDays) throw new \InvalidArgumentException("'days_count' ({$days}) is more than the {$spanDays} calendar days in the range.");
 
     $defaults = mcp_employee_defaults($pdo);
     $typeIds = array_column($defaults['vacationTypes'], 'id');
     $typeId = (string)($args['vacation_type_id'] ?? 'annual');
     if (!in_array($typeId, $typeIds, true)) throw new \InvalidArgumentException("Unknown vacation_type_id '{$typeId}'. Configured types: " . implode(', ', $typeIds) . '.');
-    $status = mcp_enum($args, 'status', ['pending', 'approved', 'rejected'], 'pending');
+    $status = mcp_enum($args, 'status', ['requested', 'pending', 'approved', 'rejected', 'taken'], 'pending');
 
     $ov = $pdo->prepare("SELECT id, start_date, end_date FROM employee_vacations WHERE employee_id = ? AND status <> 'rejected' AND start_date <= ? AND end_date >= ? LIMIT 1");
     $ov->execute([$empId, $end, $start]);
@@ -762,7 +1234,7 @@ function mcp_do_record_vacation(\PDO $pdo, array $user, array $args): array {
     $pdo->prepare(
         "INSERT INTO employee_vacations (id, employee_id, vacation_type_id, start_date, end_date, days_count, status, note, approved_by)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    )->execute([$id, $empId, $typeId, $start, $end, $days, $status, $args['note'] ?? null, $status === 'approved' ? ($user['name'] ?: $user['email']) : null]);
+    )->execute([$id, $empId, $typeId, $start, $end, $days, $status, $args['note'] ?? null, in_array($status, ['approved', 'taken'], true) ? ($user['name'] ?: $user['email']) : null]);
     mcp_audit($pdo, $user, 'record_vacation', "Logged vacation {$id} for employee {$empId} ({$start} - {$end})");
     return ['id' => $id, 'success' => true, 'status' => $status, 'days_count' => $days];
 }
@@ -771,15 +1243,40 @@ function mcp_do_record_vacation(\PDO $pdo, array $user, array $args): array {
 // Finance summary  (same model as the overview table)
 // ---------------------------------------------------------------------------
 
-function mcp_financial_summary_connected(\PDO $pdo, int $year): array {
+function mcp_financial_period_columns(\PDO $pdo, int $year, string $period): array {
+    $p = strtolower(trim($period));
+    if ($p === 'month') {
+        $m = (int)date('n');
+        $id = sprintf('%04d-%02d', $year, $m);
+        return [['id' => $id, 'start' => $id . '-01', 'end' => $id . '-' . sprintf('%02d', mcp_dim($year, $m - 1))]];
+    }
+    if ($p === 'quarter') {
+        $qStart = ((int)ceil((int)date('n') / 3) - 1) * 3 + 1;
+        return array_slice(mcp_year_columns($year), $qStart - 1, 3);
+    }
+    if ($p === 'all') {
+        $row = $pdo->query("SELECT MIN(YEAR(COALESCE(paid_date, due_date, issue_date))) AS min_y, MAX(YEAR(COALESCE(paid_date, due_date, issue_date))) AS max_y FROM financial_records")->fetch(\PDO::FETCH_ASSOC);
+        $minY = max(2018, (int)($row['min_y'] ?: $year));
+        $maxY = min((int)date('Y') + 2, max($year, (int)($row['max_y'] ?: $year)));
+        $cols = [];
+        for ($y = $minY; $y <= $maxY; $y++) {
+            foreach (mcp_year_columns($y) as $c) $cols[] = $c;
+        }
+        return $cols;
+    }
+    return mcp_year_columns($year);
+}
+
+function mcp_financial_summary_connected(\PDO $pdo, int $year, string $period = 'year'): array {
+    $period = in_array(strtolower($period), ['month', 'quarter', 'year', 'all'], true) ? strtolower($period) : 'year';
     $byId = mcp_fin_categories($pdo);
-    $agg = mcp_fin_aggregate(mcp_fin_load($pdo, '1=1'), $byId, mcp_year_columns($year), mcp_today());
+    $agg = mcp_fin_aggregate(mcp_fin_load($pdo, '1=1'), $byId, mcp_financial_period_columns($pdo, $year, $period), mcp_today());
     $t = ['income' => ['real' => 0.0, 'estimated' => 0.0], 'expense' => ['real' => 0.0, 'estimated' => 0.0]];
     foreach (['income', 'expense'] as $type) {
         foreach ($agg['totalsByType'][$type] as $c) { $t[$type]['real'] += $c['real']; $t[$type]['estimated'] += $c['estimated']; }
     }
     $out = [
-        'mode' => 'connected', 'year' => $year, 'currency' => mcp_currency($pdo),
+        'mode' => 'connected', 'year' => $year, 'period' => $period, 'currency' => mcp_currency($pdo),
         'paid_revenue' => mcp_round2($t['income']['real']),
         'planned_revenue' => mcp_round2($t['income']['real'] + $t['income']['estimated']),
         'paid_expenses' => mcp_round2($t['expense']['real']),

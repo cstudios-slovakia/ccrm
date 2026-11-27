@@ -1,14 +1,16 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
+import { ListIcon } from "./ui/ListIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
-  FileText, Search, Eye, Trash2, Pencil, Copy,
+  Search, Eye, Trash2, Pencil, Copy,
   AlertCircle, Layers, TrendingUp, Award, Lock, Settings
 } from "lucide-react";
 import type {
   InvoiceOffer, InvoiceOfferMode, ExternalInvoiceProvider,
   Lead, WarehouseItem, CompanyBillingSettings,
-  AiCustomTemplate, ExternalInvoicingConfig, TimelineEvent, UserProfile
+  AiCustomTemplate, ExternalInvoicingConfig, TimelineEvent, UserProfile, OfferCategory
 } from "../types";
 import type { Language } from "../utils/translations";
 import { DocumentPreviewModal } from "./DocumentPreviewModal";
@@ -18,6 +20,7 @@ import { useConfirmDialog } from "./ui/ConfirmDialog";
 import { NewOfferMenu } from "./priceOffers/NewOfferMenu";
 import type { NewOfferChoice } from "./priceOffers/NewOfferMenu";
 import { OfferEditor } from "./priceOffers/OfferEditor";
+import { TemplateReview } from "./priceOffers/TemplateReview";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { formatMoney } from "../utils/currency";
 import { todayLocal, nowLocalStamp, formatDateLocalized } from "../utils/localTime";
@@ -25,8 +28,11 @@ import { nextDocumentNumber as nextDocumentNumberShared } from "../utils/documen
 import { cn } from "../utils/cn";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { isClientRecord } from "../utils/clientRecord";
 import { PageHeader, StatGrid, StatTile } from "./layout";
 import { getAvailableVatRates } from "../utils/vat";
+import { effectiveDocumentAmount } from "../utils/invoiceFinanceBridge";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { duplicateOffer, num } from "../utils/offerDraft";
@@ -44,7 +50,22 @@ import {
   type OfferStatusDef,
 } from "../utils/offerStatuses";
 import { useListFilter } from "../hooks/useListFilter";
+import { useOfferFacets } from "./priceOffers/useOfferFacets";
+import { FacetedMultiSelect } from "./ui/FacetedMultiSelect";
+import { PinnedFilterChips } from "./ui/PinnedFilterChips";
+import { PRODUCT_NAME, getSystemTitle } from "../utils/brand";
+import { ListViewMenu } from "./common/ListViewMenu";
+import { offerCategoryColor, offerCategoryPath } from "../utils/offerCategories";
+import {
+  offerCategoryPathLabel,
+} from "../utils/offerCategoryFilter";
+import {
+  LOCKED_OFFER_COLUMN, OFFER_COLUMN_LABELS, moveOfferColumn, resolveOfferColumns, toStoredOfferColumns,
+  type OfferColumnKey, type ResolvedOfferColumn, type StoredOfferColumn,
+} from "../utils/offerColumns";
+import { DEFAULT_OFFER_SORT, normalizeOfferSort, sortOffers, type OfferSort, type OfferSortKey } from "../utils/offerSort";
 
+import { ResizableTh } from "./ui/ResizableTh";
 interface PriceOffersViewProps {
   /**
    * The whole shared document list. Invoices and proformas live in the same
@@ -53,6 +74,8 @@ interface PriceOffersViewProps {
    */
   invoicesOffers: InvoiceOffer[];
   setInvoicesOffers: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
+  /** The price-offer category tree (Settings → Offers & invoicing → Offer categories). */
+  offerCategories?: OfferCategory[];
   /** The configurable price-offer statuses (Settings → Offer statuses). Defaults to the six built-ins. */
   offerStatuses?: OfferStatusDef[];
   /** The configured price levels, so a product is priced on the customer's level. */
@@ -82,14 +105,19 @@ interface PriceOffersViewProps {
   access?: ModuleAccess;
   /** Whether the user may change the offer settings (connectors hold API keys). */
   canConfigure?: boolean;
+  /**
+   * Open on the offer settings screen (templates, connectors, statuses). Set by the
+   * `#invoices/settings` link that Settings › Offers & invoicing offers.
+   */
+  openOnSettings?: boolean;
 }
 
 /** Offers always carry the CP series; invoices and proformas are issued elsewhere. */
 const OFFER_PREFIX = "CP";
 
 /**
- * Which editor is open, if any. Only one at a time: opening another one (a
- * different menu entry, or the edit button of a row) replaces it, after asking
+ * Which editor is open, if any. While it is open the list is not rendered —
+ * the editor is its own view. Opening another one replaces it, after asking
  * when the open one has unsaved changes. `key` remounts the editor so it
  * re-seeds even when the same entry is chosen twice.
  */
@@ -107,6 +135,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   setInvoicesOffers,
   offerStatuses = DEFAULT_OFFER_STATUS_DEFS as OfferStatusDef[],
   priceLevels = [],
+  offerCategories = [],
   setOfferStatuses,
   invoiceStatuses = DEFAULT_INVOICE_STATUS_DEFS as OfferStatusDef[],
   setInvoiceStatuses,
@@ -126,7 +155,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   onOpenSettings,
   onAddTimelineEvent,
   access = FULL_MODULE_ACCESS,
-  canConfigure = false
+  canConfigure = false,
+  openOnSettings = false
 }) => {
   // Only price offers are listed, counted and numbered here.
   const invoicesOffers = useMemo(() => allDocuments.filter(d => d.type === "price_offer"), [allDocuments]);
@@ -142,7 +172,9 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   const canEdit = access.edit;
   const canDelete = access.delete;
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(openOnSettings);
+  const [reviewDraft, setReviewDraft] = useState<AiCustomTemplate | null>(null);
+  const [resumeAiTab, setResumeAiTab] = useState(false);
   const currency = systemCurrency || "EUR";
   const money = (value: unknown, decimals = 2) =>
     formatMoney(num(value), currency, lang, {
@@ -156,8 +188,12 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
   // ---------------------------------------------------------------- list state
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useListFilter<string>("priceOffers.status", "all");
-  const [modeFilter, setModeFilter] = useListFilter<string>("priceOffers.mode", "all");
+  // The View menu: sort and column layout, kept per user in their preferences (like the filters).
+  const [storedSort, setStoredSort] = useListFilter<OfferSort>("priceOffers.sort", DEFAULT_OFFER_SORT);
+  const [storedColumns, setStoredColumns] = useListFilter<StoredOfferColumn[] | null>("priceOffers.columns", null);
+  const sort = useMemo(() => normalizeOfferSort(storedSort), [storedSort]);
+  const allColumns = useMemo(() => resolveOfferColumns(storedColumns), [storedColumns]);
+  const columns = useMemo(() => allColumns.filter(c => c.visible), [allColumns]);
 
   // -------------------------------------------------------------- editor state
   const [editorSession, setEditorSession] = useState<EditorSession | null>(null);
@@ -197,23 +233,31 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
     }
   }, [editorSession, editingOffer]);
 
+  // The list and the editor are different views of the same scroll container.
+  // Opening either one starts it at the top, so a row clicked far down the
+  // table does not land the document mid-page.
+  const editorKey = editorSession?.key ?? 0;
+  useEffect(() => {
+    document.querySelector("main.workspace")?.scrollTo(0, 0);
+  }, [editorKey, showSettings]);
+
   // ------------------------------------------------------------ list selectors
-  const filteredOffers = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return invoicesOffers.filter(io => {
-      const matchesSearch =
-        !q ||
-        (io.clientName || "").toLowerCase().includes(q) ||
-        (io.documentNumber || "").toLowerCase().includes(q) ||
-        (io.title || "").toLowerCase().includes(q) ||
-        (io.subject || "").toLowerCase().includes(q);
-      return (
-        matchesSearch &&
-        (statusFilter === "all" || io.status === statusFilter) &&
-        (modeFilter === "all" || io.mode === modeFilter)
-      );
-    });
-  }, [invoicesOffers, searchQuery, statusFilter, modeFilter]);
+  const facets = useOfferFacets({ offers: invoicesOffers, offerStatuses, offerCategories, searchQuery, t });
+  const filteredOffers = facets.filteredOffers;
+
+  const statusRank = useMemo(() => new Map(offerStatuses.map((s, i) => [s.key, i])), [offerStatuses]);
+  const sortedOffers = useMemo(
+    () =>
+      sortOffers(filteredOffers, sort, o => ({
+        number: o.documentNumber || "",
+        client: o.clientName || "",
+        amount: Number.isFinite(num(o.totalPrice)) && o.totalPrice != null ? num(o.totalPrice) : null,
+        statusRank: statusRank.get(o.status) ?? offerStatuses.length,
+        category: offerCategoryPathLabel(offerCategories, o.categoryId),
+        validUntil: o.validUntil || null,
+      })),
+    [filteredOffers, sort, statusRank, offerStatuses.length, offerCategories]
+  );
 
   const metrics = useMemo(() => {
     const offers = invoicesOffers;
@@ -249,10 +293,141 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
             ? "SuperFaktúra"
             : t("External", "Externé", "Külső");
 
-  const filterStatusOptions = offerStatusOptions(t, offerStatuses);
 
   /** The picker's options, plus this very offer's own status when it is legacy or no longer in the list. */
   const statusOptionsFor = (status: string) => offerStatusOptions(t, offerStatuses, status);
+
+  // ------------------------------------------------------------ table cells
+  const renderCell = (offer: InvoiceOffer, key: OfferColumnKey): React.ReactNode => {
+    switch (key) {
+      case "number":
+        return (
+          <td key={key} className="p-4 align-top font-mono font-bold text-slate-900 whitespace-nowrap">
+            {offer.documentNumber}
+            {offer.externalId && (
+              <span className="block text-micro text-slate-400 font-sans font-medium">
+                {offer.externalProvider === "idoklad" ? "iDoklad" : "SuperFaktúra"} #{offer.externalId}
+              </span>
+            )}
+          </td>
+        );
+      case "title":
+        return (
+          <td key={key} className="p-4 align-top">
+            <div className="font-bold text-slate-800">{offer.title}</div>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span
+                className={cn(
+                  "px-2 py-0.5 rounded-full type-overline border",
+                  offer.mode === "custom"
+                    ? "bg-purple-50 text-purple-700 border-purple-200"
+                    : offer.mode === "external"
+                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                      : "bg-slate-50 text-slate-500 border-slate-200"
+                )}
+              >
+                {modeLabel(offer)}
+              </span>
+            </div>
+          </td>
+        );
+      case "client": {
+        const matchedLead = offer.leadId ? leads.find(l => l.id === offer.leadId) : undefined;
+        const isClient = matchedLead ? isClientRecord(matchedLead) : true;
+        return (
+          <td key={key} className="p-4 align-top">
+            {offer.clientName ? (
+              <EntityBadge
+                entity={isClient ? "clients" : "leads"}
+                label={offer.clientName}
+                showIcon
+                onClick={
+                  matchedLead
+                    ? () => {
+                        window.location.hash = isClient
+                          ? `client-${encodeURIComponent(matchedLead.name || offer.clientName)}`
+                          : `lead-${matchedLead.id}`;
+                      }
+                    : undefined
+                }
+              />
+            ) : (
+              <span className="text-gray-400">—</span>
+            )}
+            {offer.location && <div className="text-caption text-gray-500 mt-1">{offer.location}</div>}
+          </td>
+        );
+      }
+      case "category": {
+        const path = offerCategoryPath(offerCategories, offer.categoryId);
+        const leaf = path[path.length - 1];
+        const color = leaf ? offerCategoryColor(offerCategories, leaf.id) : null;
+        return (
+          <td key={key} className="p-4 align-top">
+            {leaf ? (
+              <span
+                className="inline-flex items-center gap-1.5 max-w-full text-ui font-medium text-slate-700"
+                title={path.length > 1 ? path.map(c => c.name).join(" / ") : undefined}
+              >
+                <ListIcon kind="offerCategories" itemKey={leaf.id} fallback={<span className="h-2 w-2 rounded-full shrink-0 bg-slate-300" style={color ? { backgroundColor: color } : undefined} />} />
+                <span className="truncate">{leaf.name}</span>
+              </span>
+            ) : (
+              <span className="text-slate-300">—</span>
+            )}
+          </td>
+        );
+      }
+      case "issued":
+        return <td key={key} className="p-4 align-top text-slate-600 whitespace-nowrap">{formatDateLocalized(offer.issuedAt, lang)}</td>;
+      case "validUntil":
+        return (
+          <td key={key} className="p-4 align-top text-slate-600 whitespace-nowrap">
+            {offer.validUntil ? formatDateLocalized(offer.validUntil, lang) : <span className="text-slate-300">—</span>}
+          </td>
+        );
+      case "amount":
+        return (
+          <td key={key} className="p-4 align-top text-right font-bold text-slate-900 whitespace-nowrap">
+            {money(offer.totalPrice)}
+          </td>
+        );
+      case "status":
+        return (
+          <td key={key} className="p-4 align-top text-center">
+            {canEdit ? (
+              <CustomSelect
+                size="sm"
+                align="right"
+                value={offer.status}
+                onChange={next => handleChangeStatus(offer.id, next)}
+                options={statusOptionsFor(offer.status)}
+                unstyled
+                className="gap-1.5 px-2.5 py-1 rounded-full type-overline border cursor-pointer transition-all hover:brightness-95"
+                style={statusBadgeStyle(offer.status)}
+              />
+            ) : (
+              <span
+                className="inline-flex items-center px-2.5 py-1 rounded-full type-overline border"
+                style={statusBadgeStyle(offer.status)}
+              >
+                {statusLabel(offer.status)}
+              </span>
+            )}
+          </td>
+        );
+    }
+  };
+
+  const sortOptions: { value: OfferSortKey; label: string }[] = [
+    { value: "default", label: t("Newest first", "Najnovšie ako prvé", "Legújabb elöl") },
+    { value: "number", label: t("Offer no.", "Číslo ponuky", "Ajánlatszám") },
+    { value: "client", label: t("Client", "Klient", "Ügyfél") },
+    { value: "amount", label: t("Amount", "Suma", "Összeg") },
+    { value: "status", label: t("Status", "Stav", "Állapot") },
+    { value: "category", label: t("Category", "Kategória", "Kategória") },
+    { value: "validUntil", label: t("Valid until", "Platné do", "Érvényes eddig") },
+  ];
 
   // ------------------------------------------------------------ editor opening
   /** A pristine editor goes away silently; one with changes asks first. */
@@ -399,18 +574,19 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
     // A brand-new document is announced on the lead's timeline. Edits are not —
     // re-saving a draft should not spam the timeline with duplicates.
     if (!isEdit) {
+      const offerAmount = effectiveDocumentAmount(doc, Boolean(companyBillingSettings?.financeNetMode));
       const timelineEvent: TimelineEvent = {
         id: "ev-" + Math.random().toString(36).slice(2, 11),
         type: "offer",
         timestamp: nowLocalStamp(),
         title: `${doc.title} (${doc.documentNumber})`,
         content: t(
-          `Price offer issued for ${money(doc.totalPrice)}. Subject: ${doc.subject || "—"}`,
-          `Vystavená cenová ponuka v hodnote ${money(doc.totalPrice)}. Predmet: ${doc.subject || "—"}`,
-          `Kiállított árajánlat ${money(doc.totalPrice)} értékben. Tárgy: ${doc.subject || "—"}`
+          `Price offer issued for ${money(offerAmount)}. Subject: ${doc.subject || "—"}`,
+          `Vystavená cenová ponuka v hodnote ${money(offerAmount)}. Predmet: ${doc.subject || "—"}`,
+          `Kiállított árajánlat ${money(offerAmount)} értékben. Tárgy: ${doc.subject || "—"}`
         ),
-        amount: doc.totalPrice,
-        author: currentUser?.name || "CCRM"
+        amount: offerAmount,
+        author: currentUser?.name || getSystemTitle()
       };
 
       if (onAddTimelineEvent) {
@@ -427,7 +603,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
     toast(
       isEdit
         ? t("Price offer updated.", "Cenová ponuka bola aktualizovaná.", "Az árajánlat frissítve.")
-        : t("Price offer issued and logged in the CRM.", "Cenová ponuka bola vystavená a zaevidovaná v CRM.", "Az árajánlat kiállítva és rögzítve.")
+        : t(`Price offer issued and logged in ${PRODUCT_NAME}.`, `Cenová ponuka bola vystavená a zaevidovaná v ${PRODUCT_NAME}.`, "Az árajánlat kiállítva és rögzítve.")
     );
     setEditorSession(null);
     setEditorDirty(false);
@@ -457,12 +633,45 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
   const billingConfigured = Boolean(companyBillingSettings?.companyName);
 
+  const saveReview = (tpl: AiCustomTemplate) => {
+    if (!setAiCustomTemplates) return;
+    const name = tpl.name.trim();
+    if (!name) return;
+    const clash = aiCustomTemplates.some(item => item.id !== tpl.id && item.name.trim().toLowerCase() === name.toLowerCase());
+    setAiCustomTemplates(prev => (prev.some(item => item.id === tpl.id) ? prev.map(item => (item.id === tpl.id ? tpl : item)) : [tpl, ...prev]));
+    if (clash) {
+      toast(
+        t(
+          "Another template already has this name — they will be hard to tell apart.",
+          "Iná šablóna už má tento názov — budú sa ťažko rozlišovať.",
+          "Egy másik sablon már ezt a nevet viseli — nehéz lesz megkülönböztetni őket."
+        ),
+        "warning"
+      );
+    }
+    setReviewDraft(null);
+  };
+
+  if (reviewDraft) {
+    return (
+      <div className="space-y-6 pb-16 font-sans animate-fade-in">
+        <TemplateReview
+          template={reviewDraft}
+          otherNames={aiCustomTemplates.filter(item => item.id !== reviewDraft.id).map(item => item.name)}
+          lang={lang}
+          onSave={saveReview}
+          onCancel={() => setReviewDraft(null)}
+        />
+      </div>
+    );
+  }
+
   // ---------------------------------------------------------------------------
   if (showSettings) {
     return (
       <div className="space-y-6 pb-16 font-sans animate-fade-in">
         <PageHeader
-          icon={<FileText className="h-6 w-6 text-indigo-600" />}
+          icon={<SectionIcon id="invoices" />}
           title={t("Price Offers", "Cenové ponuky", "Árajánlatok")}
           subtitle={t(
             "Defaults, connectors and templates for your price offers.",
@@ -485,9 +694,51 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           setDocuments={setInvoicesOffers}
           lang={lang}
           canEdit={canConfigure}
-          onBack={() => setShowSettings(false)}
+          onBack={() => { setResumeAiTab(false); setShowSettings(false); }}
+          onReview={template => { setResumeAiTab(true); setReviewDraft(template); }}
+          initialTab={resumeAiTab ? "ai" : "defaults"}
           onOpenCompanySettings={onOpenSettings}
           integrationsConfig={integrationsConfig}
+        />
+      </div>
+    );
+  }
+
+  // The editor replaces the list. Same treatment as offer settings: a view of
+  // its own, never a block sitting above the table.
+  if (canEdit && editorSession && (!editorSession.offerId || editingOffer)) {
+    return (
+      <div className="space-y-6 pb-16 font-sans animate-fade-in">
+        {confirmDialog}
+        <OfferEditor
+          key={editorSession.key}
+          lang={lang}
+          systemLanguage={systemLanguage}
+          mode={editorSession.mode}
+          initialTemplateId={editorSession.templateId}
+          existing={editingOffer}
+          leads={leads}
+          setLeads={setLeads}
+          warehouseItems={warehouseItems}
+          companyBillingSettings={companyBillingSettings}
+          aiCustomTemplates={aiCustomTemplates}
+          enabledProviders={enabledProviders}
+          invoicingIntegrations={invoicingIntegrations}
+          availableVatRates={availableVatRates}
+          priceLevels={priceLevels}
+          offerCategories={offerCategories}
+          currency={currency}
+          currentUser={currentUser}
+          canEdit={canEdit}
+          canConfigure={canConfigure}
+          defaultStatus={defaultOfferStatus(offerStatuses)}
+          onOpenOfferSettings={openOfferSettings}
+          nextDocumentNumber={nextDocumentNumber}
+          saving={isExternalLoading}
+          saveError={externalError}
+          onIssue={handleSaveOffer}
+          onCancel={closeEditor}
+          onDirtyChange={setEditorDirty}
         />
       </div>
     );
@@ -500,7 +751,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
       {/* 1. SECTION HEADER & COMMAND BAR */}
       <PageHeader
-        icon={<FileText className="h-6 w-6 text-indigo-600" />}
+        icon={<SectionIcon id="invoices" />}
         title={t("Price Offers", "Cenové ponuky", "Árajánlatok")}
         subtitle={t(
               "Issue price offers linked to leads and warehouse stock. Invoices live in the Documents registry.",
@@ -511,9 +762,9 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => setShowSettings(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-ui font-semibold rounded-2xl shadow-sm transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+              className="flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 hover:border-entity-border text-gray-700 text-ui font-semibold rounded-md shadow-2xs transition-all cursor-pointer"
             >
-              <Settings className="h-4 w-4 text-indigo-500" />
+              <Settings className="h-4 w-4 text-entity-text" />
               <span>{t("Offer settings", "Nastavenia ponúk", "Ajánlat-beállítások")}</span>
             </button>
             {canEdit && (
@@ -532,7 +783,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
       {/* READ-ONLY NOTICE — the role can browse and print, but not issue or change offers */}
       {!canEdit && (
-        <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-ui text-amber-900">
+        <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-lg text-ui text-amber-900">
           <Lock className="h-4 w-4 shrink-0 text-amber-600" />
           <span className="font-semibold">{t("Read-only access", "Iba na čítanie", "Csak olvasható")}</span>
           <span className="text-amber-800/80">
@@ -547,7 +798,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
       {/* 2. SETUP NOTICE — an offer issued before Settings are filled in carries no company identity */}
       {!billingConfigured && (
-        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <div className="flex items-start gap-2.5 text-ui text-amber-900">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
             <span className="font-semibold">
@@ -561,45 +812,12 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           {onOpenSettings && (
             <button
               onClick={onOpenSettings}
-              className="shrink-0 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-ui font-bold transition-all cursor-pointer active:scale-[0.98]"
+              className="shrink-0 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-ui font-semibold shadow-xs transition-all cursor-pointer"
             >
               {t("Open settings", "Otvoriť nastavenia", "Beállítások megnyitása")}
             </button>
           )}
         </div>
-      )}
-
-      {/* 2b. INLINE EDITOR — in the page flow, pushing the list down; never an overlay */}
-      {canEdit && editorSession && (!editorSession.offerId || editingOffer) && (
-        <OfferEditor
-          key={editorSession.key}
-          lang={lang}
-          systemLanguage={systemLanguage}
-          mode={editorSession.mode}
-          initialTemplateId={editorSession.templateId}
-          existing={editingOffer}
-          leads={leads}
-          setLeads={setLeads}
-          warehouseItems={warehouseItems}
-          companyBillingSettings={companyBillingSettings}
-          aiCustomTemplates={aiCustomTemplates}
-          enabledProviders={enabledProviders}
-          invoicingIntegrations={invoicingIntegrations}
-          availableVatRates={availableVatRates}
-          priceLevels={priceLevels}
-          currency={currency}
-          currentUser={currentUser}
-          canEdit={canEdit}
-          canConfigure={canConfigure}
-          defaultStatus={defaultOfferStatus(offerStatuses)}
-          onOpenOfferSettings={openOfferSettings}
-          nextDocumentNumber={nextDocumentNumber}
-          saving={isExternalLoading}
-          saveError={externalError}
-          onIssue={handleSaveOffer}
-          onCancel={closeEditor}
-          onDirtyChange={setEditorDirty}
-        />
       )}
 
       {/* 3. KPI OVERVIEW */}
@@ -628,8 +846,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                 : t("no decided offers yet", "zatiaľ žiadne uzavreté ponuky", "még nincs lezárt ajánlat")
           },
           {
-            icon: <FileText className="h-6 w-6" />,
-            tone: "bg-purple-50 text-purple-600",
+            icon: <SectionIcon id="invoices" className="h-6 w-6" />,
+            tone: "bg-entity-subtle text-entity-text",
             label: t("Offers total", "Celkom ponúk", "Összes árajánlat"),
             value: String(metrics.totalCount)
           }
@@ -639,62 +857,88 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
       </StatGrid>
 
       {/* 4. SEARCH & FILTERS */}
-      <div className="bg-white p-3 ws-sm:p-4 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col ws-xl:flex-row gap-2.5 ws-sm:gap-3 ws-xl:items-center ws-xl:justify-between">
+      <div className="bg-white p-3 ws-sm:p-4 rounded-lg border border-gray-200 shadow-xs flex flex-col ws-xl:flex-row gap-2.5 ws-sm:gap-3 ws-xl:items-center ws-xl:justify-between">
         <div className="relative w-full ws-xl:w-80">
-          <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
             type="text"
             placeholder={t("Search offer, client or number…", "Hľadať ponuku, klienta alebo číslo…", "Ajánlat, ügyfél vagy szám keresése…")}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition-all"
+            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-md text-ui text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid transition-all"
           />
         </div>
 
-        <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-2 w-full ws-xl:w-auto">
-          <CustomSelect
-            size="sm"
-            value={modeFilter}
-            onChange={setModeFilter}
-            className="w-full"
-            options={[
-              { value: "all", label: t("All formats", "Všetky formáty", "Minden formátum") },
-              { value: "default", label: t("Standard template", "Štandardná šablóna", "Alap sablon") },
-              { value: "custom", label: t("AI template", "AI šablóna", "AI sablon") },
-              { value: "external", label: "SuperFaktúra / iDoklad" }
-            ]}
-          />
-          <CustomSelect
-            size="sm"
-            value={statusFilter}
-            onChange={setStatusFilter}
-            className="w-full"
-            options={[
-              { value: "all", label: t("All statuses", "Všetky stavy", "Minden állapot") },
-              ...filterStatusOptions
-            ]}
+        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center gap-2 w-full ws-xl:w-auto">
+         <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-2 flex-1 ws-xl:flex-none">
+          {(["mode", "status", "category"] as const).map(id => (
+            <FacetedMultiSelect
+              key={id}
+              className="h-10 w-full"
+              options={facets.options[id]}
+              selected={facets.selection[id]}
+              onChange={next => facets.setSelection(id, next)}
+              allLabel={facets.allLabels[id]}
+              pinned={id === "status" ? facets.pinnedStatuses : undefined}
+              onTogglePin={id === "status" ? facets.togglePinnedStatus : undefined}
+            />
+          ))}
+         </div>
+          <ListViewMenu<OfferSortKey, ResolvedOfferColumn>
+            t={t}
+            sort={sort}
+            sortOptions={sortOptions}
+            onSortChange={setStoredSort}
+            directionlessKeys={["default"]}
+            widthsListKey="offers"
+            columns={allColumns}
+            onColumnsChange={next => setStoredColumns(toStoredOfferColumns(next))}
+            columnLabel={col => t(...OFFER_COLUMN_LABELS[col.key])}
+            lockedColumnKey={LOCKED_OFFER_COLUMN}
+            lockedTitle={t("The offer number always leads the row.", "Číslo ponuky je vždy prvé v riadku.", "Az ajánlatszám mindig a sor élén áll.")}
+            moveColumn={moveOfferColumn}
+            canEditColumns
+            columnsScope={t("Your personal layout. It does not change the table for anyone else.", "Vaše osobné rozloženie. Ostatným sa tabuľka nezmení.", "Az Ön személyes elrendezése. Másoknak nem változik a táblázat.")}
+            onReset={() => {
+              setStoredSort(DEFAULT_OFFER_SORT);
+              setStoredColumns(null);
+            }}
           />
         </div>
       </div>
 
+      {/* Pinned statuses (star in the status dropdown) as one-click chips. */}
+      <PinnedFilterChips
+        options={facets.options.status}
+        pinned={facets.pinnedStatuses}
+        selected={facets.selection.status}
+        onChange={next => facets.setSelection("status", next)}
+      />
+
       {/* 5. DOCUMENTS TABLE */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-clip">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-clip">
         <div ref={tableWrapRef} className="table-page-wrap">
           <table className="w-full text-left text-ui border-collapse min-w-195">
             <thead className="table-page-sticky-head">
-              <tr className="bg-slate-50 text-slate-500 type-overline border-b border-slate-200">
-                <th className="sticky z-10 bg-slate-50 p-4">{t("Offer no.", "Číslo ponuky", "Ajánlatszám")}</th>
-                <th className="sticky z-10 bg-slate-50 p-4">{t("Title & template", "Názov a šablóna", "Cím és sablon")}</th>
-                <th className="sticky z-10 bg-slate-50 p-4">{t("Client / lead", "Klient / Lead", "Ügyfél / Lead")}</th>
-                <th className="sticky z-10 bg-slate-50 p-4">{t("Issued", "Vystavené", "Kiállítva")}</th>
-                <th className="sticky z-10 bg-slate-50 p-4 text-right">{t("Amount", "Suma", "Összeg")}</th>
-                <th className="sticky z-10 bg-slate-50 p-4 text-center">{t("Status", "Stav", "Állapot")}</th>
-                <th className="sticky right-0 z-30 bg-slate-50 p-4 text-right border-l border-slate-200/60">{t("Actions", "Akcie", "Műveletek")}</th>
+              <tr className="bg-gray-50 text-gray-500 type-overline border-b border-gray-200">
+                {columns.map(col => (
+                  <ResizableTh key={col.key} listKey="offers"
+                    colKey={col.key}
+                    className={cn(
+                      "sticky z-10 bg-gray-50 p-4",
+                      col.key === "amount" && "text-right",
+                      col.key === "status" && "text-center"
+                    )}
+                  >
+                    {t(...OFFER_COLUMN_LABELS[col.key])}
+                  </ResizableTh>
+                ))}
+                <th className="sticky right-0 z-30 bg-gray-50 p-4 text-right border-l border-gray-200">{t("Actions", "Akcie", "Műveletek")}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredOffers.length > 0 ? (
-                filteredOffers.map(offer => (
+            <tbody className="divide-y divide-gray-200">
+              {sortedOffers.length > 0 ? (
+                sortedOffers.map(offer => (
                   <tr
                     key={offer.id}
                     onClick={e => {
@@ -703,68 +947,15 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                       if (canEdit) handleEditOffer(offer);
                       else setPreviewOffer(offer);
                     }}
-                    className="group hover:bg-slate-50/80 transition-colors cursor-pointer"
+                    className="group hover:bg-entity-subtle/40 transition-colors cursor-pointer"
                   >
-                    <td className="p-4 align-top font-mono font-bold text-slate-900 whitespace-nowrap">
-                      {offer.documentNumber}
-                      {offer.externalId && (
-                        <span className="block text-micro text-slate-400 font-sans font-medium">
-                          {offer.externalProvider === "idoklad" ? "iDoklad" : "SuperFaktúra"} #{offer.externalId}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 align-top">
-                      <div className="font-bold text-slate-800">{offer.title}</div>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span
-                          className={cn(
-                            "px-2 py-0.5 rounded-full type-overline border",
-                            offer.mode === "custom"
-                              ? "bg-purple-50 text-purple-700 border-purple-200"
-                              : offer.mode === "external"
-                                ? "bg-blue-50 text-blue-700 border-blue-200"
-                                : "bg-slate-50 text-slate-500 border-slate-200"
-                          )}
-                        >
-                          {modeLabel(offer)}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-4 align-top">
-                      <div className="font-bold text-slate-900">{offer.clientName}</div>
-                      {offer.location && <div className="text-caption text-slate-400">{offer.location}</div>}
-                    </td>
-                    <td className="p-4 align-top text-slate-600 whitespace-nowrap">{formatDateLocalized(offer.issuedAt, lang)}</td>
-                    <td className="p-4 align-top text-right font-bold text-slate-900 whitespace-nowrap">
-                      {money(offer.totalPrice)}
-                    </td>
-                    <td className="p-4 align-top text-center">
-                      {canEdit ? (
-                        <CustomSelect
-                          size="sm"
-                          align="right"
-                          value={offer.status}
-                          onChange={next => handleChangeStatus(offer.id, next)}
-                          options={statusOptionsFor(offer.status)}
-                          unstyled
-                          className="gap-1.5 px-2.5 py-1 rounded-full type-overline border cursor-pointer transition-all hover:brightness-95"
-                          style={statusBadgeStyle(offer.status)}
-                        />
-                      ) : (
-                        <span
-                          className="inline-flex items-center px-2.5 py-1 rounded-full type-overline border"
-                          style={statusBadgeStyle(offer.status)}
-                        >
-                          {statusLabel(offer.status)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 align-top text-right sticky right-0 z-10 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-100/80 transition-colors group-hover:bg-slate-50">
+                    {columns.map(col => renderCell(offer, col.key))}
+                    <td className="p-4 align-top text-right sticky right-0 z-10 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-gray-200 transition-colors group-hover:bg-entity-subtle/40">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => setPreviewOffer(offer)}
                           title={t("Preview & print", "Náhľad a tlač", "Előnézet és nyomtatás")}
-                          className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                          className="p-2 text-gray-500 hover:text-entity-text hover:bg-entity-subtle rounded-md transition-all cursor-pointer"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
@@ -772,7 +963,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                           <button
                             onClick={() => handleDuplicateOffer(offer)}
                             title={t("Duplicate", "Duplikovať", "Másolás")}
-                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                            className="p-2 text-gray-500 hover:text-entity-text hover:bg-entity-subtle rounded-md transition-all cursor-pointer"
                           >
                             <Copy className="h-4 w-4" />
                           </button>
@@ -781,7 +972,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                           <button
                             onClick={() => handleEditOffer(offer)}
                             title={t("Edit", "Upraviť", "Szerkesztés")}
-                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                            className="p-2 text-gray-500 hover:text-entity-text hover:bg-entity-subtle rounded-md transition-all cursor-pointer"
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -793,7 +984,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                               what={offer.documentNumber}
                               onConfirm={() => handleDelete(offer)}
                               title={t("Delete", "Odstrániť", "Törlés")}
-                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                              className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-all"
                           >
                             <Trash2 className="h-4 w-4" />
                           </HoldToConfirmButton>
@@ -804,10 +995,10 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="p-12 text-center">
+                  <td colSpan={columns.length + 1} className="p-12 text-center">
                     <div className="max-w-sm mx-auto space-y-2.5">
-                      <div className="h-12 w-12 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
-                        <FileText className="h-6 w-6" />
+                      <div className="h-12 w-12 mx-auto rounded-lg bg-entity-subtle text-entity-text border border-entity-border flex items-center justify-center">
+                        <SectionIcon id="invoices" className="h-6 w-6" />
                       </div>
                       <div className="font-bold text-slate-700 text-body">
                         {invoicesOffers.length === 0

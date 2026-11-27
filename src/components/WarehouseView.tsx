@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
@@ -95,10 +96,15 @@ import type {
   UserProfile
 } from "../types";
 import { StatGrid, PageHeader, Tabs } from "./layout";
+import { EntityBadge } from "./tremor";
+import { entityAccentStyle } from "../utils/entityAccent";
+import { WarehouseAnalyticsTab } from "./warehouse/WarehouseAnalyticsTab";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { useListFilter } from "../hooks/useListFilter";
+import { PRODUCT_NAME } from "../utils/brand";
 
+import { ResizableTh } from "./ui/ResizableTh";
 interface WarehouseViewProps {
   systemLanguage: Language;
   systemCurrency: string | null;
@@ -148,6 +154,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   onAddTimelineEvent: onAddTimelineEventRaw,
   access = FULL_MODULE_ACCESS
 }) => {
+  const brand = PRODUCT_NAME;
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
@@ -1996,16 +2003,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     return (
       <div className="space-y-6 pb-16 animate-fadeIn">
         {/* STICKY TOP BAR */}
-        <div className={`sticky -top-4 ws-md:-top-6 z-40 -mt-4 ws-md:-mt-6 -mx-4 ws-md:-mx-6 px-4 ws-md:px-6 bg-white/95 backdrop-blur-md border-b transition-all duration-200 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-3 ${
+        <div className={`sticky -top-4 ws-md:-top-6 z-40 -mt-4 ws-md:-mt-6 -mx-4 ws-md:-mx-6 px-4 ws-md:px-6 bg-white/95  border-b transition-all duration-200 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-3 ${
           isHeaderStuck
-            ? "py-2 ws-md:py-2.5 border-slate-200/90 shadow-md"
-            : "py-3.5 ws-md:py-4 border-slate-200/80 shadow-sm"
+            ? "py-2 ws-md:py-2.5 border-gray-200/90 shadow-md"
+            : "py-3.5 ws-md:py-4 border-gray-200/80 shadow-sm"
         }`}>
           <div className="flex items-center gap-3 ws-md:gap-4 min-w-0">
             <button
               onClick={handleCloseGoodsIssue}
-              className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all flex items-center justify-center shrink-0 ${
-                isHeaderStuck ? "p-1.5 ws-md:p-2" : "p-2.5 rounded-2xl"
+              className={`rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-all flex items-center justify-center shrink-0 ${
+                isHeaderStuck ? "p-1.5 ws-md:p-2" : "p-2.5 rounded-lg"
               }`}
               title={t("Back to Movements", "Späť na pohyby", "Vissza a mozgásokhoz")}
             >
@@ -2014,28 +2021,28 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
             <div className="min-w-0">
               {!isHeaderStuck && (
-                <div className="flex items-center gap-2 text-ui font-semibold text-slate-400 mb-1 transition-all">
+                <div className="flex items-center gap-2 text-ui font-semibold text-gray-400 mb-1 transition-all">
                   <span>{t("Warehouse", "Sklad", "Raktár")}</span>
                   <span>/</span>
                   <span>{t("Movements & Issues", "Pohyby & Výdajky", "Kiadások")}</span>
                   <span>/</span>
-                  <span className="text-blue-900 font-bold">{t("New Issue", "Nová výdajka", "Új kiadás")}</span>
+                  <span className="text-entity-text font-bold">{t("New Issue", "Nová výdajka", "Új kiadás")}</span>
                 </div>
               )}
 
               <div className="flex flex-wrap items-center gap-2 ws-md:gap-3">
-                <div className="w-8 h-8 rounded-xl bg-blue-700 text-white flex items-center justify-center shadow-md shadow-blue-700/20 shrink-0">
+                <div className="w-8 h-8 rounded-md bg-entity-solid text-white flex items-center justify-center shadow-md shadow-blue-700/20 shrink-0">
                   <ArrowUpRight className="w-4 h-4" />
                 </div>
-                <h1 className={`font-bold text-slate-900 tracking-tight transition-all truncate ${
+                <h1 className={`font-bold text-gray-900 tracking-tight transition-all truncate ${
                   isHeaderStuck ? "text-title-sm" : "text-title"
                 }`}>
                   {t("New Goods Issue (Výdajka - VYD)", "Nová výdajka tovaru a predaj zákazníkovi", "Új árukiadás")}
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-ui font-bold bg-blue-50 text-blue-900 border border-blue-200">
+                <span className="px-2.5 py-0.5 rounded-md text-ui font-bold bg-entity-subtle text-entity-text border border-entity-border">
                   {issueDocumentNumber || "VYD-NEW"}
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                <span className="px-2 py-0.5 rounded-md text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200">
                   {t("Draft", "Rozpracované", "Piszkozat")}
                 </span>
               </div>
@@ -2046,8 +2053,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={handleCloseGoodsIssue}
-              className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-all ${
-                isHeaderStuck ? "px-3 py-1.5 text-ui" : "px-4 py-2.5 text-ui rounded-2xl"
+              className={`rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-all ${
+                isHeaderStuck ? "px-3 py-1.5 text-ui" : "px-4 py-2.5 text-ui rounded-lg"
               }`}
             >
               {t("Cancel", "Zrušiť", "Mégse")}
@@ -2056,8 +2063,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {canEdit && (
             <button
               onClick={handleCreateIssue}
-              className={`flex items-center gap-1.5 ws-md:gap-2 rounded-xl bg-blue-950 hover:bg-blue-900 text-white font-bold shadow-lg shadow-blue-950/20 transition-all ${
-                isHeaderStuck ? "px-3.5 py-1.5 text-ui" : "px-5 py-2.5 text-ui rounded-2xl"
+              className={`flex items-center gap-1.5 ws-md:gap-2 rounded-md bg-entity-solid hover:bg-entity-solid text-white font-bold shadow-lg shadow-xs transition-all ${
+                isHeaderStuck ? "px-3.5 py-1.5 text-ui" : "px-5 py-2.5 text-ui rounded-lg"
               }`}
             >
               <CheckCircle2 className={isHeaderStuck ? "w-3.5 h-3.5 text-emerald-400" : "w-4 h-4 text-emerald-400"} />
@@ -2076,16 +2083,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           <div className="ws-lg:col-span-4 ws-xl:col-span-4 space-y-4">
             
             {/* 1. CLIENT / LEAD SELECTION CARD */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4 relative">
+            <div className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm space-y-4 relative">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-ui font-bold text-slate-500">
-                  <UserCheck className="w-4 h-4 text-blue-700" />
-                  <span>{t("Client / Customer from CRM", "Klient / Zákazník z CRM", "Ügyfél a CRM-ből")}</span>
+                <div className="flex items-center gap-2 text-ui font-bold text-gray-500">
+                  <UserCheck className="w-4 h-4 text-entity-text" />
+                  <span>{t(`Client / Customer from ${PRODUCT_NAME}`, `Klient / Zákazník z ${PRODUCT_NAME}`, `Ügyfél a ${PRODUCT_NAME}-ből`)}</span>
                 </div>
                 {selectedClient && (
                   <button
                     onClick={() => setIssueLeadId("")}
-                    className="text-caption font-bold text-slate-400 hover:text-rose-600 transition"
+                    className="text-caption font-bold text-gray-400 hover:text-rose-600 transition"
                   >
                     {t("Clear", "Zrušiť výber", "Törlés")}
                   </button>
@@ -2102,16 +2109,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 placeholder={t("Search client by name, company, email...", "Hľadať klienta podľa mena, firmy, emailu...", "Keresés ügyfél neve szerint...")}
               />
 
-              {/* Selected Client Card Details */}
+              {/* Selected Client Card Details (scoped to clients foreign entity) */}
               {selectedClient ? (
-                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-50/60 to-slate-50 border border-blue-100 space-y-2">
+                <div
+                  style={entityAccentStyle("clients") as React.CSSProperties}
+                  className="p-3.5 rounded-lg bg-entity-subtle border border-entity-border space-y-2"
+                >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-700 text-white font-bold flex items-center justify-center text-body shadow-sm shrink-0">
+                    <div className="w-10 h-10 rounded-md bg-entity-solid text-white font-semibold flex items-center justify-center text-body shadow-2xs shrink-0">
                       {selectedClient.name.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-bold text-slate-900 text-body truncate">{selectedClient.name}</h4>
-                      <div className="flex items-center gap-2 text-caption text-slate-500">
+                      <h4 className="font-semibold text-gray-900 text-body truncate">{selectedClient.name}</h4>
+                      <div className="flex items-center gap-2 text-caption text-gray-600">
                         <span>{selectedClient.city || t("City unassigned", "Mesto nezadané", "Város nincs")}</span>
                         <span>&bull;</span>
                         <span className="capitalize">{selectedClient.clientType}</span>
@@ -2119,47 +2129,47 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-blue-100/80 grid grid-cols-1 gap-1 text-ui text-slate-600">
+                  <div className="pt-2 border-t border-entity-border grid grid-cols-1 gap-1 text-ui text-gray-700">
                     {selectedClient.phone && (
                       <div className="flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <a href={`tel:${selectedClient.phone}`} className="hover:text-blue-900 truncate">{selectedClient.phone}</a>
+                        <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <a href={`tel:${selectedClient.phone}`} className="hover:text-entity-text truncate">{selectedClient.phone}</a>
                       </div>
                     )}
                     {selectedClient.email && (
                       <div className="flex items-center gap-2">
-                        <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <a href={`mailto:${selectedClient.email}`} className="hover:text-blue-900 truncate">{selectedClient.email}</a>
+                        <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <a href={`mailto:${selectedClient.email}`} className="hover:text-entity-text truncate">{selectedClient.email}</a>
                       </div>
                     )}
                     {selectedClient.vatId && (
-                      <div className="text-caption text-slate-500 font-mono">
+                      <div className="text-caption text-gray-500 font-mono">
                         IČ DPH: {selectedClient.vatId}
                       </div>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="p-3 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-ui text-slate-400">
+                <div className="p-3 rounded-lg bg-gray-50 border border-dashed border-gray-200 text-center text-ui text-gray-500">
                   {t("No specific client selected (Direct Sale / Cash customer).", "Nevybraný konkrétny klient (Priamy pultový predaj).", "Nincs kiválasztott ügyfél (Közvetlen eladás).")}
                 </div>
               )}
 
               {/* Checkbox: Attach to timeline */}
               {selectedClient && (
-                <label className="flex items-start gap-2.5 cursor-pointer bg-blue-50/70 p-3 rounded-2xl border border-blue-200">
+                <label className="flex items-start gap-2.5 cursor-pointer bg-entity-subtle p-3 rounded-lg border border-entity-border">
                   <input
                     type="checkbox"
                     checked={issueLogTimeline}
                     onChange={(e) => setIssueLogTimeline(e.target.checked)}
-                    className="w-4 h-4 mt-0.5 rounded text-blue-900 focus:ring-blue-900"
+                    className="w-4 h-4 mt-0.5 rounded accent-[var(--entity-accent-solid)] text-entity-text focus:ring-entity-ring"
                   />
                   <div>
-                    <span className="font-bold text-ui text-blue-900">
-                      {t("Attach to Client History as Sale", "Pripojiť ako predaj & dodací list do CRM", "Csatolás az ügyfélelőzményekhez eladásként")}
+                    <span className="font-semibold text-ui text-entity-text">
+                      {t("Attach to Client History as Sale", `Pripojiť ako predaj & dodací list do ${PRODUCT_NAME}`, "Csatolás az ügyfélelőzményekhez eladásként")}
                     </span>
-                    <p className="text-caption text-blue-700 mt-0.5">
-                      {t("Creates a detailed sale entry in client timeline with list of items and prices", "Vytvorí záznam o predaji v časovej osi klienta so súpisom položiek a celkovou sumou", "Részletes bejegyzést hoz létre a CRM-ben")}
+                    <p className="text-caption text-gray-600 mt-0.5">
+                      {t("Creates a detailed sale entry in client timeline with list of items and prices", "Vytvorí záznam o predaji v časovej osi klienta so súpisom položiek a celkovou sumou", `Részletes bejegyzést hoz létre a ${PRODUCT_NAME}-ben`)}
                     </p>
                   </div>
                 </label>
@@ -2167,16 +2177,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </div>
 
             {/* 2. DOCUMENT PARAMETERS CARD */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-3.5">
-              <h3 className="text-ui font-bold text-slate-500 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-blue-700" />
+            <div className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm space-y-3.5">
+              <h3 className="text-ui font-bold text-gray-500 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-entity-text" />
                 <span>{t("Document & Logistics", "Doklad a logistika", "Bizonylat és logisztika")}</span>
               </h3>
 
               <div className="space-y-3">
                 {/* Source Warehouse */}
                 <div>
-                  <label className="block type-overline text-slate-700 mb-1">
+                  <label className="block type-overline text-gray-700 mb-1">
                     {t("Source Warehouse", "Zdrojový sklad výdaja", "Kiadási raktár")} *
                   </label>
                   <CustomSelect
@@ -2187,41 +2197,41 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       label: `${w.name} (${w.code})${w.isDefault ? " • Predvolený" : ""}`,
                     }))}
                     size="sm"
-                    className="w-full text-ui font-bold rounded-2xl"
+                    className="w-full text-ui font-bold rounded-lg"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   {/* Document Number */}
                   <div>
-                    <label className="block type-overline text-slate-700 mb-1">
+                    <label className="block type-overline text-gray-700 mb-1">
                       {t("Document No.", "Číslo dokladu", "Bizonylatszám")} *
                     </label>
                     <input
                       type="text"
                       value={issueDocumentNumber}
                       onChange={(e) => setIssueDocumentNumber(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-ui font-mono font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition"
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-ui font-mono font-bold text-gray-900 focus:bg-white focus:ring-2 focus:ring-entity-ring focus:outline-none transition"
                     />
                   </div>
 
                   {/* Issue Date */}
                   <div>
-                    <label className="block type-overline text-slate-700 mb-1">
+                    <label className="block type-overline text-gray-700 mb-1">
                       {t("Issue Date", "Dátum výdaja", "Kiadás dátuma")}
                     </label>
                     <input
                       type="date"
                       value={issueDate}
                       onChange={(e) => setIssueDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-ui font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition"
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-ui font-bold text-gray-900 focus:bg-white focus:ring-2 focus:ring-entity-ring focus:outline-none transition"
                     />
                   </div>
                 </div>
 
                 {/* Delivery Purpose / Note */}
                 <div>
-                  <label className="block type-overline text-slate-700 mb-1">
+                  <label className="block type-overline text-gray-700 mb-1">
                     {t("Purpose & Internal Note", "Účel výdaja & Poznámka k zákazke", "Kiadás célja és megjegyzés")}
                   </label>
                   <textarea
@@ -2229,28 +2239,28 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={issueNote}
                     onChange={(e) => setIssueNote(e.target.value)}
                     placeholder="napr. Kuchynská pracovná doska a montážny materiál pre zákazku Dubnica"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-ui text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition resize-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-lg text-ui text-gray-900 placeholder:text-gray-400 focus:bg-white focus:ring-2 focus:ring-entity-ring focus:outline-none transition resize-none"
                   />
                 </div>
               </div>
             </div>
 
             {/* 3. FINANCIAL SUMMARY & PROFITABILITY CARD (LIGHT DESIGN) */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+            <div className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-ui font-bold text-slate-500 flex items-center gap-1.5">
-                  <Calculator className="w-4 h-4 text-blue-700" />
+                <span className="text-ui font-bold text-gray-500 flex items-center gap-1.5">
+                  <Calculator className="w-4 h-4 text-entity-text" />
                   <span>{t("Financial Summary", "Finančná rekapitulácia", "Pénzügyi összesítés")}</span>
                 </span>
-                <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                <span className="px-2.5 py-0.5 rounded-md text-micro font-bold bg-entity-subtle text-entity-text border border-entity-border">
                   {issueItems.length} {t("items", "položiek", "tétel")}
                 </span>
               </div>
 
               <div className="space-y-2 text-ui">
-                <div className="flex items-center justify-between text-slate-600">
+                <div className="flex items-center justify-between text-gray-600">
                   <span>{t("Catalog Subtotal (Base)", "Cenníková suma (Základ)", "Katalógus ár")}</span>
-                  <span className="font-mono font-semibold text-slate-800">{formatCurrency(subtotalBase, systemLanguage, systemCurrency)}</span>
+                  <span className="font-mono font-semibold text-gray-800">{formatCurrency(subtotalBase, systemLanguage, systemCurrency)}</span>
                 </div>
 
                 {totalDiscount > 0 && (
@@ -2260,8 +2270,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   </div>
                 )}
 
-                <div className="pt-3 border-t border-slate-100 flex items-baseline justify-between">
-                  <span className="text-ui font-bold text-slate-700">
+                <div className="pt-3 border-t border-gray-100 flex items-baseline justify-between">
+                  <span className="text-ui font-bold text-gray-700">
                     {t("Final Sale Total", "Konečná cena predaja", "Végösszeg")}
                   </span>
                   <span className="type-metric text-emerald-600 font-mono">
@@ -2271,13 +2281,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
 
               {/* Cost & Estimated Margin preview */}
-              <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-caption">
-                <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <span className="text-slate-400 block mb-0.5 type-overline">{t("WAP Cost", "Skladový náklad (WAP)", "Beszerzési költség")}</span>
-                  <span className="font-bold text-slate-800 font-mono">{formatCurrency(totalWapCost, systemLanguage, systemCurrency)}</span>
+              <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-caption">
+                <div className="p-2.5 rounded-lg bg-gray-50 border border-gray-200/80">
+                  <span className="text-gray-400 block mb-0.5 type-overline">{t("WAP Cost", "Skladový náklad (WAP)", "Beszerzési költség")}</span>
+                  <span className="font-bold text-gray-800 font-mono">{formatCurrency(totalWapCost, systemLanguage, systemCurrency)}</span>
                 </div>
-                <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <span className="text-slate-400 block mb-0.5 type-overline">{t("Gross Margin", "Hrubá marža", "Árrés")}</span>
+                <div className="p-2.5 rounded-lg bg-gray-50 border border-gray-200/80">
+                  <span className="text-gray-400 block mb-0.5 type-overline">{t("Gross Margin", "Hrubá marža", "Árrés")}</span>
                   <span className={`font-bold font-mono ${totalEstimatedProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                     {totalMarginPct.toFixed(1)}% (+{formatCurrency(totalEstimatedProfit, systemLanguage, systemCurrency)})
                   </span>
@@ -2286,7 +2296,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </div>
 
             {/* DARK VERSION (Commented out for future use)
-            <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white p-5 rounded-3xl border border-blue-900/50 shadow-xl shadow-blue-950/20 space-y-4">
+            <div className="bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900 text-white p-5 rounded-lg border border-blue-900/50 shadow-xl shadow-xs space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-ui font-bold text-blue-300 flex items-center gap-1.5">
                   <Calculator className="w-4 h-4" />
@@ -2298,7 +2308,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
 
               <div className="space-y-2 text-ui">
-                <div className="flex items-center justify-between text-slate-300">
+                <div className="flex items-center justify-between text-gray-300">
                   <span>{t("Catalog Subtotal (Base)", "Cenníková suma (Základ)", "Katalógus ár")}</span>
                   <span className="font-mono font-semibold">{formatCurrency(subtotalBase, systemLanguage, systemCurrency)}</span>
                 </div>
@@ -2310,7 +2320,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   </div>
                 )}
 
-                <div className="pt-2 border-t border-slate-700/80 flex items-baseline justify-between">
+                <div className="pt-2 border-t border-gray-700/80 flex items-baseline justify-between">
                   <span className="text-body font-bold text-white">
                     {t("Final Sale Total", "Konečná cena predaja", "Végösszeg")}
                   </span>
@@ -2321,12 +2331,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
 
               <div className="pt-3 border-t border-blue-900/60 grid grid-cols-2 gap-2 text-caption">
-                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
-                  <span className="text-slate-400 block mb-0.5">{t("WAP Cost", "Skladový náklad (WAP)", "Beszerzési költség")}</span>
-                  <span className="font-bold text-slate-200 font-mono">{formatCurrency(totalWapCost, systemLanguage, systemCurrency)}</span>
+                <div className="p-2.5 rounded-md bg-white/5 border border-white/10">
+                  <span className="text-gray-400 block mb-0.5">{t("WAP Cost", "Skladový náklad (WAP)", "Beszerzési költség")}</span>
+                  <span className="font-bold text-gray-200 font-mono">{formatCurrency(totalWapCost, systemLanguage, systemCurrency)}</span>
                 </div>
-                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
-                  <span className="text-slate-400 block mb-0.5">{t("Gross Margin", "Hrubá marža", "Árrés")}</span>
+                <div className="p-2.5 rounded-md bg-white/5 border border-white/10">
+                  <span className="text-gray-400 block mb-0.5">{t("Gross Margin", "Hrubá marža", "Árrés")}</span>
                   <span className={`font-bold font-mono ${totalEstimatedProfit >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                     {totalMarginPct.toFixed(1)}% (+{formatCurrency(totalEstimatedProfit, systemLanguage, systemCurrency)})
                   </span>
@@ -2343,9 +2353,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           <div className="ws-lg:col-span-8 ws-xl:col-span-8 space-y-4">
             
             {/* PRODUCT SEARCH & QUICK ADD BAR */}
-            <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col ws-sm:flex-row items-center justify-between gap-3 relative">
+            <div className="bg-white p-4 rounded-lg border border-gray-200/80 shadow-sm flex flex-col ws-sm:flex-row items-center justify-between gap-3 relative">
               <div className="relative flex-1 w-full">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   value={productSearchQuery}
@@ -2355,7 +2365,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   }}
                   onFocus={() => setIsProductSearchDropdownOpen(true)}
                   placeholder={t("Quick search & add product by name, SKU or barcode...", "Rýchlo pridať tovar do výdajky (hľadajte podľa názvu, SKU, čiarového kódu)...", "Termék gyors hozzáadása...")}
-                  className="w-full pl-10 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-ui text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition"
+                  className="w-full pl-10 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-ui text-gray-900 placeholder:text-gray-400 focus:bg-white focus:ring-2 focus:ring-entity-ring focus:outline-none transition"
                 />
                 {productSearchQuery && (
                   <button
@@ -2363,7 +2373,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       setProductSearchQuery("");
                       setIsProductSearchDropdownOpen(false);
                     }}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -2376,7 +2386,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       className="fixed inset-0 z-20" 
                       onClick={() => setIsProductSearchDropdownOpen(false)} 
                     />
-                    <div className="absolute left-0 right-0 top-full mt-2 z-30 bg-white rounded-2xl border border-slate-200 shadow-2xl max-h-80 overflow-y-auto divide-y divide-slate-100 animate-fadeIn">
+                    <div className="absolute left-0 right-0 top-full mt-2 z-30 bg-white rounded-lg border border-gray-200 shadow-2xl max-h-80 overflow-y-auto divide-y divide-gray-100 animate-fadeIn">
                       {filteredSearchProducts.map(prod => {
                         const stock = getStockInfoForItem(prod.id, issueWarehouseId);
                         const isAvailable = stock.available > 0;
@@ -2385,19 +2395,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           <div
                             key={prod.id}
                             onClick={() => handleAddProductToIssue(prod)}
-                            className="p-3 hover:bg-blue-50/80 transition cursor-pointer flex items-center justify-between gap-3 group"
+                            className="p-3 hover:bg-entity-subtle transition cursor-pointer flex items-center justify-between gap-3 group"
                           >
                             <div className="flex items-center gap-3 min-w-0">
                               {prod.imageUrl ? (
-                                <img src={prod.imageUrl} alt={prod.name} className="w-10 h-10 rounded-xl object-cover border border-slate-200 shrink-0" />
+                                <img src={prod.imageUrl} alt={prod.name} className="w-10 h-10 rounded-md object-cover border border-gray-200 shrink-0" />
                               ) : (
-                                <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                                <div className="w-10 h-10 rounded-md bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-400 shrink-0">
                                   <Package className="w-5 h-5" />
                                 </div>
                               )}
                               <div className="min-w-0">
-                                <div className="font-bold text-slate-900 text-ui group-hover:text-blue-900 transition truncate">{prod.name}</div>
-                                <div className="flex items-center gap-2 mt-0.5 text-caption text-slate-400 font-mono">
+                                <div className="font-bold text-gray-900 text-ui group-hover:text-entity-text transition truncate">{prod.name}</div>
+                                <div className="flex items-center gap-2 mt-0.5 text-caption text-gray-400 font-mono">
                                   <span>{prod.sku}</span>
                                   {prod.hasExpiration && (
                                     <span className="px-1.5 py-0.2 rounded text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200 font-sans">
@@ -2413,18 +2423,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 <div className={`text-ui font-bold ${isAvailable ? "text-emerald-700" : "text-rose-600"}`}>
                                   {stock.available} {prod.unit}
                                 </div>
-                                <span className="text-micro text-slate-400">{t("available", "k dispozícii", "elérhető")}</span>
+                                <span className="text-micro text-gray-400">{t("available", "k dispozícii", "elérhető")}</span>
                               </div>
-                              <div className="border-l border-slate-200 pl-3">
-                                <div className="text-ui font-bold text-blue-900">
+                              <div className="border-l border-gray-200 pl-3">
+                                <div className="text-ui font-bold text-entity-text">
                                   {formatCurrency(prod.defaultSellPrice, systemLanguage, systemCurrency)}
                                 </div>
-                                <span className="text-micro text-slate-400">/{prod.unit}</span>
+                                <span className="text-micro text-gray-400">/{prod.unit}</span>
                               </div>
                               {canEdit && (
                               <button
                                 type="button"
-                                className="px-3 py-1.5 rounded-xl bg-blue-950 group-hover:bg-blue-900 text-white text-ui font-bold transition flex items-center gap-1 shadow-sm"
+                                className="px-3 py-1.5 rounded-md bg-entity-solid group-hover:bg-entity-solid text-white text-ui font-bold transition flex items-center gap-1 shadow-sm"
                               >
                                 <Plus className="w-3.5 h-3.5" />
                                 <span>{t("Add", "Pridať", "Hozzáadás")}</span>
@@ -2443,7 +2453,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <button
                 type="button"
                 onClick={handleAddEmptyIssueRow}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-ui font-bold transition flex items-center gap-1.5 shrink-0"
+                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-ui font-bold transition flex items-center gap-1.5 shrink-0"
               >
                 <Plus className="w-4 h-4" />
                 <span>{t("Add Empty Row", "Pridať prázdny riadok", "Üres sor hozzáadása")}</span>
@@ -2452,46 +2462,46 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </div>
 
             {/* LINE ITEMS DATA GRID */}
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-clip">
-              <div className="p-4 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between">
+            <div className="bg-white rounded-lg border border-gray-200/80 shadow-sm overflow-clip">
+              <div className="p-4 bg-gray-50/80 border-b border-gray-200/80 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <ShoppingCart className="w-4 h-4 text-blue-700" />
-                  <h3 className="font-bold text-slate-900 text-ui">
+                  <ShoppingCart className="w-4 h-4 text-entity-text" />
+                  <h3 className="font-bold text-gray-900 text-ui">
                     {t("Issued Products List", "Súpis tovaru a materiálu na výdaj", "Kiadandó tételek")}
                   </h3>
                 </div>
-                <span className="text-ui text-slate-500 font-semibold">
+                <span className="text-ui text-gray-500 font-semibold">
                   {issueItems.length} {t("items", "položiek", "tétel")} &bull; {totalUnitsSum.toFixed(2)} {t("total units", "spolu m.j.", "összesen")}
                 </span>
               </div>
 
               <div ref={issueWrapRef} className="table-page-wrap">
-                <table className="w-full text-left text-ui text-slate-600 min-w-210">
-                  <thead className="table-page-sticky-head border-b border-slate-200/80 type-overline text-slate-500">
+                <table className="w-full text-left text-ui text-gray-600 min-w-210">
+                  <thead className="table-page-sticky-head border-b border-gray-200/80 type-overline text-gray-500">
                     <tr>
-                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-10 text-center">#</th>
-                      <th className="sticky z-10 bg-slate-100 py-3 px-3 min-w-55">{t("Product & Stock", "Tovar a skladový stav", "Termék & Készlet")}</th>
-                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-36 min-w-32.5">{t("Quantity", "Množstvo", "Mennyiség")}</th>
-                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Base Price", "Cenníková cena", "Alapár")}</th>
-                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-32 text-center">{t("Discount %", "Zľava %", "Kedvezmény %")}</th>
-                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Sale Price", "Predajná cena", "Eladási ár")}</th>
-                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Line Total", "Spolu s DPH", "Összesen")}</th>
-                      <th className="sticky z-10 bg-slate-100 py-3 px-3 min-w-35">{t("Note", "Poznámka", "Megjegyzés")}</th>
-                      <th className="sticky z-10 bg-slate-100 py-3 px-2 w-10 text-center"></th>
+                      <th className="sticky z-10 bg-gray-100 py-3 px-3 w-10 text-center">#</th>
+                      <th className="sticky z-10 bg-gray-100 py-3 px-3 min-w-55">{t("Product & Stock", "Tovar a skladový stav", "Termék & Készlet")}</th>
+                      <th className="sticky z-10 bg-gray-100 py-3 px-3 w-36 min-w-32.5">{t("Quantity", "Množstvo", "Mennyiség")}</th>
+                      <th className="sticky z-10 bg-gray-100 py-3 px-3 w-32 text-right">{t("Base Price", "Cenníková cena", "Alapár")}</th>
+                      <th className="sticky z-10 bg-gray-100 py-3 px-3 w-32 text-center">{t("Discount %", "Zľava %", "Kedvezmény %")}</th>
+                      <th className="sticky z-10 bg-gray-100 py-3 px-3 w-32 text-right">{t("Sale Price", "Predajná cena", "Eladási ár")}</th>
+                      <th className="sticky z-10 bg-gray-100 py-3 px-3 w-32 text-right">{t("Line Total", "Spolu s DPH", "Összesen")}</th>
+                      <th className="sticky z-10 bg-gray-100 py-3 px-3 min-w-35">{t("Note", "Poznámka", "Megjegyzés")}</th>
+                      <th className="sticky z-10 bg-gray-100 py-3 px-2 w-10 text-center"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-gray-100">
                     {issueItems.length === 0 ? (
                       <tr>
                         <td colSpan={9} className="py-14 px-4 text-center">
                           <div className="max-w-md mx-auto space-y-2.5">
-                            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 mx-auto flex items-center justify-center border border-blue-100 shadow-sm">
+                            <div className="w-12 h-12 rounded-lg bg-entity-subtle text-entity-text mx-auto flex items-center justify-center border border-entity-border shadow-sm">
                               <Search className="w-6 h-6" />
                             </div>
-                            <h4 className="font-bold text-slate-800 text-body">
+                            <h4 className="font-bold text-gray-800 text-body">
                               {t("Search & add products from the top search bar", "Vyhľadajte tovar vo vyhľadávacom paneli vyššie", "Keresse meg és adja hozzá a termékeket a fenti keresővel")}
                             </h4>
-                            <p className="text-ui text-slate-500 leading-relaxed max-w-sm mx-auto">
+                            <p className="text-ui text-gray-500 leading-relaxed max-w-sm mx-auto">
                               {t("Type product name, SKU, or barcode in the search bar above to add items row by row to this issue.", "Zadajte názov produktu, SKU alebo čiarový kód do vyhľadávacieho panela vyššie a tovar sa automaticky pridá do zoznamu výdajky.", "Gépelje be a termék nevét vagy cikkszámát a fenti keresőmezőbe a hozzáadáshoz.")}
                             </p>
                           </div>
@@ -2506,9 +2516,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         const lineTotal = (Number(row.quantity) || 0) * (Number(row.unitSellPrice) || 0);
 
                         return (
-                          <tr key={row.id} className="hover:bg-slate-50/80 transition">
+                          <tr key={row.id} className="hover:bg-gray-50/80 transition">
                             {/* 1. Index */}
-                            <td className="py-3 px-3 text-center font-bold text-slate-400 text-caption">
+                            <td className="py-3 px-3 text-center font-bold text-gray-400 text-caption">
                               {idx + 1}
                             </td>
 
@@ -2540,8 +2550,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                   </span>
 
                                   {selItem?.defaultLocation && (
-                                    <span className="text-micro text-slate-400 flex items-center gap-1 font-mono">
-                                      <MapPin className="w-3 h-3 text-slate-400" />
+                                    <span className="text-micro text-gray-400 flex items-center gap-1 font-mono">
+                                      <MapPin className="w-3 h-3 text-gray-400" />
                                       {stock.locations || selItem.defaultLocation}
                                     </span>
                                   )}
@@ -2550,7 +2560,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 {/* FEFO Batch lot picker if expiration tracking is on */}
                                 {selItem?.hasExpiration && itemBatches.length > 0 && (
                                   <div className="pt-1 flex items-center gap-1.5">
-                                    <span className="type-overline text-slate-400 shrink-0">
+                                    <span className="type-overline text-gray-400 shrink-0">
                                       {t("Batch (FEFO)", "Šarža", "Tétel")}:
                                     </span>
                                     <div className="w-full">
@@ -2583,9 +2593,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                   value={row.quantity}
                                   onChange={(e) => handleUpdateIssueRow(row.id, { quantity: e.target.value })}
                                   placeholder="0"
-                                  className="w-full pl-3 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-ui font-bold text-slate-900 focus:ring-2 focus:ring-blue-700 focus:outline-none transition shadow-sm"
+                                  className="w-full pl-3 pr-9 py-2 bg-white border border-gray-200 rounded-md text-ui font-bold text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none transition shadow-sm"
                                 />
-                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-caption font-semibold text-slate-400 pointer-events-none">
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-caption font-semibold text-gray-400 pointer-events-none">
                                   {selItem?.unit || "ks"}
                                 </span>
                               </div>
@@ -2600,9 +2610,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 value={row.baseSellPrice}
                                 onChange={(e) => handleUpdateIssueRow(row.id, { baseSellPrice: e.target.value })}
                                 placeholder="0.00"
-                                className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-bold text-slate-700 text-right focus:ring-2 focus:ring-blue-700 focus:outline-none transition shadow-sm"
+                                className="w-full px-2.5 py-2 bg-white border border-gray-200 rounded-md text-ui font-mono font-bold text-gray-700 text-right focus:ring-2 focus:ring-entity-ring focus:outline-none transition shadow-sm"
                               />
-                              <span className="text-micro text-slate-400 mt-0.5 block">/{selItem?.unit || "ks"}</span>
+                              <span className="text-micro text-gray-400 mt-0.5 block">/{selItem?.unit || "ks"}</span>
                             </td>
 
                             {/* 5. Discount (%) */}
@@ -2617,9 +2627,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                     value={row.discountPct}
                                     onChange={(e) => handleUpdateIssueRow(row.id, { discountPct: e.target.value })}
                                     placeholder="0"
-                                    className="w-full pl-2.5 pr-6 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-bold text-center text-rose-600 focus:ring-2 focus:ring-blue-700 focus:outline-none transition shadow-sm"
+                                    className="w-full pl-2.5 pr-6 py-2 bg-white border border-gray-200 rounded-md text-ui font-mono font-bold text-center text-rose-600 focus:ring-2 focus:ring-entity-ring focus:outline-none transition shadow-sm"
                                   />
-                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-caption font-bold text-slate-400">%</span>
+                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-caption font-bold text-gray-400">%</span>
                                 </div>
                                 {/* Quick presets */}
                                 <div className="flex items-center justify-center gap-1">
@@ -2629,7 +2639,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                       type="button"
                                       onClick={() => handleUpdateIssueRow(row.id, { discountPct: pct })}
                                       className={`px-1.5 py-0.5 rounded text-micro font-bold transition ${
-                                        Number(row.discountPct) === pct && row.discountPct !== "" ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                        Number(row.discountPct) === pct && row.discountPct !== "" ? "bg-rose-100 text-rose-700" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                                       }`}
                                     >
                                       {pct}%
@@ -2648,14 +2658,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 value={row.unitSellPrice}
                                 onChange={(e) => handleUpdateIssueRow(row.id, { unitSellPrice: e.target.value })}
                                 placeholder="0.00"
-                                className="w-full px-2.5 py-2 bg-blue-50/60 border border-blue-200 rounded-xl text-ui font-mono font-bold text-blue-950 text-right focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition shadow-sm"
+                                className="w-full px-2.5 py-2 bg-entity-subtle border border-entity-border rounded-md text-ui font-mono font-bold text-entity-text text-right focus:bg-white focus:ring-2 focus:ring-entity-ring focus:outline-none transition shadow-sm"
                               />
-                              <span className="text-micro text-slate-400 mt-0.5 block">/{selItem?.unit || "ks"}</span>
+                              <span className="text-micro text-gray-400 mt-0.5 block">/{selItem?.unit || "ks"}</span>
                             </td>
 
                             {/* 7. Line Total */}
                             <td className="py-3 px-3 text-right">
-                              <div className="font-mono font-bold text-body text-slate-900">
+                              <div className="font-mono font-bold text-body text-gray-900">
                                 {formatCurrency(lineTotal, systemLanguage, systemCurrency)}
                               </div>
                               {Number(row.discountPct) > 0 && (
@@ -2672,7 +2682,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 value={row.note}
                                 onChange={(e) => handleUpdateIssueRow(row.id, { note: e.target.value })}
                                 placeholder={t("Line note...", "Poznámka...", "Megjegyzés...")}
-                                className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-ui text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-700 focus:outline-none transition shadow-sm"
+                                className="w-full px-2.5 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-800 placeholder:text-gray-400 focus:ring-2 focus:ring-entity-ring focus:outline-none transition shadow-sm"
                               />
                             </td>
 
@@ -2682,7 +2692,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => { if (!canDelete) return; handleRemoveIssueRow(row.id); }}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                                className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition"
                                 title={t("Remove Row", "Odstrániť riadok", "Sor törlése")}
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -2699,12 +2709,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <StickyHScrollbar target={issueWrapEl} />
 
               {/* TABLE FOOTER */}
-              <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex flex-col ws-sm:flex-row items-center justify-between gap-3">
+              <div className="p-4 bg-gray-50 border-t border-gray-200/80 flex flex-col ws-sm:flex-row items-center justify-between gap-3">
                 {canEdit && (
                 <button
                   type="button"
                   onClick={handleAddEmptyIssueRow}
-                  className="text-ui font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1.5"
+                  className="text-ui font-bold text-entity-text hover:text-entity-text flex items-center gap-1.5"
                 >
                   <Plus className="w-4 h-4" />
                   <span>{t("Add another line item", "Pridať ďalšiu položku do zoznamu", "További tétel hozzáadása")}</span>
@@ -2712,11 +2722,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 )}
 
                 <div className="flex items-center gap-4 text-ui">
-                  <span className="text-slate-500">
-                    {t("Total items", "Spolu položiek", "Összesen")}: <strong className="text-slate-900">{issueItems.length}</strong>
+                  <span className="text-gray-500">
+                    {t("Total items", "Spolu položiek", "Összesen")}: <strong className="text-gray-900">{issueItems.length}</strong>
                   </span>
-                  <span className="text-slate-500">
-                    {t("Total Amount", "Celková suma", "Végösszeg")}: <strong className="text-blue-900 font-mono font-bold text-body">{formatCurrency(totalSellPrice, systemLanguage, systemCurrency)}</strong>
+                  <span className="text-gray-500">
+                    {t("Total Amount", "Celková suma", "Végösszeg")}: <strong className="text-entity-text font-mono font-bold text-body">{formatCurrency(totalSellPrice, systemLanguage, systemCurrency)}</strong>
                   </span>
                 </div>
               </div>
@@ -2765,10 +2775,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     return (
       <div className="space-y-6 pb-12 animate-fadeIn">
         {/* TOP BAR / BREADCRUMB HEADER (STICKY FLUSH UNDER MAIN HEADER - DYNAMIC COMPACT ON SCROLL) */}
-        <div className={`sticky -top-4 ws-md:-top-6 z-40 -mt-4 ws-md:-mt-6 -mx-4 ws-md:-mx-6 px-4 ws-md:px-6 bg-white/95 backdrop-blur-md border-b transition-all duration-200 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-3 ${
+        <div className={`sticky -top-4 ws-md:-top-6 z-40 -mt-4 ws-md:-mt-6 -mx-4 ws-md:-mx-6 px-4 ws-md:px-6 bg-white/95  border-b transition-all duration-200 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-3 ${
           isHeaderStuck
-            ? "py-2 ws-md:py-2.5 border-slate-200/90 shadow-md"
-            : "py-3.5 ws-md:py-4 border-slate-200/80 shadow-sm"
+            ? "py-2 ws-md:py-2.5 border-gray-200/90 shadow-md"
+            : "py-3.5 ws-md:py-4 border-gray-200/80 shadow-sm"
         }`}>
           <div className="flex items-center gap-3 ws-md:gap-4 min-w-0">
             <button
@@ -2778,8 +2788,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 setCategorySearchQuery("");
                 window.location.hash = "warehouse";
               }}
-              className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all flex items-center justify-center shrink-0 ${
-                isHeaderStuck ? "p-1.5 ws-md:p-2" : "p-2.5 rounded-2xl"
+              className={`rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-all flex items-center justify-center shrink-0 ${
+                isHeaderStuck ? "p-1.5 ws-md:p-2" : "p-2.5 rounded-lg"
               }`}
               title={t("Back to Inventory", "Späť na skladové zásoby", "Vissza a készlethez")}
             >
@@ -2788,37 +2798,37 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
             <div className="min-w-0">
               {!isHeaderStuck && (
-                <div className="flex items-center gap-2 text-ui font-semibold text-slate-400 mb-1 transition-all">
+                <div className="flex items-center gap-2 text-ui font-semibold text-gray-400 mb-1 transition-all">
                   <span>{t("Warehouse", "Sklad", "Raktár")}</span>
                   <span>/</span>
                   <span>{t("Product Catalog", "Katalóg tovaru", "Termékkatalógus")}</span>
                   <span>/</span>
-                  <span className="text-blue-900 font-bold truncate max-w-50 ws-sm:max-w-xs">{isNew ? t("New Product", "Nový tovar", "Új termék") : currentItem?.name}</span>
+                  <span className="text-entity-text font-bold truncate max-w-50 ws-sm:max-w-xs">{isNew ? t("New Product", "Nový tovar", "Új termék") : currentItem?.name}</span>
                 </div>
               )}
 
               <div className="flex flex-wrap items-center gap-2 ws-md:gap-3">
-                <h1 className={`font-bold text-slate-900 tracking-tight transition-all truncate ${
+                <h1 className={`font-bold text-gray-900 tracking-tight transition-all truncate ${
                   isHeaderStuck ? "text-title-sm" : "text-title"
                 }`}>
                   {isNew ? t("New Product / Material", "Pridať nový tovar do katalógu", "Új termék felvitele") : itemForm.name || currentItem?.name}
                 </h1>
                 {!isNew && (
                   <>
-                    <span className={`rounded-full font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200 transition-all ${
+                    <span className={`rounded-md font-mono font-bold bg-gray-100 text-gray-700 border border-gray-200 transition-all ${
                       isHeaderStuck ? "px-2 py-0.5 text-micro" : "px-2.5 py-0.5 text-ui"
                     }`}>
                       {itemForm.sku}
                     </span>
                     {itemForm.categories.length === 0 ? (
-                      <span className={`rounded-full font-bold bg-slate-100 text-slate-500 border border-slate-200 transition-all ${
+                      <span className={`rounded-md font-bold bg-gray-100 text-gray-500 border border-gray-200 transition-all ${
                         isHeaderStuck ? "px-2 py-0.5 text-micro" : "px-2.5 py-0.5 text-ui"
                       }`}>
                         {t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
                       </span>
                     ) : (
                       itemForm.categories.slice(0, isHeaderStuck ? 2 : 10).map(cat => (
-                        <span key={cat} className={`rounded-full font-bold bg-blue-50 text-blue-900 border border-blue-200 transition-all ${
+                        <span key={cat} className={`rounded-md font-bold bg-entity-subtle text-entity-text border border-entity-border transition-all ${
                           isHeaderStuck ? "px-2 py-0.5 text-micro" : "px-2.5 py-0.5 text-ui"
                         }`}>
                           {cat}
@@ -2826,7 +2836,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       ))
                     )}
                     {isHeaderStuck && itemForm.categories.length > 2 && (
-                      <span className="text-micro font-bold text-slate-400">
+                      <span className="text-micro font-bold text-gray-400">
                         +{itemForm.categories.length - 2}
                       </span>
                     )}
@@ -2866,8 +2876,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   }
                   setTimeout(() => setIsCopiedProductUrl(false), 2000);
                 }}
-                className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-all flex items-center gap-1.5 ${
-                  isHeaderStuck ? "p-1.5 ws-md:px-2.5 ws-md:py-1.5 text-ui" : "p-2.5 px-3.5 text-ui rounded-2xl"
+                className={`rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-all flex items-center gap-1.5 ${
+                  isHeaderStuck ? "p-1.5 ws-md:px-2.5 ws-md:py-1.5 text-ui" : "p-2.5 px-3.5 text-ui rounded-lg"
                 }`}
                 title={t("Copy direct Product URL", "Kopírovať priamy URL odkaz na tovar", "Termék link másolása")}
               >
@@ -2886,7 +2896,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             )}
 
             {!canEdit && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 type-overline">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 type-overline">
                 <Lock className="h-3.5 w-3.5" />
                 {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
               </span>
@@ -2899,8 +2909,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 setCategorySearchQuery("");
                 window.location.hash = "warehouse";
               }}
-              className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-all ${
-                isHeaderStuck ? "px-3 py-1.5 text-ui" : "px-4 py-2.5 text-ui rounded-2xl"
+              className={`rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-all ${
+                isHeaderStuck ? "px-3 py-1.5 text-ui" : "px-4 py-2.5 text-ui rounded-lg"
               }`}
             >
               {t("Cancel", "Zrušiť", "Mégse")}
@@ -2912,8 +2922,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   lang={systemLanguage}
                   what={currentItem?.name}
                   onConfirm={() => { if (!canDelete) return; currentItem && handleDeleteItem(currentItem.id); }}
-                  className={`rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold transition-all flex items-center gap-1.5 ${
-                  isHeaderStuck ? "p-1.5 ws-md:px-2.5 ws-md:py-1.5 text-ui" : "p-2.5 text-ui rounded-2xl"
+                  className={`rounded-md bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold transition-all flex items-center gap-1.5 ${
+                  isHeaderStuck ? "p-1.5 ws-md:px-2.5 ws-md:py-1.5 text-ui" : "p-2.5 text-ui rounded-lg"
                 }`}
                   title={t("Delete Product", "Vymazať tovar", "Termék törlése")}
                   icon={<Trash2 className={isHeaderStuck ? "w-3.5 h-3.5" : "w-4 h-4"} />}
@@ -2924,8 +2934,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {canEdit && (
             <button
               onClick={handleSaveItem}
-              className={`flex items-center gap-1.5 ws-md:gap-2 rounded-xl bg-blue-950 hover:bg-blue-900 text-white font-bold shadow-lg shadow-blue-950/20 transition-all ${
-                isHeaderStuck ? "px-3.5 py-1.5 text-ui" : "px-5 py-2.5 text-ui rounded-2xl"
+              className={`flex items-center gap-1.5 ws-md:gap-2 rounded-md bg-entity-solid hover:bg-entity-solid text-white font-bold shadow-lg shadow-xs transition-all ${
+                isHeaderStuck ? "px-3.5 py-1.5 text-ui" : "px-5 py-2.5 text-ui rounded-lg"
               }`}
             >
               <Save className={isHeaderStuck ? "w-3.5 h-3.5" : "w-4 h-4"} />
@@ -2936,37 +2946,37 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         </div>
 
         {/* TOP WAREHOUSE TREND & INVENTORY FLOW STATS OVERVIEW */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+        <div className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm space-y-4">
           {/* 4 SUMMARY STAT CARDS */}
           <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-3">
             {/* Stat 1: Total Stock */}
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
-              <span className="type-overline text-slate-400 block mb-1">
+            <div className="p-3.5 rounded-lg bg-gray-50 border border-gray-200/70">
+              <span className="type-overline text-gray-400 block mb-1">
                 {t("Total Stock", "Celková zásoba", "Összkészlet")}
               </span>
-              <div className="text-title font-bold text-slate-900 font-mono">
-                {totalStock} <span className="text-ui font-normal text-slate-500">{itemForm.unit}</span>
+              <div className="text-title font-bold text-gray-900 font-mono">
+                {totalStock} <span className="text-ui font-normal text-gray-500">{itemForm.unit}</span>
               </div>
-              <span className="text-micro text-slate-400 mt-0.5 block">
+              <span className="text-micro text-gray-400 mt-0.5 block">
                 {t("Across all warehouses", "Na všetkých skladoch", "Összes raktárban")}
               </span>
             </div>
 
             {/* Stat 2: Total Value at WAP */}
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
-              <span className="type-overline text-slate-400 block mb-1">
+            <div className="p-3.5 rounded-lg bg-gray-50 border border-gray-200/70">
+              <span className="type-overline text-gray-400 block mb-1">
                 {t("Inventory Value", "Hodnota zásob (WAP)", "Készletérték")}
               </span>
               <div className="text-title font-bold text-emerald-700 font-mono">
                 {formatCurrency(totalStock * itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}
               </div>
-              <span className="text-micro text-slate-400 mt-0.5 block">
+              <span className="text-micro text-gray-400 mt-0.5 block">
                 {t("At avg purchase cost", "Podľa nákupných cien", "Beszerzési áron")}
               </span>
             </div>
 
             {/* Stat 3: 30d Inflow */}
-            <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-100">
+            <div className="p-3.5 rounded-lg bg-emerald-50/60 border border-emerald-100">
               <span className="type-overline text-emerald-700 block mb-1 flex items-center gap-1">
                 <ArrowDownLeft className="w-3 h-3" />
                 {t("Purchases (30d)", "Nákup (30 dní)", "Beszerzés (30n)")}
@@ -2983,16 +2993,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </div>
 
             {/* Stat 4: 30d Outflow */}
-            <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-100">
-              <span className="type-overline text-blue-700 block mb-1 flex items-center gap-1">
+            <div className="p-3.5 rounded-lg bg-entity-subtle border border-entity-border">
+              <span className="type-overline text-entity-text block mb-1 flex items-center gap-1">
                 <ArrowUpRight className="w-3 h-3" />
                 {t("Sales (30d)", "Predaj (30 dní)", "Értékesítés (30n)")}
               </span>
-              <div className="text-title font-bold text-blue-900 font-mono">
+              <div className="text-title font-bold text-entity-text font-mono">
                 -{itemMovements
                   .filter(m => m.type === "outward" && new Date(m.issuedAt || m.createdAt || "").getTime() >= Date.now() - 30 * 86400000)
                   .reduce((sum, m) => sum + (m.items?.find(it => it.itemId === currentItem?.id)?.quantity || 0), 0)}{" "}
-                <span className="text-ui font-normal text-blue-700">{itemForm.unit}</span>
+                <span className="text-ui font-normal text-entity-text">{itemForm.unit}</span>
               </div>
               <span className="text-micro text-blue-600 mt-0.5 block">
                 {t("Issued to clients", "Vydané zákazníkom", "Kiadások")}
@@ -3001,26 +3011,26 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           </div>
 
           {/* FLOW TRAJECTORY & HEALTH BAR */}
-          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
+          <div className="p-3.5 rounded-lg bg-gray-50 border border-gray-200/80 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
               <div className={`w-3 h-3 rounded-full ${totalStock > (itemForm.minStock || 0) ? "bg-emerald-500 animate-pulse" : "bg-amber-500 animate-bounce"}`} />
               <div>
-                <span className="text-ui font-bold text-slate-800 block">
+                <span className="text-ui font-bold text-gray-800 block">
                   {totalStock > (itemForm.minStock || 0) 
                     ? t("Stock Status: Optimal & Healthy", "Stav zásob: Optimálny a v norme", "Készletállapot: Megfelelő")
                     : t("Stock Status: Low Inventory Alert!", "Stav zásob: Nízka zásoba — potrebné doobjednať!", "Készletállapot: Alacsony készlet!")}
                 </span>
-                <span className="text-caption text-slate-400">
+                <span className="text-caption text-gray-400">
                   {t("Min Alert threshold", "Minimálny limit", "Minimális limit")}: {itemForm.minStock} {itemForm.unit} · {t("Target", "Cieľ", "Cél")}: {itemForm.optimalStock} {itemForm.unit}
                 </span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-ui font-mono font-bold text-slate-700">
+              <span className="text-ui font-mono font-bold text-gray-700">
                 {Math.min(100, Math.round((totalStock / (itemForm.optimalStock || 1)) * 100))}%
               </span>
-              <div className="w-28 h-2.5 bg-slate-200 rounded-full overflow-hidden">
+              <div className="w-28 h-2.5 bg-gray-200 rounded-full overflow-hidden">
                 <div 
                   className={`h-full rounded-full transition-all ${totalStock > (itemForm.minStock || 0) ? "bg-emerald-600" : "bg-amber-500"}`}
                   style={{ width: `${Math.min(100, (totalStock / (itemForm.optimalStock || 1)) * 100)}%` }}
@@ -3036,12 +3046,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           {/* LEFT NARROWER COLUMN (1/3 width): FIXED PRODUCT DATA (WEBSHOP STYLE) */}
           <div className="ws-lg:col-span-1 space-y-5">
             {/* CARD: FIXED PRODUCT SPECIFICATIONS */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+            <div className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm space-y-4">
               
               {/* LOCK / UNLOCK BAR */}
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <div className="flex items-center gap-1.5 text-ui font-bold text-slate-700">
-                  <Package className="w-4 h-4 text-blue-900" />
+              <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                <div className="flex items-center gap-1.5 text-ui font-bold text-gray-700">
+                  <Package className="w-4 h-4 text-entity-text" />
                   <span>{t("Fixed Product Data", "Pevné údaje tovaru", "Fix termékadatok")}</span>
                 </div>
 
@@ -3053,10 +3063,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     onMouseLeave={cancelHoldToUnlock}
                     onTouchStart={startHoldToUnlock}
                     onTouchEnd={cancelHoldToUnlock}
-                    className={`relative overflow-hidden px-3 py-1.5 rounded-xl border text-ui font-bold transition select-none flex items-center gap-1.5 ${
+                    className={`relative overflow-hidden px-3 py-1.5 rounded-md border text-ui font-bold transition select-none flex items-center gap-1.5 ${
                       isHoldingLock 
                         ? "bg-amber-100 border-amber-300 text-amber-900 scale-95 shadow-inner" 
-                        : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700 cursor-pointer"
+                        : "bg-gray-100 hover:bg-gray-200 border-gray-200 text-gray-700 cursor-pointer"
                     }`}
                     title={t("Hold for 1 second to unlock fixed data", "Podržte 1 sekundu na odomknutie", "Tartsa nyomva 1 másodpercig a feloldáshoz")}
                   >
@@ -3075,7 +3085,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsProductCardLocked(true)}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-ui font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    className="px-3 py-1.5 rounded-md bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-ui font-bold transition flex items-center gap-1.5 cursor-pointer"
                     title={t("Click to lock fixed data", "Kliknite pre zamknutie údajov", "Kattintson a zároláshoz")}
                   >
                     <Unlock className="w-3.5 h-3.5 text-emerald-600" />
@@ -3085,15 +3095,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
 
               {/* TOP HEADER: SMALL IMAGE (WITH UPLOAD) ON LEFT, NAME ON RIGHT (WEBSHOP STYLE) */}
-              <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-start gap-3 pb-3 border-b border-gray-100">
                 {/* Small thumbnail with upload trigger on the left */}
                 <div className="relative group shrink-0">
                   <div 
                     onClick={() => !isProductCardLocked && document.getElementById("product-image-upload-input")?.click()}
-                    className={`w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 border-2 border-dashed shadow-inner flex flex-col items-center justify-center relative transition ${
+                    className={`w-20 h-20 rounded-lg overflow-hidden bg-gray-100 border-2 border-dashed shadow-inner flex flex-col items-center justify-center relative transition ${
                       isProductCardLocked 
-                        ? "border-slate-200 cursor-not-allowed opacity-90" 
-                        : "border-slate-300 group-hover:border-blue-900 cursor-pointer"
+                        ? "border-gray-200 cursor-not-allowed opacity-90" 
+                        : "border-gray-300 group-hover:border-blue-900 cursor-pointer"
                     }`}
                     title={isProductCardLocked ? t("Locked. Hold lock button for 1s to edit.", "Zamknuté. Podržte tlačidlo zámku 1s na úpravu.", "Zárolva.") : t("Click to upload product image", "Kliknite pre nahratie obrázka tovaru", "Kattintson a kép feltöltéséhez")}
                   >
@@ -3116,16 +3126,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         )}
                       </>
                     ) : (
-                      <div className="flex flex-col items-center justify-center text-slate-400 p-1 text-center">
-                        <Upload className={`w-5 h-5 mb-1 ${isProductCardLocked ? "text-slate-300" : "text-slate-400 group-hover:text-blue-900 group-hover:scale-110"} transition`} />
-                        <span className="type-overline text-slate-500 leading-none">{t("Upload", "Nahrať", "Feltöltés")}</span>
+                      <div className="flex flex-col items-center justify-center text-gray-400 p-1 text-center">
+                        <Upload className={`w-5 h-5 mb-1 ${isProductCardLocked ? "text-gray-300" : "text-gray-400 group-hover:text-entity-text group-hover:scale-110"} transition`} />
+                        <span className="type-overline text-gray-500 leading-none">{t("Upload", "Nahrať", "Feltöltés")}</span>
                       </div>
                     )}
 
                     {/* Uploading spinner overlay */}
                     {isImageUploading && (
-                      <div className="absolute inset-0 bg-white/80 backdrop-blur-xs flex items-center justify-center">
-                        <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
+                      <div className="absolute inset-0 bg-white/80  flex items-center justify-center">
+                        <Loader2 className="w-5 h-5 text-entity-text animate-spin" />
                       </div>
                     )}
                   </div>
@@ -3148,7 +3158,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         e.stopPropagation();
                         setItemForm(prev => ({ ...prev, imageUrl: "" }));
                       }}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center shadow-md transition cursor-pointer"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-md bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center shadow-md transition cursor-pointer"
                       title={t("Remove image", "Odstrániť obrázok", "Kép törlése")}
                     >
                       <X className="w-3 h-3" />
@@ -3158,7 +3168,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                 {/* Name on the right */}
                 <div className="flex-1 min-w-0">
-                  <label className="block type-overline text-slate-400 mb-1">
+                  <label className="block type-overline text-gray-400 mb-1">
                     {t("Product Name", "Názov tovaru", "Terméknév")} *
                   </label>
                   <input
@@ -3167,14 +3177,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={itemForm.name}
                     onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })}
                     placeholder="napr. Calacatta Gold 20mm"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition leading-tight disabled:bg-slate-100/70 disabled:cursor-not-allowed disabled:text-slate-700"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-bold text-gray-900 focus:ring-2 focus:ring-entity-ring focus:bg-white focus:outline-none transition leading-tight disabled:bg-gray-100/70 disabled:cursor-not-allowed disabled:text-gray-700"
                   />
                   {!isProductCardLocked && (
                     <div className="flex items-center gap-1.5 mt-1.5">
                       <button
                         type="button"
                         onClick={() => document.getElementById("product-image-upload-input")?.click()}
-                        className="text-micro font-bold text-blue-900 hover:text-blue-950 flex items-center gap-1 transition"
+                        className="text-micro font-bold text-entity-text hover:text-entity-text flex items-center gap-1 transition"
                       >
                         <Upload className="w-3 h-3" />
                         <span>{itemForm.imageUrl ? t("Change photo", "Zmeniť foto", "Fotó cseréje") : t("Upload photo", "Nahrať foto", "Fotó feltöltése")}</span>
@@ -3185,14 +3195,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
 
               {imageUploadError && (
-                <div className="p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-ui font-semibold">
+                <div className="p-2 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-ui font-semibold">
                   {imageUploadError}
                 </div>
               )}
 
               {/* 1. SUGGESTED SALE PRICE */}
               <div>
-                <label className="block type-overline text-slate-700 mb-1">
+                <label className="block type-overline text-gray-700 mb-1">
                   {t("Suggested Sale Price (excl. VAT)", "Predajná cena bez DPH", "Ajánlott eladási ár")} *
                 </label>
                 <div className="relative">
@@ -3202,9 +3212,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     disabled={isProductCardLocked}
                     value={itemForm.defaultSellPrice}
                     onChange={(e) => setItemForm({ ...itemForm, defaultSellPrice: Number(e.target.value) })}
-                    className="w-full pl-3.5 pr-14 py-2 bg-slate-50 border border-slate-200 rounded-xl text-body font-mono font-bold text-blue-950 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                    className="w-full pl-3.5 pr-14 py-2 bg-gray-50 border border-gray-200 rounded-md text-body font-mono font-bold text-entity-text focus:ring-2 focus:ring-entity-ring focus:bg-white focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-slate-400">
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-gray-400">
                     {systemCurrency || "EUR"} / {itemForm.unit}
                   </span>
                 </div>
@@ -3212,7 +3222,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               {/* 2. EAN / BARCODE */}
               <div>
-                <label className="block type-overline text-slate-700 mb-1">
+                <label className="block type-overline text-gray-700 mb-1">
                   {t("Barcode / EAN", "Čiarový kód / EAN", "Vonalkód")}
                 </label>
                 <div className="relative">
@@ -3222,15 +3232,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={itemForm.barcode}
                     onChange={(e) => setItemForm({ ...itemForm, barcode: e.target.value })}
                     placeholder="858800123401"
-                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                    className="w-full pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-mono font-semibold text-gray-800 focus:ring-2 focus:ring-entity-ring focus:bg-white focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                   />
-                  <Barcode className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Barcode className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
               {/* 3. SKU CODE */}
               <div>
-                <label className="block type-overline text-slate-700 mb-1">
+                <label className="block type-overline text-gray-700 mb-1">
                   SKU {t("Code", "Kód", "Kód")} *
                 </label>
                 <div className="relative">
@@ -3240,18 +3250,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={itemForm.sku}
                     onChange={(e) => setItemForm({ ...itemForm, sku: e.target.value })}
                     placeholder="SKU-CQ-01"
-                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                    className="w-full pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-mono font-bold text-gray-900 focus:ring-2 focus:ring-entity-ring focus:bg-white focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                   />
-                  <Tag className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Tag className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
 
               {/* 3b. VAT, PRICE LEVELS, PACKAGING, WEIGHT, ALTERNATIVE CODES, EXTERNAL REFERENCE */}
-              <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/50 p-3" data-testid="item-extras">
+              <div className="space-y-3 rounded-lg border border-gray-200/80 bg-gray-50/50 p-3" data-testid="item-extras">
                 <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block type-overline text-slate-700 mb-1">
+                    <label className="block type-overline text-gray-700 mb-1">
                       {t("VAT rate", "Sadzba DPH", "ÁFA-kulcs")}
                     </label>
                     <select
@@ -3259,7 +3269,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       value={itemForm.extras.vatRate}
                       onChange={(e) => setItemForm(prev => ({ ...prev, extras: { ...prev.extras, vatRate: e.target.value } }))}
                       aria-label={t("VAT rate of this product", "Sadzba DPH tovaru", "A termék ÁFA-kulcsa")}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui font-semibold text-gray-800 focus:ring-2 focus:ring-entity-ring focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                     >
                       <option value="">{t("Company default", "Predvolená firmy", "Cég alapértelmezése")} ({defaultVatForForm} %)</option>
                       {vatRatesForForm.map(r => (
@@ -3268,7 +3278,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block type-overline text-slate-700 mb-1">
+                    <label className="block type-overline text-gray-700 mb-1">
                       {t("Weight (kg)", "Hmotnosť (kg)", "Tömeg (kg)")}
                     </label>
                     <input
@@ -3279,11 +3289,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       onChange={(e) => setItemForm(prev => ({ ...prev, extras: { ...prev.extras, weightKg: e.target.value } }))}
                       placeholder="0.000"
                       aria-label={t("Weight in kilograms", "Hmotnosť v kilogramoch", "Tömeg kilogrammban")}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold text-gray-800 focus:ring-2 focus:ring-entity-ring focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div>
-                    <label className="block type-overline text-slate-700 mb-1">
+                    <label className="block type-overline text-gray-700 mb-1">
                       {t("Units per package", "Počet jednotiek v balení", "Egységek csomagonként")}
                     </label>
                     <input
@@ -3294,11 +3304,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       onChange={(e) => setItemForm(prev => ({ ...prev, extras: { ...prev.extras, packQuantity: e.target.value } }))}
                       placeholder={`1.44 ${itemForm.unit}`}
                       aria-label={t("Units per package", "Počet jednotiek v balení", "Egységek csomagonként")}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold text-gray-800 focus:ring-2 focus:ring-entity-ring focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div>
-                    <label className="block type-overline text-slate-700 mb-1">
+                    <label className="block type-overline text-gray-700 mb-1">
                       {t("Package label", "Názov balenia", "Csomag megnevezése")}
                     </label>
                     <input
@@ -3308,13 +3318,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       onChange={(e) => setItemForm(prev => ({ ...prev, extras: { ...prev.extras, packUnit: e.target.value } }))}
                       placeholder={t("e.g. pack", "napr. bal", "pl. csomag")}
                       aria-label={t("Package label", "Názov balenia", "Csomag megnevezése")}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui font-semibold text-gray-800 focus:ring-2 focus:ring-entity-ring focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block type-overline text-slate-700 mb-1">
+                  <label className="block type-overline text-gray-700 mb-1">
                     {t("Alternative codes", "Alternatívne kódy", "Alternatív kódok")}
                   </label>
                   <input
@@ -3324,22 +3334,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     onChange={(e) => setItemForm(prev => ({ ...prev, extras: { ...prev.extras, altCodes: e.target.value } }))}
                     placeholder={t("supplier code, manufacturer code (comma separated)", "kód dodávateľa, kód výrobcu (oddelené čiarkou)", "beszállítói kód, gyártói kód (vesszővel elválasztva)")}
                     aria-label={t("Alternative codes", "Alternatívne kódy", "Alternatív kódok")}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold text-gray-800 focus:ring-2 focus:ring-entity-ring focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                   />
-                  <p className="text-micro text-slate-400 mt-1">
+                  <p className="text-micro text-gray-400 mt-1">
                     {t("Searchable everywhere products are searched.", "Dajú sa vyhľadať všade, kde sa hľadá tovar.", "Mindenhol kereshető, ahol termékeket keresnek.")}
                   </p>
                 </div>
 
                 {priceLevels.length > 0 && (
                   <div>
-                    <label className="block type-overline text-slate-700 mb-1">
+                    <label className="block type-overline text-gray-700 mb-1">
                       {t("Prices by price level (excl. VAT)", "Ceny podľa cenovej hladiny (bez DPH)", "Árak árszintenként (ÁFA nélkül)")}
                     </label>
                     <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-2">
                       {priceLevels.map(level => (
                         <div key={level.id} className="flex items-center gap-2" data-testid={`item-level-price-${level.id}`}>
-                          <span className="text-ui font-semibold text-slate-600 w-28 shrink-0 truncate" title={level.name}>{level.name}</span>
+                          <span className="text-ui font-semibold text-gray-600 w-28 shrink-0 truncate" title={level.name}>{level.name}</span>
                           <input
                             type="text"
                             inputMode="decimal"
@@ -3351,12 +3361,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             }))}
                             placeholder={t("default price", "predvolená cena", "alapár")}
                             aria-label={`${t("Price on level", "Cena na hladine", "Ár a szinten")} ${level.name}`}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold text-gray-800 focus:ring-2 focus:ring-entity-ring focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                           />
                         </div>
                       ))}
                     </div>
-                    <p className="text-micro text-slate-400 mt-1">
+                    <p className="text-micro text-gray-400 mt-1">
                       {t("A blank level uses the suggested sale price above.", "Prázdna hladina použije predajnú cenu vyššie.", "Az üres szint a fenti eladási árat használja.")}
                     </p>
                   </div>
@@ -3364,13 +3374,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                 {editingItem?.externalId && (
                   <div data-testid="item-external-ref">
-                    <label className="block type-overline text-slate-700 mb-1">
+                    <label className="block type-overline text-gray-700 mb-1">
                       {t("External reference", "Externý odkaz", "Külső hivatkozás")}
                     </label>
-                    <div className="px-3 py-2 bg-slate-100/70 border border-slate-200 rounded-xl text-ui font-mono font-semibold text-slate-600">
+                    <div className="px-3 py-2 bg-gray-100/70 border border-gray-200 rounded-md text-ui font-mono font-semibold text-gray-600">
                       {editingItem.externalSource || "—"} / {editingItem.externalId}
                     </div>
-                    <p className="text-micro text-slate-400 mt-1">
+                    <p className="text-micro text-gray-400 mt-1">
                       {t("Read-only: what an ERP / MRP sync or an import matches this product by.", "Len na čítanie: podľa tohto sa tovar páruje pri synchronizácii s ERP / MRP alebo importe.", "Csak olvasható: ez alapján párosítja az ERP / MRP szinkron vagy az import a terméket.")}
                     </p>
                   </div>
@@ -3380,11 +3390,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               {/* 4. CATEGORIES (MULTI-SELECT SEARCHABLE LIST WITH POSSIBILITY TO ADD OPTIONS) */}
               <div className="relative">
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block type-overline text-slate-700">
+                  <label className="block type-overline text-gray-700">
                     {t("Categories", "Kategórie", "Kategóriák")}
                   </label>
                   {itemForm.categories.length > 0 && (
-                    <span className="text-micro font-bold text-blue-900 font-mono">
+                    <span className="text-micro font-bold text-entity-text font-mono">
                       {itemForm.categories.length} {t("selected", "vybraté", "kiválasztva")}
                     </span>
                   )}
@@ -3397,22 +3407,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     setIsCategoryDropdownOpen(!isCategoryDropdownOpen);
                     setCategorySearchQuery("");
                   }}
-                  className={`w-full p-2 border border-slate-200 rounded-xl text-ui font-semibold flex items-center justify-between transition min-h-9.5 ${
+                  className={`w-full p-2 border border-gray-200 rounded-md text-ui font-semibold flex items-center justify-between transition min-h-9.5 ${
                     isProductCardLocked 
-                      ? "bg-slate-100/70 text-slate-700 cursor-not-allowed" 
-                      : "bg-slate-50 text-slate-800 cursor-pointer hover:bg-slate-100/80"
+                      ? "bg-gray-100/70 text-gray-700 cursor-not-allowed" 
+                      : "bg-gray-50 text-gray-800 cursor-pointer hover:bg-gray-100/80"
                   }`}
                 >
                   <div className="flex flex-wrap items-center gap-1.5 flex-1 pr-2">
                     {itemForm.categories.length === 0 ? (
-                      <span className="text-slate-400 py-0.5 px-1">
+                      <span className="text-gray-400 py-0.5 px-1">
                         {t("Select categories...", "Vyberte kategórie...", "Válasszon kategóriákat...")}
                       </span>
                     ) : (
                       itemForm.categories.map(cat => (
                         <span
                           key={cat}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 text-blue-950 border border-blue-200 text-caption font-bold"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-entity-subtle text-entity-text border border-entity-border text-caption font-bold"
                         >
                           <span>{cat}</span>
                           {!isProductCardLocked && (
@@ -3425,7 +3435,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                   categories: prev.categories.filter(c => c !== cat)
                                 }));
                               }}
-                              className="hover:bg-blue-200/60 rounded p-0.5 text-blue-800 transition"
+                              className="hover:bg-blue-200/60 rounded p-0.5 text-entity-text transition"
                               title={t("Remove category", "Odstrániť kategóriu", "Kategória eltávolítása")}
                             >
                               <X className="w-3 h-3" />
@@ -3435,12 +3445,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       ))
                     )}
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition transform ${isCategoryDropdownOpen ? "rotate-180" : ""}`} />
+                  <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition transform ${isCategoryDropdownOpen ? "rotate-180" : ""}`} />
                 </div>
 
                 {/* Dropdown Menu */}
                 {isCategoryDropdownOpen && !isProductCardLocked && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 p-2.5 space-y-2">
+                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-lg shadow-xl z-30 p-2.5 space-y-2">
                     {/* Search inside categories */}
                     <div className="relative">
                       <input
@@ -3449,7 +3459,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         value={categorySearchQuery}
                         onChange={(e) => setCategorySearchQuery(e.target.value)}
                         placeholder={t("Search or type new category...", "Hľadať alebo zadať novú...", "Keresés vagy új kategória...")}
-                        className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-900"
+                        className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:outline-none focus:ring-1 focus:ring-entity-ring"
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && categorySearchQuery.trim()) {
                             const newCat = categorySearchQuery.trim();
@@ -3461,7 +3471,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           }
                         }}
                       />
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                     </div>
 
                     {/* Add new option button if query is entered and doesn't match */}
@@ -3476,10 +3486,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           setCustomCategories(prev => prev.includes(newCat) ? prev : [...prev, newCat]);
                           setCategorySearchQuery("");
                         }}
-                        className="w-full px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 text-ui font-bold flex items-center gap-1.5 transition text-left cursor-pointer"
+                        className="w-full px-2.5 py-1.5 rounded-md bg-entity-subtle hover:bg-entity-subtle text-entity-text text-ui font-bold flex items-center gap-1.5 transition text-left cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>{t("Add & Select", "Pridať a vybrať", "Hozzáadás")}: <span className="font-extrabold text-blue-950">"{categorySearchQuery.trim()}"</span></span>
+                        <span>{t("Add & Select", "Pridať a vybrať", "Hozzáadás")}: <span className="font-extrabold text-entity-text">"{categorySearchQuery.trim()}"</span></span>
                       </button>
                     )}
 
@@ -3500,15 +3510,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                     : [...prev.categories, cat]
                                 }));
                               }}
-                              className={`px-2.5 py-1.5 rounded-xl text-ui cursor-pointer flex items-center justify-between transition ${
+                              className={`px-2.5 py-1.5 rounded-md text-ui cursor-pointer flex items-center justify-between transition ${
                                 isSelected 
-                                  ? "bg-blue-900 text-white font-bold" 
-                                  : "hover:bg-slate-100 text-slate-700 font-medium"
+                                  ? "bg-entity-solid text-white font-bold" 
+                                  : "hover:bg-gray-100 text-gray-700 font-medium"
                               }`}
                             >
                               <div className="flex items-center gap-2">
                                 <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition ${
-                                  isSelected ? "bg-white border-white text-blue-900" : "border-slate-300 bg-white"
+                                  isSelected ? "bg-white border-white text-entity-text" : "border-gray-300 bg-white"
                                 }`}>
                                   {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                                 </div>
@@ -3525,18 +3535,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </div>
 
                     {/* Bottom Done button */}
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
                       <button
                         type="button"
                         onClick={() => setItemForm(prev => ({ ...prev, categories: [] }))}
-                        className="text-caption font-bold text-slate-400 hover:text-rose-600 transition"
+                        className="text-caption font-bold text-gray-400 hover:text-rose-600 transition"
                       >
                         {t("Clear all", "Zrušiť výber", "Összes törlése")}
                       </button>
                       <button
                         type="button"
                         onClick={() => setIsCategoryDropdownOpen(false)}
-                        className="px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-ui font-bold transition cursor-pointer"
+                        className="px-3 py-1 rounded-lg bg-gray-900 hover:bg-gray-800 text-white text-ui font-bold transition cursor-pointer"
                       >
                         {t("Done", "Hotovo", "Kész")}
                       </button>
@@ -3547,7 +3557,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               {/* 5. UNIT OF MEASURE */}
               <div>
-                <label className="block type-overline text-slate-700 mb-1">
+                <label className="block type-overline text-gray-700 mb-1">
                   {t("Unit of Measure", "Merná jednotka (MJ)", "Mértékegység")}
                 </label>
                 <CustomSelect
@@ -3565,13 +3575,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     { value: "paleta", label: "paleta (Palety)" },
                   ]}
                   size="sm"
-                  className="w-full text-ui font-bold rounded-xl"
+                  className="w-full text-ui font-bold rounded-md"
                 />
               </div>
 
               {/* 6. STORAGE LOCATION */}
               <div>
-                <label className="block type-overline text-slate-700 mb-1">
+                <label className="block type-overline text-gray-700 mb-1">
                   {t("Storage Location / Bin", "Predvolená pozícia / Regál", "Raktári hely")}
                 </label>
                 <div className="relative">
@@ -3581,28 +3591,28 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={itemForm.defaultLocation}
                     onChange={(e) => setItemForm({ ...itemForm, defaultLocation: e.target.value })}
                     placeholder="A-01-RACK"
-                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                    className="w-full pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-semibold text-gray-800 focus:ring-2 focus:ring-entity-ring focus:bg-white focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                   />
-                  <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <MapPin className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
               {/* 7. EXPIRATION TOGGLE */}
-              <label className={`flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 transition ${
-                isProductCardLocked ? "cursor-not-allowed opacity-80" : "cursor-pointer hover:bg-slate-100/60"
+              <label className={`flex items-start gap-2.5 p-3 rounded-lg bg-gray-50 border border-gray-200/80 transition ${
+                isProductCardLocked ? "cursor-not-allowed opacity-80" : "cursor-pointer hover:bg-gray-100/60"
               }`}>
                 <input
                   type="checkbox"
                   disabled={isProductCardLocked}
                   checked={itemForm.hasExpiration}
                   onChange={(e) => setItemForm({ ...itemForm, hasExpiration: e.target.checked })}
-                  className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900 mt-0.5 disabled:cursor-not-allowed"
+                  className="w-4 h-4 rounded text-entity-text focus:ring-entity-ring mt-0.5 disabled:cursor-not-allowed"
                 />
                 <div>
-                  <span className="font-bold text-ui text-slate-900 block">
+                  <span className="font-bold text-ui text-gray-900 block">
                     {t("Track FEFO Expiration", "Sledovať šarže a exspirácie (FEFO)", "FEFO lejárati idő követése")}
                   </span>
-                  <p className="text-micro text-slate-400 mt-0.5">
+                  <p className="text-micro text-gray-400 mt-0.5">
                     {t("Alerts for perishable chemicals & adhesives", "Upozornenia pre chémiu a lepidlá", "Figyelmeztetés a lejáró anyagokra")}
                   </p>
                 </div>
@@ -3610,7 +3620,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               {/* 8. DESCRIPTION */}
               <div>
-                <label className="block type-overline text-slate-700 mb-1">
+                <label className="block type-overline text-gray-700 mb-1">
                   {t("Description", "Popis tovaru", "Leírás")}
                 </label>
                 <textarea
@@ -3619,26 +3629,26 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   value={itemForm.description}
                   onChange={(e) => setItemForm({ ...itemForm, description: e.target.value })}
                   placeholder={t("Technical notes...", "Technické parametre a popis...", "Műszaki adatok...")}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition resize-y disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-800 focus:ring-2 focus:ring-entity-ring focus:bg-white focus:outline-none transition resize-y disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                 />
               </div>
 
             </div>
 
             {/* CARD 2: STOCK THRESHOLDS & TARGETS */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <div className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
                 <div className="w-6 h-6 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
                   <Boxes className="w-3.5 h-3.5" />
                 </div>
-                <h3 className="font-bold text-slate-900 text-ui">
+                <h3 className="font-bold text-gray-900 text-ui">
                   {t("Stock Thresholds & Targets", "Skladové limity a cieľové stavy", "Készletlimitek és célértékek")}
                 </h3>
               </div>
 
               <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-lg:grid-cols-1 ws-xl:grid-cols-2 gap-3">
                 <div>
-                  <label className="block type-overline text-slate-700 mb-1">
+                  <label className="block type-overline text-gray-700 mb-1">
                     {t("Minimum Stock Alert", "Minimálna zásoba (Alert)", "Minimális készlet")}
                   </label>
                   <div className="relative">
@@ -3647,16 +3657,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       disabled={isProductCardLocked}
                       value={itemForm.minStock}
                       onChange={(e) => setItemForm({ ...itemForm, minStock: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-mono font-bold text-gray-900 focus:ring-2 focus:ring-entity-ring focus:bg-white focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-slate-400">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-gray-400">
                       {itemForm.unit}
                     </span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block type-overline text-slate-700 mb-1">
+                  <label className="block type-overline text-gray-700 mb-1">
                     {t("Optimal Target Stock", "Optimálna cieľová zásoba", "Optimális készlet")}
                   </label>
                   <div className="relative">
@@ -3665,9 +3675,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       disabled={isProductCardLocked}
                       value={itemForm.optimalStock}
                       onChange={(e) => setItemForm({ ...itemForm, optimalStock: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-mono font-bold text-gray-900 focus:ring-2 focus:ring-entity-ring focus:bg-white focus:outline-none transition disabled:bg-gray-100/70 disabled:cursor-not-allowed"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-slate-400">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-gray-400">
                       {itemForm.unit}
                     </span>
                   </div>
@@ -3677,8 +3687,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
             {/* QUICK ACTIONS CARD (IF EDITING) */}
             {!isNew && currentItem && canEdit && (
-              <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
-                <h3 className="font-bold text-slate-900 text-ui text-slate-400">
+              <div className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm space-y-3">
+                <h3 className="font-bold text-gray-900 text-ui text-gray-400">
                   {t("Quick Operations", "Rýchle operácie s tovarom", "Gyors műveletek")}
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
@@ -3687,7 +3697,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       setReceiptItems([{ itemId: currentItem.id, batchNumber: "", expirationDate: "", quantity: 1, unitPurchasePrice: currentItem.avgPurchasePrice || 0, note: "" }]);
                       setIsReceiptModalOpen(true);
                     }}
-                    className="flex flex-col items-center justify-center p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-ui font-bold transition text-center gap-1 cursor-pointer"
+                    className="flex flex-col items-center justify-center p-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-ui font-bold transition text-center gap-1 cursor-pointer"
                   >
                     <ArrowDownLeft className="w-4 h-4 text-emerald-600" />
                     <span>{t("Receipt (PRI)", "Príjemka (PRI)", "Bevételezés")}</span>
@@ -3695,9 +3705,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                   <button
                     onClick={() => handleOpenGoodsIssue(currentItem.id)}
-                    className="flex flex-col items-center justify-center p-3 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-ui font-bold transition text-center gap-1 cursor-pointer"
+                    className="flex flex-col items-center justify-center p-3 rounded-lg bg-entity-subtle hover:bg-entity-subtle text-entity-text border border-entity-border text-ui font-bold transition text-center gap-1 cursor-pointer"
                   >
-                    <ArrowUpRight className="w-4 h-4 text-blue-700" />
+                    <ArrowUpRight className="w-4 h-4 text-entity-text" />
                     <span>{t("Issue (VYD)", "Výdajka (VYD)", "Kiadás")}</span>
                   </button>
                 </div>
@@ -3718,7 +3728,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 { key: "movements", icon: <ArrowLeftRight className="w-4 h-4" />, label: <><span>{t("Movements", "Pohyby tovaru", "Mozgások")}</span>
                 {itemMovements.length > 0 && (
                   <span className={`px-2 py-0.5 rounded-full text-micro font-bold ${
-                    productDetailTab === "movements" ? "bg-blue-800 text-blue-100" : "bg-slate-200 text-slate-700"
+                    productDetailTab === "movements" ? "bg-entity-solid text-blue-100" : "bg-gray-200 text-gray-700"
                   }`}>
                     {itemMovements.length}
                   </span>
@@ -3730,17 +3740,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {productDetailTab === "statistics" && (
               <div className="space-y-6">
                 {/* CARD 1: DEDICATED PROFITABILITY CALCULATOR */}
-                <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
-                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+                <div className="bg-white p-6 rounded-lg border border-gray-200/80 shadow-sm space-y-5">
+                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between pb-3 border-b border-gray-100 gap-2">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+                      <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
                         <TrendingUp className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="font-bold text-slate-900 text-title-sm">
+                        <h3 className="font-bold text-gray-900 text-title-sm">
                           {t("Profitability Calculator", "Kalkulátor ziskovosti a marže", "Jövedelmezőségi kalkulátor")}
                         </h3>
-                        <p className="text-caption text-slate-400">
+                        <p className="text-caption text-gray-400">
                           {t("Real-time margin, markup, and unit gross profit analysis", "Výpočet marže, cenovej prirážky a hrubého zisku na jednotku", "Árrés, árréskulcs és egységhaszon valós idejű számítása")}
                         </p>
                       </div>
@@ -3750,7 +3760,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       marginPct >= 40 
                         ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
                         : marginPct >= 20 
-                        ? "bg-blue-50 text-blue-900 border border-blue-200" 
+                        ? "bg-entity-subtle text-entity-text border border-entity-border" 
                         : "bg-amber-50 text-amber-700 border border-amber-200"
                     }`}>
                       {marginPct >= 40 ? t("High Profit", "Vysoká ziskovosť", "Magas árrés") : marginPct >= 20 ? t("Standard Margin", "Štandardná marža", "Normál árrés") : t("Low Margin", "Nízka marža", "Alacsony árrés")}
@@ -3760,7 +3770,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   {/* 3 LIVE PROFITABILITY METRIC CARDS */}
                   <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
                     {/* Metric 1: Gross Profit */}
-                    <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100">
+                    <div className="p-4 rounded-lg bg-emerald-50/70 border border-emerald-100">
                       <span className="type-overline text-emerald-800 block mb-1">
                         {t("Gross Profit per Unit", "Hrubý zisk na jednotku", "Haszon egységenként")}
                       </span>
@@ -3773,42 +3783,42 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </div>
 
                     {/* Metric 2: Gross Margin */}
-                    <div className="p-4 rounded-2xl bg-slate-900 text-white">
+                    <div className="p-4 rounded-lg bg-gray-900 text-white">
                       <span className="type-overline text-blue-200 block mb-1">
                         {t("Gross Margin %", "Obchodná marža", "Kereskedelmi árrés")}
                       </span>
                       <div className="text-title font-bold text-white font-mono tracking-tight">
                         {marginPct.toFixed(1)}%
                       </div>
-                      <span className="text-micro text-slate-300 mt-1 block">
+                      <span className="text-micro text-gray-300 mt-1 block">
                         {(marginPct / 100).toFixed(2)} coeff
                       </span>
                     </div>
 
                     {/* Metric 3: Markup */}
-                    <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-100">
-                      <span className="type-overline text-blue-800 block mb-1">
+                    <div className="p-4 rounded-lg bg-entity-subtle border border-entity-border">
+                      <span className="type-overline text-entity-text block mb-1">
                         {t("Markup over Cost", "Cenová prirážka (Markup)", "Árréskulcs")}
                       </span>
-                      <div className="text-title font-bold text-blue-950 font-mono tracking-tight">
+                      <div className="text-title font-bold text-entity-text font-mono tracking-tight">
                         +{markupPct.toFixed(1)}%
                       </div>
-                      <span className="text-micro text-blue-700 mt-1 block">
+                      <span className="text-micro text-entity-text mt-1 block">
                         {t("above purchase price", "nad nákupnou cenou", "beszerzés felett")}
                       </span>
                     </div>
                   </div>
 
                   {/* PRICE COMPOSITION DISTRIBUTION BAR */}
-                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
-                    <div className="flex items-center justify-between text-ui font-bold text-slate-700">
+                  <div className="p-4 rounded-lg bg-gray-50 border border-gray-200/80 space-y-2">
+                    <div className="flex items-center justify-between text-ui font-bold text-gray-700">
                       <span>{t("Sale Price Composition", "Štruktúra predajnej ceny", "Eladási ár összetétele")}</span>
-                      <span className="font-mono text-slate-900">{formatCurrency(itemForm.defaultSellPrice, systemLanguage, systemCurrency)}</span>
+                      <span className="font-mono text-gray-900">{formatCurrency(itemForm.defaultSellPrice, systemLanguage, systemCurrency)}</span>
                     </div>
 
-                    <div className="w-full h-3 rounded-full bg-slate-200 overflow-hidden flex">
+                    <div className="w-full h-3 rounded-md bg-gray-200 overflow-hidden flex">
                       <div
-                        className="h-full bg-slate-500 transition-all"
+                        className="h-full bg-gray-500 transition-all"
                         style={{ width: `${itemForm.defaultSellPrice > 0 ? Math.min(100, Math.max(0, (itemForm.avgPurchasePrice / itemForm.defaultSellPrice) * 100)) : 0}%` }}
                         title={`${t("Purchase Cost (WAP)", "Nákupný náklad (WAP)", "Beszerzés")}: ${formatCurrency(itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}`}
                       />
@@ -3819,13 +3829,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       />
                     </div>
 
-                    <div className="flex items-center justify-between text-micro text-slate-500 font-semibold pt-0.5">
+                    <div className="flex items-center justify-between text-micro text-gray-500 font-semibold pt-0.5">
                       <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-slate-500" />
-                        {t("WAP Purchase Cost", "Nákup (WAP)", "Beszerzési ár")}: <span className="font-bold text-slate-700">{formatCurrency(itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}</span>
+                        <span className="w-2 h-2 rounded-md bg-gray-500" />
+                        {t("WAP Purchase Cost", "Nákup (WAP)", "Beszerzési ár")}: <span className="font-bold text-gray-700">{formatCurrency(itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}</span>
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <span className="w-2 h-2 rounded-md bg-emerald-500" />
                         {t("Gross Profit", "Zisk", "Haszon")}: <span className="font-bold text-emerald-700">+{formatCurrency(unitProfit, systemLanguage, systemCurrency)}</span>
                       </span>
                     </div>
@@ -3833,17 +3843,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </div>
 
                 {/* CARD 2: REVENUE POTENTIAL & INVENTORY VALUE PROJECTION */}
-                <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="bg-white p-6 rounded-lg border border-gray-200/80 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-gray-100">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
+                      <div className="w-9 h-9 rounded-lg bg-entity-subtle text-entity-text flex items-center justify-center font-bold">
                         <BarChart3 className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="font-bold text-slate-900 text-title-sm">
+                        <h3 className="font-bold text-gray-900 text-title-sm">
                           {t("Inventory Revenue Potential", "Potenciál tržieb a výnosov zásoby", "Készletbevételi potenciál")}
                         </h3>
-                        <p className="text-caption text-slate-400">
+                        <p className="text-caption text-gray-400">
                           {t("Projected total revenue and gross profit if all current stock is sold at suggested price", "Predpokladané tržby a hrubý zisk pri úplnom odpredaji zásob za predajnú cenu", "Várható bevétel és haszon a teljes készlet eladásakor")}
                         </p>
                       </div>
@@ -3851,19 +3861,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   </div>
 
                   <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
-                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70">
-                      <span className="type-overline text-slate-400 block mb-1">
+                    <div className="p-4 rounded-lg bg-gray-50 border border-gray-200/70">
+                      <span className="type-overline text-gray-400 block mb-1">
                         {t("Total Potential Revenue", "Celkové potenciálne tržby", "Összes várható bevétel")}
                       </span>
-                      <div className="text-title font-bold text-slate-900 font-mono">
+                      <div className="text-title font-bold text-gray-900 font-mono">
                         {formatCurrency(totalStock * itemForm.defaultSellPrice, systemLanguage, systemCurrency)}
                       </div>
-                      <span className="text-micro text-slate-400 mt-1 block">
+                      <span className="text-micro text-gray-400 mt-1 block">
                         {totalStock} {itemForm.unit} × {formatCurrency(itemForm.defaultSellPrice, systemLanguage, systemCurrency)}
                       </span>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-100">
+                    <div className="p-4 rounded-lg bg-emerald-50/60 border border-emerald-100">
                       <span className="type-overline text-emerald-800 block mb-1">
                         {t("Total Potential Gross Profit", "Celkový očakávaný zisk", "Várható bruttó haszon")}
                       </span>
@@ -3886,17 +3896,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 {/* WAREHOUSE DISTRIBUTION: TABLE VIEW IF NOT FEFO, CARDS WITH FEFO MAP IF FEFO ACTIVE */}
                 {!itemForm.hasExpiration ? (
                   /* CLEAN TABLE VIEW FOR STANDARD NON-EXPIRABLE PRODUCTS */
-                  <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
-                    <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                  <div className="bg-white rounded-lg border border-gray-200/80 shadow-sm overflow-hidden">
+                    <div className="p-5 border-b border-gray-100 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
+                        <div className="w-9 h-9 rounded-lg bg-entity-subtle text-entity-text flex items-center justify-center font-bold">
                           <Building2 className="w-5 h-5" />
                         </div>
                         <div>
-                          <h3 className="font-bold text-slate-900 text-title-sm">
+                          <h3 className="font-bold text-gray-900 text-title-sm">
                             {t("Warehouse Stock Balances", "Prehľad skladových zásob", "Raktári készletkimutatás")}
                           </h3>
-                          <p className="text-caption text-slate-400">
+                          <p className="text-caption text-gray-400">
                             {t("Physical inventory, reservations, and available stock per warehouse", "Fyzické stavy, rezervácie a disponibilné množstvo podľa jednotlivých skladov", "Fizikai, foglalt és szabad készlet raktáranként")}
                           </p>
                         </div>
@@ -3905,7 +3915,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-ui min-w-170">
-                        <thead className="bg-slate-50 text-slate-500 type-overline border-b border-slate-100">
+                        <thead className="bg-gray-50 text-gray-500 type-overline border-b border-gray-100">
                           <tr>
                             <th className="py-3.5 px-5">{t("Warehouse", "Sklad", "Raktár")}</th>
                             <th className="py-3.5 px-4">{t("Location / Bin", "Pozícia / Regál", "Raktári hely")}</th>
@@ -3915,7 +3925,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             <th className="py-3.5 px-5 text-right">{t("Valuation (WAP)", "Hodnota zásob", "Készletérték")}</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium">
+                        <tbody className="divide-y divide-gray-100 font-medium">
                           {warehouses.map(wh => {
                             const st = warehouseStock.find(s => s.warehouseId === wh.id && s.itemId === currentItem?.id);
                             const onHand = st?.quantity || 0;
@@ -3924,58 +3934,58 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             const whVal = onHand * (itemForm.avgPurchasePrice || 0);
 
                             return (
-                              <tr key={wh.id} className="hover:bg-slate-50/70 transition">
+                              <tr key={wh.id} className="hover:bg-gray-50/70 transition">
                                 <td className="py-4 px-5">
                                   <div className="flex items-center gap-2.5">
-                                    <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold text-ui">
+                                    <div className="w-8 h-8 rounded-md bg-entity-subtle text-entity-text flex items-center justify-center font-bold text-ui">
                                       <Building2 className="w-4 h-4" />
                                     </div>
                                     <div>
-                                      <span className="font-bold text-slate-900 block">{wh.name}</span>
-                                      <span className="font-mono text-micro font-bold text-slate-400">{wh.code}</span>
+                                      <span className="font-bold text-gray-900 block">{wh.name}</span>
+                                      <span className="font-mono text-micro font-bold text-gray-400">{wh.code}</span>
                                     </div>
                                   </div>
                                 </td>
-                                <td className="py-4 px-4 text-slate-600">
+                                <td className="py-4 px-4 text-gray-600">
                                   <div className="flex items-center gap-1.5 font-medium">
-                                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                                    <MapPin className="w-3.5 h-3.5 text-gray-400" />
                                     <span>{st?.location || itemForm.defaultLocation || t("Main Floor", "Hlavná plocha", "Fő raktárhely")}</span>
                                   </div>
                                 </td>
-                                <td className="py-4 px-4 text-right font-mono font-bold text-slate-900 text-body">
-                                  {onHand} <span className="text-ui font-normal text-slate-400">{itemForm.unit}</span>
+                                <td className="py-4 px-4 text-right font-mono font-bold text-gray-900 text-body">
+                                  {onHand} <span className="text-ui font-normal text-gray-400">{itemForm.unit}</span>
                                 </td>
-                                <td className="py-4 px-4 text-right font-mono text-slate-500">
-                                  {res} <span className="text-ui font-normal text-slate-400">{itemForm.unit}</span>
+                                <td className="py-4 px-4 text-right font-mono text-gray-500">
+                                  {res} <span className="text-ui font-normal text-gray-400">{itemForm.unit}</span>
                                 </td>
                                 <td className="py-4 px-4 text-right font-mono font-bold text-body">
-                                  <span className={avail > 0 ? "text-emerald-700" : "text-slate-400"}>
+                                  <span className={avail > 0 ? "text-emerald-700" : "text-gray-400"}>
                                     {avail}
                                   </span>{" "}
-                                  <span className="text-ui font-normal text-slate-400">{itemForm.unit}</span>
+                                  <span className="text-ui font-normal text-gray-400">{itemForm.unit}</span>
                                 </td>
-                                <td className="py-4 px-5 text-right font-mono font-bold text-slate-900">
+                                <td className="py-4 px-5 text-right font-mono font-bold text-gray-900">
                                   {formatCurrency(whVal, systemLanguage, systemCurrency)}
                                 </td>
                               </tr>
                             );
                           })}
                         </tbody>
-                        <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-200/80">
+                        <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-200/80">
                           <tr>
-                            <td className="py-3.5 px-5 text-slate-800 text-ui" colSpan={2}>
+                            <td className="py-3.5 px-5 text-gray-800 text-ui" colSpan={2}>
                               {t("Total Across All Warehouses", "Spolu na všetkých skladoch", "Összesen")}
                             </td>
-                            <td className="py-3.5 px-4 text-right font-mono text-slate-900 text-body">
-                              {totalStock} <span className="text-ui font-normal text-slate-500">{itemForm.unit}</span>
+                            <td className="py-3.5 px-4 text-right font-mono text-gray-900 text-body">
+                              {totalStock} <span className="text-ui font-normal text-gray-500">{itemForm.unit}</span>
                             </td>
-                            <td className="py-3.5 px-4 text-right font-mono text-slate-500">
+                            <td className="py-3.5 px-4 text-right font-mono text-gray-500">
                               {warehouseStock.filter(s => s.itemId === currentItem?.id).reduce((sum, s) => sum + (s.reservedQuantity || 0), 0)}{" "}
-                              <span className="text-ui font-normal text-slate-400">{itemForm.unit}</span>
+                              <span className="text-ui font-normal text-gray-400">{itemForm.unit}</span>
                             </td>
                             <td className="py-3.5 px-4 text-right font-mono text-emerald-800 text-body">
                               {Math.max(0, totalStock - warehouseStock.filter(s => s.itemId === currentItem?.id).reduce((sum, s) => sum + (s.reservedQuantity || 0), 0))}{" "}
-                              <span className="text-ui font-normal text-slate-400">{itemForm.unit}</span>
+                              <span className="text-ui font-normal text-gray-400">{itemForm.unit}</span>
                             </td>
                             <td className="py-3.5 px-5 text-right font-mono text-emerald-700 text-body">
                               {formatCurrency(totalStock * itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}
@@ -3990,10 +4000,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="font-bold text-slate-900 text-title-sm">
+                        <h3 className="font-bold text-gray-900 text-title-sm">
                           {t("Warehouse Stock Balances & FEFO Map", "Stavy na skladoch a FEFO mapa šarží", "Raktári készletek és FEFO térkép")}
                         </h3>
-                        <p className="text-caption text-slate-400">
+                        <p className="text-caption text-gray-400">
                           {t("Detailed physical inventory & batch expiration tracking for each individual warehouse", "Podrobný prehľad zásob a exspirácií šarží pre každý sklad osobitne", "Részletes készlet- és lejáratiidő-nyilvántartás raktáranként")}
                         </p>
                       </div>
@@ -4008,22 +4018,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       const whBatches = warehouseBatches.filter(b => b.itemId === currentItem?.id && b.warehouseId === wh.id && b.currentQuantity > 0);
 
                       return (
-                        <div key={wh.id} className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+                        <div key={wh.id} className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm space-y-4">
                           {/* WAREHOUSE HEADER */}
-                          <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+                          <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between pb-3 border-b border-gray-100 gap-2">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
-                                <Building2 className="w-5 h-5 text-blue-900" />
+                              <div className="w-10 h-10 rounded-lg bg-entity-subtle text-entity-text flex items-center justify-center font-bold">
+                                <Building2 className="w-5 h-5 text-entity-text" />
                               </div>
                               <div>
                                 <div className="flex items-center gap-2">
-                                  <h4 className="font-bold text-slate-900 text-body">{wh.name}</h4>
-                                  <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 font-mono text-micro font-bold">
+                                  <h4 className="font-bold text-gray-900 text-body">{wh.name}</h4>
+                                  <span className="px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600 font-mono text-micro font-bold">
                                     {wh.code}
                                   </span>
                                 </div>
-                                <span className="text-caption text-slate-400 flex items-center gap-1 mt-0.5">
-                                  <MapPin className="w-3 h-3 text-slate-400" />
+                                <span className="text-caption text-gray-400 flex items-center gap-1 mt-0.5">
+                                  <MapPin className="w-3 h-3 text-gray-400" />
                                   {st?.location || itemForm.defaultLocation || t("Main Floor", "Hlavná plocha", "Fő raktárhely")}
                                 </span>
                               </div>
@@ -4032,16 +4042,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             {/* BALANCES BADGES */}
                             <div className="flex items-center gap-3 self-end ws-sm:self-center">
                               <div className="text-right">
-                                <span className="type-overline text-slate-400 block">{t("Physical", "Fyzicky", "Fizikai")}</span>
-                                <span className="font-mono font-bold text-slate-900 text-ui">{onHand} {itemForm.unit}</span>
+                                <span className="type-overline text-gray-400 block">{t("Physical", "Fyzicky", "Fizikai")}</span>
+                                <span className="font-mono font-bold text-gray-900 text-ui">{onHand} {itemForm.unit}</span>
                               </div>
                               <div className="text-right">
-                                <span className="type-overline text-slate-400 block">{t("Reserved", "Rezervované", "Foglalt")}</span>
-                                <span className="font-mono font-bold text-slate-500 text-ui">{res} {itemForm.unit}</span>
+                                <span className="type-overline text-gray-400 block">{t("Reserved", "Rezervované", "Foglalt")}</span>
+                                <span className="font-mono font-bold text-gray-500 text-ui">{res} {itemForm.unit}</span>
                               </div>
-                              <div className="text-right pl-2 border-l border-slate-100">
+                              <div className="text-right pl-2 border-l border-gray-100">
                                 <span className="type-overline text-emerald-600 block">{t("Available", "K dispozícii", "Szabad")}</span>
-                                <span className={`font-mono font-bold text-body ${avail > 0 ? "text-emerald-700" : "text-slate-400"}`}>
+                                <span className={`font-mono font-bold text-body ${avail > 0 ? "text-emerald-700" : "text-gray-400"}`}>
                                   {avail} {itemForm.unit}
                                 </span>
                               </div>
@@ -4051,25 +4061,25 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           {/* FEFO MAP SECTION FOR THIS WAREHOUSE */}
                           <div className="space-y-2">
                             <div className="flex items-center justify-between text-ui">
-                              <span className="text-slate-700 flex items-center gap-1.5 type-overline">
+                              <span className="text-gray-700 flex items-center gap-1.5 type-overline">
                                 <Layers className="w-3.5 h-3.5 text-amber-600" />
                                 {t("FEFO Batch Map", "FEFO mapa šarží v tomto sklade", "FEFO tételtérkép ezen a raktáron")} ({whBatches.length})
                               </span>
                               {whBatches.length > 0 && (
-                                <span className="text-micro font-semibold text-slate-400">
+                                <span className="text-micro font-semibold text-gray-400">
                                   {t("Sorted by earliest expiration first", "Zoradené od najstaršej exspirácie", "Lejárati sorrendben")}
                                 </span>
                               )}
                             </div>
 
                             {whBatches.length === 0 ? (
-                              <div className="p-3.5 rounded-2xl bg-slate-50/70 border border-dashed border-slate-200 text-center text-ui text-slate-400">
+                              <div className="p-3.5 rounded-lg bg-gray-50/70 border border-dashed border-gray-200 text-center text-ui text-gray-400">
                                 {t("No active lots in this warehouse. Inventory tracked as unbatched bulk stock.", "V tomto sklade nie sú zaevidované žiadne konkrétne šarže. Tovar sa eviduje ako voľná zásoba.", "Ezen a raktáron nincsenek aktív tételek.")}
                               </div>
                             ) : (
-                              <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                              <div className="overflow-x-auto rounded-lg border border-gray-100">
                                 <table className="w-full text-left text-ui">
-                                  <thead className="bg-slate-50 text-slate-400 type-overline">
+                                  <thead className="bg-gray-50 text-gray-400 type-overline">
                                     <tr>
                                       <th className="py-2 px-3">{t("Batch / Lot #", "Číslo šarže", "Tételszám")}</th>
                                       <th className="py-2 px-3">{t("Expiration Date", "Dátum exspirácie", "Lejárat")}</th>
@@ -4078,7 +4088,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                       <th className="py-2 px-3 text-right">{t("Purchase Cost", "Nákupná cena", "Beszerzési ár")}</th>
                                     </tr>
                                   </thead>
-                                  <tbody className="divide-y divide-slate-100 font-medium">
+                                  <tbody className="divide-y divide-gray-100 font-medium">
                                     {whBatches
                                       .sort((a, b) => {
                                         if (!a.expirationDate) return 1;
@@ -4088,18 +4098,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                       .map((batch, bIdx) => {
                                         const expStatus = getExpirationStatus(batch.expirationDate);
                                         return (
-                                          <tr key={batch.id} className="hover:bg-slate-50/60 transition">
+                                          <tr key={batch.id} className="hover:bg-gray-50/60 transition">
                                             <td className="py-2.5 px-3">
                                               <div className="flex items-center gap-1.5">
-                                                <span className="font-mono font-bold text-slate-900">{batch.batchNumber}</span>
+                                                <span className="font-mono font-bold text-gray-900">{batch.batchNumber}</span>
                                                 {bIdx === 0 && (
-                                                  <span className="px-1.5 py-0.2 rounded type-overline bg-blue-100 text-blue-900 border border-blue-200">
+                                                  <span className="px-1.5 py-0.2 rounded type-overline bg-entity-subtle text-entity-text border border-entity-border">
                                                     FEFO #1
                                                   </span>
                                                 )}
                                               </div>
                                             </td>
-                                            <td className="py-2.5 px-3 font-mono text-slate-700">
+                                            <td className="py-2.5 px-3 font-mono text-gray-700">
                                               {batch.expirationDate ? formatDateLocalized(batch.expirationDate, systemLanguage) : "-"}
                                             </td>
                                             <td className="py-2.5 px-3">
@@ -4115,10 +4125,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                                   : `${expStatus.daysRemaining} ${t("days remaining", "dní do exspirácie", "nap van hátra")}`}
                                               </span>
                                             </td>
-                                            <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">
-                                              {batch.currentQuantity} <span className="text-micro font-normal text-slate-400">{itemForm.unit}</span>
+                                            <td className="py-2.5 px-3 text-right font-bold text-gray-900 font-mono">
+                                              {batch.currentQuantity} <span className="text-micro font-normal text-gray-400">{itemForm.unit}</span>
                                             </td>
-                                            <td className="py-2.5 px-3 text-right font-mono text-slate-700">
+                                            <td className="py-2.5 px-3 text-right font-mono text-gray-700">
                                               {formatCurrency(batch.purchasePrice, systemLanguage, systemCurrency)}
                                             </td>
                                           </tr>
@@ -4143,13 +4153,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <div className="space-y-4">
                 
                 {/* TOP HEADER WITH LOG PURCHASE & LOG SALE BUTTONS */}
-                <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
+                <div className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
                   <div>
-                    <h3 className="font-bold text-slate-900 text-title-sm flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-blue-900" />
+                    <h3 className="font-bold text-gray-900 text-title-sm flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-entity-text" />
                       {t("Product Stock Movements", "Pohyby tovaru na sklade", "Termékmozgások")}
                     </h3>
-                    <p className="text-caption text-slate-400">
+                    <p className="text-caption text-gray-400">
                       {t("Complete chronological audit trail of receipts, issues and transfers for this product", "Chronologická evidencia príjemiek a výdajok pre tento tovar", "Teljes bevételezési és kiadási előzmény")}
                     </p>
                   </div>
@@ -4160,7 +4170,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     <button
                       type="button"
                       onClick={handleOpenProductPurchaseModal}
-                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-ui font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      className="px-3.5 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-ui font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                     >
                       <ArrowDownLeft className="w-4 h-4" />
                       <span>{t("Log Purchase (PRI)", "Zaznamenať nákup (PRI)", "Bevételezés (PRI)")}</span>
@@ -4169,7 +4179,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     <button
                       type="button"
                       onClick={handleOpenProductSaleModal}
-                      className="px-3.5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-ui font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      className="px-3.5 py-2 rounded-md bg-entity-solid hover:bg-entity-solid text-white text-ui font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                     >
                       <ArrowUpRight className="w-4 h-4" />
                       <span>{t("Log Sale (VYD)", "- Zaznamenať predaj (VYD)", "- Kiadás (VYD)")}</span>
@@ -4179,20 +4189,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </div>
 
                 {/* MOVEMENTS TABLE */}
-                <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
+                <div className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm space-y-3">
                   {itemMovements.length === 0 ? (
                     <div className="p-8 text-center space-y-3">
-                      <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                      <div className="w-12 h-12 rounded-lg bg-gray-100 text-gray-400 flex items-center justify-center mx-auto">
                         <Clock className="w-6 h-6" />
                       </div>
-                      <p className="text-body font-semibold text-slate-600">
+                      <p className="text-body font-semibold text-gray-600">
                         {t("No stock movements recorded for this product yet.", "Pre tento tovar zatiaľ neboli zaevidované žiadne skladové pohyby.", "Még nincsenek rögzített mozgások.")}
                       </p>
                       {canEdit && (
                       <button
                         type="button"
                         onClick={handleOpenProductPurchaseModal}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-ui font-bold transition inline-flex items-center gap-1.5 cursor-pointer"
+                        className="px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-ui font-bold transition inline-flex items-center gap-1.5 cursor-pointer"
                       >
                         <ArrowDownLeft className="w-4 h-4" />
                         <span>{t("Log First Purchase", "Zaznamenať prvý nákup", "Első bevételezés")}</span>
@@ -4200,9 +4210,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                    <div className="overflow-x-auto rounded-lg border border-gray-100">
                       <table className="w-full text-left text-ui min-w-170">
-                        <thead className="bg-slate-50 text-slate-400 type-overline">
+                        <thead className="bg-gray-50 text-gray-400 type-overline">
                           <tr>
                             <th className="py-3 px-3.5">{t("Date & Time", "Dátum a čas", "Dátum")}</th>
                             <th className="py-3 px-3.5">{t("Type", "Typ", "Típus")}</th>
@@ -4215,7 +4225,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             <th className="py-3 px-3.5 text-center">{t("Action", "Akcia", "Művelet")}</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium">
+                        <tbody className="divide-y divide-gray-100 font-medium">
                           {itemMovements.map(mov => {
                             const mvItem = mov.items?.find(it => it.itemId === currentItem?.id);
                             const wh = warehouses.find(w => w.id === mov.warehouseId);
@@ -4223,8 +4233,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             const lead = leads.find(l => l.id === mov.leadId);
 
                             return (
-                              <tr key={mov.id} className="hover:bg-slate-50/60 transition">
-                                <td className="py-3 px-3.5 font-mono text-slate-500 text-caption">
+                              <tr key={mov.id} className="hover:bg-gray-50/60 transition">
+                                <td className="py-3 px-3.5 font-mono text-gray-500 text-caption">
                                   {formatTimestampLocalized(mov.issuedAt ? mov.issuedAt.slice(0, 16) : mov.createdAt?.slice(0, 16), systemLanguage)}
                                 </td>
                                 <td className="py-3 px-3.5">
@@ -4232,49 +4242,49 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                     mov.type === "inward"
                                       ? "bg-emerald-100 text-emerald-800"
                                       : mov.type === "outward"
-                                      ? "bg-blue-100 text-blue-800"
+                                      ? "bg-entity-subtle text-entity-text"
                                       : "bg-purple-100 text-purple-800"
                                   }`}>
                                     {mov.type === "inward" ? "PRI (Príjem)" : mov.type === "outward" ? "VYD (Výdaj)" : "PRE (Prevod)"}
                                   </span>
                                 </td>
-                                <td className="py-3 px-3.5 font-mono font-bold text-slate-900">
+                                <td className="py-3 px-3.5 font-mono font-bold text-gray-900">
                                   {mov.documentNumber}
                                 </td>
                                 <td className="py-3 px-3.5">
                                   {supplier ? (
-                                    <div className="flex items-center gap-1 text-slate-800">
+                                    <div className="flex items-center gap-1 text-gray-800">
                                       <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 text-micro font-bold">{t("Partner", "Partner", "Partner")}</span>
                                       <span className="font-semibold">{supplier.name}</span>
                                     </div>
                                   ) : lead ? (
-                                    <div className="flex items-center gap-1 text-slate-800">
-                                      <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 text-micro font-bold">{t("Client", "Klient", "Ügyfél")}</span>
+                                    <div className="flex items-center gap-1 text-gray-800">
+                                      <span className="px-1.5 py-0.2 rounded bg-entity-subtle text-entity-text text-micro font-bold">{t("Client", "Klient", "Ügyfél")}</span>
                                       <span className="font-semibold">{lead.name}</span>
                                     </div>
                                   ) : (
-                                    <span className="text-slate-400">-</span>
+                                    <span className="text-gray-400">-</span>
                                   )}
                                 </td>
-                                <td className="py-3 px-3.5 text-slate-600">
+                                <td className="py-3 px-3.5 text-gray-600">
                                   {wh?.name || "-"}
                                 </td>
                                 <td className="py-3 px-3.5 text-right font-mono font-bold">
-                                  <span className={mov.type === "inward" ? "text-emerald-700" : "text-blue-700"}>
+                                  <span className={mov.type === "inward" ? "text-emerald-700" : "text-entity-text"}>
                                     {mov.type === "outward" ? "-" : "+"}{mvItem?.quantity || 0} {itemForm.unit}
                                   </span>
                                 </td>
-                                <td className="py-3 px-3.5 text-right font-mono text-slate-700">
+                                <td className="py-3 px-3.5 text-right font-mono text-gray-700">
                                   {formatCurrency(mov.type === "inward" ? (mvItem?.unitPurchasePrice || 0) : (mvItem?.unitSellPrice || 0), systemLanguage, systemCurrency)}
                                 </td>
-                                <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-900">
+                                <td className="py-3 px-3.5 text-right font-mono font-bold text-gray-900">
                                   {formatCurrency((mvItem?.quantity || 0) * (mov.type === "inward" ? (mvItem?.unitPurchasePrice || 0) : (mvItem?.unitSellPrice || 0)), systemLanguage, systemCurrency)}
                                 </td>
                                 <td className="py-3 px-3.5 text-center">
                                   <button
                                     type="button"
                                     onClick={() => setSelectedMovementForPrint(mov)}
-                                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                                    className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
                                     title={t("Print document", "Vytlačiť doklad", "Nyomtatás")}
                                   >
                                     <Printer className="w-3.5 h-3.5" />
@@ -4297,22 +4307,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
         {/* MODAL: LOG PURCHASE (PRI) FOR CURRENT PRODUCT */}
         {isProductPurchaseModalOpen && currentItem && canEdit && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-100 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="fixed inset-0 bg-gray-900/50  flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+            <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full p-6 space-y-4 border border-gray-100 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-100">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
                     <ArrowDownLeft className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-slate-900 text-title-sm">{t("Log Purchase (Receipt PRI)", "Zaznamenať nákup (Príjemka PRI)", "Beszerzés rögzítése (PRI)")}</h3>
-                    <p className="text-ui text-slate-400 font-medium">{currentItem.name} ({currentItem.sku})</p>
+                    <h3 className="font-bold text-gray-900 text-title-sm">{t("Log Purchase (Receipt PRI)", "Zaznamenať nákup (Príjemka PRI)", "Beszerzés rögzítése (PRI)")}</h3>
+                    <p className="text-ui text-gray-400 font-medium">{currentItem.name} ({currentItem.sku})</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsProductPurchaseModalOpen(false)}
-                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                  className="p-2 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -4320,7 +4330,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               {/* JOINT PARTNER & CLIENT SELECTOR */}
               <div className="relative">
-                <label className="block text-ui font-bold text-slate-700 mb-1">
+                <label className="block text-ui font-bold text-gray-700 mb-1">
                   {t("Supplier / Partner / Client", "Dodávateľ / Partner / Klient", "Beszállító / Partner")} *
                 </label>
                 <div
@@ -4328,28 +4338,28 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     setIsProductPurchasePartnerOpen(!isProductPurchasePartnerOpen);
                     setProductPurchasePartnerSearch("");
                   }}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold flex items-center justify-between cursor-pointer hover:bg-slate-100/70 transition"
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-md text-ui font-semibold flex items-center justify-between cursor-pointer hover:bg-gray-100/70 transition"
                 >
                   {productPurchasePartnerId ? (
                     (() => {
                       const sel = jointPartnersAndClients.find(p => p.id === productPurchasePartnerId);
                       return sel ? (
                         <div className="flex items-center gap-1.5">
-                          <span className={`px-1.5 py-0.2 rounded text-micro font-bold ${sel.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"}`}>
+                          <span className={`px-1.5 py-0.2 rounded text-micro font-bold ${sel.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-entity-subtle text-entity-text"}`}>
                             {sel.type === "partner" ? t("Partner", "Partner", "Partner") : t("Client", "Klient", "Ügyfél")}
                           </span>
-                          <span className="font-bold text-slate-900">{sel.name}</span>
+                          <span className="font-bold text-gray-900">{sel.name}</span>
                         </div>
-                      ) : <span className="text-slate-400">{t("Select partner...", "Vyberte partnera...", "Válasszon partner...")}</span>;
+                      ) : <span className="text-gray-400">{t("Select partner...", "Vyberte partnera...", "Válasszon partner...")}</span>;
                     })()
                   ) : (
-                    <span className="text-slate-400">{t("Select supplier or client...", "Vyberte dodávateľa alebo klienta...", "Válasszon partnert...")}</span>
+                    <span className="text-gray-400">{t("Select supplier or client...", "Vyberte dodávateľa alebo klienta...", "Válasszon partnert...")}</span>
                   )}
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
                 </div>
 
                 {isProductPurchasePartnerOpen && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 p-2 space-y-1.5 max-h-56 overflow-y-auto">
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-30 p-2 space-y-1.5 max-h-56 overflow-y-auto">
                     <div className="relative">
                       <input
                         type="text"
@@ -4357,9 +4367,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         value={productPurchasePartnerSearch}
                         onChange={(e) => setProductPurchasePartnerSearch(e.target.value)}
                         placeholder={t("Search partner or client...", "Hľadať partnera alebo klienta...", "Keresés...")}
-                        className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                        className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-600"
                       />
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                     </div>
 
                     <div className="space-y-1 pt-1">
@@ -4372,20 +4382,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               setProductPurchasePartnerId(p.id);
                               setIsProductPurchasePartnerOpen(false);
                             }}
-                            className={`p-2 rounded-xl text-ui cursor-pointer flex items-center justify-between transition ${
-                              productPurchasePartnerId === p.id ? "bg-emerald-600 text-white font-bold" : "hover:bg-slate-100 text-slate-800"
+                            className={`p-2 rounded-md text-ui cursor-pointer flex items-center justify-between transition ${
+                              productPurchasePartnerId === p.id ? "bg-emerald-600 text-white font-bold" : "hover:bg-gray-100 text-gray-800"
                             }`}
                           >
                             <div>
                               <div className="flex items-center gap-1.5">
                                 <span className={`px-1.5 py-0.2 rounded text-micro font-bold ${
-                                  productPurchasePartnerId === p.id ? "bg-white/20 text-white" : p.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                                  productPurchasePartnerId === p.id ? "bg-white/20 text-white" : p.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-entity-subtle text-entity-text"
                                 }`}>
                                   {p.type === "partner" ? t("Partner", "Partner", "Partner") : t("Client", "Klient", "Ügyfél")}
                                 </span>
                                 <span>{p.name}</span>
                               </div>
-                              <p className={`text-micro ${productPurchasePartnerId === p.id ? "text-emerald-100" : "text-slate-400"}`}>{p.subtext}</p>
+                              <p className={`text-micro ${productPurchasePartnerId === p.id ? "text-emerald-100" : "text-gray-400"}`}>{p.subtext}</p>
                             </div>
                             {productPurchasePartnerId === p.id && <Check className="w-4 h-4 text-white" />}
                           </div>
@@ -4397,7 +4407,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               {/* DESTINATION WAREHOUSE */}
               <div>
-                <label className="block text-ui font-bold text-slate-700 mb-1">
+                <label className="block text-ui font-bold text-gray-700 mb-1">
                   {t("Destination Warehouse", "Cieľový sklad", "Célraktár")} *
                 </label>
                 <CustomSelect
@@ -4408,14 +4418,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     label: `${w.name} (${w.code})`,
                   }))}
                   size="sm"
-                  className="w-full text-ui font-bold rounded-xl"
+                  className="w-full text-ui font-bold rounded-md"
                 />
               </div>
 
               {/* QUANTITY & PURCHASE PRICE */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Quantity", "Množstvo", "Mennyiség")} *
                   </label>
                   <div className="relative">
@@ -4425,16 +4435,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       min="0.01"
                       value={productPurchaseAmount}
                       onChange={(e) => setProductPurchaseAmount(Number(e.target.value))}
-                      className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-body font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
+                      className="w-full pl-3.5 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-md text-body font-mono font-bold text-gray-900 focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-slate-400">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-gray-400">
                       {currentItem.unit}
                     </span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Unit Purchase Price", "Nákupná cena / MJ", "Beszerzési egységár")} *
                   </label>
                   <div className="relative">
@@ -4443,9 +4453,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       step="0.01"
                       value={productPurchasePrice}
                       onChange={(e) => setProductPurchasePrice(Number(e.target.value))}
-                      className="w-full pl-3.5 pr-14 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-body font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
+                      className="w-full pl-3.5 pr-14 py-2.5 bg-gray-50 border border-gray-200 rounded-md text-body font-mono font-bold text-gray-900 focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-slate-400">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-gray-400">
                       {systemCurrency || "EUR"}
                     </span>
                   </div>
@@ -4453,7 +4463,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
 
               {/* FEFO: BATCH & EXPIRATION */}
-              <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-amber-50/50 border border-amber-200/70">
+              <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-amber-50/50 border border-amber-200/70">
                 <div>
                   <label className="block type-overline text-amber-900 mb-1">
                     {t("Batch / Lot #", "Číslo šarže", "Tételszám")}
@@ -4463,7 +4473,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={productPurchaseBatchNumber}
                     onChange={(e) => setProductPurchaseBatchNumber(e.target.value)}
                     placeholder="BAT-2026-01"
-                    className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-ui font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                    className="w-full px-3 py-2 bg-white border border-amber-200 rounded-md text-ui font-mono font-bold text-gray-900 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
 
@@ -4475,14 +4485,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     type="date"
                     value={productPurchaseExpirationDate}
                     onChange={(e) => setProductPurchaseExpirationDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-ui font-mono text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                    className="w-full px-3 py-2 bg-white border border-amber-200 rounded-md text-ui font-mono text-gray-900 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
               </div>
 
               {/* NOTE */}
               <div>
-                <label className="block text-ui font-bold text-slate-700 mb-1">
+                <label className="block text-ui font-bold text-gray-700 mb-1">
                   {t("Note / Invoice Reference", "Poznámka / Číslo faktúry dodávateľa", "Megjegyzés / Számlaszám")}
                 </label>
                 <input
@@ -4490,14 +4500,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   value={productPurchaseNote}
                   onChange={(e) => setProductPurchaseNote(e.target.value)}
                   placeholder="napr. Faktúra FP-2026-0412"
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-800 focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
                 />
               </div>
 
               {/* TOTAL PREVIEW & SUBMIT */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
                 <div>
-                  <span className="type-overline text-slate-400 block">{t("Total Purchase Value", "Celková suma nákupu", "Összérték")}</span>
+                  <span className="type-overline text-gray-400 block">{t("Total Purchase Value", "Celková suma nákupu", "Összérték")}</span>
                   <span className="text-title-sm font-bold text-emerald-800 font-mono">
                     {formatCurrency(Number(productPurchaseAmount) * Number(productPurchasePrice), systemLanguage, systemCurrency)}
                   </span>
@@ -4507,7 +4517,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsProductPurchaseModalOpen(false)}
-                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-ui font-bold hover:bg-slate-100 transition cursor-pointer"
+                    className="px-4 py-2.5 rounded-md border border-gray-200 text-gray-700 text-ui font-bold hover:bg-gray-100 transition cursor-pointer"
                   >
                     {t("Cancel", "Zrušiť", "Mégse")}
                   </button>
@@ -4515,7 +4525,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <button
                     type="button"
                     onClick={handleSaveProductPurchase}
-                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-ui font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
+                    className="px-5 py-2.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-ui font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
                     <span>{t("Confirm Receipt", "Potvrdiť príjemku", "Bevételezés rögzítése")}</span>
@@ -4529,22 +4539,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
         {/* MODAL: LOG SALE (VYD) FOR CURRENT PRODUCT */}
         {isProductSaleModalOpen && currentItem && canEdit && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-100 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="fixed inset-0 bg-gray-900/50  flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+            <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full p-6 space-y-4 border border-gray-100 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-100">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-lg bg-entity-subtle text-entity-text flex items-center justify-center">
                     <ArrowUpRight className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-slate-900 text-title-sm">{t("Log Sale (Issue VYD)", "Zaznamenať predaj (Výdajka VYD)", "Értékesítés rögzítése (VYD)")}</h3>
-                    <p className="text-ui text-slate-400 font-medium">{currentItem.name} ({currentItem.sku})</p>
+                    <h3 className="font-bold text-gray-900 text-title-sm">{t("Log Sale (Issue VYD)", "Zaznamenať predaj (Výdajka VYD)", "Értékesítés rögzítése (VYD)")}</h3>
+                    <p className="text-ui text-gray-400 font-medium">{currentItem.name} ({currentItem.sku})</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsProductSaleModalOpen(false)}
-                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                  className="p-2 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -4552,7 +4562,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               {/* JOINT PARTNER & CLIENT SELECTOR */}
               <div className="relative">
-                <label className="block text-ui font-bold text-slate-700 mb-1">
+                <label className="block text-ui font-bold text-gray-700 mb-1">
                   {t("Client / Customer / Partner", "Klient / Odberateľ / Partner", "Ügyfél / Partner")} *
                 </label>
                 <div
@@ -4560,28 +4570,28 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     setIsProductSalePartnerOpen(!isProductSalePartnerOpen);
                     setProductSalePartnerSearch("");
                   }}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold flex items-center justify-between cursor-pointer hover:bg-slate-100/70 transition"
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-md text-ui font-semibold flex items-center justify-between cursor-pointer hover:bg-gray-100/70 transition"
                 >
                   {productSalePartnerId ? (
                     (() => {
                       const sel = jointPartnersAndClients.find(p => p.id === productSalePartnerId);
                       return sel ? (
                         <div className="flex items-center gap-1.5">
-                          <span className={`px-1.5 py-0.2 rounded text-micro font-bold ${sel.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"}`}>
+                          <span className={`px-1.5 py-0.2 rounded text-micro font-bold ${sel.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-entity-subtle text-entity-text"}`}>
                             {sel.type === "partner" ? t("Partner", "Partner", "Partner") : t("Client", "Klient", "Ügyfél")}
                           </span>
-                          <span className="font-bold text-slate-900">{sel.name}</span>
+                          <span className="font-bold text-gray-900">{sel.name}</span>
                         </div>
-                      ) : <span className="text-slate-400">{t("Select partner...", "Vyberte partnera...", "Válasszon...")}</span>;
+                      ) : <span className="text-gray-400">{t("Select partner...", "Vyberte partnera...", "Válasszon...")}</span>;
                     })()
                   ) : (
-                    <span className="text-slate-400">{t("Select client or partner...", "Vyberte klienta alebo partnera...", "Válasszon ügyfelet...")}</span>
+                    <span className="text-gray-400">{t("Select client or partner...", "Vyberte klienta alebo partnera...", "Válasszon ügyfelet...")}</span>
                   )}
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
                 </div>
 
                 {isProductSalePartnerOpen && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 p-2 space-y-1.5 max-h-56 overflow-y-auto">
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-30 p-2 space-y-1.5 max-h-56 overflow-y-auto">
                     <div className="relative">
                       <input
                         type="text"
@@ -4589,9 +4599,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         value={productSalePartnerSearch}
                         onChange={(e) => setProductSalePartnerSearch(e.target.value)}
                         placeholder={t("Search client or partner...", "Hľadať klienta alebo partnera...", "Keresés...")}
-                        className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-900"
+                        className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:outline-none focus:ring-1 focus:ring-entity-ring"
                       />
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                     </div>
 
                     <div className="space-y-1 pt-1">
@@ -4604,20 +4614,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               setProductSalePartnerId(p.id);
                               setIsProductSalePartnerOpen(false);
                             }}
-                            className={`p-2 rounded-xl text-ui cursor-pointer flex items-center justify-between transition ${
-                              productSalePartnerId === p.id ? "bg-blue-900 text-white font-bold" : "hover:bg-slate-100 text-slate-800"
+                            className={`p-2 rounded-md text-ui cursor-pointer flex items-center justify-between transition ${
+                              productSalePartnerId === p.id ? "bg-entity-solid text-white font-bold" : "hover:bg-gray-100 text-gray-800"
                             }`}
                           >
                             <div>
                               <div className="flex items-center gap-1.5">
                                 <span className={`px-1.5 py-0.2 rounded text-micro font-bold ${
-                                  productSalePartnerId === p.id ? "bg-white/20 text-white" : p.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                                  productSalePartnerId === p.id ? "bg-white/20 text-white" : p.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-entity-subtle text-entity-text"
                                 }`}>
                                   {p.type === "partner" ? t("Partner", "Partner", "Partner") : t("Client", "Klient", "Ügyfél")}
                                 </span>
                                 <span>{p.name}</span>
                               </div>
-                              <p className={`text-micro ${productSalePartnerId === p.id ? "text-blue-100" : "text-slate-400"}`}>{p.subtext}</p>
+                              <p className={`text-micro ${productSalePartnerId === p.id ? "text-blue-100" : "text-gray-400"}`}>{p.subtext}</p>
                             </div>
                             {productSalePartnerId === p.id && <Check className="w-4 h-4 text-white" />}
                           </div>
@@ -4629,7 +4639,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               {/* SOURCE WAREHOUSE */}
               <div>
-                <label className="block text-ui font-bold text-slate-700 mb-1">
+                <label className="block text-ui font-bold text-gray-700 mb-1">
                   {t("Source Warehouse", "Zdrojový sklad", "Forrásraktár")} *
                 </label>
                 <CustomSelect
@@ -4646,14 +4656,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     };
                   })}
                   size="sm"
-                  className="w-full text-ui font-bold rounded-xl"
+                  className="w-full text-ui font-bold rounded-md"
                 />
               </div>
 
               {/* QUANTITY & SALE PRICE */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Quantity", "Množstvo", "Mennyiség")} *
                   </label>
                   <div className="relative">
@@ -4663,16 +4673,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       min="0.01"
                       value={productSaleAmount}
                       onChange={(e) => setProductSaleAmount(Number(e.target.value))}
-                      className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-body font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                      className="w-full pl-3.5 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-md text-body font-mono font-bold text-gray-900 focus:ring-2 focus:ring-entity-ring focus:bg-white focus:outline-none transition"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-slate-400">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-gray-400">
                       {currentItem.unit}
                     </span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Unit Selling Price (excl. VAT)", "Predajná cena bez DPH / MJ", "Eladási egységár")} *
                   </label>
                   <div className="relative">
@@ -4681,9 +4691,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       step="0.01"
                       value={productSalePrice}
                       onChange={(e) => setProductSalePrice(Number(e.target.value))}
-                      className="w-full pl-3.5 pr-14 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-body font-mono font-bold text-blue-950 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                      className="w-full pl-3.5 pr-14 py-2.5 bg-gray-50 border border-gray-200 rounded-md text-body font-mono font-bold text-entity-text focus:ring-2 focus:ring-entity-ring focus:bg-white focus:outline-none transition"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-slate-400">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-gray-400">
                       {systemCurrency || "EUR"}
                     </span>
                   </div>
@@ -4692,7 +4702,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               {/* SEARCHABLE EXPIRATION DATE & BATCH SELECTOR (FEFO) */}
               <div className="relative">
-                <label className="block text-ui font-bold text-slate-700 mb-1">
+                <label className="block text-ui font-bold text-gray-700 mb-1">
                   {t("Select Expiration Date / Batch (FEFO)", "Dátum exspirácie / Šarža (FEFO výber)", "Lejárati dátum / Tétel kiválasztása (FEFO)")}
                 </label>
                 <div
@@ -4700,7 +4710,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     setIsProductSaleExpirationOpen(!isProductSaleExpirationOpen);
                     setProductSaleExpirationSearch("");
                   }}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold flex items-center justify-between cursor-pointer hover:bg-slate-100/70 transition"
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-md text-ui font-semibold flex items-center justify-between cursor-pointer hover:bg-gray-100/70 transition"
                 >
                   {productSaleBatchId ? (
                     (() => {
@@ -4708,8 +4718,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       const expStatus = selBatch ? getExpirationStatus(selBatch.expirationDate) : null;
                       return selBatch ? (
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-slate-900">{selBatch.batchNumber}</span>
-                          <span className="text-slate-500 font-mono">({formatDateLocalized(selBatch.expirationDate, systemLanguage)})</span>
+                          <span className="font-mono font-bold text-gray-900">{selBatch.batchNumber}</span>
+                          <span className="text-gray-500 font-mono">({formatDateLocalized(selBatch.expirationDate, systemLanguage)})</span>
                           {expStatus && (
                             <span className={`px-2 py-0.5 rounded-full text-micro font-bold ${
                               expStatus.status === "expired" ? "bg-rose-100 text-rose-800" : expStatus.status === "warning" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
@@ -4718,16 +4728,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             </span>
                           )}
                         </div>
-                      ) : <span className="text-slate-400">{t("Default / No batch", "Voľný výdaj bez šarže", "Nincs tétel")}</span>;
+                      ) : <span className="text-gray-400">{t("Default / No batch", "Voľný výdaj bez šarže", "Nincs tétel")}</span>;
                     })()
                   ) : (
-                    <span className="text-slate-400">{t("Select expiration date / lot (or leave free stock)...", "Vyberte dátum exspirácie / šaržu...", "Válasszon lejárati dátumot...")}</span>
+                    <span className="text-gray-400">{t("Select expiration date / lot (or leave free stock)...", "Vyberte dátum exspirácie / šaržu...", "Válasszon lejárati dátumot...")}</span>
                   )}
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
                 </div>
 
                 {isProductSaleExpirationOpen && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 p-2 space-y-1.5 max-h-56 overflow-y-auto">
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-30 p-2 space-y-1.5 max-h-56 overflow-y-auto">
                     <div className="relative">
                       <input
                         type="text"
@@ -4735,9 +4745,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         value={productSaleExpirationSearch}
                         onChange={(e) => setProductSaleExpirationSearch(e.target.value)}
                         placeholder={t("Search by expiration date or lot number...", "Hľadať podľa dátumu exspirácie alebo šarže...", "Keresés dátum vagy szám szerint...")}
-                        className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-900"
+                        className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:outline-none focus:ring-1 focus:ring-entity-ring"
                       />
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                     </div>
 
                     <div className="space-y-1 pt-1">
@@ -4747,8 +4757,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           setProductSaleBatchId("");
                           setIsProductSaleExpirationOpen(false);
                         }}
-                        className={`p-2 rounded-xl text-ui cursor-pointer flex items-center justify-between transition ${
-                          !productSaleBatchId ? "bg-slate-900 text-white font-bold" : "hover:bg-slate-100 text-slate-600"
+                        className={`p-2 rounded-md text-ui cursor-pointer flex items-center justify-between transition ${
+                          !productSaleBatchId ? "bg-gray-900 text-white font-bold" : "hover:bg-gray-100 text-gray-600"
                         }`}
                       >
                         <span>{t("Free bulk stock (No specific batch/expiration)", "Voľný skladový výdaj (bez viazanej šarže)", "Szabad készlet")}</span>
@@ -4773,8 +4783,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 setProductSaleBatchId(b.id);
                                 setIsProductSaleExpirationOpen(false);
                               }}
-                              className={`p-2.5 rounded-xl text-ui cursor-pointer flex items-center justify-between transition ${
-                                productSaleBatchId === b.id ? "bg-blue-900 text-white font-bold" : "hover:bg-slate-100 text-slate-800"
+                              className={`p-2.5 rounded-md text-ui cursor-pointer flex items-center justify-between transition ${
+                                productSaleBatchId === b.id ? "bg-entity-solid text-white font-bold" : "hover:bg-gray-100 text-gray-800"
                               }`}
                             >
                               <div>
@@ -4807,7 +4817,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               {/* NOTE */}
               <div>
-                <label className="block text-ui font-bold text-slate-700 mb-1">
+                <label className="block text-ui font-bold text-gray-700 mb-1">
                   {t("Note / Order Reference", "Poznámka / Číslo objednávky", "Megjegyzés / Rendelésszám")}
                 </label>
                 <input
@@ -4815,15 +4825,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   value={productSaleNote}
                   onChange={(e) => setProductSaleNote(e.target.value)}
                   placeholder="napr. Zákazka OBJ-2026-081"
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-800 focus:ring-2 focus:ring-entity-ring focus:bg-white focus:outline-none transition"
                 />
               </div>
 
               {/* TOTAL PREVIEW & SUBMIT */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
                 <div>
-                  <span className="type-overline text-slate-400 block">{t("Total Sale Price", "Celková predajná suma", "Összesen")}</span>
-                  <span className="text-title-sm font-bold text-blue-950 font-mono">
+                  <span className="type-overline text-gray-400 block">{t("Total Sale Price", "Celková predajná suma", "Összesen")}</span>
+                  <span className="text-title-sm font-bold text-entity-text font-mono">
                     {formatCurrency(Number(productSaleAmount) * Number(productSalePrice), systemLanguage, systemCurrency)}
                   </span>
                 </div>
@@ -4832,7 +4842,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsProductSaleModalOpen(false)}
-                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-ui font-bold hover:bg-slate-100 transition cursor-pointer"
+                    className="px-4 py-2.5 rounded-md border border-gray-200 text-gray-700 text-ui font-bold hover:bg-gray-100 transition cursor-pointer"
                   >
                     {t("Cancel", "Zrušiť", "Mégse")}
                   </button>
@@ -4840,7 +4850,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <button
                     type="button"
                     onClick={handleSaveProductSale}
-                    className="px-5 py-2.5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-ui font-bold transition flex items-center gap-1.5 shadow-md shadow-blue-900/20 cursor-pointer"
+                    className="px-5 py-2.5 rounded-md bg-entity-solid hover:bg-entity-solid text-white text-ui font-bold transition flex items-center gap-1.5 shadow-md shadow-xs cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
                     <span>{t("Confirm Issue", "Potvrdiť výdajku", "Kiadás megerősítése")}</span>
@@ -4859,14 +4869,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     <div className="space-y-6 pb-12">
       {/* 1. TOP HEADER & COMMAND BAR */}
       <PageHeader
-        icon={<Package className="h-6 w-6 text-blue-900" />}
+        icon={<SectionIcon id="warehouse" />}
         title={t("Warehouse & Inventory Management", "Skladové hospodárstvo a zásoby", "Raktár és készletgazdálkodás")}
         subtitle={t("Catalog, Multi-Warehouse balances, WAP costing & FEFO lot tracking", "Katalóg tovaru, stavy skladov, vážené nákupné ceny a exspirácie", "Termékkatalóg, raktárkészletek, WAP önköltség és FEFO tételkövetés")}
         actions={<>
           {/* Quick Action Buttons */}
           <div className="flex flex-wrap items-center gap-2.5">
             {!canEdit && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 type-overline">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 type-overline">
                 <Lock className="h-3.5 w-3.5" />
                 {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
               </span>
@@ -4884,12 +4894,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   })),
                 ]}
                 size="sm"
-                className="bg-white border-slate-200 text-ui font-semibold rounded-2xl shadow-xs flex-1"
+                className="bg-white border-gray-200 text-ui font-semibold rounded-lg shadow-xs flex-1"
               />
               <button
                 onClick={() => setActiveSubTab("warehouses")}
                 title={t("Manage Warehouses", "Správa skladov", "Raktárak kezelése")}
-                className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-2xl text-slate-500 hover:text-blue-900 transition shadow-xs cursor-pointer"
+                className="p-2 bg-white hover:bg-gray-100 border border-gray-200 rounded-lg text-gray-500 hover:text-entity-text transition shadow-xs cursor-pointer"
               >
                 <WarehouseIcon className="w-4 h-4" />
               </button>
@@ -4898,7 +4908,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {canEdit && (
             <button
               onClick={handleOpenCreateItem}
-              className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-ui font-semibold shadow-md transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-ui font-semibold shadow-md transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>{t("New Item", "Nový tovar", "Új termék")}</span>
@@ -4908,7 +4918,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {canEdit && (
             <button
               onClick={() => setIsReceiptModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-ui font-semibold shadow-md shadow-emerald-600/20 transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-ui font-semibold shadow-md shadow-emerald-600/20 transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
             >
               <ArrowDownLeft className="w-4 h-4" />
               <span>{t("Receipt (PRI)", "Príjemka (PRI)", "Bevételezés")}</span>
@@ -4918,7 +4928,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {canEdit && (
             <button
               onClick={() => handleOpenGoodsIssue()}
-              className="flex items-center gap-2 px-4 py-2.5 bg-blue-900 hover:bg-blue-800 text-white rounded-2xl text-ui font-semibold shadow-md shadow-blue-900/20 transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2.5 bg-entity-solid hover:bg-entity-solid text-white rounded-lg text-ui font-semibold shadow-md shadow-xs transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
             >
               <ArrowUpRight className="w-4 h-4" />
               <span>{t("Issue (VYD)", "Výdajka (VYD)", "Kiadás")}</span>
@@ -4928,7 +4938,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {canEdit && (
             <button
               onClick={() => setIsTransferModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-ui font-semibold transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer border border-slate-200"
+              className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-ui font-semibold transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer border border-gray-200"
             >
               <ArrowLeftRight className="w-4 h-4" />
               <span>{t("Transfer", "Prevodka", "Átadás")}</span>
@@ -4941,77 +4951,77 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* Metric Cards Banner */}
       <StatGrid count={4}>
         {/* Card 1: Total Inventory Valuation */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-white p-4 rounded-lg border border-gray-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="type-overline text-slate-400">
+              <p className="type-overline text-gray-400">
                 {t("Total Stock Value", "Hodnota zásob skladu (WAP)", "Készletérték")}
               </p>
-              <h3 className="type-metric text-slate-900 mt-1">
+              <h3 className="type-metric text-gray-900 mt-1">
                 {formatCurrency(metrics.totalValuation, systemLanguage, systemCurrency)}
               </h3>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-md bg-entity-subtle text-entity-text flex items-center justify-center">
               <DollarSign className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-2 text-ui text-slate-500">
-            <span className="font-semibold text-slate-700">{metrics.itemCount}</span> {t("products tracked", "sledovaných položiek", "nyilvántartott tétel")}
+          <div className="mt-3 flex items-center gap-2 text-ui text-gray-500">
+            <span className="font-semibold text-gray-700">{metrics.itemCount}</span> {t("products tracked", "sledovaných položiek", "nyilvántartott tétel")}
           </div>
         </div>
 
         {/* Card 2: Low Stock Alerts */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-white p-4 rounded-lg border border-gray-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="type-overline text-slate-400">
+              <p className="type-overline text-gray-400">
                 {t("Stock Health Alerts", "Nízky stav & Vypredané", "Alacsony készlet")}
               </p>
               <div className="flex items-center gap-2 mt-1">
-                <h3 className="type-metric text-slate-900">
+                <h3 className="type-metric text-gray-900">
                   {metrics.lowStockCount + metrics.outOfStockCount}
                 </h3>
                 {metrics.lowStockCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-amber-100 text-amber-800 animate-pulse">
+                  <span className="px-2 py-0.5 rounded-md text-micro font-bold bg-amber-100 text-amber-800 animate-pulse">
                     {metrics.lowStockCount} {t("low", "nízke", "alacsony")}
                   </span>
                 )}
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-md bg-amber-50 text-amber-600 flex items-center justify-center">
               <AlertTriangle className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-2 text-ui text-slate-500">
+          <div className="mt-3 flex items-center gap-2 text-ui text-gray-500">
             <span>{metrics.outOfStockCount} {t("out of stock items", "položiek je kompletne vypredaných", "termék kifogyott")}</span>
           </div>
         </div>
 
         {/* Card 3: Monthly Movements Volume */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-white p-4 rounded-lg border border-gray-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="type-overline text-slate-400">
+              <p className="type-overline text-gray-400">
                 {t("Monthly Issues (Sales)", "Mesačný výdaj tovaru", "Havi kiadás")}
               </p>
-              <h3 className="type-metric text-blue-900 mt-1">
+              <h3 className="type-metric text-entity-text mt-1">
                 {formatCurrency(metrics.monthlyOutward, systemLanguage, systemCurrency)}
               </h3>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-md bg-entity-subtle text-entity-text flex items-center justify-center">
               <TrendingUp className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 flex items-center justify-between text-ui text-slate-500">
+          <div className="mt-3 flex items-center justify-between text-ui text-gray-500">
             <span>{t("Inward", "Príjem", "Bevételezés")}: {formatCurrency(metrics.monthlyInward, systemLanguage, systemCurrency)}</span>
           </div>
         </div>
 
         {/* Card 4: Gross Margin & Profit */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-white p-4 rounded-lg border border-gray-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="type-overline text-slate-400">
+              <p className="type-overline text-gray-400">
                 {t("Realized Profit & Margin", "Hrubý zisk a marža", "Bruttó árrés")}
               </p>
               <div className="flex items-center gap-2 mt-1">
@@ -5020,7 +5030,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </h3>
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <BarChart3 className="w-5 h-5" />
             </div>
           </div>
@@ -5048,20 +5058,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {activeSubTab === "items" && (
         <div className="space-y-4">
           {/* Search & Filter bar */}
-          <div className="flex flex-col ws-sm:flex-row gap-3 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
+          <div className="flex flex-col ws-sm:flex-row gap-3 bg-white p-3.5 rounded-lg border border-gray-200/80 shadow-sm">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder={t("Search by product name, SKU, barcode or any other code...", "Hľadať podľa názvu, SKU, čiarového kódu alebo iného kódu...", "Keresés név, cikkszám, vonalkód vagy más kód alapján...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-800"
+                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-entity-ring"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -5079,7 +5089,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     ...allCategories.map((cat) => ({ value: cat, label: cat })),
                   ]}
                   size="sm"
-                  className="bg-slate-50 border-slate-200 text-ui font-semibold rounded-xl"
+                  className="bg-gray-50 border-gray-200 text-ui font-semibold rounded-md"
                 />
               </div>
 
@@ -5095,34 +5105,34 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     { value: "out_of_stock", label: t("Out of Stock", "Vypredané (0)", "Elfogyott") },
                   ]}
                   size="sm"
-                  className="bg-slate-50 border-slate-200 text-ui font-semibold rounded-xl"
+                  className="bg-gray-50 border-gray-200 text-ui font-semibold rounded-md"
                 />
               </div>
             </div>
           </div>
 
           {/* Items Data Grid */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-clip">
+          <div className="bg-white rounded-lg border border-gray-200/80 shadow-sm overflow-clip">
             <div ref={itemsWrapRef} className="table-page-wrap">
-              <table className="w-full text-left text-ui text-slate-600 min-w-210">
-                <thead className="table-page-sticky-head border-b border-slate-200/80 type-overline text-slate-500">
+              <table className="w-full text-left text-ui text-gray-600 min-w-210">
+                <thead className="table-page-sticky-head border-b border-gray-200/80 type-overline text-gray-500">
                   <tr>
-                    <th className="sticky z-10 bg-slate-50 py-3 px-4">{t("Product & SKU", "Tovar & SKU", "Termék & Cikkszám")}</th>
-                    <th className="sticky z-10 bg-slate-50 py-3 px-4">{t("Category & Location", "Kategória & Pozícia", "Kategória & Hely")}</th>
-                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("Physical Stock", "Fyzický stav", "Fizikai készlet")}</th>
-                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("Reserved", "Rezervované", "Foglalt")}</th>
-                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("Available", "K dispozícii", "Elérhető")}</th>
-                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("WAP Purchase", "Nákup (WAP)", "Beszerzés (WAP)")}</th>
-                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("Default Sell", "Predajná cena", "Eladási ár")}</th>
-                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-center">{t("Margin %", "Marža %", "Árrés %")}</th>
-                    <th className="sticky right-0 z-30 bg-slate-50 py-3 px-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                    <ResizableTh listKey="warehouse-items" colKey="product-sku" className="sticky z-10 bg-gray-50 py-3 px-4">{t("Product & SKU", "Tovar & SKU", "Termék & Cikkszám")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="category-location" className="sticky z-10 bg-gray-50 py-3 px-4">{t("Category & Location", "Kategória & Pozícia", "Kategória & Hely")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="physical-stock" className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Physical Stock", "Fyzický stav", "Fizikai készlet")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="reserved" className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Reserved", "Rezervované", "Foglalt")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="available" className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Available", "K dispozícii", "Elérhető")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="wap-purchase" className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("WAP Purchase", "Nákup (WAP)", "Beszerzés (WAP)")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="default-sell" className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Default Sell", "Predajná cena", "Eladási ár")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="margin" className="sticky z-10 bg-gray-50 py-3 px-4 text-center">{t("Margin %", "Marža %", "Árrés %")}</ResizableTh>
+                    <th className="sticky right-0 z-30 bg-gray-50 py-3 px-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-gray-100">
                   {filteredItems.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-12 text-center text-slate-400">
-                        <Package className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                      <td colSpan={9} className="py-12 text-center text-gray-400">
+                        <Package className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                         <p className="font-semibold">{t("No products match the selected criteria.", "Žiadny tovar nevyhovuje zadaným filtrom.", "Nincs a feltételeknek megfelelő termék.")}</p>
                       </td>
                     </tr>
@@ -5139,7 +5149,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         <tr 
                           key={item.id} 
                           onClick={() => handleOpenEditItem(item)}
-                          className="hover:bg-slate-50/80 transition group cursor-pointer"
+                          className="hover:bg-gray-50/80 transition group cursor-pointer"
                         >
                           {/* Product Info */}
                           <td className="py-3 px-4">
@@ -5148,10 +5158,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 <img
                                   src={item.imageUrl}
                                   alt={item.name}
-                                  className="w-10 h-10 rounded-lg object-cover border border-slate-200"
+                                  className="w-10 h-10 rounded-lg object-cover border border-gray-200"
                                 />
                               ) : (
-                                <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
+                                <div className="w-10 h-10 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-400">
                                   <Package className="w-5 h-5" />
                                 </div>
                               )}
@@ -5163,7 +5173,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                       e.preventDefault();
                                       handleOpenEditItem(item);
                                     }}
-                                    className="font-bold text-slate-900 group-hover:text-blue-900 transition hover:underline"
+                                    className="font-bold text-gray-900 group-hover:text-entity-text transition hover:underline"
                                   >
                                     {item.name}
                                   </a>
@@ -5173,7 +5183,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                     </span>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2 mt-0.5 text-caption text-slate-400 font-mono">
+                                <div className="flex items-center gap-2 mt-0.5 text-caption text-gray-400 font-mono">
                                   <span>{item.sku}</span>
                                   {item.barcode && (
                                     <>
@@ -5203,19 +5213,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             <div>
                               <div className="flex flex-wrap gap-1 max-w-50">
                                 {getItemCategories(item).length === 0 ? (
-                                  <span className="px-2 py-0.5 rounded-full text-micro font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                  <span className="px-2 py-0.5 rounded-md text-micro font-semibold bg-gray-100 text-gray-700 border border-gray-200">
                                     {t("General", "Všeobecné", "Általános")}
                                   </span>
                                 ) : (
                                   getItemCategories(item).map(cat => (
-                                    <span key={cat} className="px-2 py-0.5 rounded-full text-micro font-semibold bg-blue-50 text-blue-900 border border-blue-100">
+                                    <span key={cat} className="px-2 py-0.5 rounded-md text-micro font-semibold bg-entity-subtle text-entity-text border border-entity-border">
                                       {cat}
                                     </span>
                                   ))
                                 )}
                               </div>
-                              <div className="flex items-center gap-1 text-caption text-slate-500 mt-1">
-                                <MapPin className="w-3 h-3 text-slate-400" />
+                              <div className="flex items-center gap-1 text-caption text-gray-500 mt-1">
+                                <MapPin className="w-3 h-3 text-gray-400" />
                                 <span>{stock.locations || item.defaultLocation || t("Unassigned", "Nepriradené", "Nincs")}</span>
                               </div>
                             </div>
@@ -5223,21 +5233,21 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                           {/* Physical Stock */}
                           <td className="py-3 px-4 text-right">
-                            <div className="font-bold text-slate-900 text-body">
-                              {stock.onHand} <span className="text-ui font-normal text-slate-500">{item.unit}</span>
+                            <div className="font-bold text-gray-900 text-body">
+                              {stock.onHand} <span className="text-ui font-normal text-gray-500">{item.unit}</span>
                             </div>
                             {isOut ? (
                               <span className="type-overline text-rose-600">{t("Out of stock", "Vypredané", "Kifogyott")}</span>
                             ) : isLow ? (
                               <span className="text-micro font-bold text-amber-600">{t("Min", "Min", "Min")}: {item.minStock} {item.unit}</span>
                             ) : (
-                              <span className="text-micro text-slate-400">{t("Optimal", "Optimum", "Optimális")}: {item.optimalStock} {item.unit}</span>
+                              <span className="text-micro text-gray-400">{t("Optimal", "Optimum", "Optimális")}: {item.optimalStock} {item.unit}</span>
                             )}
                           </td>
 
                           {/* Reserved */}
                           <td className="py-3 px-4 text-right">
-                            <span className="font-semibold text-slate-500">
+                            <span className="font-semibold text-gray-500">
                               {stock.reserved} <span className="text-caption font-normal">{item.unit}</span>
                             </span>
                           </td>
@@ -5251,18 +5261,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                           {/* WAP Purchase */}
                           <td className="py-3 px-4 text-right">
-                            <div className="font-semibold text-slate-900">
+                            <div className="font-semibold text-gray-900">
                               {formatCurrency(item.avgPurchasePrice, systemLanguage, systemCurrency)}
                             </div>
-                            <span className="text-micro text-slate-400">{t("per", "za", "/")} {item.unit}</span>
+                            <span className="text-micro text-gray-400">{t("per", "za", "/")} {item.unit}</span>
                           </td>
 
                           {/* Default Sell */}
                           <td className="py-3 px-4 text-right">
-                            <div className="font-bold text-blue-900">
+                            <div className="font-bold text-entity-text">
                               {formatCurrency(item.defaultSellPrice, systemLanguage, systemCurrency)}
                             </div>
-                            <span className="text-micro text-slate-400">{t("per", "za", "/")} {item.unit}</span>
+                            <span className="text-micro text-gray-400">{t("per", "za", "/")} {item.unit}</span>
                           </td>
 
                           {/* Margin % */}
@@ -5271,8 +5281,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               marginPct >= 40
                                 ? "bg-emerald-100 text-emerald-800"
                                 : marginPct >= 20
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-slate-100 text-slate-700"
+                                ? "bg-entity-subtle text-entity-text"
+                                : "bg-gray-100 text-gray-700"
                             }`}>
                               {marginPct.toFixed(1)}%
                             </span>
@@ -5291,7 +5301,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                     (window as any).showToast(t("Product URL copied to clipboard.", "URL odkaz na tovar bol skopírovaný.", "A termék linkje a vágólapra másolva."));
                                   }
                                 }}
-                                className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition"
+                                className="p-1.5 text-gray-400 hover:text-entity-text hover:bg-entity-subtle rounded-lg transition"
                                 title={t("Copy Product URL Link", "Kopírovať odkaz na tovar", "Termék link másolása")}
                               >
                                 <Link2 className="w-3.5 h-3.5" />
@@ -5302,7 +5312,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                   e.stopPropagation();
                                   handleOpenEditItem(item);
                                 }}
-                                className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition"
+                                className="p-1.5 text-gray-400 hover:text-entity-text hover:bg-entity-subtle rounded-lg transition"
                                 title={t("Edit Product", "Upraviť tovar", "Termék szerkesztése")}
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
@@ -5320,7 +5330,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setWarehouseVisibleCount((count) => count + WAREHOUSE_PAGE_SIZE)}
-                          className="px-4 py-1.5 rounded-full type-overline border border-slate-200 bg-slate-50 text-slate-600 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          className="px-4 py-1.5 rounded-md type-overline border border-gray-200 bg-gray-50 text-gray-600 transition-all hover:scale-[1.02] active:scale-[0.98]"
                         >
                           {t(
                             `Show more (${visibleWarehouseItems.length} of ${filteredItems.length})`,
@@ -5343,19 +5353,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {activeSubTab === "movements" && (
         <div className="space-y-4">
           {/* Movement Type Filter & New Issue Action */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-lg border border-gray-200/80 shadow-sm">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setMovementTypeFilter("all")}
-                className={`px-3 py-1.5 rounded-xl text-ui font-semibold transition ${
-                  movementTypeFilter === "all" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                className={`px-3 py-1.5 rounded-md text-ui font-semibold transition ${
+                  movementTypeFilter === "all" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                 }`}
               >
                 {t("All Documents", "Všetky doklady", "Minden bizonylat")}
               </button>
               <button
                 onClick={() => setMovementTypeFilter("inward")}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-ui font-semibold transition ${
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-ui font-semibold transition ${
                   movementTypeFilter === "inward" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                 }`}
               >
@@ -5364,8 +5374,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </button>
               <button
                 onClick={() => setMovementTypeFilter("outward")}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-ui font-semibold transition ${
-                  movementTypeFilter === "outward" ? "bg-blue-700 text-white" : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-ui font-semibold transition ${
+                  movementTypeFilter === "outward" ? "bg-entity-solid text-white" : "bg-entity-subtle text-entity-text hover:bg-entity-subtle"
                 }`}
               >
                 <ArrowUpRight className="w-3.5 h-3.5" />
@@ -5373,7 +5383,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </button>
               <button
                 onClick={() => setMovementTypeFilter("transfer")}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-ui font-semibold transition ${
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-ui font-semibold transition ${
                   movementTypeFilter === "transfer" ? "bg-purple-700 text-white" : "bg-purple-50 text-purple-700 hover:bg-purple-100"
                 }`}
               >
@@ -5385,7 +5395,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {canEdit && (
             <button
               onClick={() => handleOpenGoodsIssue()}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-ui font-bold transition shadow-sm"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-entity-solid hover:bg-entity-solid text-white rounded-md text-ui font-bold transition shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{t("New Goods Issue (VYD)", "Nová výdajka (VYD)", "Új kiadás (VYD)")}</span>
@@ -5394,10 +5404,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           </div>
 
           {/* Movements Document Journal */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden divide-y divide-slate-100">
+          <div className="bg-white rounded-lg border border-gray-200/80 shadow-sm overflow-hidden divide-y divide-gray-100">
             {filteredMovements.length === 0 ? (
-              <div className="py-12 text-center text-slate-400">
-                <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+              <div className="py-12 text-center text-gray-400">
+                <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                 <p className="font-semibold">{t("No movement documents found.", "Nenašli sa žiadne pohybové doklady.", "Nem találhatók bizonylatok.")}</p>
               </div>
             ) : (
@@ -5412,14 +5422,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <div key={mov.id} className="transition">
                     <div
                       onClick={() => setExpandedMovementId(isExpanded ? null : mov.id)}
-                      className="p-4 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/70"
+                      className="p-4 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-4 cursor-pointer hover:bg-gray-50/70"
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${
                           mov.type === "inward"
                             ? "bg-emerald-100 text-emerald-700"
                             : mov.type === "outward"
-                            ? "bg-blue-100 text-blue-900"
+                            ? "bg-entity-subtle text-entity-text"
                             : "bg-purple-100 text-purple-800"
                         }`}>
                           {mov.type === "inward" ? (
@@ -5433,37 +5443,40 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 font-mono text-body">{mov.documentNumber}</span>
-                            <span className={`px-2 py-0.5 rounded-full type-overline ${
+                            <span className="font-bold text-gray-900 font-mono text-body">{mov.documentNumber}</span>
+                            <span className={`px-2 py-0.5 rounded-md type-overline ${
                               mov.type === "inward"
                                 ? "bg-emerald-100 text-emerald-800"
                                 : mov.type === "outward"
-                                ? "bg-blue-100 text-blue-900"
+                                ? "bg-entity-subtle text-entity-text"
                                 : "bg-purple-100 text-purple-800"
                             }`}>
                               {mov.type === "inward" ? t("Receipt", "Príjemka", "Bevétel") : mov.type === "outward" ? t("Issue", "Výdajka", "Kiadás") : t("Transfer", "Prevodka", "Átadás")}
                             </span>
-                            <span className="text-ui text-slate-400">&bull;</span>
-                            <span className="text-ui text-slate-500 font-mono">{formatTimestampLocalized(mov.issuedAt, systemLanguage)}</span>
+                            <span className="text-ui text-gray-400">&bull;</span>
+                            <span className="text-ui text-gray-500 font-mono">{formatTimestampLocalized(mov.issuedAt, systemLanguage)}</span>
                           </div>
 
-                          <div className="text-ui text-slate-600 mt-1 flex flex-wrap items-center gap-2">
+                          <div className="text-ui text-gray-600 mt-1 flex flex-wrap items-center gap-2">
                             <span><strong>{t("Warehouse", "Sklad", "Raktár")}:</strong> {wh?.name || mov.warehouseId}</span>
                             {targetWh && <span>&rarr; {targetWh.name}</span>}
                             {supplier && (
                               <span>&bull; <strong>{t("Supplier", "Dodávateľ", "Szállító")}:</strong> {supplier.name}</span>
                             )}
                             {lead && (
-                              <span>&bull; <strong>{t("Client", "Klient", "Ügyfél")}:</strong> {lead.name}</span>
+                              <span className="inline-flex items-center gap-1.5">
+                                <span>&bull;</span>
+                                <EntityBadge entity="clients" label={lead.name} />
+                              </span>
                             )}
-                            {mov.note && <span className="text-slate-400 italic">"{mov.note}"</span>}
+                            {mov.note && <span className="text-gray-400 italic">"{mov.note}"</span>}
                           </div>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-4 ml-12 ws-md:ml-0">
                         <div className="text-right">
-                          <div className="font-bold text-slate-900 text-body">
+                          <div className="font-bold text-gray-900 text-body">
                             {formatCurrency(mov.type === "inward" ? mov.totalCostValue : mov.totalSellValue, systemLanguage, systemCurrency)}
                           </div>
                           {mov.type === "outward" && (
@@ -5478,13 +5491,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             e.stopPropagation();
                             setSelectedMovementForPrint(mov);
                           }}
-                          className="p-2 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-xl transition"
+                          className="p-2 text-gray-400 hover:text-entity-text hover:bg-entity-subtle rounded-md transition"
                           title={t("Print Document / Delivery Note", "Tlačiť doklad / Dodací list", "Nyomtatás")}
                         >
                           <Printer className="w-4 h-4" />
                         </button>
 
-                        <div className="text-slate-400">
+                        <div className="text-gray-400">
                           {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                         </div>
                       </div>
@@ -5492,14 +5505,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                     {/* Expandable Line Items */}
                     {isExpanded && (
-                      <div className="bg-slate-50/70 p-4 border-t border-slate-100">
-                        <h4 className="type-overline text-slate-500 mb-2">
+                      <div className="bg-gray-50/70 p-4 border-t border-gray-100">
+                        <h4 className="type-overline text-gray-500 mb-2">
                           {t("Movement Line Items", "Položky dokladu", "Tételek")}
                         </h4>
                         <div className="overflow-x-auto">
                           <table className="w-full text-left text-ui">
                             <thead>
-                              <tr className="border-b border-slate-200 text-slate-400 type-overline">
+                              <tr className="border-b border-gray-200 text-gray-400 type-overline">
                                 <th className="py-2 px-2">{t("Item", "Tovar", "Termék")}</th>
                                 <th className="py-2 px-2 text-right">{t("Quantity", "Množstvo", "Mennyiség")}</th>
                                 <th className="py-2 px-2 text-right">{t("Unit Price", "Jedn. cena", "Egységár")}</th>
@@ -5507,24 +5520,24 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 <th className="py-2 px-2">{t("Batch / Note", "Šarža / Poznámka", "Tétel")}</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200/60">
+                            <tbody className="divide-y divide-gray-200/60">
                               {mov.items.map(it => {
                                 const prod = warehouseItems.find(p => p.id === it.itemId);
                                 return (
                                   <tr key={it.id}>
-                                    <td className="py-2 px-2 font-semibold text-slate-800">
-                                      {prod?.name || it.itemId} <span className="text-micro text-slate-400 font-mono">({prod?.sku})</span>
+                                    <td className="py-2 px-2 font-semibold text-gray-800">
+                                      {prod?.name || it.itemId} <span className="text-micro text-gray-400 font-mono">({prod?.sku})</span>
                                     </td>
-                                    <td className="py-2 px-2 text-right font-bold text-slate-900">
+                                    <td className="py-2 px-2 text-right font-bold text-gray-900">
                                       {it.quantity} {prod?.unit || "ks"}
                                     </td>
-                                    <td className="py-2 px-2 text-right font-mono text-slate-600">
+                                    <td className="py-2 px-2 text-right font-mono text-gray-600">
                                       {formatCurrency(mov.type === "inward" ? it.unitPurchasePrice : it.unitSellPrice, systemLanguage, systemCurrency)}
                                     </td>
-                                    <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">
+                                    <td className="py-2 px-2 text-right font-mono font-bold text-gray-900">
                                       {formatCurrency(it.totalPrice, systemLanguage, systemCurrency)}
                                     </td>
-                                    <td className="py-2 px-2 text-slate-500">
+                                    <td className="py-2 px-2 text-gray-500">
                                       {it.batchId && <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-micro font-mono mr-2">{it.batchId}</span>}
                                       {it.note && <span className="italic">{it.note}</span>}
                                     </td>
@@ -5547,13 +5560,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* TAB 3: WAREHOUSES & LOCATIONS */}
       {activeSubTab === "warehouses" && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+          <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-gray-200/80 shadow-sm">
             <div>
-              <h3 className="font-bold text-slate-900 text-body flex items-center gap-2">
-                <WarehouseIcon className="w-4 h-4 text-blue-900" />
+              <h3 className="font-bold text-gray-900 text-body flex items-center gap-2">
+                <WarehouseIcon className="w-4 h-4 text-entity-text" />
                 {t("Warehouses & Physical Locations", "Prehľad a správa skladov", "Raktárak és telephelyek")}
               </h3>
-              <p className="text-ui text-slate-500">
+              <p className="text-ui text-gray-500">
                 {t("Manage storage facilities, location addresses, assigned warehouse managers, and defaults", "Správa skladových priestorov, pobočiek, adries a zodpovedných vedúcich", "Raktárak, címek, felelős vezetők és alapértelmezések kezelése")}
               </p>
             </div>
@@ -5571,7 +5584,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 });
                 setIsWarehouseModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-ui font-semibold transition shadow-xs cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-entity-solid hover:bg-entity-solid text-white rounded-md text-ui font-semibold transition shadow-xs cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>{t("New Warehouse", "Pridať sklad", "Új raktár")}</span>
@@ -5593,24 +5606,24 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               const manager = users.find(u => u.name === wh.managerUserId || u.email === wh.managerUserId);
 
               return (
-                <div key={wh.id} className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+                <div key={wh.id} className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm hover:shadow-md transition flex flex-col justify-between">
                   <div>
                     {/* Header */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-body ${wh.isDefault ? "bg-amber-100 text-amber-900 border border-amber-200" : "bg-blue-50 text-blue-900"}`}>
+                        <div className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-body ${wh.isDefault ? "bg-amber-100 text-amber-900 border border-amber-200" : "bg-entity-subtle text-entity-text"}`}>
                           <WarehouseIcon className="w-5 h-5" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-slate-900 text-body">{wh.name}</h4>
+                            <h4 className="font-bold text-gray-900 text-body">{wh.name}</h4>
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-caption font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                            <span className="text-caption font-mono font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
                               {wh.code}
                             </span>
                             {wh.isDefault && (
-                              <span className="inline-flex items-center gap-1 text-micro font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/80">
+                              <span className="inline-flex items-center gap-1 text-micro font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200/80">
                                 <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
                                 {t("Default", "Predvolený", "Alapértelmezett")}
                               </span>
@@ -5634,7 +5647,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             });
                             setIsWarehouseModalOpen(true);
                           }}
-                          className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition"
+                          className="p-1.5 text-gray-400 hover:text-entity-text hover:bg-entity-subtle rounded-lg transition"
                           title={t("Edit Warehouse", "Upraviť sklad", "Raktár szerkesztése")}
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -5646,7 +5659,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             lang={systemLanguage}
                             what={wh.name}
                             onConfirm={() => { if (!canDelete) return; handleDeleteWarehouse(wh.id); }}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                             title={t("Delete Warehouse", "Vymazať sklad", "Raktár törlése")}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -5656,34 +5669,34 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </div>
 
                     {/* Warehouse Details */}
-                    <div className="mt-4 space-y-2 text-ui text-slate-600">
+                    <div className="mt-4 space-y-2 text-ui text-gray-600">
                       <div className="flex items-start gap-2">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                        <span className={wh.address ? "text-slate-700" : "text-slate-400 italic"}>
+                        <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />
+                        <span className={wh.address ? "text-gray-700" : "text-gray-400 italic"}>
                           {wh.address || t("No address specified", "Bez zadanej adresy", "Nincs megadott cím")}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <UserCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className={wh.managerUserId ? "text-slate-700 font-medium" : "text-slate-400 italic"}>
+                        <UserCheck className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <span className={wh.managerUserId ? "text-gray-700 font-medium" : "text-gray-400 italic"}>
                           {manager?.name || wh.managerUserId || t("No manager assigned", "Bez prideleného vedúceho", "Nincs kijelölt vezető")}
                         </span>
                       </div>
                     </div>
 
                     {/* Stock Metrics Box */}
-                    <div className="grid grid-cols-3 gap-2 mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                    <div className="grid grid-cols-3 gap-2 mt-4 p-3 bg-gray-50 rounded-md border border-gray-100 text-center">
                       <div>
-                        <div className="type-overline text-slate-400">{t("Active SKUs", "Aktívne položky", "Termékek")}</div>
-                        <div className="text-body font-bold text-slate-800 font-mono mt-0.5">{stockedSkuCount}</div>
+                        <div className="type-overline text-gray-400">{t("Active SKUs", "Aktívne položky", "Termékek")}</div>
+                        <div className="text-body font-bold text-gray-800 font-mono mt-0.5">{stockedSkuCount}</div>
                       </div>
                       <div>
-                        <div className="type-overline text-slate-400">{t("Total Qty", "Kusov na sklade", "Darabszám")}</div>
-                        <div className="text-body font-bold text-blue-900 font-mono mt-0.5">{totalUnits}</div>
+                        <div className="type-overline text-gray-400">{t("Total Qty", "Kusov na sklade", "Darabszám")}</div>
+                        <div className="text-body font-bold text-entity-text font-mono mt-0.5">{totalUnits}</div>
                       </div>
                       <div>
-                        <div className="type-overline text-slate-400">{t("Inventory Value", "Hodnota skladu", "Készletérték")}</div>
+                        <div className="type-overline text-gray-400">{t("Inventory Value", "Hodnota skladu", "Készletérték")}</div>
                         <div className="text-ui font-bold text-emerald-700 font-mono mt-1 truncate">
                           {formatCurrency(totalValuation, systemLanguage, systemCurrency)}
                         </div>
@@ -5692,12 +5705,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   </div>
 
                   {/* Card Footer Actions */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-ui">
+                  <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between gap-2 text-ui">
                     {!wh.isDefault ? (
                       canEdit ? (
                       <button
                         onClick={() => handleSetDefaultWarehouse(wh.id)}
-                        className="text-caption font-semibold text-slate-500 hover:text-amber-700 flex items-center gap-1 transition cursor-pointer"
+                        className="text-caption font-semibold text-gray-500 hover:text-amber-700 flex items-center gap-1 transition cursor-pointer"
                       >
                         <Star className="w-3 h-3" />
                         <span>{t("Set as default", "Nastaviť ako predvolený", "Legyen alapértelmezett")}</span>
@@ -5715,7 +5728,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         setSelectedWarehouseId(wh.id);
                         setActiveSubTab("items");
                       }}
-                      className="text-caption font-bold text-blue-900 hover:text-blue-700 hover:underline flex items-center gap-1 cursor-pointer"
+                      className="text-caption font-bold text-entity-text hover:text-entity-text hover:underline flex items-center gap-1 cursor-pointer"
                     >
                       <span>{t("View stock", "Zobraziť zásoby", "Készlet megtekintése")}</span>
                       <ChevronRight className="w-3 h-3" />
@@ -5731,12 +5744,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* TAB 4: SUPPLIERS DIRECTORY */}
       {activeSubTab === "suppliers" && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+          <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-gray-200/80 shadow-sm">
             <div>
-              <h3 className="font-bold text-slate-900 text-body">
+              <h3 className="font-bold text-gray-900 text-body">
                 {t("B2B Suppliers Directory", "Adresár dodávateľov a partnerov", "Beszállítói címtár")}
               </h3>
-              <p className="text-ui text-slate-500">
+              <p className="text-ui text-gray-500">
                 {t("Manage supplier contacts, invoicing data, and payment conditions", "Správa kontaktných osôb, fakturačných údajov a splatností", "Szállítói adatok és fizetési feltételek")}
               </p>
             </div>
@@ -5765,7 +5778,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 });
                 setIsSupplierModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-ui font-semibold transition"
+              className="flex items-center gap-1.5 px-3 py-2 bg-entity-solid hover:bg-entity-solid text-white rounded-md text-ui font-semibold transition"
             >
               <Plus className="w-4 h-4" />
               <span>{t("New Supplier", "Pridať dodávateľa", "Új beszállító")}</span>
@@ -5776,16 +5789,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           {/* Suppliers Cards Grid */}
           <div className="grid grid-cols-1 ws-md:grid-cols-2 ws-lg:grid-cols-3 gap-4">
             {suppliers.map(sup => (
-              <div key={sup.id} className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+              <div key={sup.id} className="bg-white p-5 rounded-lg border border-gray-200/80 shadow-sm hover:shadow-md transition flex flex-col justify-between">
                 <div>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold text-body">
+                      <div className="w-10 h-10 rounded-md bg-entity-subtle text-entity-text flex items-center justify-center font-bold text-body">
                         <Building2 className="w-5 h-5" />
                       </div>
                       <div>
-                        <h4 className="font-bold text-slate-900 text-body">{sup.name}</h4>
-                        <div className="text-caption text-slate-400 font-mono mt-0.5">
+                        <h4 className="font-bold text-gray-900 text-body">{sup.name}</h4>
+                        <div className="text-caption text-gray-400 font-mono mt-0.5">
                           IČO: {sup.companyId || "—"} {sup.vatId ? `• ${sup.vatId}` : ""}
                         </div>
                       </div>
@@ -5818,7 +5831,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           });
                           setIsSupplierModalOpen(true);
                         }}
-                        className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition"
+                        className="p-1.5 text-gray-400 hover:text-entity-text hover:bg-entity-subtle rounded-lg transition"
                         title={t("Edit Supplier", "Upraviť dodávateľa", "Beszállító szerkesztése")}
                       >
                         <Edit2 className="w-3.5 h-3.5" />
@@ -5831,7 +5844,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           lang={systemLanguage}
                           what={sup.name}
                           onConfirm={() => { if (!canDelete) return; handleDeleteSupplier(sup.id); }}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                           title={t("Delete Supplier", "Vymazať dodávateľa", "Beszállító törlése")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -5840,22 +5853,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="mt-4 space-y-1.5 text-ui text-slate-600">
+                  <div className="mt-4 space-y-1.5 text-ui text-gray-600">
                     {sup.city && (
                       <div className="flex items-center gap-2">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                         <span>{sup.street}, {sup.postalCode} {sup.city}</span>
                       </div>
                     )}
                     {sup.email && (
                       <div className="flex items-center gap-2">
-                        <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <a href={`mailto:${sup.email}`} className="text-blue-900 hover:underline">{sup.email}</a>
+                        <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <a href={`mailto:${sup.email}`} className="text-entity-text hover:underline">{sup.email}</a>
                       </div>
                     )}
                     {sup.phone && (
                       <div className="flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                         <span>{sup.phone}</span>
                       </div>
                     )}
@@ -5863,15 +5876,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                   {/* Contacts List */}
                   {sup.contacts && sup.contacts.length > 0 && (
-                    <div className="mt-4 pt-3 border-t border-slate-100">
-                      <p className="type-overline text-slate-400 mb-1.5">
+                    <div className="mt-4 pt-3 border-t border-gray-100">
+                      <p className="type-overline text-gray-400 mb-1.5">
                         {t("Contact Persons", "Kontaktné osoby", "Kapcsolattartók")}
                       </p>
                       <div className="space-y-1">
                         {sup.contacts.map((c, i) => (
-                          <div key={i} className="text-ui flex items-center justify-between text-slate-700 bg-slate-50 p-1.5 rounded-lg">
-                            <span className="font-semibold">{c.name} {c.position && <span className="font-normal text-slate-400">({c.position})</span>}</span>
-                            <span className="text-caption text-slate-500 font-mono">{c.phone || c.email}</span>
+                          <div key={i} className="text-ui flex items-center justify-between text-gray-700 bg-gray-50 p-1.5 rounded-lg">
+                            <span className="font-semibold">{c.name} {c.position && <span className="font-normal text-gray-400">({c.position})</span>}</span>
+                            <span className="text-caption text-gray-500 font-mono">{c.phone || c.email}</span>
                           </div>
                         ))}
                       </div>
@@ -5879,7 +5892,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   )}
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-ui text-slate-400">
+                <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-ui text-gray-400">
                   <span>{t("Payment terms", "Splatnosť", "Fizetési határid")}: <strong>{sup.paymentDueDays} {t("days", "dní", "nap")}</strong></span>
                   <span className="text-caption font-mono">{sup.country}</span>
                 </div>
@@ -5892,20 +5905,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* TAB 4: EXPIRY & BATCH TRACKER (FEFO) */}
       {activeSubTab === "batches" && (
         <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+          <div className="bg-white p-4 rounded-lg border border-gray-200/80 shadow-sm flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-slate-900 text-body">
+              <h3 className="font-bold text-gray-900 text-body">
                 {t("Lot & Expiration Tracking (FEFO)", "Sledovanie šarží a exspirácií (FEFO)", "Lejáratok és tételek")}
               </h3>
-              <p className="text-ui text-slate-500">
+              <p className="text-ui text-gray-500">
                 {t("First-Expired, First-Out matrix for chemical products, adhesives and sealants", "Metodika First-Expired, First-Out pre chémiu, lepidlá a tmelové hmoty", "FEFO nyilvántartás")}
               </p>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-lg border border-gray-200/80 shadow-sm overflow-hidden">
             <table className="w-full text-left text-ui">
-              <thead className="bg-slate-50 border-b border-slate-200 type-overline text-slate-500">
+              <thead className="bg-gray-50 border-b border-gray-200 type-overline text-gray-500">
                 <tr>
                   <th className="py-3 px-4">{t("Status", "Stav", "Állapot")}</th>
                   <th className="py-3 px-4">{t("Batch #", "Číslo šarže", "Tételszám")}</th>
@@ -5916,54 +5929,54 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <th className="py-3 px-4 text-right">{t("Purchase Cost", "Nákupná cena", "Beszerzési ár")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-gray-100">
                 {batchesWithStatus.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
-                      <Clock className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                    <td colSpan={7} className="py-12 text-center text-gray-400">
+                      <Clock className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                       <p className="font-semibold">{t("No batch-tracked products registered.", "Žiadne šaržované produkty nie sú zaevidované.", "Nincsenek tételes termékek.")}</p>
                     </td>
                   </tr>
                 ) : (
                   batchesWithStatus.map(batch => (
-                    <tr key={batch.id} className="hover:bg-slate-50/80 transition">
+                    <tr key={batch.id} className="hover:bg-gray-50/80 transition">
                       <td className="py-3 px-4">
                         {batch.status === "expired" ? (
-                          <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1 w-fit">
+                          <span className="px-2.5 py-0.5 rounded-md text-micro font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1 w-fit">
                             <AlertCircle className="w-3 h-3" /> {t("EXPIRED", "EXSPIROVANÉ", "LEJÁRT")}
                           </span>
                         ) : batch.status === "warning" ? (
-                          <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1 w-fit">
+                          <span className="px-2.5 py-0.5 rounded-md text-micro font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1 w-fit">
                             <AlertTriangle className="w-3 h-3" /> {t("Expiring Soon", "Blíži sa exspirácia", "Hamarosan lejár")} ({batch.diffDays} {t("days", "dní", "nap")})
                           </span>
                         ) : (
-                          <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1 w-fit">
+                          <span className="px-2.5 py-0.5 rounded-md text-micro font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1 w-fit">
                             <CheckCircle2 className="w-3 h-3" /> {t("OK", "V poriadku", "Rendben")}
                           </span>
                         )}
                       </td>
 
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                      <td className="py-3 px-4 font-mono font-bold text-gray-900">
                         {batch.batchNumber}
                       </td>
 
-                      <td className="py-3 px-4 font-semibold text-slate-800">
-                        {batch.itemName} <span className="text-slate-400 font-mono text-micro">({batch.itemSku})</span>
+                      <td className="py-3 px-4 font-semibold text-gray-800">
+                        {batch.itemName} <span className="text-gray-400 font-mono text-micro">({batch.itemSku})</span>
                       </td>
 
-                      <td className="py-3 px-4 text-slate-600">
+                      <td className="py-3 px-4 text-gray-600">
                         {batch.warehouseName}
                       </td>
 
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                      <td className="py-3 px-4 font-mono font-bold text-gray-900">
                         {formatDateLocalized(batch.expirationDate, systemLanguage)}
                       </td>
 
-                      <td className="py-3 px-4 text-right font-bold text-slate-900 text-body">
-                        {batch.currentQuantity} <span className="text-ui font-normal text-slate-500">{batch.itemUnit}</span>
+                      <td className="py-3 px-4 text-right font-bold text-gray-900 text-body">
+                        {batch.currentQuantity} <span className="text-ui font-normal text-gray-500">{batch.itemUnit}</span>
                       </td>
 
-                      <td className="py-3 px-4 text-right font-mono text-slate-700">
+                      <td className="py-3 px-4 text-right font-mono text-gray-700">
                         {formatCurrency(batch.purchasePrice, systemLanguage, systemCurrency)}
                       </td>
                     </tr>
@@ -5977,75 +5990,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
       {/* TAB 5: INVENTORY ANALYTICS */}
       {activeSubTab === "analytics" && (
-        <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
-          {/* Top 5 Most Sold Products */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <TrendingUp className="w-5 h-5 text-blue-900" />
-              <h3 className="font-bold text-slate-900 text-body">
-                {t("Top Selling Products by Revenue", "Najpredávanejší tovar podľa obratu", "Legjobban fogyó termékek")}
-              </h3>
-            </div>
-
-            <div className="space-y-3">
-              {warehouseItems.slice(0, 5).map((item, i) => {
-                const soldQty = 12 + (5 - i) * 6;
-                const revenue = soldQty * (item.defaultSellPrice || 0);
-
-                return (
-                  <div key={item.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 border border-slate-100">
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-blue-900 text-white flex items-center justify-center font-bold text-ui">
-                        #{i + 1}
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-slate-900 text-ui">{item.name}</h4>
-                        <span className="text-micro text-slate-400 font-mono">{item.sku} &bull; {soldQty} {item.unit} {t("issued", "vydaných", "kiadva")}</span>
-                      </div>
-                    </div>
-
-                    <div className="text-right font-bold text-slate-900 text-ui">
-                      {formatCurrency(revenue, systemLanguage, systemCurrency)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Category Valuation Breakdown */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <Layers className="w-5 h-5 text-indigo-900" />
-              <h3 className="font-bold text-slate-900 text-body">
-                {t("Inventory Valuation by Category", "Hodnota zásob podľa kategórií", "Készletérték kategóriák szerint")}
-              </h3>
-            </div>
-
-            <div className="space-y-3">
-              {allCategories.map(cat => {
-                let catVal = 0;
-                warehouseItems.filter(it => getItemCategories(it).includes(cat)).forEach(it => {
-                  const s = getStockInfoForItem(it.id);
-                  catVal += s.onHand * it.avgPurchasePrice;
-                });
-                const pct = metrics.totalValuation > 0 ? (catVal / metrics.totalValuation) * 100 : 0;
-
-                return (
-                  <div key={cat} className="space-y-1">
-                    <div className="flex items-center justify-between text-ui">
-                      <span className="font-semibold text-slate-800">{cat}</span>
-                      <span className="font-bold text-slate-900">{formatCurrency(catVal, systemLanguage, systemCurrency)} ({pct.toFixed(0)}%)</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                      <div className="h-full bg-blue-900 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <WarehouseAnalyticsTab
+          warehouseItems={warehouseItems}
+          allCategories={allCategories}
+          getItemCategories={getItemCategories}
+          getStockInfoForItem={getStockInfoForItem}
+          totalValuation={metrics.totalValuation}
+          formatCurrency={formatCurrency}
+          systemLanguage={systemLanguage}
+          systemCurrency={systemCurrency}
+          t={t}
+        />
       )}
 
 
@@ -6054,25 +6009,25 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* MODAL 2: NEW RECEIPT (PRÍJEMKA - PRI) */}
       {/* ========================================================================= */}
       {isReceiptModalOpen && canEdit && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-100 my-8">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+        <div className="fixed inset-0 bg-gray-900/50  z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-3xl w-full p-6 shadow-2xl border border-gray-100 my-8">
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
+                <div className="w-9 h-9 rounded-md bg-emerald-600 text-white flex items-center justify-center">
                   <ArrowDownLeft className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-title-sm">
+                  <h3 className="font-bold text-gray-900 text-title-sm">
                     {t("New Goods Receipt (Príjemka - PRI)", "Príjem tovaru a materiálu (Príjemka)", "Új bevételezés (PRI)")}
                   </h3>
-                  <p className="text-ui text-slate-500">
+                  <p className="text-ui text-gray-500">
                     {t("Incoming shipment from supplier. Automatically recalculates WAP cost.", "Príjem od dodávateľa. Automaticky prepočítava vážený nákupný priemer (WAP).", "Beszállítói bevételezés.")}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsReceiptModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg"
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -6081,7 +6036,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <div className="mt-5 space-y-4">
               <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Destination Warehouse", "Cieľový sklad príjmu", "Célraktár")} *
                   </label>
                   <CustomSelect
@@ -6092,12 +6047,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       label: `${w.name} (${w.code})`,
                     }))}
                     size="sm"
-                    className="w-full text-ui font-semibold rounded-xl"
+                    className="w-full text-ui font-semibold rounded-md"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Supplier", "Dodávateľ", "Beszállító")} *
                   </label>
                   <CustomSelect
@@ -6108,12 +6063,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       label: `${s.name} (IČO: ${s.companyId || "—"})`,
                     }))}
                     size="sm"
-                    className="w-full text-ui font-semibold rounded-xl"
+                    className="w-full text-ui font-semibold rounded-md"
                   />
                 </div>
 
                 <div className="ws-sm:col-span-2">
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Note / Supplier Invoice Number", "Poznámka / Číslo dodacieho listu či faktúry", "Megjegyzés / Számlaszám")}
                   </label>
                   <input
@@ -6121,7 +6076,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={receiptNote}
                     onChange={(e) => setReceiptNote(e.target.value)}
                     placeholder="napr. Dodávka podľa fa FA260012, vodič Martin"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -6129,7 +6084,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               {/* Items Table */}
               <div className="pt-2">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-ui font-bold text-slate-700">
+                  <label className="text-ui font-bold text-gray-700">
                     {t("Receipt Line Items", "Prijímané položky", "Tételek")}
                   </label>
                   {canEdit && (
@@ -6148,7 +6103,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   {receiptItems.map((row, idx) => {
                     const selItem = warehouseItems.find(i => i.id === row.itemId);
                     return (
-                      <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                      <div key={idx} className="p-3 bg-gray-50 rounded-md border border-gray-200 space-y-2">
                         <div className="grid grid-cols-1 ws-sm:grid-cols-4 gap-2">
                           <div className="ws-sm:col-span-2">
                             <CustomSelect
@@ -6182,9 +6137,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                   setReceiptItems(updated);
                                 }}
                                 placeholder="Množstvo"
-                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-ui font-bold text-slate-900"
+                                className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-ui font-bold text-gray-900"
                               />
-                              <span className="text-caption text-slate-400 font-semibold">{selItem?.unit || "ks"}</span>
+                              <span className="text-caption text-gray-400 font-semibold">{selItem?.unit || "ks"}</span>
                             </div>
                           </div>
 
@@ -6200,7 +6155,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 setReceiptItems(updated);
                               }}
                               placeholder="Nákupná cena"
-                              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-ui font-mono font-bold text-emerald-800"
+                              className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-ui font-mono font-bold text-emerald-800"
                             />
                             {canDelete && (
                             <button
@@ -6211,7 +6166,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                   setReceiptItems(receiptItems.filter((_, i) => i !== idx));
                                 }
                               }}
-                              className="p-1.5 text-slate-400 hover:text-rose-600"
+                              className="p-1.5 text-gray-400 hover:text-rose-600"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -6221,7 +6176,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                         {/* Batch row if expiration enabled */}
                         {selItem?.hasExpiration && (
-                          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60">
+                          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-gray-200/60">
                             <div>
                               <input
                                 type="text"
@@ -6232,7 +6187,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                   setReceiptItems(updated);
                                 }}
                                 placeholder="Číslo šarže (napr. BAT-2026-001)"
-                                className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-caption font-mono"
+                                className="w-full px-2 py-1 bg-white border border-gray-200 rounded-lg text-caption font-mono"
                               />
                             </div>
                             <div>
@@ -6244,7 +6199,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                   updated[idx].expirationDate = e.target.value;
                                   setReceiptItems(updated);
                                 }}
-                                className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-caption"
+                                className="w-full px-2 py-1 bg-white border border-gray-200 rounded-lg text-caption"
                               />
                             </div>
                           </div>
@@ -6256,17 +6211,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
+            <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-end gap-2">
               <button
                 onClick={() => setIsReceiptModalOpen(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-semibold transition"
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-semibold transition"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
               {canEdit && (
               <button
                 onClick={handleCreateReceipt}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-ui font-bold transition shadow-sm flex items-center gap-1.5"
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-ui font-bold transition shadow-sm flex items-center gap-1.5"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{t("Confirm Receipt & Update Stock", "Potvrdiť príjemku a naskladniť", "Bevételezés jóváhagyása")}</span>
@@ -6283,25 +6238,25 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* MODAL 4: NEW TRANSFER (PREVODKA - PRE) */}
       {/* ========================================================================= */}
       {isTransferModalOpen && canEdit && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 my-8">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+        <div className="fixed inset-0 bg-gray-900/50  z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6 shadow-2xl border border-gray-100 my-8">
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-purple-700 text-white flex items-center justify-center">
+                <div className="w-9 h-9 rounded-md bg-purple-700 text-white flex items-center justify-center">
                   <ArrowLeftRight className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-title-sm">
+                  <h3 className="font-bold text-gray-900 text-title-sm">
                     {t("Warehouse Transfer (Prevodka - PRE)", "Medziskladový presun (Prevodka)", "Raktárközi átadás")}
                   </h3>
-                  <p className="text-ui text-slate-500">
+                  <p className="text-ui text-gray-500">
                     {t("Relocate goods between your physical warehouses", "Presun tovaru a materiálu medzi pobočkami", "Átadás raktárak között")}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsTransferModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg"
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -6310,7 +6265,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <div className="mt-5 space-y-4">
               <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Source Warehouse (From)", "Zdrojový sklad (Odkiaľ)", "Forrásraktár")} *
                   </label>
                   <CustomSelect
@@ -6321,12 +6276,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       label: `${w.name} (${w.code})`,
                     }))}
                     size="sm"
-                    className="w-full text-ui font-semibold rounded-xl"
+                    className="w-full text-ui font-semibold rounded-md"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Destination Warehouse (To)", "Cieľový sklad (Kam)", "Célraktár")} *
                   </label>
                   <CustomSelect
@@ -6337,12 +6292,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       label: `${w.name} (${w.code})`,
                     }))}
                     size="sm"
-                    className="w-full text-ui font-semibold rounded-xl"
+                    className="w-full text-ui font-semibold rounded-md"
                   />
                 </div>
 
                 <div className="ws-sm:col-span-2">
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Transfer Reason / Note", "Dôvod presunu / Poznámka", "Megjegyzés")}
                   </label>
                   <input
@@ -6350,7 +6305,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={transferNote}
                     onChange={(e) => setTransferNote(e.target.value)}
                     placeholder="napr. Závoz materiálu na výrobnú pobočku Trnava"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:ring-2 focus:ring-purple-700 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:ring-2 focus:ring-purple-700 focus:outline-none"
                   />
                 </div>
               </div>
@@ -6358,7 +6313,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               {/* Transfer items list */}
               <div className="pt-2">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-ui font-bold text-slate-700">
+                  <label className="text-ui font-bold text-gray-700">
                     {t("Items to Relocate", "Presúvané položky", "Átadott tételek")}
                   </label>
                   {canEdit && (
@@ -6379,7 +6334,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     const stock = getStockInfoForItem(row.itemId, transferSourceWh);
 
                     return (
-                      <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
+                      <div key={idx} className="p-3 bg-gray-50 rounded-md border border-gray-200 flex items-center gap-3">
                         <div className="flex-1">
                           <CustomSelect
                             value={row.itemId}
@@ -6409,9 +6364,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               updated[idx].quantity = Number(e.target.value);
                               setTransferItems(updated);
                             }}
-                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-ui font-bold text-slate-900"
+                            className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-ui font-bold text-gray-900"
                           />
-                          <span className="text-caption text-slate-400 font-semibold">{selItem?.unit || "ks"}</span>
+                          <span className="text-caption text-gray-400 font-semibold">{selItem?.unit || "ks"}</span>
                         </div>
 
                         {canDelete && (
@@ -6423,7 +6378,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               setTransferItems(transferItems.filter((_, i) => i !== idx));
                             }
                           }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600"
+                          className="p-1.5 text-gray-400 hover:text-rose-600"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -6435,17 +6390,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
+            <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-end gap-2">
               <button
                 onClick={() => setIsTransferModalOpen(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-semibold transition"
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-semibold transition"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
               {canEdit && (
               <button
                 onClick={handleCreateTransfer}
-                className="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-ui font-bold transition shadow-sm flex items-center gap-1.5"
+                className="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-md text-ui font-bold transition shadow-sm flex items-center gap-1.5"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{t("Confirm Transfer", "Potvrdiť prevodku", "Átadás jóváhagyása")}</span>
@@ -6460,25 +6415,25 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* MODAL 5: NEW / EDIT SUPPLIER */}
       {/* ========================================================================= */}
       {isSupplierModalOpen && canEdit && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 my-8">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+        <div className="fixed inset-0 bg-gray-900/50  z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6 shadow-2xl border border-gray-100 my-8">
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-900 text-white flex items-center justify-center">
+                <div className="w-9 h-9 rounded-md bg-entity-solid text-white flex items-center justify-center">
                   <Truck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-title-sm">
+                  <h3 className="font-bold text-gray-900 text-title-sm">
                     {editingSupplier ? t("Edit Supplier", "Upraviť dodávateľa", "Beszállító szerkesztése") : t("New Supplier", "Nový dodávateľ", "Új beszállító")}
                   </h3>
-                  <p className="text-ui text-slate-500">
+                  <p className="text-ui text-gray-500">
                     {t("Type a name, IČO, DIČ or IČ DPH to auto-fill from the business register (SK/CZ)", "Začnite písať názov, IČO, DIČ alebo IČ DPH — údaje sa načítajú z registra (SR/ČR)", "Írjon nevet, adószámot vagy közösségi adószámot az automatikus kitöltéshez (SK/CZ)")}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsSupplierModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg"
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -6487,7 +6442,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <div className="mt-5 space-y-4">
               <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
                 <div className="ws-sm:col-span-2">
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     IČO {t("(Company Registration #)", "(Identifikačné číslo)", "(Cégjegyzékszám)")}
                   </label>
                   <div className="flex items-center gap-2">
@@ -6500,7 +6455,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           searchSupplierRegistry("companyId", e.target.value);
                         }}
                         placeholder="napr. 48123456"
-                        className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-ui font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                        className="w-full px-3.5 py-2 pr-9 bg-gray-50 border border-gray-200 rounded-md text-ui font-mono font-bold text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                       />
                       <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "companyId"} />
                       <CompanySuggestions
@@ -6515,7 +6470,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       type="button"
                       disabled={isAresLoading || supplierLookup.isResolving}
                       onClick={() => handleFetchRegistry(supplierForm.companyId)}
-                      className="px-3.5 py-2 bg-blue-900 hover:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 shrink-0 transition"
+                      className="px-3.5 py-2 bg-entity-solid hover:bg-entity-solid disabled:opacity-50 text-white rounded-md text-ui font-bold flex items-center gap-1.5 shrink-0 transition"
                     >
                       {isAresLoading || supplierLookup.isResolving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                       <span>{t("Auto-Fill", "Načítať z registra", "Kitöltés")}</span>
@@ -6524,7 +6479,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Payment Due Days", "Splatnosť faktúr", "Fizetési határid")}
                   </label>
                   <div className="flex items-center gap-1">
@@ -6532,14 +6487,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       type="number"
                       value={supplierForm.paymentDueDays}
                       onChange={(e) => setSupplierForm({ ...supplierForm, paymentDueDays: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                      className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-bold text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                     />
-                    <span className="text-ui text-slate-400 font-semibold">{t("days", "dní", "nap")}</span>
+                    <span className="text-ui text-gray-400 font-semibold">{t("days", "dní", "nap")}</span>
                   </div>
                 </div>
 
                 <div className="ws-sm:col-span-3 relative">
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Company Name", "Obchodné meno dodávateľa", "Cégnév")} *
                   </label>
                   <div className="relative">
@@ -6551,7 +6506,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         searchSupplierRegistry("name", e.target.value);
                       }}
                       placeholder={t("e.g. Supplier s.r.o.", "napr. Dodávateľ s.r.o.", "pl. Beszállító Kft.")}
-                      className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-ui font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                      className="w-full px-3.5 py-2 pr-9 bg-gray-50 border border-gray-200 rounded-md text-ui font-bold text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                     />
                     <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "name"} />
                   </div>
@@ -6565,7 +6520,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </div>
 
                 <div className="relative">
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     DIČ
                   </label>
                   <div className="relative">
@@ -6576,7 +6531,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         setSupplierForm({ ...supplierForm, taxId: e.target.value });
                         searchSupplierRegistry("taxId", e.target.value);
                       }}
-                      className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-ui font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                      className="w-full px-3.5 py-2 pr-9 bg-gray-50 border border-gray-200 rounded-md text-ui font-mono text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                     />
                     <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "taxId"} />
                   </div>
@@ -6590,7 +6545,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </div>
 
                 <div className="relative">
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     IČ DPH (VAT ID)
                   </label>
                   <div className="relative">
@@ -6601,7 +6556,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         setSupplierForm({ ...supplierForm, vatId: e.target.value });
                         searchSupplierRegistry("vatId", e.target.value);
                       }}
-                      className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-ui font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                      className="w-full px-3.5 py-2 pr-9 bg-gray-50 border border-gray-200 rounded-md text-ui font-mono text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                     />
                     <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "vatId"} />
                   </div>
@@ -6615,31 +6570,31 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Country", "Krajina", "Ország")}
                   </label>
                   <input
                     type="text"
                     value={supplierForm.country}
                     onChange={(e) => setSupplierForm({ ...supplierForm, country: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                   />
                 </div>
 
                 <div className="ws-sm:col-span-2">
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Street & Number", "Ulica a číslo", "Utca, házszám")}
                   </label>
                   <input
                     type="text"
                     value={supplierForm.street}
                     onChange={(e) => setSupplierForm({ ...supplierForm, street: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("City & Postal Code", "Mesto & PSČ", "Város")}
                   </label>
                   <input
@@ -6647,36 +6602,36 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={supplierForm.city}
                     onChange={(e) => setSupplierForm({ ...supplierForm, city: e.target.value })}
                     placeholder="Bratislava"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Email", "Email", "E-mail")}
                   </label>
                   <input
                     type="email"
                     value={supplierForm.email}
                     onChange={(e) => setSupplierForm({ ...supplierForm, email: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Phone", "Telefón", "Telefonszám")}
                   </label>
                   <input
                     type="text"
                     value={supplierForm.phone}
                     onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     IBAN
                   </label>
                   <input
@@ -6684,13 +6639,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={supplierForm.iban}
                     onChange={(e) => setSupplierForm({ ...supplierForm, iban: e.target.value })}
                     placeholder="SK89 0200..."
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-mono text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+            <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between gap-2">
               <div>
                 {editingSupplier && canDelete && (
                   <HoldToConfirmButton
@@ -6698,7 +6653,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       lang={systemLanguage}
                       what={editingSupplier.name}
                       onConfirm={() => { if (!canDelete) return; handleDeleteSupplier(editingSupplier.id); }}
-                      className="px-3.5 py-2 text-red-600 hover:bg-red-50 rounded-xl text-ui font-semibold flex items-center gap-1.5 transition"
+                      className="px-3.5 py-2 text-red-600 hover:bg-red-50 rounded-md text-ui font-semibold flex items-center gap-1.5 transition"
                       icon={<Trash2 className="w-4 h-4" />}
                   ><span>{t("Delete Supplier", "Vymazať dodávateľa", "Beszállító törlése")}</span>
                   </HoldToConfirmButton>
@@ -6708,14 +6663,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsSupplierModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-semibold transition cursor-pointer"
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-semibold transition cursor-pointer"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
                 {canEdit && (
                 <button
                   onClick={handleSaveSupplier}
-                  className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-ui font-bold transition shadow-sm cursor-pointer"
+                  className="px-5 py-2 bg-entity-solid hover:bg-entity-solid text-white rounded-md text-ui font-bold transition shadow-sm cursor-pointer"
                 >
                   {editingSupplier ? t("Save Changes", "Uložiť zmeny", "Mentés") : t("Create Supplier", "Vytvoriť dodávateľa", "Létrehozás")}
                 </button>
@@ -6730,25 +6685,25 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* MODAL 6: NEW / EDIT WAREHOUSE */}
       {/* ========================================================================= */}
       {isWarehouseModalOpen && canEdit && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 my-8">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+        <div className="fixed inset-0 bg-gray-900/50  z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-lg w-full p-6 shadow-2xl border border-gray-100 my-8">
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-900 text-white flex items-center justify-center">
+                <div className="w-9 h-9 rounded-md bg-entity-solid text-white flex items-center justify-center">
                   <WarehouseIcon className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-title-sm">
+                  <h3 className="font-bold text-gray-900 text-title-sm">
                     {editingWarehouse ? t("Edit Warehouse", "Upraviť sklad", "Raktár szerkesztése") : t("New Warehouse", "Nový sklad", "Új raktár")}
                   </h3>
-                  <p className="text-ui text-slate-500">
+                  <p className="text-ui text-gray-500">
                     {t("Configure storage location, identifier, address and responsible manager", "Nastavte skladový priestor, kód, adresu a vedúceho skladu", "Raktár kódjának, címének és vezetőjének beállítása")}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsWarehouseModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg cursor-pointer"
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -6757,7 +6712,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <div className="mt-5 space-y-4">
               <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                 <div className="ws-sm:col-span-2">
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Warehouse Name", "Názov skladu", "Raktár neve")} *
                   </label>
                   <input
@@ -6765,12 +6720,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={warehouseForm.name}
                     onChange={(e) => setWarehouseForm({ ...warehouseForm, name: e.target.value })}
                     placeholder={t("e.g. Central Warehouse Bratislava", "napr. Centrálny sklad Bratislava", "pl. Központi raktár")}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-bold text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Warehouse Code", "Kód skladu", "Raktárkód")} *
                   </label>
                   <input
@@ -6778,18 +6733,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={warehouseForm.code}
                     onChange={(e) => setWarehouseForm({ ...warehouseForm, code: e.target.value.toUpperCase() })}
                     placeholder="WH-BA-01"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-mono font-bold text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Warehouse Manager", "Vedúci skladu", "Raktárvezető")}
                   </label>
                   <select
                     value={warehouseForm.managerUserId}
                     onChange={(e) => setWarehouseForm({ ...warehouseForm, managerUserId: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-medium text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-medium text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                   >
                     <option value="">{t("— No manager assigned —", "— Bez prideleného vedúceho —", "— Nincs kijelölve —")}</option>
                     {users.map(u => (
@@ -6801,7 +6756,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </div>
 
                 <div className="ws-sm:col-span-2">
-                  <label className="block text-ui font-bold text-slate-700 mb-1">
+                  <label className="block text-ui font-bold text-gray-700 mb-1">
                     {t("Physical Address / Location", "Adresa / Umiestnenie skladu", "Fizikai cím / Elhelyezkedés")}
                   </label>
                   <input
@@ -6809,23 +6764,23 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     value={warehouseForm.address}
                     onChange={(e) => setWarehouseForm({ ...warehouseForm, address: e.target.value })}
                     placeholder="Vajnorská 100, 831 04 Bratislava"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui text-gray-900 focus:ring-2 focus:ring-entity-ring focus:outline-none"
                   />
                 </div>
 
                 <div className="ws-sm:col-span-2 pt-2">
-                  <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80 cursor-pointer hover:bg-slate-100 transition select-none">
+                  <label className="flex items-center gap-2.5 p-3 rounded-md bg-gray-50 border border-gray-200/80 cursor-pointer hover:bg-gray-100 transition select-none">
                     <input
                       type="checkbox"
                       checked={warehouseForm.isDefault}
                       onChange={(e) => setWarehouseForm({ ...warehouseForm, isDefault: e.target.checked })}
-                      className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900"
+                      className="w-4 h-4 rounded text-entity-text focus:ring-entity-ring"
                     />
                     <div>
-                      <span className="text-ui font-bold text-slate-900">
+                      <span className="text-ui font-bold text-gray-900">
                         {t("Set as default warehouse", "Nastaviť ako predvolený sklad", "Alapértelmezett raktárként beállítás")}
                       </span>
-                      <p className="text-caption text-slate-500 mt-0.5">
+                      <p className="text-caption text-gray-500 mt-0.5">
                         {t("Automatically selected when creating new receipts, goods issues, and product inventory records", "Automaticky predvybraný pri nových príjemkách, výdajkách a stavoch", "Automatikusan kiválasztva az új bizonylatoknál")}
                       </p>
                     </div>
@@ -6834,7 +6789,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+            <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between gap-2">
               <div>
                 {editingWarehouse && canDelete && (
                   <HoldToConfirmButton
@@ -6842,7 +6797,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       lang={systemLanguage}
                       what={editingWarehouse.name}
                       onConfirm={() => { if (!canDelete) return; handleDeleteWarehouse(editingWarehouse.id); }}
-                      className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-xl text-ui font-semibold flex items-center gap-1.5 transition"
+                      className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-md text-ui font-semibold flex items-center gap-1.5 transition"
                       icon={<Trash2 className="w-4 h-4" />}
                   ><span>{t("Delete Warehouse", "Vymazať sklad", "Raktár törlése")}</span>
                   </HoldToConfirmButton>
@@ -6852,14 +6807,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsWarehouseModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-semibold transition cursor-pointer"
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-semibold transition cursor-pointer"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
                 {canEdit && (
                 <button
                   onClick={handleSaveWarehouse}
-                  className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-ui font-bold transition shadow-sm cursor-pointer"
+                  className="px-5 py-2 bg-entity-solid hover:bg-entity-solid text-white rounded-md text-ui font-bold transition shadow-sm cursor-pointer"
                 >
                   {editingWarehouse ? t("Save Changes", "Uložiť zmeny", "Mentés") : t("Create Warehouse", "Vytvoriť sklad", "Létrehozás")}
                 </button>
@@ -6874,65 +6829,65 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* MODAL 7: PRINT / VIEW DOCUMENT PREVIEW */}
       {/* ========================================================================= */}
       {selectedMovementForPrint && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-8 shadow-2xl border border-slate-100 my-8 text-slate-800">
+        <div className="fixed inset-0 bg-gray-900/70  z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-8 shadow-2xl border border-gray-100 my-8 text-gray-800">
             {/* Document Header */}
-            <div className="flex items-start justify-between pb-6 border-b border-slate-200">
+            <div className="flex items-start justify-between pb-6 border-b border-gray-200">
               <div>
-                <span className="type-overline text-slate-400 font-mono">
-                  CCRM WAREHOUSE NODE
+                <span className="type-overline text-gray-400 font-mono">
+                  {brand.toUpperCase()} WAREHOUSE NODE
                 </span>
-                <h2 className="type-metric text-slate-900 mt-0.5">
+                <h2 className="type-metric text-gray-900 mt-0.5">
                   {selectedMovementForPrint.type === "inward"
                     ? t("GOODS RECEIPT", "PRÍJEMKA TOVARU", "BEVÉTELEZÉSI BIZONYLAT")
                     : selectedMovementForPrint.type === "outward"
                     ? t("DELIVERY NOTE / ISSUE", "DODACÍ LIST / VÝDAJKA", "SZÁLLÍTÓLEVÉL / KIADÁS")
                     : t("TRANSFER NOTE", "PREVODKA", "ÁTADÁSI BIZONYLAT")}
                 </h2>
-                <div className="text-body font-mono font-bold text-blue-900 mt-1">
+                <div className="text-body font-mono font-bold text-entity-text mt-1">
                   {selectedMovementForPrint.documentNumber}
                 </div>
               </div>
 
               <div className="text-right text-ui">
-                <div className="font-bold text-slate-900">{t("Date", "Dátum", "Dátum")}: {formatTimestampLocalized(selectedMovementForPrint.issuedAt, systemLanguage)}</div>
-                <div className="text-slate-400 mt-1">{t("Author", "Vystavil", "Kiállította")}: {selectedMovementForPrint.createdBy}</div>
+                <div className="font-bold text-gray-900">{t("Date", "Dátum", "Dátum")}: {formatTimestampLocalized(selectedMovementForPrint.issuedAt, systemLanguage)}</div>
+                <div className="text-gray-400 mt-1">{t("Author", "Vystavil", "Kiállította")}: {selectedMovementForPrint.createdBy}</div>
               </div>
             </div>
 
             {/* Document Body Partner */}
             <div className="grid grid-cols-2 gap-6 my-6 text-ui">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <span className="type-overline text-slate-400">{t("Source / Warehouse", "Skladové pracovisko", "Raktár")}</span>
-                <div className="font-bold text-slate-900 text-body mt-1">
+              <div className="p-3 bg-gray-50 rounded-md border border-gray-100">
+                <span className="type-overline text-gray-400">{t("Source / Warehouse", "Skladové pracovisko", "Raktár")}</span>
+                <div className="font-bold text-gray-900 text-body mt-1">
                   {warehouses.find(w => w.id === selectedMovementForPrint.warehouseId)?.name || selectedMovementForPrint.warehouseId}
                 </div>
-                <div className="text-slate-500 mt-0.5">
-                  {warehouses.find(w => w.id === selectedMovementForPrint.warehouseId)?.address || "CCRM Sklad"}
+                <div className="text-gray-500 mt-0.5">
+                  {warehouses.find(w => w.id === selectedMovementForPrint.warehouseId)?.address || `${brand} Sklad`}
                 </div>
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <span className="type-overline text-slate-400">
+              <div className="p-3 bg-gray-50 rounded-md border border-gray-100">
+                <span className="type-overline text-gray-400">
                   {selectedMovementForPrint.type === "inward" ? t("Supplier", "Dodávateľ", "Beszállító") : t("Customer / Recipient", "Odberateľ / Zákazník", "Ügyfél")}
                 </span>
-                <div className="font-bold text-slate-900 text-body mt-1">
+                <div className="font-bold text-gray-900 text-body mt-1">
                   {selectedMovementForPrint.supplierId
                     ? suppliers.find(s => s.id === selectedMovementForPrint.supplierId)?.name
                     : selectedMovementForPrint.leadId
                     ? leads.find(l => l.id === selectedMovementForPrint.leadId)?.name
                     : t("Internal Movement", "Interný prevod / Priamy výdaj", "Belső mozgatás")}
                 </div>
-                <div className="text-slate-500 mt-0.5">
+                <div className="text-gray-500 mt-0.5">
                   {selectedMovementForPrint.note || t("Confirmed delivery note", "Potvrdený dodací doklad", "Szállítólevél")}
                 </div>
               </div>
             </div>
 
             {/* Document Table */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden mb-6">
+            <div className="border border-gray-200 rounded-md overflow-hidden mb-6">
               <table className="w-full text-left text-ui">
-                <thead className="bg-slate-50 border-b border-slate-200 type-overline text-slate-500">
+                <thead className="bg-gray-50 border-b border-gray-200 type-overline text-gray-500">
                   <tr>
                     <th className="py-2.5 px-3">#</th>
                     <th className="py-2.5 px-3">{t("Product Item", "Názov položky tovaru", "Tétel")}</th>
@@ -6941,22 +6896,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     <th className="py-2.5 px-3 text-right">{t("Total", "Spolu", "Összesen")}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-gray-100">
                   {selectedMovementForPrint.items.map((it, idx) => {
                     const p = warehouseItems.find(item => item.id === it.itemId);
                     return (
                       <tr key={it.id}>
-                        <td className="py-2.5 px-3 font-mono text-slate-400">{idx + 1}</td>
-                        <td className="py-2.5 px-3 font-semibold text-slate-900">
-                          {p?.name || it.itemId} {p?.sku && <span className="text-slate-400 font-mono text-micro">({p.sku})</span>}
+                        <td className="py-2.5 px-3 font-mono text-gray-400">{idx + 1}</td>
+                        <td className="py-2.5 px-3 font-semibold text-gray-900">
+                          {p?.name || it.itemId} {p?.sku && <span className="text-gray-400 font-mono text-micro">({p.sku})</span>}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-slate-900">
+                        <td className="py-2.5 px-3 text-right font-bold text-gray-900">
                           {it.quantity} {p?.unit || "ks"}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                        <td className="py-2.5 px-3 text-right font-mono text-gray-600">
                           {formatCurrency(selectedMovementForPrint.type === "inward" ? it.unitPurchasePrice : it.unitSellPrice, systemLanguage, systemCurrency)}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-gray-900">
                           {formatCurrency(it.totalPrice, systemLanguage, systemCurrency)}
                         </td>
                       </tr>
@@ -6967,23 +6922,23 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </div>
 
             {/* Total Value */}
-            <div className="flex justify-end p-3 bg-slate-50 rounded-xl border border-slate-200 mb-8">
+            <div className="flex justify-end p-3 bg-gray-50 rounded-md border border-gray-200 mb-8">
               <div className="text-right">
-                <span className="type-overline text-slate-500 mr-3">{t("Total Document Value", "Celková hodnota dokladu", "Összérték")}:</span>
-                <span className="text-title font-bold text-blue-900 font-mono">
+                <span className="type-overline text-gray-500 mr-3">{t("Total Document Value", "Celková hodnota dokladu", "Összérték")}:</span>
+                <span className="text-title font-bold text-entity-text font-mono">
                   {formatCurrency(selectedMovementForPrint.type === "inward" ? selectedMovementForPrint.totalCostValue : selectedMovementForPrint.totalSellValue, systemLanguage, systemCurrency)}
                 </span>
               </div>
             </div>
 
             {/* Signature fields */}
-            <div className="grid grid-cols-2 gap-12 pt-6 border-t border-slate-200 text-ui text-center text-slate-400">
+            <div className="grid grid-cols-2 gap-12 pt-6 border-t border-gray-200 text-ui text-center text-gray-400">
               <div>
-                <div className="border-b border-slate-300 pb-8 mb-1" />
+                <div className="border-b border-gray-300 pb-8 mb-1" />
                 <span>{t("Issued by (Signature)", "Vyskladnil / Vystavil (Podpis)", "Kiállította")}</span>
               </div>
               <div>
-                <div className="border-b border-slate-300 pb-8 mb-1" />
+                <div className="border-b border-gray-300 pb-8 mb-1" />
                 <span>{t("Received by (Signature)", "Prevzal / Zákazník (Podpis)", "Átvette")}</span>
               </div>
             </div>
@@ -6992,13 +6947,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <div className="mt-8 flex items-center justify-end gap-3 print:hidden">
               <button
                 onClick={() => setSelectedMovementForPrint(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-semibold transition"
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-semibold transition"
               >
                 {t("Close", "Zavrieť", "Bezárás")}
               </button>
               <button
                 onClick={() => window.print()}
-                className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-ui font-bold transition shadow-sm flex items-center gap-1.5"
+                className="px-5 py-2 bg-entity-solid hover:bg-entity-solid text-white rounded-md text-ui font-bold transition shadow-sm flex items-center gap-1.5"
               >
                 <Printer className="w-4 h-4" />
                 <span>{t("Print Delivery Note", "Tlačiť dodací list", "Nyomtatás")}</span>

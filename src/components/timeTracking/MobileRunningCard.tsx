@@ -1,0 +1,74 @@
+import { CheckSquare, Euro } from "lucide-react";
+import { useTimeTracking } from "../../hooks/useTimeTracking";
+import { clockTime, elapsedSeconds, formatDuration, projectColor } from "../../utils/timeTracking.ts";
+import { ClockDigits } from "./ClockDigits";
+import { CycleRing } from "./CycleRing";
+import { RoundTimerButton, roundButtonClass, roundButtonRadius } from "./RoundTimerButton";
+import { projectClientName } from "./projectClient";
+import { useTimeLookups, type TimeDeps } from "./shared";
+
+interface Props {
+  deps: TimeDeps;
+  /** Shows the timer bar's own fields (project, task, billable) under the card. */
+  editing: boolean;
+  onToggleEdit: () => void;
+  /** "Add timer" (parallel tracking on): shows the start inputs under the card. */
+  onAdd: () => void;
+}
+
+/**
+ * Phone only: the single running timer as one big card at the top of the page, in place of the slim
+ * timer bar. The chips open the bar's fields so project, task and billable can be changed while it runs.
+ */
+export function MobileRunningCard({ deps, editing, onToggleEdit, onAdd }: Props) {
+  const { t, primaryRunning: running, running: all, paused, nowMs, stop, settings } = useTimeTracking();
+  const lookups = useTimeLookups(deps);
+  if (!running || all.length !== 1 || paused.length > 0) return null;
+  const task = running.taskId ? lookups.taskById.get(running.taskId) : undefined;
+  const project = running.projectId ? lookups.projectName(running.projectId, running.projectName) : "";
+  const client = running.projectId ? projectClientName(running.projectId, deps.projects, deps.leads) : null;
+  const chip = "inline-flex min-h-10 max-w-full items-center gap-1.5 rounded-full px-3 text-ui font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-entity";
+  return (
+    <div data-testid="mobile-running-card" className="rounded-lg border border-rose-200 bg-white p-4 text-center shadow-sm ws-sm:hidden">
+      <span className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1 type-overline text-rose-600">
+        <span className="size-2 animate-pulse rounded-full bg-rose-600 motion-reduce:animate-none" aria-hidden />
+        {t(`Running since ${clockTime(running.startAt)}`, `Beží od ${clockTime(running.startAt)}`, `Fut ${clockTime(running.startAt)} óta`)}
+      </span>
+      <p className="mt-2 truncate type-card-title text-gray-900" data-testid="mobile-running-title">{running.title || t("No title", "Bez názvu", "Nincs cím")}</p>
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+        <button type="button" onClick={onToggleEdit} aria-expanded={editing} data-testid="mobile-running-project" className={`${chip} bg-gray-100 text-gray-700`} title={client ? `${project} · ${client}` : project}>
+          <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: projectColor(running.projectId) }} />
+          <span className="truncate">{project || t("Assign project", "Priradiť projekt", "Projekt hozzárendelése")}</span>
+        </button>
+        {task && (
+          <button type="button" onClick={onToggleEdit} aria-expanded={editing} className={`${chip} bg-gray-100 text-gray-500`} title={task.title}>
+            <CheckSquare className="size-3.5 shrink-0" aria-hidden />
+            <span className="truncate">{task.title}</span>
+          </button>
+        )}
+        {running.billable && (
+          <button type="button" onClick={onToggleEdit} aria-expanded={editing} className={`${chip} bg-emerald-50 text-emerald-700`}>
+            <Euro className="size-3.5 shrink-0" aria-hidden />
+            {t("Billable", "Fakturovateľné", "Számlázható")}
+          </button>
+        )}
+      </div>
+      <ClockDigits value={formatDuration(elapsedSeconds(running.startAt, nowMs), true)} className="mt-3 text-metric text-gray-900" />
+      <div className="mt-3 flex justify-center">
+        <CycleRing swap radius={roundButtonRadius("xl")} buttonClass={roundButtonClass("xl")}>
+          <RoundTimerButton kind="stop" size="xl" label={t("Stop", "Zastaviť", "Leállítás")} onClick={() => void stop(running.id)} data-testid="mobile-running-stop" />
+        </CycleRing>
+      </div>
+      {settings.parallel?.enabled && (
+        <button type="button" onClick={onAdd} data-testid="mobile-running-add" className="mt-3 inline-flex min-h-11 items-center justify-center rounded-md px-4 text-ui font-semibold text-entity-text hover:bg-gray-100 cursor-pointer">
+          {t("+ Add timer", "+ Pridať časovač", "+ Időzítő hozzáadása")}
+        </button>
+      )}
+      <p className="mt-2 type-meta text-gray-500">
+        {editing
+          ? t("Tap a chip again to hide the fields.", "Ďalším ťuknutím na čip polia skryjete.", "Újabb koppintásra a mezők elrejtődnek.")
+          : t("Tap a chip to edit the project, task, billable and description while running.", "Ťuknutím na čip upravíte projekt, úlohu, fakturovateľnosť a popis počas behu.", "Koppintson egy címkére a projekt, a feladat, a számlázhatóság és a leírás futás közbeni módosításához.")}
+      </p>
+    </div>
+  );
+}

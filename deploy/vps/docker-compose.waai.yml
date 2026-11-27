@@ -1,0 +1,28 @@
+# Scenario S1 overlay: join CCRM with WAAI on the same VPS via a private bridge network.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.waai.yml up -d
+#
+# This gives the WhatsApp module its connection to WAAI on the CRM's own address
+# (https://<CCRM_DOMAIN>/waai-api -> WAAI's module API): no DNS record for WAAI is needed.
+# WAAI on a domain of its own is a second, later step: docker-compose.waai-standalone.yml.
+#
+services:
+  caddy:
+    volumes:
+      - ./Caddyfile.waai-routes:/etc/caddy/ccrm-routes/waai.caddy:ro
+    networks:
+      default:
+      waai_ccrm:
+
+  web:
+    networks:
+      default:
+      waai_ccrm:
+
+networks:
+  waai_ccrm:
+    name: waai_ccrm
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24

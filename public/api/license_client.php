@@ -54,6 +54,8 @@
  * this file) is allowed to stand between them and their own data.
  */
 
+require_once __DIR__ . '/brand.php';
+
 if (!function_exists('ccrm_license_public_keys')) {
 
     // -----------------------------------------------------------------------
@@ -382,9 +384,10 @@ if (!function_exists('ccrm_license_public_keys')) {
      * separators, stray spaces from a copied email. Returns '' when nothing
      * usable is left.
      *
-     * The canonical form is CCRM-XXXX-XXXX-XXXX-XXXX, but any 12–64 character
-     * alphanumeric run is accepted and merely upper-cased, so an older or
-     * differently shaped key from the vendor still activates.
+     * The canonical form is KPRNQ-XXXX-XXXX-XXXX-XXXX (keys issued before the
+     * rename read CCRM-XXXX-XXXX-XXXX-XXXX and stay valid), but any 12–64
+     * character alphanumeric run is accepted and merely upper-cased, so an older
+     * or differently shaped key from the vendor still activates.
      */
     function ccrm_license_normalize_key(?string $raw): string
     {
@@ -393,9 +396,13 @@ if (!function_exists('ccrm_license_public_keys')) {
         if (!is_string($value) || strlen($value) < 12 || strlen($value) > 64) {
             return '';
         }
-        // Re-hyphenate the canonical 20-character CCRM shape for display/storage.
-        if (strpos($value, 'CCRM') === 0 && strlen($value) === 20) {
-            return 'CCRM-' . implode('-', str_split(substr($value, 4), 4));
+        // Re-hyphenate the canonical shapes for display/storage: PREFIX + 16 characters,
+        // for the current prefix (KPRNQ, 21 characters) and the pre-rename one (CCRM, 20).
+        foreach ([KOPERNIQ_LICENSE_PREFIX, 'CCRM'] as $prefix) {
+            $plen = strlen($prefix);
+            if (strpos($value, $prefix) === 0 && strlen($value) === $plen + 16) {
+                return $prefix . '-' . implode('-', str_split(substr($value, $plen), 4));
+            }
         }
         return $value;
     }

@@ -47,7 +47,12 @@ export interface UserPrefs {
    * what the screen opens on, so there is one answer to "which view do I get?"
    * rather than a stored default quietly disagreeing with the toggle.
    */
-  projectsViewMode: "structure" | "grid" | "list";
+  projectsViewMode: "structure" | "grid" | "list" | "breakdown";
+  /**
+   * Projects breakdown mode: column visibility and order, plus sort state.
+   */
+  projectsBreakdownColumns: { key: string; visible: boolean }[] | null;
+  projectsBreakdownSort: { key: string; direction: "asc" | "desc" } | null;
   /**
    * Projects screen: which column the list is ordered by, or null for the
    * stored order. Loosely typed like themeMode; ProjectsView validates it with
@@ -181,10 +186,17 @@ export interface UserPrefs {
    * cannot administer the key should not be nagged on every device.
    */
   aiKeyBannerDismissed: boolean;
+  /**
+   * Meeting Room: the one-time notice that speakers are told apart only with a Soniox key.
+   * Dismissed once, per user, so it does not come back on another device.
+   */
+  sonioxNoticeDismissed: boolean;
   /** Customised built-in RAG agent, or null while it is still the stock one. */
   ragDefaultAgent: any | null;
   /** Sidebar persistent pinned state on the left. If true, stays expanded and renders a right inner shadow. */
   sidebarPinned: boolean;
+  /** While pinned, the arrow button narrows the column to icons only. Never changes the pin mode itself. */
+  sidebarPinnedCollapsed: boolean;
   /** Sidebar compactness density: "compact" | "comfortable" | "spacious". */
   sidebarCompactness: "compact" | "comfortable" | "spacious";
   /** Unpinned behavior: "overlay" (slide-out on hover) | "dock" (macOS cursor-distance magnification). */
@@ -202,6 +214,9 @@ export interface UserPrefs {
   projectDefaultTab: string | null;
   /** Lead detail view: the tab it opens on ("timeline" | "tasks"). `null` = timeline. */
   leadDefaultTab: string | null;
+  /** Notes tab (leads, projects …): note blocks as a grid or a list, and oldest or newest first. */
+  notesView: "grid" | "list";
+  notesSort: "oldest" | "newest";
   /** Pinned/favorited entities across projects, clients, leads, and custom entries. */
   favorites: FavoriteItem[];
   /**
@@ -232,7 +247,34 @@ export interface UserPrefs {
    * per filter so a new filter needs no change here; read and written through
    * useListFilter() in hooks/useListFilter.ts.
    */
+  /**
+   * Settings: the home screen is a grid of category tiles ("tiles", the default)
+   * or a left navigation beside the open category ("sidebar"). Only the wide
+   * layout honours it — below `ws-lg` the settings always render tiles, and the
+   * stored choice is kept for the next wide screen.
+   */
+  settingsLayout: "tiles" | "sidebar";
+  /**
+   * Settings: the sections the user opened last, newest first, as `category/section`
+   * ids (see settings/settingsRegistry.ts). Ids the registry no longer knows are
+   * dropped when read, so a renamed section never leaves a dead chip.
+   */
+  settingsRecents: string[];
   listFilters: Record<string, unknown>;
+  /** Dragged column widths in px, keyed list -> column (see hooks/useColumnWidths.ts). A column without an entry keeps its auto width. */
+  columnWidths: Record<string, Record<string, number>>;
+  /** Statuses (and other filter options) pinned as one-click chips above a list, keyed "<screen>.<filter>" like `listFilters`. */
+  pinnedFilterOptions: Record<string, string[]>;
+  /** Pinned calendar lenses shown next to Tasks in the #tasks calendar switcher. */
+  taskCalendarFavorites: string[];
+  /** Last selected calendar lens in #tasks ("tasks", "work", "payments", ..., or "custom:<id>"). */
+  taskCalendarActiveLens: string;
+  /** Whether the #tasks calendar panel is expanded to full width. */
+  taskCalendarExpanded: boolean;
+  /** Whether the TaskEditDrawer right-hand Activity & Chat panel is expanded on desktop. */
+  taskDrawerChatExpanded: boolean;
+  /** Dashboard overview: last selected quick-period switch ("week" | "month" | "quarter" | "year"). */
+  dashboardPeriodPreset: "week" | "month" | "quarter" | "year";
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -241,6 +283,8 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   errorSidebarEnabled: false,
   leadsViewMode: "list",
   projectsViewMode: "list",
+  projectsBreakdownColumns: null,
+  projectsBreakdownSort: null,
   projectsSort: null,
   projectsListColumns: null,
   employeesViewMode: "table",
@@ -268,19 +312,32 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   seenUpdateId: null,
   licenseNoticeSuppressed: null,
   aiKeyBannerDismissed: false,
+  sonioxNoticeDismissed: false,
   ragDefaultAgent: null,
   sidebarPinned: false,
+  sidebarPinnedCollapsed: false,
   sidebarCompactness: "comfortable",
   sidebarUnpinnedStyle: "overlay",
   sidebarGroups: null,
   defaultPage: null,
   projectDefaultTab: null,
   leadDefaultTab: null,
+  notesView: "grid",
+  notesSort: "oldest",
   favorites: [],
   recentClientIds: [],
   moduleWizardPending: false,
   moduleWizardCompletedAt: null,
+  settingsLayout: "tiles",
+  settingsRecents: [],
   listFilters: {},
+  columnWidths: {},
+  pinnedFilterOptions: {},
+  taskCalendarFavorites: ["work", "payments"],
+  taskCalendarActiveLens: "tasks",
+  taskCalendarExpanded: false,
+  taskDrawerChatExpanded: true,
+  dashboardPeriodPreset: "month",
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */

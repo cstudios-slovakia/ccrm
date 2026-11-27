@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import type { CustomDashboard, UnifiedEntryRegistry } from "../../types";
+import { entityAccentVars, resolveRouteEntityHex } from "../../utils/entityAccent";
 
 interface AuroraBackgroundProps {
   activeTab: string;
@@ -75,6 +76,11 @@ const TAB_COLOR_MAP: Record<string, ThemeColors> = {
     primary: "rgba(194, 155, 98, 0.28)", // Sand / Warm Bronze (#c29b62)
     secondary: "rgba(245, 158, 11, 0.22)", // Warm Amber / Honey
     accent: "rgba(16, 185, 129, 0.18)", // Emerald
+  },
+  agency: {
+    primary: "rgba(92, 111, 40, 0.28)", // Olive (#5c6f28)
+    secondary: "rgba(132, 155, 62, 0.22)", // Warm Olive / Moss
+    accent: "rgba(163, 177, 107, 0.18)", // Sage Olive
   },
   employee: {
     primary: "rgba(194, 155, 98, 0.28)", // Sand / Warm Bronze (#c29b62)
@@ -158,11 +164,6 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** Extract opaque rgb(r, g, b) from an rgba(r, g, b, a) string for --entity-accent */
-function toSolidRgb(rgba: string): string {
-  return rgba.replace(/^rgba\(/, "rgb(").replace(/,\s*[\d.]+\)$/, ")");
-}
-
 export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
   activeTab,
   customDashboards = [],
@@ -170,48 +171,59 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
   className = "",
   transitionDurationMs = 230,
 }) => {
+  const activeHex = useMemo(
+    () => resolveRouteEntityHex(activeTab, customDashboards, unifiedEntries),
+    [activeTab, customDashboards, unifiedEntries]
+  );
+
   const targetColors = useMemo<ThemeColors>(() => {
     const rawTab = (activeTab || "dashboard").replace(/^#/, "").toLowerCase();
     const baseTab = rawTab.split(/[/?#]/)[0];
+    const canonicalPrimary = hexToRgba(activeHex, 0.22);
 
-    // Check direct tab map
     if (TAB_COLOR_MAP[baseTab]) {
-      return TAB_COLOR_MAP[baseTab];
+      return {
+        ...TAB_COLOR_MAP[baseTab],
+        primary: canonicalPrimary,
+      };
     }
 
-    // Check custom dashboards
     const customDash = customDashboards.find(
       (d) => d.id === baseTab || `dashboard-${d.id}` === baseTab
     );
     if (customDash?.color) {
       return {
-        primary: hexToRgba(customDash.color, 0.26),
-        secondary: hexToRgba(customDash.color, 0.16),
-        accent: "rgba(99, 102, 241, 0.15)",
+        primary: hexToRgba(customDash.color, 0.22),
+        secondary: hexToRgba(customDash.color, 0.14),
+        accent: "rgba(99, 102, 241, 0.14)",
       };
     }
 
-    // Check custom unified entries
     const customUe = unifiedEntries.find(
       (ue) => ue.id === baseTab || `ue-${ue.id}` === baseTab
     );
     if (customUe?.color) {
       return {
-        primary: hexToRgba(customUe.color, 0.26),
-        secondary: hexToRgba(customUe.color, 0.16),
-        accent: "rgba(16, 185, 129, 0.15)",
+        primary: hexToRgba(customUe.color, 0.22),
+        secondary: hexToRgba(customUe.color, 0.14),
+        accent: "rgba(16, 185, 129, 0.14)",
       };
     }
 
-    // Fallback based on startsWith
     for (const key of Object.keys(TAB_COLOR_MAP)) {
       if (baseTab.startsWith(key)) {
-        return TAB_COLOR_MAP[key];
+        return {
+          ...TAB_COLOR_MAP[key],
+          primary: canonicalPrimary,
+        };
       }
     }
 
-    return TAB_COLOR_MAP.dashboard;
-  }, [activeTab, customDashboards, unifiedEntries]);
+    return {
+      ...TAB_COLOR_MAP.dashboard,
+      primary: canonicalPrimary,
+    };
+  }, [activeTab, activeHex, customDashboards, unifiedEntries]);
 
   // Dual-buffered cross-fade layers for seamless 150ms gradient color transitions
   const [layers, setLayers] = useState<{
@@ -228,7 +240,11 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
 
   useEffect(() => {
     if (typeof document !== "undefined") {
-      document.documentElement.style.setProperty("--entity-accent", toSolidRgb(targetColors.primary));
+      const vars = entityAccentVars(activeHex);
+      const rootStyle = document.documentElement.style;
+      for (const [k, v] of Object.entries(vars)) {
+        rootStyle.setProperty(k, v);
+      }
     }
     const prev = prevColorsRef.current;
     if (

@@ -1,4 +1,5 @@
 import { useLayoutEffect, useState } from "react";
+import { useHideOffscreenRows } from "./useHideOffscreenRows";
 
 /**
  * Keeps a list table's head pinned to the top of the page scroller
@@ -44,10 +45,13 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
     let stale = true;
     let mirror: HTMLDivElement | null = null;
     let copy: HTMLTableElement | null = null;
+    let footMirror: HTMLDivElement | null = null;
+    let footCopy: HTMLTableElement | null = null;
+    let footStale = true;
 
     const source = () => {
       const table = wrap.querySelector("table");
-      return table?.tHead ? { table, head: table.tHead } : null;
+      return table?.tHead ? { table, head: table.tHead, foot: table.tFoot } : null;
     };
 
     /** The element at the same position under `to` as `el` is under `from`. */
@@ -75,6 +79,25 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
       schedule();
     };
 
+    // A column resize handle in the copy (ui/ColumnResizeHandle) hands the gesture to the real one: the
+    // pointerdown is re-dispatched there, the real handle captures the pointer and receives the moves.
+    const forwardResize = (event: PointerEvent | MouseEvent) => {
+      const src = source();
+      const handle = event.target instanceof Element ? event.target.closest('[role="separator"]') : null;
+      if (!copy || !src || !handle) return;
+      const real = counterpart(handle, copy, src.table);
+      if (!real) return;
+      event.preventDefault();
+      event.stopPropagation();
+      real.dispatchEvent(
+        event instanceof PointerEvent
+          ? new PointerEvent(event.type, event)
+          : new MouseEvent(event.type, event),
+      );
+      stale = true;
+      schedule();
+    };
+
     // Sideways wheel over the copy (which hides its own overflow) pans the table.
     const forwardWheel = (event: WheelEvent) => {
       const dx = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX;
@@ -83,12 +106,20 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
 
     const syncScroll = () => {
       if (mirror && mirror.scrollLeft !== wrap.scrollLeft) mirror.scrollLeft = wrap.scrollLeft;
+      if (footMirror && footMirror.scrollLeft !== wrap.scrollLeft) footMirror.scrollLeft = wrap.scrollLeft;
+    };
+
+    const removeFootMirror = () => {
+      footMirror?.remove();
+      footMirror = null;
+      footCopy = null;
     };
 
     const removeMirror = () => {
       mirror?.remove();
       mirror = null;
       copy = null;
+      removeFootMirror();
     };
 
     const clone = (table: HTMLTableElement, head: HTMLTableSectionElement) => {
@@ -97,6 +128,7 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
         mirror.className = "table-page-head-mirror";
         mirror.setAttribute("aria-hidden", "true");
         mirror.addEventListener("click", replayClick);
+        mirror.addEventListener("pointerdown", forwardResize);
         mirror.addEventListener("wheel", forwardWheel, { passive: true });
         mirror.append(document.createElement("div"));
       }
@@ -124,6 +156,12 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
       mirror.hidden = height === 0;
       if (!height) return;
       const track = mirror.firstElementChild as HTMLElement;
+      // Measure the copy where it lies in the flow, not where it is stuck. Read
+      // while the page is scrolled past the head (every infinite-scroll page
+      // re-places it), a stuck copy's box is the sticky offset away from its
+      // slot; `drift` below took that offset for a gap and pushed the table down
+      // by it, leaving a blank band above the rows once scrolled back up.
+      mirror.style.position = "static";
       const wrapBox = wrap.getBoundingClientRect();
       const tableBox = table.getBoundingClientRect();
       mirror.style.width = `${wrap.clientWidth}px`;
@@ -138,6 +176,7 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
       // A flex or grid gap between the two would still push the wrapper down.
       const drift = head.getBoundingClientRect().top - box.top;
       if (Math.abs(drift) > 0.5) mirror.style.marginBottom = `${-(lead + height) - drift}px`;
+      mirror.style.position = "";
 
       track.style.width = `${wrap.scrollWidth}px`;
       // Exactly as wide as its columns: a set width would be spread over them.
@@ -157,6 +196,60 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
       }
     };
 
+    const cloneFoot = (table: HTMLTableElement, foot: HTMLTableSectionElement) => {
+      if (!footMirror) {
+        footMirror = document.createElement("div");
+        footMirror.className = "table-page-foot-mirror";
+        footMirror.setAttribute("aria-hidden", "true");
+        footMirror.addEventListener("wheel", forwardWheel, { passive: true });
+        footMirror.append(document.createElement("div"));
+      }
+      if (footMirror.previousElementSibling !== wrap) wrap.after(footMirror);
+      footCopy = table.cloneNode(false) as HTMLTableElement;
+      const clonedSection = foot.cloneNode(true) as HTMLTableSectionElement;
+      for (const el of Array.from(clonedSection.querySelectorAll("[id]"))) el.removeAttribute("id");
+      for (const el of Array.from(clonedSection.querySelectorAll<HTMLElement>("button, a, input, select, textarea, [tabindex]"))) {
+        el.tabIndex = -1;
+      }
+      footCopy.append(clonedSection);
+      footMirror.firstElementChild!.replaceChildren(footCopy);
+    };
+
+    const placeFoot = (table: HTMLTableElement, foot: HTMLTableSectionElement) => {
+      if (!footMirror || !footCopy) return;
+      const height = foot.offsetHeight;
+      footMirror.hidden = height === 0;
+      if (!height) return;
+      const track = footMirror.firstElementChild as HTMLElement;
+      footMirror.style.position = "static";
+      const wrapBox = wrap.getBoundingClientRect();
+      const tableBox = table.getBoundingClientRect();
+      footMirror.style.width = `${wrap.clientWidth}px`;
+      footMirror.style.height = `${height}px`;
+      // Overlap the real footer at rest so it takes zero extra vertical space, then sticks to bottom while scrolling.
+      const tail = wrapBox.bottom - foot.getBoundingClientRect().bottom;
+      footMirror.style.marginLeft = "0px";
+      footMirror.style.marginTop = `${-(height + tail)}px`;
+      footMirror.style.marginBottom = `${tail}px`;
+      const box = footMirror.getBoundingClientRect();
+      footMirror.style.marginLeft = `${wrapBox.left + wrap.clientLeft - box.left}px`;
+      footMirror.style.position = "";
+
+      track.style.width = `${wrap.scrollWidth}px`;
+      footCopy.style.width = "max-content";
+      footCopy.style.marginLeft = `${tableBox.left - wrapBox.left - wrap.clientLeft + wrap.scrollLeft}px`;
+      syncScroll();
+      const cells = Array.from(foot.querySelectorAll("th, td")).map((c) => c.getBoundingClientRect());
+      const copies = Array.from(footCopy.querySelectorAll<HTMLElement>("th, td"));
+      copies.forEach((cell, i) => {
+        cell.style.width = cell.style.minWidth = cell.style.maxWidth = `${cells[i]?.width ?? 0}px`;
+      });
+      if (copies[0] && cells[0]) {
+        const shift = cells[0].left - copies[0].getBoundingClientRect().left;
+        footCopy.style.marginLeft = `${parseFloat(footCopy.style.marginLeft) + shift}px`;
+      }
+    };
+
     const update = () => {
       frame = 0;
       const src = source();
@@ -170,6 +263,16 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
         watchHead(src.head);
       }
       place(src.table, src.head);
+      if (src.foot) {
+        if (footStale || !footMirror || !footCopy) {
+          cloneFoot(src.table, src.foot);
+          footStale = false;
+          watchFoot(src.foot);
+        }
+        placeFoot(src.table, src.foot);
+      } else {
+        removeFootMirror();
+      }
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(update);
@@ -201,7 +304,12 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
       stale = true;
       schedule();
     });
+    const footMo = new MutationObserver(() => {
+      footStale = true;
+      schedule();
+    });
     let watchedHead: HTMLTableSectionElement | null = null;
+    let watchedFoot: HTMLTableSectionElement | null = null;
     const watchHead = (head: HTMLTableSectionElement) => {
       watch(head.querySelectorAll("th, td"));
       if (watchedHead === head) return;
@@ -209,12 +317,20 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
       headMo.observe(head, { subtree: true, childList: true, attributes: true, characterData: true });
       watchedHead = head;
     };
+    const watchFoot = (foot: HTMLTableSectionElement) => {
+      watch(foot.querySelectorAll("th, td"));
+      if (watchedFoot === foot) return;
+      footMo.disconnect();
+      footMo.observe(foot, { subtree: true, childList: true, attributes: true, characterData: true });
+      watchedFoot = foot;
+    };
     watch([wrap, ...Array.from(wrap.children)]);
     // The table can remount (rows arriving after a load, a filter swapping the
     // table out); a new child is a new thing to watch.
     const mo = new MutationObserver(() => {
       watch(Array.from(wrap.children));
       stale = true;
+      footStale = true;
       measure();
     });
     mo.observe(wrap, { childList: true });
@@ -223,6 +339,7 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
     // interaction with the table that might have flipped the select-all box.
     const onInteract = () => {
       stale = true;
+      footStale = true;
       schedule();
     };
     wrap.addEventListener("change", onInteract);
@@ -236,9 +353,12 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
       ro.disconnect();
       mo.disconnect();
       headMo.disconnect();
+      footMo.disconnect();
       removeMirror();
       delete wrap.dataset.hscroll;
     };
   }, [wrap]);
+  // Every page list table also stops painting its far-off-screen rows.
+  useHideOffscreenRows(wrap);
   return [setWrap, wrap];
 }

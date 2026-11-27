@@ -23,6 +23,7 @@
 
 require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/agent_utils.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 if (!defined('CCRM_VEC_DIM')) {
     define('CCRM_VEC_DIM', 768);                       // text-embedding-3-small, shortened: 4x smaller, near-equal quality
@@ -49,7 +50,12 @@ function ccrm_vec_config(\PDO $pdo): array {
     $stmt->execute();
     $json = $stmt->fetchColumn();
     $cfg = $json ? json_decode($json, true) : [];
-    return is_array($cfg) ? ccrm_decrypt_config_secrets($cfg, ccrm_integration_secret_keys()) : [];
+    $cfg = is_array($cfg) ? ccrm_decrypt_config_secrets($cfg, ccrm_integration_secret_keys()) : [];
+    $resolved = ccrm_ai_resolve_openai_key($pdo, $cfg);
+    if ($resolved !== '') {
+        $cfg['openAiKey'] = $resolved;
+    }
+    return $cfg;
 }
 
 /** Create the index tables. Returns an error message, or '' when the schema is ready. */
@@ -123,6 +129,19 @@ function ccrm_vec_embed(string $apiKey, array $texts): array {
         throw new \RuntimeException('OpenAI embeddings returned ' . $code . ': ' . ($data['error']['message'] ?? ($err ?: 'no response')));
     }
     $data = json_decode((string)$body, true);
+    if (function_exists('get_db_connection') && function_exists('ccrm_ai_capture_usage')) {
+        static $usagePdo = false;
+        if ($usagePdo === false) {
+            try {
+                $usagePdo = get_db_connection();
+            } catch (\Throwable $e) {
+                $usagePdo = null;
+            }
+        }
+        if ($usagePdo instanceof \PDO) {
+            ccrm_ai_capture_usage($usagePdo, 'rag_embeddings', $data, CCRM_VEC_MODEL);
+        }
+    }
     $out = [];
     foreach (($data['data'] ?? []) as $row) {
         $out[(int)$row['index']] = $row['embedding'];
@@ -299,7 +318,7 @@ function ccrm_vec_items(\PDO $pdo, callable $emit): void {
     }
 
     // Tasks (row-level visibility is applied again at search time)
-    ccrm_vec_paged($pdo, "SELECT `id`,`title`,`description`,`priority`,`status`,`owner`,`deadline`,`conclusion` FROM `tasks` WHERE IFNULL(`archived`,0)=0 {PAGE}", '`id`', function ($t) use ($emit, $kv) {
+    ccrm_vec_paged($pdo, "SELECT `id`,`title`,`description`,`priority`,`status`,`owner`,`deadline`,`conclusion` FROM `tasks` WHERE IFNULL(`archived`,0)=0 AND " . ccrm_sql_real_tasks() . " {PAGE}", '`id`', function ($t) use ($emit, $kv) {
         $emit(['type' => 'task', 'id' => $t['id'], 'label' => (string)$t['title'], 'perm' => 'tasks', 'perm2' => null,
             'text' => 'Task: ' . $t['title'] . "\n" . $kv(['Status' => $t['status'], 'Priority' => $t['priority'], 'Owner' => $t['owner'],
                 'Deadline' => $t['deadline'], 'Description' => ccrm_vec_plain($t['description'], 2500), 'Conclusion' => ccrm_vec_plain($t['conclusion'], 1500)])]);

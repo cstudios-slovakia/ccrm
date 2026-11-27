@@ -2,8 +2,10 @@
 /**
  * AI Lead / Client Summarization Endpoint.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -14,14 +16,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// SECURITY: Authenticated users only, and only with a view of leads or clients.
+// SECURITY: Authenticated users only, and only with a view of leads, clients, employees, or agency.
 $sessionUser = ccrm_require_auth();
-ccrm_gate_any($sessionUser, ['leads', 'clients']);
+ccrm_gate_any($sessionUser, ['leads', 'clients', 'employees', 'agency']);
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'installed' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'installed' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -57,13 +59,13 @@ $stmt->execute();
 $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
 $integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
 
-if (empty($openAiKey)) {
+if (!ccrm_ai_is_configured($pdo, $integrationsConfig)) {
     http_response_code(400);
     echo json_encode([
         'success' => false,
-        'message' => 'OpenAI API Key is not configured. Please configure it in Settings.'
+        'code' => 'ai_key_missing',
+        'message' => 'AI provider is not configured. Please configure it in Settings.'
     ]);
     exit;
 }
@@ -129,18 +131,23 @@ if ($systemLanguage === 'sk') {
 }
 
 $prompt = "You are a highly efficient CRM AI Assistant.
-Create a concise status summary (2-3 sentences max) for a $type named \"$name\".
+Create a concise status summary (2-3 sentences max) for a $type named \"$name\", explicitly highlighting any problems, risks, missing/expired documents, unpaid items, absences, or overdue tasks first.
 
 You MUST prioritize information in this exact order:
-1. Tasks: Highlight any pending, overdue, or upcoming tasks first.
-2. Events: Summarize key recent timeline events and interactions.
-3. Price Offers: Mention recent proposals, quotes, or active financial offers and their values.
-4. Other data: Mention categories of interest, location, owner (project manager), or total value.
+1. Problems & Risks: Immediately call out any problems, expired or expiring documents, missing required files, unpaid/overdue salaries or payments, sick leave/absences, or overdue tasks.
+2. Tasks & Compliance: Highlight any pending or upcoming tasks and compliance checklist status.
+3. Events & Activity: Summarize key recent timeline events, shifts, placements, or interactions.
+4. Other data: Mention role/position, host company/department, rates/offers, or key profile details.
 
 Constraints:
-- Output ONLY the raw summarized paragraph. Do not write a list, do not use bullet points, do not include any headers/labels, and do not use markdown bold/italic formatting.
-- Keep it concise, natural, cohesive, and dense with information.
-- Write the summary in the requested language: $langName. If the input data is in a different language, translate the summarized points into $langName.
+- Output ONLY a valid JSON object with the structure:
+{
+  \"summary\": \"Concise 2-3 sentence paragraph in $langName highlighting any problems first.\",
+  \"problems\": [\"Short problem 1 in $langName\", \"Short problem 2 in $langName\"]
+}
+- If there are no problems or risks, set \"problems\" to an empty array [] and state in the summary that everything is in order.
+- Do not wrap the JSON in markdown code blocks.
+- Write both \"summary\" and \"problems\" in the requested language: $langName.
 
 Data:
 ---
@@ -157,59 +164,62 @@ OTHER PROFILE DATA:
 $otherText
 ---";
 
-// Call OpenAI Chat Completion API
-$ch = curl_init('https://api.openai.com/v1/chat/completions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    'Authorization: Bearer ' . $openAiKey
-]);
-
-$leadModel = ccrm_ai_model();
-$payload = [
-    'model' => $leadModel,
-    'messages' => [
-        [
-            'role' => 'user',
-            'content' => $prompt
-        ]
+$leadModel = ccrm_ai_model($integrationsConfig);
+$aiRes = ccrm_ai_chat_completion(
+    $pdo,
+    [
+        'model' => $leadModel,
+        'messages' => [
+            [
+                'role' => 'user',
+                'content' => $prompt
+            ]
+        ],
+        'temperature' => 0.3,
     ],
-];
-if (ccrm_ai_model_supports_temperature($leadModel)) {
-    $payload['temperature'] = 0.3;
-}
+    [
+        'feature' => 'client_summary',
+        'timeout' => 30,
+        'integrationsConfig' => $integrationsConfig,
+    ]
+);
 
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE));
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
-
-if ($httpCode !== 200 || !$response) {
-    $errData = json_decode($response, true);
-    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API request failed');
+if (empty($aiRes['ok'])) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'OpenAI Error: ' . $errMsg]);
+    echo json_encode([
+        'success' => false,
+        'code' => $aiRes['code'] ?: 'ai_error',
+        'message' => 'AI Error: ' . ($aiRes['error'] ?: 'AI API request failed'),
+        'providerMessage' => $aiRes['error'] ?? '',
+    ]);
     exit;
 }
 
-$resData = json_decode($response, true);
-$aiReply = trim($resData['choices'][0]['message']['content'] ?? '');
+$aiReply = trim((string)($aiRes['content'] ?? ''));
 
 if (empty($aiReply)) {
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'message' => 'Received empty response from OpenAI API.'
+        'code' => 'ai_empty',
+        'message' => 'Received empty response from AI provider.'
     ]);
     exit;
 }
 
+$cleanedReply = trim(preg_replace('/^```json|```$/i', '', trim($aiReply)));
+$parsedJson = json_decode($cleanedReply, true);
+$summaryOut = $aiReply;
+$problemsOut = [];
+if (is_array($parsedJson) && !empty($parsedJson['summary'])) {
+    $summaryOut = trim((string)$parsedJson['summary']);
+    if (is_array($parsedJson['problems'] ?? null)) {
+        $problemsOut = array_values(array_filter(array_map('strval', $parsedJson['problems'])));
+    }
+}
+
 echo json_encode([
     'success' => true,
-    'summary' => $aiReply
+    'summary' => $summaryOut,
+    'problems' => $problemsOut
 ]);

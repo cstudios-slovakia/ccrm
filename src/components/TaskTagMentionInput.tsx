@@ -1,5 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Hash, User, Briefcase, FolderKanban, Target } from "lucide-react";
+import {
+    Hash,
+    User,
+    UserCheck,
+    Briefcase,
+    FolderKanban,
+    Target,
+    Ticket as TicketIcon,
+    CheckSquare,
+} from "lucide-react";
 import type { MentionEntity } from "./TaskPillText";
 import { getStoredLanguage } from "../utils/translations";
 
@@ -15,10 +24,18 @@ interface TaskTagMentionInputProps {
     required?: boolean;
     maxLength?: number;
     onKeyDown?: (e: React.KeyboardEvent) => void;
+    /** Called when user presses Enter (without Shift) while autocomplete popover is closed. */
+    onSubmitOnEnter?: () => void;
     existingTags?: string[];
     onTagAdded?: (tag: string) => void;
     mentionEntities?: MentionEntity[];
     onAssignEntity?: (entity: MentionEntity) => void;
+    id?: string;
+    /** Receives the underlying input / textarea element. */
+    inputRef?: (el: HTMLInputElement | HTMLTextAreaElement | null) => void;
+    onFocus?: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+    onBlur?: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+    ariaLabel?: string;
 }
 
 type AutocompleteMode = "none" | "tag" | "mention";
@@ -35,10 +52,16 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
     required = false,
     maxLength,
     onKeyDown,
+    onSubmitOnEnter,
     existingTags = [],
     onTagAdded,
     mentionEntities = [],
     onAssignEntity,
+    id,
+    inputRef: externalInputRef,
+    onFocus,
+    onBlur,
+    ariaLabel,
 }) => {
     const lang = getStoredLanguage();
     const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
@@ -65,14 +88,16 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
     const mentionSuggestions = React.useMemo(() => {
         if (mode !== "mention") return [];
         const q = query.toLowerCase().trim();
-        if (!q) return mentionEntities.slice(0, 15);
+        if (!q) return mentionEntities.slice(0, 20);
         return mentionEntities
             .filter(
                 (e) =>
                     e.name.toLowerCase().includes(q) ||
-                    (e.detail && e.detail.toLowerCase().includes(q)),
+                    (e.detail && e.detail.toLowerCase().includes(q)) ||
+                    (e.subtitle && e.subtitle.toLowerCase().includes(q)) ||
+                    e.type.toLowerCase().includes(q),
             )
-            .slice(0, 15);
+            .slice(0, 20);
     }, [mode, query, mentionEntities]);
 
     // Keep selectedIndex in bounds
@@ -178,6 +203,13 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
     );
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
+        // Shift+Enter is "next line / next task", never "pick the suggestion":
+        // close the menu and let the parent have the key.
+        if (e.key === "Enter" && e.shiftKey && mode !== "none") {
+            setMode("none");
+            onKeyDown?.(e);
+            return;
+        }
         // If suggestion menu is open, handle arrows and Enter/Tab
         if (mode === "tag" && tagSuggestions.length > 0) {
             if (e.key === "ArrowDown") {
@@ -236,6 +268,17 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
             }
         }
 
+        if (
+            onSubmitOnEnter &&
+            e.key === "Enter" &&
+            !e.shiftKey &&
+            !e.nativeEvent.isComposing
+        ) {
+            e.preventDefault();
+            onSubmitOnEnter();
+            return;
+        }
+
         // Delegate to parent onKeyDown
         onKeyDown?.(e);
     };
@@ -264,7 +307,14 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
         <div ref={containerRef} className="relative w-full">
             {multiline ? (
                 <textarea
-                    ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+                    ref={(el) => {
+                        inputRef.current = el;
+                        externalInputRef?.(el);
+                    }}
+                    id={id}
+                    aria-label={ariaLabel}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
                     rows={rows}
                     value={value}
                     onChange={handleChange}
@@ -280,7 +330,14 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
                 />
             ) : (
                 <input
-                    ref={inputRef as React.RefObject<HTMLInputElement>}
+                    ref={(el) => {
+                        inputRef.current = el;
+                        externalInputRef?.(el);
+                    }}
+                    id={id}
+                    aria-label={ariaLabel}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
                     type="text"
                     value={value}
                     onChange={handleChange}
@@ -317,6 +374,7 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
                                 <button
                                     key={tag}
                                     type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => handleSelectTag(tag)}
                                     className={`w-full px-2.5 py-1.5 rounded-xl text-left text-ui font-bold flex items-center justify-between transition-colors ${
                                         isSelected
@@ -366,21 +424,34 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
                             if (entity.type === "project") {
                                 colorClasses = "text-amber-600 bg-amber-50";
                                 IconComponent = FolderKanban;
-                                typeLabel = "Project";
+                                typeLabel = t("Project", "Projekt", "Projekt");
                             } else if (entity.type === "client") {
                                 colorClasses = "text-emerald-600 bg-emerald-50";
                                 IconComponent = Briefcase;
-                                typeLabel = "Client";
+                                typeLabel = t("Client", "Klient", "Ügyfél");
                             } else if (entity.type === "lead") {
                                 colorClasses = "text-sky-600 bg-sky-50";
                                 IconComponent = Target;
-                                typeLabel = "Lead";
+                                typeLabel = t("Lead", "Lead", "Lead");
+                            } else if (entity.type === "employee") {
+                                colorClasses = "text-teal-600 bg-teal-50";
+                                IconComponent = UserCheck;
+                                typeLabel = t("Employee", "Zamestnanec", "Alkalmazott");
+                            } else if (entity.type === "ticket") {
+                                colorClasses = "text-rose-600 bg-rose-50";
+                                IconComponent = TicketIcon;
+                                typeLabel = t("Ticket", "Tiket", "Jegy");
+                            } else if (entity.type === "task") {
+                                colorClasses = "text-indigo-600 bg-indigo-50";
+                                IconComponent = CheckSquare;
+                                typeLabel = t("Task", "Úloha", "Feladat");
                             }
 
                             return (
                                 <button
                                     key={`${entity.type}-${entity.id}`}
                                     type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => handleSelectMention(entity)}
                                     className={`w-full px-2.5 py-1.5 rounded-xl text-left text-ui font-bold flex items-center justify-between transition-colors ${
                                         isSelected

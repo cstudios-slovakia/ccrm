@@ -3,7 +3,7 @@
  * Mint a licence token by hand, for an installation that cannot reach the
  * licence server (air-gapped, behind a strict firewall, or during an outage).
  *
- *   php mint-offline-token.php --key CCRM-A1B2-C3D4-E5F6-G7H8 \
+ *   php mint-offline-token.php --key KPRNQ-A1B2-C3D4-E5F6-G7H8 \
  *                              --instance f8002ac6a048d82fe591249003a6e700 \
  *                              --expires 2027-08-28 \
  *                              --max-users 10 \
@@ -43,14 +43,19 @@ foreach (['key', 'instance'] as $required) {
 
 $instance = (string) $options['instance'];
 if (!preg_match('/^[a-f0-9]{32}$/', $instance)) {
-    exit("--instance must be the 32-character id from `php ccrm license status`\n");
+    exit("--instance must be the 32-character id from `php kprnq license status`\n");
 }
 
 // Same canonicalisation the client and the Craft module use, so the key in the
 // claim matches the key the installation has stored byte for byte.
 $key = preg_replace('/[^A-Z0-9]/', '', strtoupper(trim((string) $options['key'])));
-if (strlen($key) === 20 && str_starts_with($key, 'CCRM')) {
-    $key = 'CCRM-' . implode('-', str_split(substr($key, 4), 4));
+// New keys read KPRNQ-XXXX-XXXX-XXXX-XXXX; keys issued before the rename read CCRM-XXXX-XXXX-XXXX-XXXX.
+foreach (['KPRNQ', 'CCRM'] as $prefix) {
+    $plen = strlen($prefix);
+    if (strlen($key) === $plen + 16 && str_starts_with($key, $prefix)) {
+        $key = $prefix . '-' . implode('-', str_split(substr($key, $plen), 4));
+        break;
+    }
 }
 
 $expires = null;

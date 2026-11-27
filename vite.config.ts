@@ -27,6 +27,8 @@ export default defineConfig(({ mode }) => {
   // without touching this committed file.
   const env = loadEnv(mode, process.cwd(), '')
   const backendTarget = `http://localhost:${env.CCRM_DEV_BACKEND_PORT || '8085'}`
+  // WAAI's web app, for the native WhatsApp module (docs/WAAI-NATIVE-MODULE.md §4.1). In production Caddy does this.
+  const waaiTarget = env.WAAI_DEV_URL || 'http://localhost:3000'
 
   return {
     plugins: [react(), watchDarkPalettePlugin()],
@@ -63,6 +65,12 @@ export default defineConfig(({ mode }) => {
         "/sync.php": backendTarget,
         "/upload.php": backendTarget,
         "/api": backendTarget,
+        // The module API of WAAI, on the CRM's own origin. Server-sent events pass through.
+        "/waai-api": {
+          target: waaiTarget,
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/waai-api/, '/api/ccrm/v1'),
+        },
       },
     },
   }

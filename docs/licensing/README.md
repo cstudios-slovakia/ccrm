@@ -15,7 +15,7 @@ whole thing up on the Craft CMS side.
 
 ## What a licence controls
 
-Exactly one thing: **whether `php ccrm update` will run.**
+Exactly one thing: **whether `php kprnq update` will run.**
 
 Nothing in the running application is disabled by an expired, missing, or even
 revoked licence. No feature is hidden, no data is withheld, no login is refused.
@@ -83,7 +83,7 @@ Three replay defences, because a signed token is a bearer object:
   "v": 1,
   "alg": "ed25519",
   "product": "ccrm",
-  "key": "CCRM-A1B2-C3D4-E5F6-G7H8",
+  "key": "KPRNQ-A1B2-C3D4-E5F6-G7H8",
   "instance": "f8002ac6a048d82fe591249003a6e700",
   "status": "active",
   "issuedAt": "2026-08-28T09:17:34+00:00",
@@ -130,7 +130,7 @@ if (!defined('CCRM_LICENSE_PUBLIC_KEY')) {
 ```
 
 Until this holds a real key the product reports **"licensing is not
-configured"**: no banner, no seat limit, and `php ccrm update` warns but
+configured"**: no banner, no seat limit, and `php kprnq update` warns but
 proceeds. That is the intended behaviour for an unreleased build, and it is why
 this step is not optional for a shipped one.
 
@@ -226,7 +226,7 @@ did, and only the entry is missing.
 They paste it into **Settings → Licence**, or run:
 
 ```bash
-php ccrm license set CCRM-A1B2-C3D4-E5F6-G7H8
+php kprnq license set CCRM-A1B2-C3D4-E5F6-G7H8
 ```
 
 ---
@@ -236,10 +236,10 @@ php ccrm license set CCRM-A1B2-C3D4-E5F6-G7H8
 ### On a customer install
 
 ```bash
-php ccrm license status   # what is installed, and does it allow updates
-php ccrm license check    # force a re-check with the licence server now
-php ccrm license set <key-or-token>
-php ccrm update           # refuses, with an explanation, on an invalid licence
+php kprnq license status   # what is installed, and does it allow updates
+php kprnq license check    # force a re-check with the licence server now
+php kprnq license set <key-or-token>
+php kprnq update           # refuses, with an explanation, on an invalid licence
 ```
 
 Settings → Licence does the same three things in the browser, for admins.
@@ -255,7 +255,7 @@ php docs/licensing/craft-module/mint-offline-token.php \
     --expires 2027-08-28 --max-users 10 --customer "Laminam s.r.o."
 ```
 
-The customer finds their instance id in `php ccrm license status` output on a
+The customer finds their instance id in `php kprnq license status` output on a
 configured build, or in `system_settings.LICENSE_INSTANCE_ID`. They paste the
 resulting token into the **same field** as a licence key — CCRM tells the two
 apart by shape.

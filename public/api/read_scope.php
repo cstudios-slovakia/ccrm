@@ -13,6 +13,10 @@
 require_once __DIR__ . '/permissions.php';
 require_once __DIR__ . '/employee_name.php';
 require_once __DIR__ . '/auth.php';
+// Defines ccrm_sql_real_tasks(), which the task scope below (and every endpoint that
+// includes this file) calls. Only sync.php used to load it, so any other endpoint died
+// with "Call to undefined function ccrm_sql_real_tasks()".
+require_once __DIR__ . '/recurring_tasks.php';
 
 /**
  * Resolve read scope for the given session user.
@@ -226,6 +230,7 @@ function ccrm_project_employee_row(array $row, array $scope): ?array {
         'firstName' => $row['firstName'] ?? $row['first_name'] ?? null,
         'lastName' => $row['lastName'] ?? $row['last_name'] ?? null,
         'kind' => $row['kind'] ?? 'employee',
+        'contractorType' => $row['contractorType'] ?? $row['contractor_type'] ?? null,
         'companyId' => $row['companyId'] ?? $row['company_id'] ?? null,
         'taxId' => $row['taxId'] ?? $row['tax_id'] ?? null,
         'vatId' => $row['vatId'] ?? $row['vat_id'] ?? null,
@@ -236,6 +241,7 @@ function ccrm_project_employee_row(array $row, array $scope): ?array {
             ? (bool)$row['isActive']
             : ((int)($row['is_active'] ?? 1) === 1),
         'userId' => $row['userId'] ?? $row['user_id'] ?? null,
+        'workCountry' => $row['workCountry'] ?? $row['work_country'] ?? null,
         'timeTrackingProvider' => $row['timeTrackingProvider'] ?? $row['time_tracking_provider'] ?? 'toggl',
         'timeTrackingUserId' => $row['timeTrackingUserId'] ?? $row['time_tracking_user_id'] ?? null,
         'timeTrackingUserName' => $row['timeTrackingUserName'] ?? $row['time_tracking_user_name'] ?? null,
@@ -313,6 +319,39 @@ function ccrm_mask_employee_settings(?array $settings): ?array {
         );
     }
     return $settings;
+}
+
+if (!function_exists('ccrm_json_same')) {
+    /**
+     * Structural equality for JSON-shaped values. Key order does not count, so a
+     * settings blob the client echoed back compares equal to the projection it
+     * was shown.
+     */
+    function ccrm_json_same($a, $b): bool {
+        $canon = function ($value) use (&$canon): string {
+            if (is_array($value)) {
+                if ($value === []) {
+                    return '[]';
+                }
+                $keys = array_keys($value);
+                $isList = $keys === range(0, count($value) - 1);
+                if ($isList) {
+                    return '[' . implode(',', array_map($canon, $value)) . ']';
+                }
+                ksort($value);
+                $parts = [];
+                foreach ($value as $k => $v) {
+                    $parts[] = json_encode((string)$k, JSON_UNESCAPED_UNICODE) . ':' . $canon($v);
+                }
+                return '{' . implode(',', $parts) . '}';
+            }
+            if (is_float($value) && floor($value) == $value) {
+                $value = (int)$value;
+            }
+            return json_encode($value, JSON_UNESCAPED_UNICODE);
+        };
+        return $canon($a) === $canon($b);
+    }
 }
 
 /**
@@ -451,7 +490,7 @@ function ccrm_visible_task_ids(\PDO $pdo, array $scope, array $taskIds): array {
     }
     foreach (array_chunk($taskIds, 500) as $chunk) {
         $in = implode(',', array_fill(0, count($chunk), '?'));
-        $stmt = $pdo->prepare("SELECT `id`, `owner`, `created_by` FROM `tasks` WHERE `id` IN ($in)");
+        $stmt = $pdo->prepare("SELECT `id`, `owner`, `created_by` FROM `tasks` WHERE `id` IN ($in) AND " . ccrm_sql_real_tasks());
         $stmt->execute($chunk);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         if (!$rows) {
@@ -476,6 +515,173 @@ function ccrm_visible_task_ids(\PDO $pdo, array $scope, array $taskIds): array {
         }
     }
     return $visible;
+}
+
+/**
+ * The projects a caller WORKS ON, as id => name: ones they manage, ones a task they
+ * see points at, and ones they have already logged time on. The time-tracking picker
+ * offers exactly these to someone without the projects module — an Employee could
+ * otherwise never put their hours on the project they are working on (they get no
+ * project list at all, and the server refused any project not derived from a task).
+ *
+ * Names only: it grants no right to open or edit the project.
+ *
+ * @return array<string,string>
+ */
+function ccrm_workable_projects(\PDO $pdo, array $scope): array {
+    $ids = [];
+    try {
+        $userId = trim((string)($scope['sessionUserId'] ?? ''));
+        if ($userId !== '') {
+            $stmt = $pdo->prepare("SELECT `project_id` FROM `project_managers` WHERE `user_id` = ?");
+            $stmt->execute([$userId]);
+            foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $pid) {
+                $ids[(string)$pid] = true;
+            }
+            $stmt = $pdo->prepare("SELECT DISTINCT `project_id` FROM `time_entries` WHERE `user_id` = ? AND `project_id` IS NOT NULL");
+            $stmt->execute([$userId]);
+            foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $pid) {
+                $ids[(string)$pid] = true;
+            }
+        }
+        [$taskCond, $taskBind] = ccrm_task_scope_sql($scope, 't');
+        // Real tasks only: a recurring-series template is not work anyone is doing.
+        $realTasks = function_exists('ccrm_sql_real_tasks') ? ccrm_sql_real_tasks('t') : "(`t`.`task_kind` IS NULL)";
+        $sql = "SELECT DISTINCT `t`.`related_project_id` FROM `tasks` `t` WHERE `t`.`related_project_id` IS NOT NULL AND `t`.`related_project_id` <> '' AND {$realTasks}"
+            . ($taskCond !== '' ? " AND {$taskCond}" : '');
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($taskBind);
+        foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $pid) {
+            $ids[(string)$pid] = true;
+        }
+        // Anyone who tracks time may put it on any active project (owner decision 2026-11-23):
+        // the picker offers them all, names only, without opening the projects module.
+        if (ccrm_can($scope, 'time_tracking')) {
+            foreach ($pdo->query("SELECT `id` FROM `projects` WHERE `archived` = 0")->fetchAll(\PDO::FETCH_COLUMN) as $pid) {
+                $ids[(string)$pid] = true;
+            }
+        }
+        if (!$ids) {
+            return [];
+        }
+        $names = [];
+        foreach (array_chunk(array_keys($ids), 500) as $chunk) {
+            $in = implode(',', array_fill(0, count($chunk), '?'));
+            $stmt = $pdo->prepare("SELECT `id`, `name` FROM `projects` WHERE `id` IN ($in)");
+            $stmt->execute($chunk);
+            while ($r = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                $name = trim((string)($r['name'] ?? ''));
+                $names[(string)$r['id']] = $name !== '' ? $name : 'Unknown';
+            }
+        }
+        return $names;
+    } catch (\Throwable $e) {
+        error_log('[ccrm] workable projects lookup failed: ' . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * May the caller log time on this project without the projects module? With time tracking:
+ * any existing project (an archived one too, so an old entry stays editable). Without it:
+ * only the ones they work on (ccrm_workable_projects).
+ */
+function ccrm_works_on_project(\PDO $pdo, array $scope, string $projectId): bool {
+    if ($projectId === '') {
+        return false;
+    }
+    if (ccrm_can($scope, 'time_tracking')) {
+        try {
+            $stmt = $pdo->prepare("SELECT 1 FROM `projects` WHERE `id` = ? LIMIT 1");
+            $stmt->execute([$projectId]);
+            return (bool)$stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            error_log('[ccrm] project lookup failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+    return isset(ccrm_workable_projects($pdo, $scope)[$projectId]);
+}
+
+/**
+ * May the caller create a project from the time-tracking picker? The role permission
+ * `time_tracking_create_projects` (on by default) on top of time_tracking = edit; someone who may
+ * edit projects anyway always may. Twin of `canCreateProjectFromTime` in
+ * src/components/timeTracking/createPickerProject.ts.
+ */
+function ccrm_can_create_project_from_time(array $scope): bool {
+    if (ccrm_can($scope, 'projects', 'edit')) {
+        return true;
+    }
+    return ccrm_can($scope, 'time_tracking', 'edit') && ccrm_can($scope, 'time_tracking_create_projects', 'edit');
+}
+
+/** A leads row is a client record when its id is client-* or it carries an adjustment (twin of src/utils/clientRecord.ts). */
+function ccrm_is_client_row(array $row): bool {
+    return strpos((string)($row['id'] ?? ''), 'client-') === 0 || (float)($row['adjustment'] ?? 0) > 0;
+}
+
+/**
+ * The time-tracking project picker for someone WITHOUT the projects module: a slim list of
+ * every active project, every client and every project type, ids and names only (plus a
+ * project's client and status, for grouping and the "show finished" toggle). It grants no
+ * right to open a project or a client. Empty for a caller without time tracking.
+ *
+ * @return array{projects: list<array{id:string,name:string,clientId:?string,status:string}>, clients: list<array{id:string,name:string}>, projectTypes: list<array{id:string,name:string}>}|null  null when the lookup failed
+ */
+function ccrm_time_picker_options(\PDO $pdo, array $scope): ?array {
+    $out = ['projects' => [], 'clients' => [], 'projectTypes' => []];
+    if (!ccrm_can($scope, 'time_tracking')) {
+        return $out;
+    }
+    try {
+        $clients = [];
+        foreach ($pdo->query("SELECT `id`, `name`, `adjustment` FROM `leads` WHERE `archived` = 0")->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            if (ccrm_is_client_row($row)) {
+                $name = trim((string)($row['name'] ?? ''));
+                $clients[(string)$row['id']] = $name !== '' ? $name : 'Unknown';
+            }
+        }
+        // A project's client: its own client, else the client its lead is linked to, else the lead.
+        $rows = $pdo->query(
+            "SELECT p.`id`, p.`name`, p.`status`, p.`client_id`, p.`lead_id`, l.`name` AS `lead_name`, l.`client_id` AS `lead_client_id`
+             FROM `projects` p LEFT JOIN `leads` l ON l.`id` = p.`lead_id`
+             WHERE p.`archived` = 0"
+        )->fetchAll(\PDO::FETCH_ASSOC);
+        foreach ($rows as $row) {
+            $clientId = null;
+            foreach ([$row['client_id'] ?? null, $row['lead_client_id'] ?? null] as $candidate) {
+                if ($candidate !== null && $candidate !== '' && isset($clients[(string)$candidate])) {
+                    $clientId = (string)$candidate;
+                    break;
+                }
+            }
+            if ($clientId === null && !empty($row['lead_id']) && $row['lead_name'] !== null) {
+                // A lead without a client still groups the project: add it to the names.
+                $clientId = (string)$row['lead_id'];
+                $leadName = trim((string)$row['lead_name']);
+                $clients[$clientId] ??= $leadName !== '' ? $leadName : 'Unknown';
+            }
+            $name = trim((string)($row['name'] ?? ''));
+            $out['projects'][] = [
+                'id' => (string)$row['id'],
+                'name' => $name !== '' ? $name : 'Unknown',
+                'clientId' => $clientId,
+                'status' => (string)($row['status'] ?? ''),
+            ];
+        }
+        foreach ($clients as $id => $name) {
+            $out['clients'][] = ['id' => (string)$id, 'name' => $name];
+        }
+        foreach ($pdo->query("SELECT `id`, `name` FROM `project_types` ORDER BY `created_at` ASC")->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $out['projectTypes'][] = ['id' => (string)$row['id'], 'name' => (string)($row['name'] ?? '')];
+        }
+    } catch (\Throwable $e) {
+        // Null, not empty lists: the client then falls back to referenceNames.projects.
+        error_log('[ccrm] time picker options failed: ' . $e->getMessage());
+        return null;
+    }
+    return $out;
 }
 
 /**

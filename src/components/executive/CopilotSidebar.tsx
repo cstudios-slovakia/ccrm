@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
+  Brain,
   RotateCcw,
   Sparkles,
   Send,
@@ -15,6 +16,9 @@ import { VERSION_CODENAME } from "../../utils/version";
 import type { Language } from "../../utils/translations";
 import type { ScreenContextInfo } from "../../hooks/useCurrentScreenContext";
 import { viewSizeScale } from "../../utils/viewSize";
+import { reportVoiceUsage } from "../../utils/aiUsage";
+import { ModuleSetupRequired } from "../ui/ModuleSetupRequired";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface CopilotSidebarProps {
   isOpen: boolean;
@@ -23,6 +27,17 @@ interface CopilotSidebarProps {
   screenContext: ScreenContextInfo;
   currentUser?: any;
   onWidthChange?: (width: number) => void;
+  /**
+   * Set while the RAG backend is not ready (no vector database). The chat and the
+   * voice call both need it, so the body shows what is missing instead of a chat
+   * that is bound to fail.
+   */
+  setupRequired?: {
+    description: string;
+    missing: string[];
+    settingsLocation: string;
+    onOpenSettings?: () => void;
+  };
 }
 
 interface ChatMessage {
@@ -42,7 +57,8 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
   systemLanguage = "sk",
   screenContext,
   currentUser,
-  onWidthChange
+  onWidthChange,
+  setupRequired
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -172,9 +188,9 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
   const welcomeText = useMemo(() => {
     if (!hasIntroduced) {
       return t(
-        `👋 Hi **${userName}**! I am your **Executive Copilot (${VERSION_CODENAME})**. I have live CRM data access and I am actively grounded in **${screenContext.title}**. How can I help you today?`,
-        `👋 Ahoj **${userName}**! Som tvoj **Výkonný AI Copilot (${VERSION_CODENAME})**. Mám živý prístup k CRM dátam a sledujem s tebou obrazovku **${screenContext.title}**. Ako ti môžem dnes pomôcť?`,
-        `👋 Szia **${userName}**! Én vagyok a **Vezetői AI Copilot (${VERSION_CODENAME})**. Valós időben látom a CRM adatokat és a megnyitott **${screenContext.title}** felületet. Miben segíthetek ma?`
+        `👋 Hi **${userName}**! I am your **Executive Copilot (${VERSION_CODENAME})**. I have live ${PRODUCT_NAME} data access and I am actively grounded in **${screenContext.title}**. How can I help you today?`,
+        `👋 Ahoj **${userName}**! Som tvoj **Výkonný AI Copilot (${VERSION_CODENAME})**. Mám živý prístup k ${PRODUCT_NAME} dátam a sledujem s tebou obrazovku **${screenContext.title}**. Ako ti môžem dnes pomôcť?`,
+        `👋 Szia **${userName}**! Én vagyok a **Vezetői AI Copilot (${VERSION_CODENAME})**. Valós időben látom a ${PRODUCT_NAME} adatokat és a megnyitott **${screenContext.title}** felületet. Miben segíthetek ma?`
       );
     }
     return t(
@@ -205,6 +221,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
 
   // Fetch initial chat history on mount and ensure welcome message is present
   useEffect(() => {
+    if (setupRequired) return; // no backend to ask yet
     const userId = currentUser?.id || currentUser?.email || "default_user";
 
     // Start immediately with welcome message
@@ -253,7 +270,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
       .catch(() => {
         // Keep initial welcome message
       });
-  }, [currentUser?.id, currentUser?.email, welcomeText, userName, screenContext.title]);
+  }, [currentUser?.id, currentUser?.email, welcomeText, userName, screenContext.title, !!setupRequired]);
 
   // Send Text Message
   const handleSendText = async (customText?: string) => {
@@ -390,7 +407,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
         ];
       default:
         return [
-          t("Give me an executive brief of today's CRM activity", "Daj mi manažérsky súhrn dnešných CRM aktivít", "Adj vezetői összefoglalót a mai aktivitásokról"),
+          t(`Give me an executive brief of today's ${PRODUCT_NAME} activity`, `Daj mi manažérsky súhrn dnešných ${PRODUCT_NAME} aktivít`, "Adj vezetői összefoglalót a mai aktivitásokról"),
           t("What strategic decisions or risks should I review?", "Aké strategické riziká by sme mali riešiť?", "Milyen stratégiai kockázatokat vizsgáljunk meg?"),
           t("Highlight top revenue opportunities", "Zvýrazni najlepšie obchodné príležitosti", "Emeld ki a legjobb bevételi lehetőségeket")
         ];
@@ -637,7 +654,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                 voice: sessionInit.voice || "alloy",
                 tools: sessionInit.tools || [],
                 input_audio_transcription: {
-                  model: "whisper-1"
+                  model: "gpt-live-transcribe"
                 }
               }
             })
@@ -648,6 +665,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
       dc.addEventListener("message", async (event) => {
         try {
           const msg = JSON.parse(event.data);
+          reportVoiceUsage(msg);
 
           // User Speech Started -> Interrupt AI Speech
           if (msg.type === "input_audio_buffer.speech_started") {
@@ -1022,7 +1040,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
           action: "exchange_sdp",
           sdp: offer.sdp,
           client_secret: clientSecret,
-          model: "gpt-realtime-1.5"
+          model: "gpt-realtime-2.1"
         })
       });
 
@@ -1119,6 +1137,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
         {/* Header Action Buttons */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           {/* Talk / Voice Mode Toggle Button */}
+          {!setupRequired && (
           <button
             type="button"
             onClick={handleToggleVoice}
@@ -1132,9 +1151,10 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
             {isVoiceMode ? <PhoneOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5 animate-pulse" />}
             <span>{isVoiceMode ? t("End", "Koniec", "Vége") : t("Talk", "Hovor", "Beszéd")}</span>
           </button>
+          )}
 
           {/* Reset History */}
-          {!isVoiceMode && (
+          {!isVoiceMode && !setupRequired && (
             <button
               type="button"
               onClick={handleResetChat}
@@ -1163,7 +1183,28 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
       </div>
 
       {/* BODY CONTENT: Embedded Voice Mode OR Text Chat Mode */}
-      {isVoiceMode ? (
+      {setupRequired ? (
+        /* RAG BACKEND NOT READY: say what is missing instead of a chat that fails */
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 bg-slate-50/30">
+          <ModuleSetupRequired
+            language={systemLanguage}
+            icon={Brain}
+            moduleName="Executive Copilot"
+            description={setupRequired.description}
+            missing={setupRequired.missing}
+            settingsLocation={setupRequired.settingsLocation}
+            onOpenSettings={
+              setupRequired.onOpenSettings
+                ? () => {
+                    setupRequired.onOpenSettings?.();
+                    // On mobile the sidebar covers the whole screen, so leave it.
+                    if (isMobile) onClose();
+                  }
+                : undefined
+            }
+          />
+        </div>
+      ) : isVoiceMode ? (
         /* EMBEDDED LIVE VOICE MODE */
         <div className="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-slate-50/50 via-purple-50/20 to-white overflow-y-auto">
           {/* Top Status */}
@@ -1388,7 +1429,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                 </div>
                 <div className="p-3.5 rounded-2xl bg-white border border-slate-200 text-slate-600 rounded-tl-none shadow-xs flex items-center gap-2">
                   <span className="text-ui font-semibold text-slate-500">
-                    {t("Analyzing screen & CRM context...", "Analyzujem kontext obrazovky...", "Képernyő és adatok elemzése...")}
+                    {t(`Analyzing screen & ${PRODUCT_NAME} context...`, "Analyzujem kontext obrazovky...", "Képernyő és adatok elemzése...")}
                   </span>
                   <span className="h-1.5 w-1.5 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                   <span className="h-1.5 w-1.5 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />

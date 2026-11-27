@@ -1,23 +1,24 @@
 import React from "react";
 import * as Icons from "lucide-react";
 import {
-  Settings, Save, Database, Trash2, ShieldAlert, Sliders,
-  Globe, Plus, X, Tag, Share2, Users, ShieldCheck, Lock,
-  Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
-  Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Percent, RotateCcw
+  Trash2, Sliders,
+  Plus, X, ShieldCheck, Lock,
+  Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Check,
+  Menu, ArrowUp, FolderOpen, Search, Building2, RotateCcw
 } from "lucide-react";
-import type { WarehouseItem, Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
+import type { WarehouseItem, Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, ProjectAttribute, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
 import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
-import { keepStoredOfferDefaults } from "../utils/offerDefaults";
 import { DEFAULT_SHIPPING_METHODS } from "../utils/shipping";
 import { DEFAULT_PAYMENT_METHODS, DEFAULT_STANDARD_PAYMENT_METHOD } from "../utils/payment";
-import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
+import { leadAssignableUserNames, leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
 import { getTranslation, formatTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { TaskSettingsPanel } from "./TaskSettingsPanel";
+import { TimeTrackingSettingsPanel } from "./timeTracking/TimeTrackingSettingsPanel";
+import { NewsletterDesignSettings, NewsletterSendingSettings } from "./newsletter/NewsletterSettings";
 import { ProjectStatusSettings } from "./ProjectStatusSettings";
 import { PriceLevelSettings } from "./PriceLevelSettings";
 import { CompanyMailboxSettings } from "./CompanyMailboxSettings";
@@ -27,14 +28,26 @@ import { OrderStatusSettings } from "./OrderStatusSettings";
 import { ShippingMethodSettings } from "./ShippingMethodSettings";
 import { PaymentMethodSettings } from "./PaymentMethodSettings";
 import { FinanceSettings } from "./FinanceSettings";
+import { MarketingRoiSettings } from "./settings/MarketingRoiSettings";
+import { GithubIntegrationSettings } from "./settings/GithubIntegrationSettings";
+import { ClickUpIntegrationSettings } from "./settings/ClickUpIntegrationSettings";
+import { LeadCustomFieldsSettings } from "./settings/LeadCustomFieldsSettings";
+import { PipelineAttachmentsGuide } from "./settings/PipelineAttachmentsGuide";
 import type { ProjectStatusDef } from "../utils/projects";
 import type { OrderStatusDef } from "../utils/orders";
-import type { Order, Ticket, TicketStatusDef, TicketSettingsConfig } from "../types";
+import type { Order, Ticket, TicketStatusDef, TicketSettingsConfig, OfferCategory, InvoiceOffer } from "../types";
+import { ClientCategoryManager } from "./ClientCategories";
+import { offerCountsByCategory, refileOffers, unfileOffers } from "../utils/offerCategories";
 import { VisibleModulesSettings } from "./VisibleModulesSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
 import { InlineRenameName } from "./ui/InlineRenameName";
+import { ListIcon } from "./ui/ListIcon";
+import { ListIconPicker } from "./ui/ListIconPicker";
+import { renameListIconEntry } from "../utils/listIconStore";
+import { CommitOnBlurInput } from "./ui/CommitOnBlurInput";
+import { findSelf } from "../utils/sessionIdentity";
 import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
 import { useCompanyLookup } from "../utils/useCompanyLookup";
 import { EUROPEAN_COUNTRIES, registryCountryOf } from "../utils/companyRegistry";
@@ -50,7 +63,9 @@ import { linkedEmployeeOf } from "../utils/employeeLink";
 import { isAtSeatLimit } from "../utils/license";
 import type { LicenseState } from "../utils/license";
 import {
-  PERMISSION_SECTIONS,
+  ROLE_MATRIX_SECTIONS,
+  roleMatrixSectionTextKey,
+  roleMatrixTextKey,
   findRole,
   isAdminRoleName,
   isProtectedRoleName,
@@ -65,13 +80,51 @@ import {
   withSectionGranted,
 } from "../utils/permissions";
 import type { PermissionDef, PermissionSection, PermissionValue } from "../utils/permissions";
-import { PageHeader } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo, archiveRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
+import { addTaskState } from "../utils/projectTasks";
+import { removeTimerActionKey, renameTimerActionKey, type TaskStateTimerActions } from "../utils/taskStateTimerActions";
+import { deleteTaskState } from "./settings/deleteTaskState";
+import { TaskStateTimerActionSelect, TaskStateTimerActionsHint } from "./settings/TaskStateTimerActionSelect";
 import { clearErrorLogsWithUndo } from "../utils/errorLogs";
+import { useUserPref } from "../utils/userPrefs";
+import { buildRows, indentItem, indentParent, canOutdent, moveItem, outdentItem, parentOptions } from "../utils/subStatusTree";
+import { LEAD_STATE_GROUPS, leadTreeItems, leadTreeMaps } from "../utils/leadStateTree";
+import { SubStatusIndentButtons, SubStatusMarker, SubStatusParentSelect, subStatusNoParentToast } from "./settings/SubStatusControls";
+import { PROJECT_AUTO_CREATE_ENABLED } from "../utils/featureFlags";
+import { LayoutTemplate, BadgeCheck } from "lucide-react";
+import {
+  cleanRecents, pushRecent, parseSettingsRoute, sectionKey, settingsPath, visibleCategories, visibleGroups,
+} from "./settings/settingsRegistry.ts";
+import type { SettingsVisibilityContext, VisibleCategory } from "./settings/settingsRegistry.ts";
+import type { SearchEntry } from "./settings/settingsSearch.ts";
+import { useSettingsWide } from "./settings/useSettingsWide";
+import { SettingsHome } from "./settings/SettingsHome";
+import type { CategoryBadge, SettingsLayout } from "./settings/SettingsHome";
+import { CategoryPage } from "./settings/CategoryPage";
+import { SidebarLayout } from "./settings/SidebarLayout";
+import { SectionCard, ModuleLinkCard } from "./settings/SectionCard";
+import { SaveStatus } from "./settings/SectionCard";
+import { DemoReseedSettings } from "./settings/DemoReseedSettings";
+import { useAutosave } from "./settings/useAutosave";
+import { PRODUCT_NAME, normalizeSystemTitleOverride } from "../utils/brand";
+import { ScrollFade } from "./settings/ScrollFade";
+import { AiUsagePanel } from "./settings/AiUsagePanel";
+import { WaaiIntegrationSettings } from "./settings/WaaiIntegrationSettings";
+import { AiIntegrationSettings } from "./settings/AiIntegrationSettings";
+import { AgencySettingsSection } from "./agency/AgencySettingsSection";
+import { listLlmSourceConnectors, type LlmSourceConnector } from "../utils/companyMailboxes";
+
+/** The billing fields the company forms own. Saving writes only these, so a payment or shipping edit made elsewhere is never overwritten. */
+const COMPANY_FORM_KEYS: Array<keyof CompanyBillingSettings> = [
+  "companyLogoUrl", "companyName", "companySubtitle", "companyId", "taxId", "vatId",
+  "street", "city", "postalCode", "country", "email", "phone", "phoneSecondary", "website",
+  "iban", "swift", "defaultPaymentDueDays", "defaultVatRate", "financeNetMode", "vatRates",
+];
+const normField = (v: unknown) => (v === undefined || v === null ? "" : Array.isArray(v) ? JSON.stringify(v) : String(v));
 
 const LeadAssignmentCard: React.FC<{
   users: UserProfile[];
@@ -82,7 +135,8 @@ const LeadAssignmentCard: React.FC<{
 }> = ({ users, leadAssignment, setLeadAssignment, canEdit, userLanguage }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
-  const userNames = users.map((u) => u.name).filter(Boolean);
+  // Project Managers only (everyone when nobody has the role): a lead's owner is its Project Manager.
+  const userNames = leadAssignableUserNames(users);
   const pool = resolveAssignmentPool(leadAssignment, userNames);
   const [panel, setPanel] = React.useState<LeadAssignmentPanel>(() =>
     leadAssignmentPanel(leadAssignment),
@@ -201,21 +255,14 @@ const LeadAssignmentCard: React.FC<{
   };
 
   return (
-    <div className="glass-panel p-6 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass">
-      <div className="space-y-1 border-b border-slate-200 pb-3">
-        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-          <Share2 className="h-4.5 w-4.5 text-indigo-500" />
-          {t("Automatic lead assignment", "Automatické priraďovanie leadov", "Automatikus lead-kiosztás")}
-        </h3>
-        <p className="text-micro font-semibold text-slate-500 leading-relaxed max-w-2xl pt-3">
-          {t(
+    <SectionCard
+      title={t("Automatic lead assignment", "Automatické priraďovanie leadov", "Automatikus lead-kiosztás")}
+      description={t(
             "When a new lead arrives without an owner — from the web form, automations, imports, or added here without picking anyone — it is assigned to one person. Leads that already have an owner are never touched.",
             "Nový lead, ktorý príde bez vlastníka — z webového formulára, z automatizácií, z importov alebo pridaný tu bez výberu osoby — sa pridelí jednej osobe. Leadov, ktoré už majú vlastníka, sa to nikdy netýka.",
             "A gazda nélkül érkező új lead — webűrlapról, automatizációból, importból, vagy itt személy kiválasztása nélkül — egyetlen személyhez kerül. A már gazdával rendelkező leadeket ez soha nem érinti.",
           )}
-        </p>
-      </div>
-
+    >
       <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-2" role="radiogroup" aria-label={t("Assignment mode", "Režim priradenia", "Kiosztási mód")}>
         {PANELS.map((m) => {
           const active = panel === m.id;
@@ -228,23 +275,23 @@ const LeadAssignmentCard: React.FC<{
               disabled={!canEdit}
               onClick={() => choosePanel(m.id)}
               className={cn(
-                "text-left px-3.5 py-2.5 rounded-xl border transition-all duration-150 ease-out",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-1",
+                "text-left px-3.5 py-2.5 rounded-md border transition-all duration-150 ease-out",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40 focus-visible:ring-offset-1",
                 active
-                  ? "bg-indigo-50 border-indigo-300 ring-2 ring-indigo-500/15"
-                  : "bg-white border-slate-200 hover:border-slate-300 hover:-translate-y-px",
+                  ? "bg-entity-soft border-entity-border ring-2 ring-entity-solid/25"
+                  : "bg-white border-gray-200 hover:border-gray-300 hover:-translate-y-px",
                 canEdit ? "cursor-pointer active:scale-[0.98]" : "opacity-60 cursor-not-allowed",
               )}
             >
               <span className={cn(
                 "block type-overline",
-                active ? "text-indigo-700" : "text-slate-700",
+                active ? "text-entity-text" : "text-gray-700",
               )}>
                 {m.label}
               </span>
               <span className={cn(
                 "block text-micro font-semibold mt-0.5 leading-snug",
-                active ? "text-indigo-500" : "text-slate-400",
+                active ? "text-entity-text" : "text-gray-400",
               )}>
                 {m.hint}
               </span>
@@ -262,36 +309,36 @@ const LeadAssignmentCard: React.FC<{
               onClick={toggleSelectAll}
               aria-pressed={allCurrentSelected}
               className={cn(
-                "w-full flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-all duration-150 ease-out",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40",
+                "w-full flex items-center gap-3 rounded-md border px-3.5 py-2.5 text-left transition-all duration-150 ease-out",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40",
                 allCurrentSelected
-                  ? "bg-indigo-50/80 border-indigo-200"
-                  : "bg-white border-slate-200 hover:border-slate-300",
+                  ? "bg-entity-soft border-entity-border"
+                  : "bg-white border-gray-200 hover:border-gray-300",
                 canEdit ? "cursor-pointer active:scale-[0.995]" : "opacity-60 cursor-not-allowed",
               )}
             >
               <span
                 className={cn(
                   "h-4 w-4 shrink-0 rounded border flex items-center justify-center transition-colors",
-                  allCurrentSelected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-slate-300",
+                  allCurrentSelected ? "bg-entity-solid border-entity-border text-white" : "bg-white border-gray-300",
                 )}
               >
                 {allCurrentSelected ? (
                   <Check className="h-3 w-3" strokeWidth={3} />
                 ) : someSelected ? (
-                  <Minus className="h-3 w-3 text-indigo-500" strokeWidth={3} />
+                  <Minus className="h-3 w-3 text-entity-text" strokeWidth={3} />
                 ) : null}
               </span>
               <span className="min-w-0">
                 <span className={cn(
                   "block type-overline",
-                  allCurrentSelected ? "text-indigo-800" : "text-slate-700",
+                  allCurrentSelected ? "text-entity-text" : "text-gray-700",
                 )}>
                   {t("Select all", "Vybrať všetkých", "Összes kijelölése")}
                 </span>
                 <span className={cn(
                   "block text-micro font-semibold mt-0.5 leading-snug",
-                  allCurrentSelected ? "text-indigo-500" : "text-slate-400",
+                  allCurrentSelected ? "text-entity-text" : "text-gray-400",
                 )}>
                   {t(
                     "Everyone, including people added later",
@@ -303,9 +350,9 @@ const LeadAssignmentCard: React.FC<{
             </button>
           )}
 
-          <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 overflow-hidden">
+          <div className="rounded-md border border-gray-200 bg-white divide-y divide-gray-100 overflow-hidden">
             {users.length === 0 && (
-              <div className="px-3.5 py-3 text-micro font-semibold text-slate-400 italic">
+              <div className="px-3.5 py-3 text-micro font-semibold text-gray-400 italic">
                 {t("No users to assign to yet.", "Zatiaľ nie sú žiadni používatelia na priradenie.", "Még nincs kihez kiosztani.")}
               </div>
             )}
@@ -319,7 +366,7 @@ const LeadAssignmentCard: React.FC<{
                   key={name}
                   className={cn(
                     "flex items-center gap-1 pr-2 transition-colors duration-150",
-                    selected ? "bg-indigo-50/40" : "bg-white",
+                    selected ? "bg-entity-soft" : "bg-white",
                   )}
                 >
                   <button
@@ -330,7 +377,7 @@ const LeadAssignmentCard: React.FC<{
                     onClick={() => panel === "one" ? pickOne(name) : toggleManyUser(name)}
                     className={cn(
                       "flex-1 min-w-0 flex items-center gap-3 px-3.5 py-2.5 text-left transition-colors duration-150",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500/40",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-entity-solid/40",
                       canEdit ? "cursor-pointer" : "opacity-60 cursor-not-allowed",
                     )}
                   >
@@ -338,23 +385,23 @@ const LeadAssignmentCard: React.FC<{
                       className={cn(
                         "shrink-0 flex items-center justify-center transition-all duration-150",
                         panel === "one"
-                          ? cn("h-4 w-4 rounded-full border", selected ? "border-indigo-600" : "border-slate-300 bg-white")
-                          : cn("h-4 w-4 rounded border", selected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-slate-300"),
+                          ? cn("h-4 w-4 rounded-full border", selected ? "border-entity-border" : "border-gray-300 bg-white")
+                          : cn("h-4 w-4 rounded border", selected ? "bg-entity-solid border-entity-border text-white" : "bg-white border-gray-300"),
                       )}
                     >
                       {panel === "one"
-                        ? (selected && <span className="h-2 w-2 rounded-full bg-indigo-600" />)
+                        ? (selected && <span className="h-2 w-2 rounded-full bg-entity-solid" />)
                         : (selected && <Check className="h-3 w-3" strokeWidth={3} />)}
                     </span>
                     {avatar(name)}
                     <span className={cn(
                       "flex-1 min-w-0 truncate text-caption font-extrabold",
-                      selected ? "text-slate-800" : "text-slate-400",
+                      selected ? "text-gray-800" : "text-gray-400",
                     )}>
                       {name}
                     </span>
                     {panel === "many" && selected && orderIndex >= 0 && (
-                      <span className="text-micro font-bold text-indigo-400 tabular-nums shrink-0">
+                      <span className="text-micro font-bold text-entity-text tabular-nums shrink-0">
                         #{orderIndex + 1}
                       </span>
                     )}
@@ -365,7 +412,7 @@ const LeadAssignmentCard: React.FC<{
                         type="button"
                         disabled={!canEdit || leadAssignment.users.indexOf(name) <= 0}
                         onClick={() => moveUser(name, -1)}
-                        className="p-1 rounded-md text-indigo-300 hover:text-indigo-700 hover:bg-indigo-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-indigo-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                        className="p-1 rounded-md text-entity-text hover:text-entity-text hover:bg-entity-soft disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-entity-text transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40"
                         title={t("Move up", "Posunúť vyššie", "Feljebb")}
                       >
                         <ArrowUp className="h-3 w-3" />
@@ -374,7 +421,7 @@ const LeadAssignmentCard: React.FC<{
                         type="button"
                         disabled={!canEdit || leadAssignment.users.indexOf(name) >= leadAssignment.users.length - 1}
                         onClick={() => moveUser(name, 1)}
-                        className="p-1 rounded-md text-indigo-300 hover:text-indigo-700 hover:bg-indigo-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-indigo-300 transition-colors rotate-180 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                        className="p-1 rounded-md text-entity-text hover:text-entity-text hover:bg-entity-soft disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-entity-text transition-colors rotate-180 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40"
                         title={t("Move down", "Posunúť nižšie", "Lejjebb")}
                       >
                         <ArrowUp className="h-3 w-3" />
@@ -388,7 +435,7 @@ const LeadAssignmentCard: React.FC<{
 
           {panel === "one" && (
             pool.length === 0 ? (
-              <p className="text-micro font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">
+              <p className="text-micro font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3.5 py-2.5">
                 {t(
                   "Pick who should get every new lead.",
                   "Vyberte, kto má dostať každý nový lead.",
@@ -396,7 +443,7 @@ const LeadAssignmentCard: React.FC<{
                 )}
               </p>
             ) : (
-              <p className="text-micro font-bold text-slate-500 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5">
+              <p className="text-micro font-bold text-gray-500 bg-white border border-gray-200 rounded-md px-3.5 py-2.5">
                 {t(
                   `Every new lead goes to ${pool[0]}.`,
                   `Každý nový lead dostane ${pool[0]}.`,
@@ -409,7 +456,7 @@ const LeadAssignmentCard: React.FC<{
           {panel === "many" && (
             <>
               {manyTooFew ? (
-                <div className="text-micro font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5 leading-relaxed">
+                <div className="text-micro font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3.5 py-2.5 leading-relaxed">
                   <p>
                     {t(
                       "Pick at least two people to rotate between, or switch to One person.",
@@ -421,20 +468,20 @@ const LeadAssignmentCard: React.FC<{
                     type="button"
                     disabled={!canEdit}
                     onClick={() => choosePanel("one")}
-                    className="mt-1.5 text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline type-overline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded"
+                    className="mt-1.5 text-entity-text hover:text-entity-text underline-offset-2 hover:underline type-overline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40 rounded"
                   >
                     {t("Use One person", "Použiť Jednu osobu", "Egy személy használata")}
                   </button>
                 </div>
               ) : (
-                <p className="text-micro font-bold text-slate-500 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5">
-                  <span className="text-slate-400 uppercase tracking-wider font-bold mr-1.5">
+                <p className="text-micro font-bold text-gray-500 bg-white border border-gray-200 rounded-md px-3.5 py-2.5">
+                  <span className="text-gray-400 uppercase tracking-wider font-bold mr-1.5">
                     {t("Order", "Poradie", "Sorrend")}:
                   </span>
                   {pool.join(" → ")}
                 </p>
               )}
-              <p className="text-micro font-semibold text-slate-400 leading-relaxed px-0.5">
+              <p className="text-micro font-semibold text-gray-400 leading-relaxed px-0.5">
                 {t(
                   "Each lead has only one assignee. With several people selected, new leads rotate through them in the order above.",
                   "Každý lead má len jedného vlastníka. Pri viacerých vybraných osobách sa nové leady striedajú v poradí vyššie.",
@@ -445,7 +492,7 @@ const LeadAssignmentCard: React.FC<{
           )}
         </div>
       )}
-    </div>
+    </SectionCard>
   );
 };
 
@@ -504,6 +551,8 @@ interface SettingsViewProps {
   setLeadStateSla: React.Dispatch<React.SetStateAction<LeadStateSla>>;
   leadAssignment: LeadAssignmentSettings;
   setLeadAssignment: React.Dispatch<React.SetStateAction<LeadAssignmentSettings>>;
+  leadAttributes?: ProjectAttribute[];
+  setLeadAttributes?: React.Dispatch<React.SetStateAction<ProjectAttribute[]>>;
 
   systemLanguage: Language;
   setSystemLanguage: (lang: Language) => void;
@@ -525,6 +574,8 @@ interface SettingsViewProps {
   setTaskStates: React.Dispatch<React.SetStateAction<string[]>>;
   taskStateColors: Record<string, string>;
   setTaskStateColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  taskStateTimerActions: TaskStateTimerActions;
+  setTaskStateTimerActions: React.Dispatch<React.SetStateAction<TaskStateTimerActions>>;
   /** Settings → Tasks: whether the "Requires conclusion" checkbox is offered. */
   taskSettings?: TaskSettings;
   setTaskSettings?: React.Dispatch<React.SetStateAction<TaskSettings>>;
@@ -535,9 +586,12 @@ interface SettingsViewProps {
     data?: Record<string, UnifiedEntryRow[]> | ((prev: Record<string, UnifiedEntryRow[]>) => Record<string, UnifiedEntryRow[]>)
   ) => void;
   unifiedEntriesData?: Record<string, UnifiedEntryRow[]>;
-  initialSubTab?: string;
-  settingsAction?: string | null;
-  settingsActionId?: string | null;
+  /**
+   * The hash route being shown: `settings`, `settings/<category>`, `settings/<category>/<section>`
+   * or an old `settings/<id>`. Parsed by `parseSettingsRoute`; the custom record types read
+   * their `new` / `edit/<id>` sub-route from it too.
+   */
+  settingsRoute?: string;
 
   // Record stores — used to cascade a rename onto existing leads/tasks so they are not orphaned.
   leads?: Lead[];
@@ -567,6 +621,11 @@ interface SettingsViewProps {
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
+  /** Offers & invoicing tab: the price-offer category tree, and the offers a deleted category un-files. */
+  offerCategories?: OfferCategory[];
+  setOfferCategories?: (updater: OfferCategory[] | ((prev: OfferCategory[]) => OfferCategory[])) => void;
+  invoicesOffers?: InvoiceOffer[];
+  setInvoicesOffers?: (updater: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => void;
   financialMode?: FinancialOperatingMode;
   setFinancialMode?: (mode: FinancialOperatingMode) => void;
 
@@ -586,6 +645,7 @@ interface SettingsViewProps {
   tickets?: Ticket[];
   setTickets?: (updater: Ticket[] | ((prev: Ticket[]) => Ticket[])) => void;
   onTicketsPolled?: () => void;
+  onClickUpConnectionChange?: (connected: boolean) => void;
 }
 
 // Extract all valid Lucide icon names dynamically for search
@@ -595,39 +655,9 @@ const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
          key !== 'Icon';
 });
 
-// Every settings category, with the permission that unlocks it. The sidebar and
-// the "fall back to a permitted category" effect both read this one list. While
-// the effect kept its own shorter copy, standing on a category missing from that
-// copy (Projects, Unified records, Email, API, Ads, AI, Errors) bounced the user
-// back to Branding every time a background sync produced a new `roles` array.
-const SETTINGS_TABS = [
-  { id: "branding", permKey: "general_config" },
-  { id: "modules", permKey: "general_config" },
-  { id: "license", permKey: "general_config" },
-  { id: "invoicing", permKey: "general_config" },
-  { id: "projects", permKey: "general_config" },
-  { id: "tickets", permKey: "general_config" },
-  { id: "orders", permKey: "general_config" },
-  { id: "tasks", permKey: "general_config" },
-  { id: "finance", permKey: "financial" },
-  { id: "unified", permKey: "general_config" },
-  { id: "sources", permKey: "traffic_sources" },
-  { id: "states", permKey: "pipeline_stages" },
-  { id: "managers", permKey: "pm_managers" },
-  { id: "rbac", permKey: "pm_managers" },
-  { id: "email", permKey: "general_config" },
-  { id: "api", permKey: "general_config" },
-  { id: "ads", permKey: "general_config" },
-  { id: "social", permKey: "general_config" },
-  { id: "ai", permKey: "ai_config" },
-  { id: "errors", permKey: "general_config" },
-  { id: "audit", permKey: "general_config" },
-  { id: "danger", permKey: "system_reset" }
-] as const;
-
-// Tabs whose data endpoint is administrator-only on the server (api/audit_log.php).
-const ADMIN_ONLY_TABS: ReadonlySet<string> = new Set(["audit"]);
-
+// The list of categories and sections lives in settings/settingsRegistry.ts: the tiles,
+// the sidebar, the section tabs, the search and the permission fallback all read that one
+// file, so a section is added in exactly one place.
 export const SettingsView: React.FC<SettingsViewProps> = ({
   systemName,
   setSystemName,
@@ -638,7 +668,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadSources,
   leadCategories,
   setLeadCategories,
-  divisions = ["Cstudios", "Cstudios Budapest"],
+  divisions = [],
   setDivisions,
   divisionColors = {},
   setDivisionColors,
@@ -668,6 +698,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadStateSla,
   leadAssignment,
   setLeadAssignment,
+  leadAttributes = [],
+  setLeadAttributes,
   systemLanguage,
   setSystemLanguage,
   systemCurrency,
@@ -684,14 +716,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setTaskStates,
   taskStateColors,
   setTaskStateColors,
+  taskStateTimerActions,
+  setTaskStateTimerActions,
   taskSettings,
   setTaskSettings,
   unifiedEntries = [],
   setUnifiedEntries,
   unifiedEntriesData = {},
-  initialSubTab = "branding",
-  settingsAction = null,
-  settingsActionId = null,
+  settingsRoute = "settings",
   leads: leadRows = [],
   setLeads,
   setTasks,
@@ -702,7 +734,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setProjectTypes,
   projectStatuses,
   setProjectStatuses,
-  projects = [],
+  projects = [], leads,
   setProjects,
   orderStatuses,
   setOrderStatuses,
@@ -711,6 +743,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   financialCategories,
   setFinancialCategories,
   setFinancialRecords,
+  offerCategories = [],
+  setOfferCategories,
+  invoicesOffers = [],
+  setInvoicesOffers,
   financialMode,
   setFinancialMode,
   companyBillingSettings,
@@ -724,9 +760,125 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setTicketSettings,
   tickets = [],
   setTickets,
-  onTicketsPolled
+  onTicketsPolled,
+  onClickUpConnectionChange
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+
+  // ── Where the user is in Settings ──────────────────────────────────────────
+  const navT = (key: string) => getTranslation(userLanguage, key);
+  const route = React.useMemo(() => parseSettingsRoute(settingsRoute), [settingsRoute]);
+  const [wide, wideRef] = useSettingsWide();
+  const [layoutPref, setLayoutPref] = useUserPref("settingsLayout");
+  const [recentsPref, setRecentsPref] = useUserPref("settingsRecents");
+  const [query, setQuery] = React.useState("");
+  const searchRef = React.useRef<HTMLInputElement | null>(null);
+  const focusSearchOnMount = React.useRef(false);
+
+  const visibility: SettingsVisibilityContext = {
+    getPermission,
+    isAdmin: isAdminRoleName(currentUser?.role),
+    flags: { social: SOCIAL_MEDIA_ENABLED, projectAutoCreate: PROJECT_AUTO_CREATE_ENABLED },
+  };
+  const catalogNow = visibleCategories(visibility);
+  const catalogKey = catalogNow.map((c) => c.def.id + ":" + c.sections.map((s) => s.id).join("+")).join("|");
+  // Same categories and sections => same array, so the search index is not rebuilt on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const catalog = React.useMemo(() => catalogNow, [catalogKey]);
+  // Below `ws-lg` only the tile layout exists; the stored choice is kept for the next wide screen.
+  const layout: SettingsLayout = wide ? layoutPref : "tiles";
+
+  // The `user-<name>` route (Actions button on the users list) opens Users & access › Users.
+  const forcedUser = Boolean(initialSelectedUserName);
+  let openCategoryId: string | null = null;
+  let openSectionId: string | null = null;
+  if (forcedUser) {
+    openCategoryId = "access";
+    openSectionId = "users";
+  } else if (route.kind === "category") {
+    openCategoryId = route.categoryId;
+    openSectionId = route.sectionId;
+  } else if (wide && layoutPref === "sidebar") {
+    // Sidebar layout has no home: `settings` opens the first category the user may see.
+    openCategoryId = catalog[0]?.def.id ?? null;
+  }
+  const openCategory: VisibleCategory | null = catalog.find((c) => c.def.id === openCategoryId) ?? null;
+  const openSection =
+    openCategory && openSectionId && openCategory.sections.some((s) => s.id === openSectionId) ? openSectionId : null;
+  // Tiles and phones show one section. The sidebar stacks every section of the
+  // category, so an address without one (`#settings/leads`) still names the first
+  // — that is where the page starts, and a sub-link scrolls to another.
+  const activeSection = openCategory ? openSection ?? openCategory.sections[0]?.id ?? null : null;
+  const stackSections = layout === "sidebar";
+  /** Whether a section is on screen: the open tab, or any section of the stacked category. */
+  const isOpen = (ref: string) => {
+    const [c, s] = ref.split("/");
+    if (openCategory?.def.id !== c) return false;
+    if (stackSections) return openCategory.sections.some((sec) => sec.id === s);
+    return activeSection === s;
+  };
+  const errorsOpen = isOpen("system/errors");
+  const apiOpen = isOpen("integrations/api");
+  const aiOpen = isOpen("integrations/ai");
+  const recordsOpen = isOpen("modules/records");
+  const settingsAction = recordsOpen ? route.rest[0] ?? null : null;
+  const settingsActionId = recordsOpen ? route.rest[1] ?? null : null;
+
+  // Old `#settings/<id>` links are rewritten to where the setting lives now, and a link the
+  // user may not follow lands on the home screen instead of an empty page.
+  React.useEffect(() => {
+    if (forcedUser) return;
+    if (route.redirectTo) {
+      window.location.replace("#" + route.redirectTo);
+      return;
+    }
+    if (route.kind !== "category" || catalog.length === 0) return;
+    const cat = catalog.find((c) => c.def.id === route.categoryId);
+    if (!cat) {
+      window.location.replace("#settings");
+    } else if (route.sectionId && !cat.sections.some((s) => s.id === route.sectionId)) {
+      window.location.replace("#" + settingsPath(cat.def.id));
+    }
+  }, [route, catalogKey, forcedUser]);
+
+  // Recently opened: the section the user is on goes to the front of the list.
+  React.useEffect(() => {
+    if (!openCategory || !openSection) return;
+    const ref = `${openCategory.def.id}/${openSection}`;
+    const clean = cleanRecents(recentsPref, visibility);
+    if (clean[0] !== ref) setRecentsPref(pushRecent(clean, ref));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openCategory?.def.id, openSection]);
+
+  // Navigating clears the search, so the next screen is not hidden behind old results.
+  React.useEffect(() => {
+    setQuery("");
+  }, [openCategory?.def.id, openSection]);
+
+  // "/" jumps to the search field (never while typing somewhere else).
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      if (wide === null || isCreatingUERef.current) return;
+      e.preventDefault();
+      if (searchRef.current) searchRef.current.focus();
+      else {
+        focusSearchOnMount.current = true;
+        window.location.hash = "#settings";
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [wide]);
+  React.useEffect(() => {
+    if (focusSearchOnMount.current && searchRef.current) {
+      focusSearchOnMount.current = false;
+      searchRef.current.focus();
+    }
+  });
+  const isCreatingUERef = React.useRef(false);
 
   // Inline click-to-rename for an actual list entry (source / category / lead-state / task-state).
   // Shows the existing display node; a pencil affordance (or double-click) swaps it for an input.
@@ -753,6 +905,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     // The id belongs to the source, not to its name — a rename must not send
     // the web forms that already point at it somewhere else.
     setLeadSourceIds((prev) => migrateMapKey(prev, oldName, next));
+    void renameListIconEntry("leadSources", oldName, next);
     setLeads?.((prev) => prev.map((l) => (l.source === oldName ? { ...l, source: next } : l)));
   };
 
@@ -804,6 +957,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLeadCategoryColors((prev) => migrateMapKey(prev, oldName, next));
     // Same as for sources: the id follows the category through a rename.
     setLeadCategoryIds((prev) => migrateMapKey(prev, oldName, next));
+    void renameListIconEntry("leadCategories", oldName, next);
     // And so does the project type new leads in this category are given —
     // otherwise a rename quietly stops creating those projects.
     setProjectAutoCreate?.((prev) => ({ ...prev, categoryTypes: migrateMapKey(prev.categoryTypes, oldName, next) }));
@@ -824,10 +978,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (taskStates.some((s) => s.toLowerCase() === next.toLowerCase())) { toastNameExists(); return; }
     setTaskStates((prev) => prev.map((s) => (s === oldName ? next : s)));
     setTaskStateColors((prev) => migrateMapKey(prev, oldName, next));
+    setTaskStateTimerActions((prev) => renameTimerActionKey(prev, oldName, next));
     setTasks?.((prev) => prev.map((tk) => (tk.status === oldName ? { ...tk, status: next } : tk)));
   };
 
+  // `systemName` here is the stored override ("" = default name), not the displayed name.
   const [tempName, setTempName] = React.useState(systemName);
+  // The stored value arrived or changed (first sync, another user, this save): show it.
+  React.useEffect(() => setTempName(systemName), [systemName]);
   const [newState, setNewState] = React.useState("");
   const [newSource, setNewSource] = React.useState("");
   const [newTaskState, setNewTaskState] = React.useState("");
@@ -901,47 +1059,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     e.target.value = "";
   };
 
+  const applyLeadTree = (next: ReturnType<typeof leadTreeItems> | null) => {
+    if (!next) return;
+    const m = leadTreeMaps(next);
+    setLeadStates(m.states);
+    setLeadStageGroups(m.groups);
+    setLeadStateParents(m.parents);
+  };
+  const leadTree = () => leadTreeItems(leadStates, leadStageGroups, leadStateParents);
+
   const handleToggleIndent = (stateName: string, indent: boolean) => {
     if (getPermission("pipeline_stages") !== "edit") return;
     const key = stateName.toLowerCase();
-    
-    if (indent) {
-      // Find the closest preceding major state in the same group!
-      const currentGroup = leadStageGroups[key] || "in_progress";
-      const idx = leadStates.indexOf(stateName);
-      
-      let parentCandidate = "";
-      for (let i = idx - 1; i >= 0; i--) {
-        const sName = leadStates[i];
-        const sKey = sName.toLowerCase();
-        if ((leadStageGroups[sKey] || "in_progress") === currentGroup && !leadStateParents[sKey]) {
-          parentCandidate = sKey;
-          break;
-        }
-      }
-      
-      if (parentCandidate) {
-        setLeadStateParents(prev => ({
-          ...prev,
-          [key]: parentCandidate
-        }));
-      } else {
-        (window as any).showToast(
-          userLanguage === "sk" 
-            ? "Na vytvorenie podstavu musí predchádzať hlavný stav v rovnakej skupine!" 
-            : userLanguage === "hu" 
-              ? "Az al-állapot létrehozásához egy fő állapotnak kell megelőznie ugyanabban a csoportban!" 
-              : "A major state must precede in the same group to establish a substate!"
-        );
-      }
-    } else {
-      // Outdent: remove parent association
-      setLeadStateParents(prev => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-    }
+    if (!indent) return applyLeadTree(outdentItem(leadTree(), LEAD_STATE_GROUPS, key));
+    const next = indentItem(leadTree(), LEAD_STATE_GROUPS, key);
+    if (next) applyLeadTree(next);
+    else (window as any).showToast(subStatusNoParentToast(userLanguage));
   };
 
   // Drag and drop states for statuses
@@ -1002,6 +1135,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return;
     }
     setDivisions(divisions.map(d => d === oldName ? trimmed : d));
+    void renameListIconEntry("divisions", oldName, trimmed);
     setDivisionColors?.(prev => {
       const next = { ...prev };
       if (oldName in next) {
@@ -1069,60 +1203,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleMoveStatusToIndex = (statusName: string, targetIdx: number) => {
     if (getPermission("pipeline_stages") !== "edit") return;
-    
-    // Construct the items array exactly as rendered in the current order
-    const items: ({ type: "divider"; id: "new" | "in_progress" | "closed" } | { type: "status"; name: string })[] = [];
-    
-    items.push({ type: "divider", id: "new" });
-    leadStates.forEach(state => {
-      if ((leadStageGroups[state.toLowerCase()] || "in_progress") === "new") {
-        items.push({ type: "status", name: state });
-      }
-    });
-
-    items.push({ type: "divider", id: "in_progress" });
-    leadStates.forEach(state => {
-      if ((leadStageGroups[state.toLowerCase()] || "in_progress") === "in_progress") {
-        items.push({ type: "status", name: state });
-      }
-    });
-
-    items.push({ type: "divider", id: "closed" });
-    leadStates.forEach(state => {
-      if ((leadStageGroups[state.toLowerCase()] || "in_progress") === "closed") {
-        items.push({ type: "status", name: state });
-      }
-    });
-
-    // Remove the dragged status from the items copy
-    const draggedItemIdx = items.findIndex(item => item.type === "status" && item.name.toLowerCase() === statusName.toLowerCase());
-    if (draggedItemIdx === -1) return;
-    const [draggedItem] = items.splice(draggedItemIdx, 1);
-
-    // Insert the dragged status at the target index
-    items.splice(targetIdx, 0, draggedItem);
-
-    // Walk the list to reconstruct the new order and groupings
-    const newLeadStates: string[] = [];
-    const newStageGroups: Record<string, "new" | "in_progress" | "closed"> = {};
-    let currentGroup: "new" | "in_progress" | "closed" = "new";
-
-    items.forEach(item => {
-      if (item.type === "divider") {
-        currentGroup = item.id;
-      } else {
-        newLeadStates.push(item.name);
-        newStageGroups[item.name.toLowerCase()] = currentGroup;
-      }
-    });
-
-    // Save states
-    setLeadStates(newLeadStates);
-    setLeadStageGroups(newStageGroups);
+    // Shared sub-status drop rule (utils/subStatusTree.ts), same as the project statuses.
+    applyLeadTree(moveItem(leadTree(), LEAD_STATE_GROUPS, statusName.toLowerCase(), targetIdx));
   };
   
   // User creation states
   const [newManager, setNewManager] = React.useState("");
+  // The "new account" form stays closed until "Create a new user account" is pressed.
+  const [isAddingUser, setIsAddingUser] = React.useState(false);
+  // Same for a new role: the name field appears when "New role" is pressed.
+  const [isAddingRole, setIsAddingRole] = React.useState(false);
   const [newUserEmail, setNewUserEmail] = React.useState("");
   const [newUserPassword, setNewUserPassword] = React.useState("");
   // The role a freshly provisioned user gets: the native Employee role when the workspace has one
@@ -1139,7 +1229,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "finance" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "audit" | "projects" | "tickets" | "orders" | "tasks">((initialSubTab as any) || "branding");
 
   // Zernio Social Media Integration State
   const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
@@ -1198,12 +1287,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         // save that follows is not: sync.php silently drops a non-admin write, so
         // the UI would show "Connected" until the next poll reverted it.
         if (updateIntegrationsConfig && getPermission("general_config") === "edit") {
-          updateIntegrationsConfig({
-            ...integrationsConfig,
+          updateIntegrationsConfig((prev: any) => ({
+            ...(prev || {}),
             zernioApiKey: key,
             zernioConnected: true,
             zernioAccounts: data.accounts || []
-          });
+          }));
         }
         (window as any).showToast(t("Zernio connection successful!", "Pripojenie k Zernio bolo úspešné!", "Sikeres csatlakozás a Zernióhoz!"));
       } else {
@@ -1218,17 +1307,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleSaveZernio = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setIsEditingZernioKey(false);
-    if (updateIntegrationsConfig) {
-      updateIntegrationsConfig({
-        ...integrationsConfig,
-        zernioApiKey
-      });
-      (window as any).showToast(t("Zernio settings saved!", "Nastavenia Zernio boli uložené!", "Zernio beállítások elmentve!"));
-    }
-  };
+  // The Zernio key saves itself; "Test connection" and the device login store it as well.
+  const zernioStatus = useAutosave({
+    value: zernioApiKey,
+    dirty: zernioApiKey !== (integrationsConfig?.zernioApiKey || ""),
+    enabled: getPermission("general_config") === "edit" && Boolean(updateIntegrationsConfig),
+    save: (key) => updateIntegrationsConfig?.((prev: any) => ({ ...(prev || {}), zernioApiKey: key })),
+  });
 
   const handleResetZernioKey = () => {
     if (!confirm(t("Are you sure you want to reset your Zernio API Key & connection?", "Naozaj chcete resetovať Zernio API kľúč a pripojenie?", "Biztosan visszaállítja a Zernio API kulcsot és a kapcsolatot?"))) {
@@ -1238,12 +1323,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setZernioTestResult(null);
     setIsEditingZernioKey(true);
     if (updateIntegrationsConfig) {
-      updateIntegrationsConfig({
-        ...integrationsConfig,
+      updateIntegrationsConfig((prev: any) => ({
+        ...(prev || {}),
         zernioApiKey: "",
         zernioConnected: false,
         zernioAccounts: []
-      });
+      }));
     }
     (window as any).showToast(t("Zernio configuration reset.", "Konfigurácia Zernio bola resetovaná.", "Zernio konfiguráció visszaállítva."), "info");
   };
@@ -1382,6 +1467,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     bankName: "",
     defaultPaymentDueDays: 14,
     defaultVatRate: DEFAULT_STANDARD_VAT_RATE,
+    financeNetMode: false,
     vatRates: [...DEFAULT_VAT_RATES],
     shippingMethods: [...DEFAULT_SHIPPING_METHODS],
     paymentMethods: [...DEFAULT_PAYMENT_METHODS],
@@ -1399,26 +1485,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     ]
   });
 
-  const [billingForm, setBillingForm] = React.useState<CompanyBillingSettings>(() => {
+  /** The form as the stored settings (or the defaults) fill it. Also what "Discard" goes back to. */
+  const billingFromSaved = (saved: CompanyBillingSettings | null | undefined): CompanyBillingSettings => {
     const base = emptyBilling();
-    const loaded: Partial<CompanyBillingSettings> = companyBillingSettings || {};
+    const loaded: Partial<CompanyBillingSettings> = saved || {};
     return {
       ...base,
       ...loaded,
       defaultVatRate: loaded.defaultVatRate !== undefined ? loaded.defaultVatRate : base.defaultVatRate,
+      financeNetMode: Boolean(loaded.financeNetMode),
       vatRates: loaded.vatRates && loaded.vatRates.length > 0 ? loaded.vatRates : base.vatRates,
       shippingMethods: loaded.shippingMethods && loaded.shippingMethods.length > 0 ? loaded.shippingMethods : base.shippingMethods,
       paymentMethods: loaded.paymentMethods && loaded.paymentMethods.length > 0 ? loaded.paymentMethods : base.paymentMethods,
       defaultPaymentMethod: loaded.defaultPaymentMethod || base.defaultPaymentMethod
     };
-  });
+  };
 
+  const [billingForm, setBillingForm] = React.useState<CompanyBillingSettings>(() => billingFromSaved(companyBillingSettings));
+
+  // Whether the form has edits the stored settings do not have yet (set every render, read by the sync below).
+  const billingDirtyRef = React.useRef(false);
   React.useEffect(() => {
     if (companyBillingSettings) {
-      setBillingForm(prev => ({
+      setBillingForm(prev => {
+        const merged: CompanyBillingSettings = {
         ...prev,
         ...companyBillingSettings,
         defaultVatRate: companyBillingSettings.defaultVatRate !== undefined ? companyBillingSettings.defaultVatRate : (prev.defaultVatRate ?? DEFAULT_STANDARD_VAT_RATE),
+        financeNetMode: Boolean(companyBillingSettings.financeNetMode),
         vatRates: companyBillingSettings.vatRates && companyBillingSettings.vatRates.length > 0
           ? companyBillingSettings.vatRates
           : (prev.vatRates && prev.vatRates.length > 0 ? prev.vatRates : [...DEFAULT_VAT_RATES]),
@@ -1429,7 +1523,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           ? companyBillingSettings.paymentMethods
           : (prev.paymentMethods && prev.paymentMethods.length > 0 ? prev.paymentMethods : [...DEFAULT_PAYMENT_METHODS]),
         defaultPaymentMethod: companyBillingSettings.defaultPaymentMethod || prev.defaultPaymentMethod || DEFAULT_STANDARD_PAYMENT_METHOD
-      }));
+        };
+        if (!billingDirtyRef.current) return merged;
+        // A save echoing back must not overwrite what was typed while it was on its way.
+        const kept: Record<string, unknown> = { ...merged };
+        for (const k of COMPANY_FORM_KEYS) kept[k] = prev[k];
+        return kept as unknown as CompanyBillingSettings;
+      });
     }
   }, [companyBillingSettings]);
 
@@ -1530,16 +1630,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [isUploadingLogo, setIsUploadingLogo] = React.useState(false);
 
-  const handleSaveBillingSettings = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    // The offer defaults are edited in the Price Offers module: keep whatever is
-    // stored there rather than the copy this form loaded.
-    if (setCompanyBillingSettings) {
-      setCompanyBillingSettings(prev => keepStoredOfferDefaults(billingForm, prev));
-    }
-    (window as any).showToast(t("Invoicing settings saved successfully!", "Fakturačné nastavenia boli úspešne uložené!", "A számlázási beállítások sikeresen elmentve!"));
-  };
-
   const handleUploadLogo = async (file: File) => {
     setIsUploadingLogo(true);
     try {
@@ -1569,20 +1659,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   React.useEffect(() => {
-    if (activeSubTab === "errors") {
+    if (errorsOpen) {
       fetchErrorLogs();
     }
-  }, [activeSubTab]);
+  }, [errorsOpen]);
 
+  // Which record type the form was last filled from, so a save (or a sync) landing while
+  // the form is open never overwrites what is being typed.
+  const loadedUERef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (initialSubTab) {
-      setActiveSubTab(initialSubTab as any);
-    }
-  }, [initialSubTab]);
-
-  React.useEffect(() => {
-    if (activeSubTab === "unified") {
+    if (recordsOpen) {
       if (settingsAction === "new") {
+        if (loadedUERef.current !== "new") {
+          loadedUERef.current = "new";
         setEditingUEId(null);
         setUeName("");
         setUeEntryName("Entry");
@@ -1593,36 +1682,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setUeModules(["title"]);
         setUeFolderModules(["title"]);
         setUeShowFolderSummary(false);
+        }
         setIsCreatingUE(true);
       } else if (settingsAction === "edit" && settingsActionId) {
         const ue = unifiedEntries.find(u => u.id === settingsActionId);
         if (ue) {
-          setEditingUEId(ue.id);
-          setUeName(ue.name);
-          setUeEntryName(ue.entryName || "Entry");
-          setUeFolderName(ue.folderName || "Folder");
-          setUeIcon(ue.icon);
-          setUeColor(ue.color);
-          setUeFoldersEnabled(ue.foldersEnabled);
-          setUeShowFolderSummary(ue.showFolderSummary || false);
-          setUeModules(ue.modules);
-          setUeFolderModules(ue.folderModules || ["title"]);
+          if (loadedUERef.current !== ue.id) {
+            loadedUERef.current = ue.id;
+            setEditingUEId(ue.id);
+            setUeName(ue.name);
+            setUeEntryName(ue.entryName || "Entry");
+            setUeFolderName(ue.folderName || "Folder");
+            setUeIcon(ue.icon);
+            setUeColor(ue.color);
+            setUeFoldersEnabled(ue.foldersEnabled);
+            setUeShowFolderSummary(ue.showFolderSummary || false);
+            setUeModules(ue.modules);
+            setUeFolderModules(ue.folderModules || ["title"]);
+          }
           setIsCreatingUE(true);
         } else {
           setIsCreatingUE(false);
         }
       } else {
+        loadedUERef.current = null;
         setIsCreatingUE(false);
       }
+    } else {
+      loadedUERef.current = null;
     }
-  }, [activeSubTab, settingsAction, settingsActionId, unifiedEntries]);
+  }, [recordsOpen, settingsAction, settingsActionId, unifiedEntries]);
 
   React.useEffect(() => {
     if (initialSelectedUserName) {
       const match = users.find(u => u.name.toLowerCase() === initialSelectedUserName.toLowerCase());
       if (match) {
         setSelectedUser(match);
-        setActiveSubTab("managers");
         // Do NOT rewrite window.location.hash here: App.tsx only passes
         // initialSelectedUserName on the "user-<name>" route. Rewriting to
         // "settings/managers" fires a hashchange that re-renders this component
@@ -1675,8 +1770,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (changed("googleRefreshToken")) setGoogleRefreshToken(integrationsConfig.googleRefreshToken || "");
       if (changed("adsConnected")) setIsConnected(integrationsConfig.adsConnected === true);
       if (changed("campaigns")) setCampaigns(integrationsConfig.campaigns || []);
+      if (changed("aiSourceMode")) setAiSourceMode(integrationsConfig.aiSourceMode === "connector" ? "connector" : "manual");
+      if (changed("aiConnectorId")) setAiConnectorId(integrationsConfig.aiConnectorId || "");
+      if (changed("aiConnectorType")) setAiConnectorType(integrationsConfig.aiConnectorType || "");
+      if (changed("aiConnectorName")) setAiConnectorName(integrationsConfig.aiConnectorName || "");
       if (changed("openAiKey")) setOpenAiKey(integrationsConfig.openAiKey || "");
       if (changed("anthropicKey")) setAnthropicKey(integrationsConfig.anthropicKey || "");
+      if (changed("sonioxApiKey")) setSonioxApiKey(integrationsConfig.sonioxApiKey || "");
       if (changed("geminiKey")) setGeminiKey(integrationsConfig.geminiKey || "");
       if (changed("vectorDb")) setVectorDb(integrationsConfig.vectorDb || "none");
       if (changed("mariaDbHost")) setMariaDbHost(integrationsConfig.mariaDbHost || "");
@@ -1692,13 +1792,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   }, [integrationsConfig]);
 
-  // OpenAI & Vector DB Configuration States
-  const [openAiKey, setOpenAiKey] = React.useState("");
+  // AI Source & OpenAI & Vector DB Configuration States
+  const [aiSourceMode, setAiSourceMode] = React.useState<"manual" | "connector">(
+    () => (integrationsConfig?.aiSourceMode === "connector" ? "connector" : "manual")
+  );
+  const [aiConnectorId, setAiConnectorId] = React.useState(() => integrationsConfig?.aiConnectorId || "");
+  const [aiConnectorType, setAiConnectorType] = React.useState(() => integrationsConfig?.aiConnectorType || "");
+  const [aiConnectorName, setAiConnectorName] = React.useState(() => integrationsConfig?.aiConnectorName || "");
+  const [llmConnectors, setLlmConnectors] = React.useState<LlmSourceConnector[]>([]);
+  const [llmConnectorsLoading, setLlmConnectorsLoading] = React.useState(false);
+  const [openAiKey, setOpenAiKey] = React.useState(() => integrationsConfig?.openAiKey || "");
   // Alternative LLM providers — only the Automation workflow AI nodes can pick
-  // a provider, the rest of the CRM's AI features are OpenAI-only. Kept here so
+  // a provider, the rest of the CRM's AI features rely on OpenAI or an LLM connector. Kept here so
   // every AI credential lives in one place.
-  const [anthropicKey, setAnthropicKey] = React.useState("");
-  const [geminiKey, setGeminiKey] = React.useState("");
+  const [anthropicKey, setAnthropicKey] = React.useState(() => integrationsConfig?.anthropicKey || "");
+  const [geminiKey, setGeminiKey] = React.useState(() => integrationsConfig?.geminiKey || "");
+  const [sonioxApiKey, setSonioxApiKey] = React.useState("");
   const [vectorDb, setVectorDb] = React.useState<"none" | "mariadb" | "qdrant" | "pinecone">("none");
   const [mariaDbHost, setMariaDbHost] = React.useState("");
   const [mariaDbPort, setMariaDbPort] = React.useState("3306");
@@ -1720,10 +1829,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Auto-fetch stats if already validated and active sub-tab is AI
   React.useEffect(() => {
-    if (activeSubTab === "ai" && vectorDbValidated) {
+    if (aiOpen && vectorDbValidated) {
       fetchTrainingStats();
     }
-  }, [activeSubTab, vectorDbValidated]);
+  }, [aiOpen, vectorDbValidated]);
+
+  // Load configured LLM connectors when the AI integration section is open
+  React.useEffect(() => {
+    if (!aiOpen) return;
+    let cancelled = false;
+    setLlmConnectorsLoading(true);
+    listLlmSourceConnectors()
+      .then((res) => {
+        if (!cancelled) setLlmConnectors(Array.isArray(res.connectors) ? res.connectors : []);
+      })
+      .catch(() => {
+        if (!cancelled) setLlmConnectors([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLlmConnectorsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [aiOpen]);
 
   // Email Server Configuration States
   const [emailProvider, setEmailProvider] = React.useState<"smtp" | "exchange">("smtp");
@@ -1753,41 +1882,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isSendingTest, setIsSendingTest] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ status: "success" | "error"; message: string } | null>(null);
 
-  const handleSaveEmailSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (getPermission("general_config") !== "edit") return;
-
-    if (updateIntegrationsConfig) {
-      updateIntegrationsConfig({
-        ...integrationsConfig,
-        emailProvider,
-        smtpHost,
-        smtpPort,
-        smtpSecure,
-        smtpAuth,
-        smtpUser,
-        smtpPassword,
-        senderName,
-        senderEmail,
-        exchUrl,
-        exchDomain,
-        exchAuth,
-        exchClientId,
-        exchTenantId,
-        exchClientSecret,
-        exchPassword,
-        exchMailbox
-      });
-    }
-
-    (window as any).showToast(
-      userLanguage === "sk" 
-        ? "Konfigurácia e-mailového servera bola úspešne uložená!" 
-        : userLanguage === "hu" 
-          ? "Az e-mail szerver konfigurációja sikeresen mentve!" 
-          : "Email server configuration saved successfully!"
-    );
-  };
+  // The outgoing server saves itself a moment after the last edit — no Save button.
+  const emailDraft = JSON.stringify({
+    emailProvider, smtpHost, smtpPort, smtpSecure, smtpAuth, smtpUser, smtpPassword, senderName, senderEmail,
+    exchUrl, exchDomain, exchAuth, exchClientId, exchTenantId, exchClientSecret, exchPassword, exchMailbox,
+  });
+  const emailStored = JSON.stringify({
+    emailProvider: integrationsConfig?.emailProvider || "smtp",
+    smtpHost: integrationsConfig?.smtpHost || "",
+    smtpPort: integrationsConfig?.smtpPort || "",
+    smtpSecure: integrationsConfig?.smtpSecure || "ssl",
+    smtpAuth: integrationsConfig?.smtpAuth !== false,
+    smtpUser: integrationsConfig?.smtpUser || "",
+    smtpPassword: integrationsConfig?.smtpPassword || "",
+    senderName: integrationsConfig?.senderName || "",
+    senderEmail: integrationsConfig?.senderEmail || "",
+    exchUrl: integrationsConfig?.exchUrl || "",
+    exchDomain: integrationsConfig?.exchDomain || "",
+    exchAuth: integrationsConfig?.exchAuth || "oauth",
+    exchClientId: integrationsConfig?.exchClientId || "",
+    exchTenantId: integrationsConfig?.exchTenantId || "",
+    exchClientSecret: integrationsConfig?.exchClientSecret || "",
+    exchPassword: integrationsConfig?.exchPassword || "",
+    exchMailbox: integrationsConfig?.exchMailbox || "",
+  });
+  const emailStatus = useAutosave({
+    value: emailDraft,
+    dirty: emailDraft !== emailStored,
+    enabled: getPermission("general_config") === "edit" && Boolean(updateIntegrationsConfig),
+    save: (json) => updateIntegrationsConfig?.((prev: any) => ({ ...(prev || {}), ...JSON.parse(json) })),
+  });
 
   const handleSendTestEmail = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1902,8 +2026,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (data.success) {
         setVectorDbValidated(true);
         if (updateIntegrationsConfig) {
-          updateIntegrationsConfig({
-            ...integrationsConfig,
+          updateIntegrationsConfig((prev: any) => ({
+            ...(prev || {}),
             vectorDb,
             mariaDbHost,
             mariaDbPort,
@@ -1915,7 +2039,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             pineconeApiKey,
             pineconeIndex,
             vectorDbValidated: true
-          });
+          }));
         }
       } else {
         setVectorDbValidated(false);
@@ -1976,38 +2100,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     fetchTrainingStats();
   };
 
-  const handleSaveAiSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (getPermission("ai_config") !== "edit") return;
-
-    if (updateIntegrationsConfig) {
-      updateIntegrationsConfig({
-        ...integrationsConfig,
-        openAiKey,
-        anthropicKey,
-        geminiKey,
-        vectorDb,
-        mariaDbHost,
-        mariaDbPort,
-        mariaDbUser,
-        mariaDbPassword,
-        mariaDbName,
-        qdrantUrl,
-        qdrantApiKey,
-        pineconeApiKey,
-        pineconeIndex,
-        vectorDbValidated
-      });
-    }
-
-    (window as any).showToast(
-      userLanguage === "sk" 
-        ? "Konfigurácia AI integrácie bola úspešne uložená!" 
-        : userLanguage === "hu" 
-          ? "Az AI integrációs beállítások sikeresen mentve!" 
-          : "AI integration settings saved successfully!"
-    );
-  };
+  // AI credentials and the vector database settings save themselves too.
+  const aiDraft = JSON.stringify({
+    aiSourceMode, aiConnectorId, aiConnectorType, aiConnectorName,
+    openAiKey, anthropicKey, geminiKey, sonioxApiKey, vectorDb, mariaDbHost, mariaDbPort, mariaDbUser, mariaDbPassword,
+    mariaDbName, qdrantUrl, qdrantApiKey, pineconeApiKey, pineconeIndex, vectorDbValidated,
+  });
+  const aiStored = JSON.stringify({
+    aiSourceMode: integrationsConfig?.aiSourceMode === "connector" ? "connector" : "manual",
+    aiConnectorId: integrationsConfig?.aiConnectorId || "",
+    aiConnectorType: integrationsConfig?.aiConnectorType || "",
+    aiConnectorName: integrationsConfig?.aiConnectorName || "",
+    openAiKey: integrationsConfig?.openAiKey || "",
+    anthropicKey: integrationsConfig?.anthropicKey || "",
+    geminiKey: integrationsConfig?.geminiKey || "",
+    sonioxApiKey: integrationsConfig?.sonioxApiKey || "",
+    vectorDb: integrationsConfig?.vectorDb || "none",
+    mariaDbHost: integrationsConfig?.mariaDbHost || "",
+    mariaDbPort: integrationsConfig?.mariaDbPort || "3306",
+    mariaDbUser: integrationsConfig?.mariaDbUser || "",
+    mariaDbPassword: integrationsConfig?.mariaDbPassword || "",
+    mariaDbName: integrationsConfig?.mariaDbName || "",
+    qdrantUrl: integrationsConfig?.qdrantUrl || "",
+    qdrantApiKey: integrationsConfig?.qdrantApiKey || "",
+    pineconeApiKey: integrationsConfig?.pineconeApiKey || "",
+    pineconeIndex: integrationsConfig?.pineconeIndex || "",
+    vectorDbValidated: integrationsConfig?.vectorDbValidated === true,
+  });
+  const aiHydrated = seenIntegrationsRef.current === integrationsConfig;
+  const aiStatus = useAutosave({
+    value: aiDraft,
+    dirty: aiHydrated && aiDraft !== aiStored,
+    enabled: aiHydrated && getPermission("ai_config") === "edit" && Boolean(updateIntegrationsConfig),
+    save: (json) => updateIntegrationsConfig?.((prev: any) => ({ ...(prev || {}), ...JSON.parse(json) })),
+  });
 
   // API Key management states
   const [apiKey, setApiKey] = React.useState("");
@@ -2067,10 +2193,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   React.useEffect(() => {
-    if (activeSubTab === "api") {
+    if (apiOpen) {
       fetchApiKey();
     }
-  }, [activeSubTab]);
+  }, [apiOpen]);
 
   // Meta & Google Ads Credentials
   // Meta & Google Ads Credentials
@@ -2102,31 +2228,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([]);
 
-  const syncAdsCredentialsToDb = () => {
-    if (updateIntegrationsConfig) {
-      updateIntegrationsConfig({
-        ...integrationsConfig,
-        metaAppId,
-        metaAppSecret,
-        metaAccessToken,
-        googleDevToken,
-        googleClientId,
-        googleClientSecret,
-        googleRefreshToken
-      });
+  // Ads credentials save themselves, the same way the e-mail server does. A blur-only
+  // write dropped the edit when the field never blurred (a reload, a layout switch).
+  const adsDraft = JSON.stringify({
+    metaAppId, metaAppSecret, metaAccessToken,
+    googleDevToken, googleClientId, googleClientSecret, googleRefreshToken,
+  });
+  const adsStored = JSON.stringify({
+    metaAppId: integrationsConfig?.metaAppId || "",
+    metaAppSecret: integrationsConfig?.metaAppSecret || "",
+    metaAccessToken: integrationsConfig?.metaAccessToken || "",
+    googleDevToken: integrationsConfig?.googleDevToken || "",
+    googleClientId: integrationsConfig?.googleClientId || "",
+    googleClientSecret: integrationsConfig?.googleClientSecret || "",
+    googleRefreshToken: integrationsConfig?.googleRefreshToken || "",
+  });
+  const adsStatus = useAutosave({
+    value: adsDraft,
+    dirty: adsDraft !== adsStored,
+    enabled: getPermission("general_config") === "edit" && Boolean(updateIntegrationsConfig),
+    save: (json) => updateIntegrationsConfig?.((prev: any) => ({ ...(prev || {}), ...JSON.parse(json) })),
+  });
+  const adsSaveStatus = <SaveStatus lang={userLanguage} status={adsStatus} />;
+
+  // A campaign edit is written on the change itself. An effect that compared local
+  // state to the stored list also fired on the first copy from the server, and
+  // that copy was still empty, so opening Settings wiped the saved campaigns.
+  const campaignsRef = React.useRef(campaigns);
+  campaignsRef.current = campaigns;
+  const updateCampaign = (id: string, patch: Partial<Campaign>) => {
+    const next = campaignsRef.current.map((item) => (item.id === id ? { ...item, ...patch } : item));
+    campaignsRef.current = next;
+    setCampaigns(next);
+    if (getPermission("general_config") === "edit") {
+      updateIntegrationsConfig?.((config: any) => ({ ...(config || {}), campaigns: next }));
     }
   };
-
-  React.useEffect(() => {
-    if (updateIntegrationsConfig && integrationsConfig) {
-      if (JSON.stringify(campaigns) !== JSON.stringify(integrationsConfig.campaigns)) {
-        updateIntegrationsConfig({
-          ...integrationsConfig,
-          campaigns
-        });
-      }
-    }
-  }, [campaigns, integrationsConfig]);
 
   // Dynamic click-to-cycle tri-state permission cell renderer.
   // `defaultValue` is what an unset slug means in practice. Almost every permission
@@ -2154,7 +2291,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         ? { btnStyle: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70", icon: <Pencil className="h-3.5 w-3.5 shrink-0" />, label: getTranslation(userLanguage, "settings.rbac.state.edit") }
         : currentValue === "view"
           ? { btnStyle: "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100/70", icon: <Eye className="h-3.5 w-3.5 shrink-0" />, label: getTranslation(userLanguage, "settings.rbac.state.view") }
-          : { btnStyle: "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100/40 hover:text-slate-500", icon: <Minus className="h-3.5 w-3.5 shrink-0" />, label: getTranslation(userLanguage, "settings.rbac.state.nothing") };
+          : { btnStyle: "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100/40 hover:text-gray-500", icon: <Minus className="h-3.5 w-3.5 shrink-0" />, label: getTranslation(userLanguage, "settings.rbac.state.nothing") };
     const handleCycle = () => {
       if (disabled) return;
       const next: PermissionValue = currentValue === "nothing" ? "view" : currentValue === "view" ? "edit" : "nothing";
@@ -2165,7 +2302,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         type="button"
         disabled={disabled}
         onClick={handleCycle}
-        className={`mx-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border type-overline transition-all shadow-sm ${styles.btnStyle} ${
+        className={`mx-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border type-overline transition-all shadow-xs ${styles.btnStyle} ${
           disabled ? "opacity-80 cursor-not-allowed" : "cursor-pointer active:scale-95 hover:scale-[1.03]"
         }`}
         title={disabled
@@ -2190,7 +2327,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           level: req.level === "edit"
             ? getTranslation(userLanguage, "settings.rbac.state.edit")
             : getTranslation(userLanguage, "settings.rbac.state.view"),
-          label: getTranslation(userLanguage, `settings.rbac.perm.${req.key}.label`),
+          label: getTranslation(userLanguage, `settings.rbac.perm.${roleMatrixTextKey(req.key)}.label`),
         })
       : "";
     return (
@@ -2202,10 +2339,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             if (disabled) return;
             updateRolePermission(roleName, def.key, on ? "nothing" : "edit");
           }}
-          className={`mx-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border type-overline transition-all shadow-sm ${
+          className={`mx-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border type-overline transition-all shadow-xs ${
             on
               ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70"
-              : "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100/40 hover:text-slate-500"
+              : "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100/40 hover:text-gray-500"
           } ${disabled ? "opacity-80 cursor-not-allowed" : "cursor-pointer active:scale-95 hover:scale-[1.03]"}`}
           title={!reqMet ? reqLabel : (disabled ? formatTranslation(userLanguage, "settings.rbac.locked_tip", { role: roleName }) : getTranslation(userLanguage, "settings.rbac.toggle_tip"))}
         >
@@ -2213,7 +2350,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span>{on ? getTranslation(userLanguage, "settings.rbac.state.on") : getTranslation(userLanguage, "settings.rbac.state.off")}</span>
         </button>
         {!reqMet && reqLabel && (
-          <span className="type-overline text-slate-400 max-w-35 leading-tight">{reqLabel}</span>
+          <span className="type-overline text-gray-400 max-w-35 leading-tight">{reqLabel}</span>
         )}
       </div>
     );
@@ -2240,9 +2377,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             if (disabled) return;
             updateRoleSection(roleName, section, !fullyOn);
           }}
-          className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+          className="h-3.5 w-3.5 rounded border-gray-300 text-entity-text focus:ring-entity-solid/25"
         />
-        <span className="type-overline text-slate-500">
+        <span className="type-overline text-gray-500">
           {fullyOn
             ? getTranslation(userLanguage, "settings.rbac.state.on")
             : fullyOff
@@ -2253,34 +2390,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     );
   };
 
-  // Set default initial tab if permissions changed
-  React.useEffect(() => {
-    const tabs = SETTINGS_TABS;
-    const visible = (t: (typeof SETTINGS_TABS)[number]) =>
-      getPermission(t.permKey) !== "nothing" && (!ADMIN_ONLY_TABS.has(t.id) || isAdminRoleName(currentUser?.role));
-    const allowed = tabs.find(visible);
-    if (allowed && !tabs.find(t => t.id === activeSubTab && visible(t))) {
-      setActiveSubTab(allowed.id as any);
-      window.location.hash = "settings/" + allowed.id;
-    }
-  }, [currentUser, roles]);
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tempName.trim()) return;
-    if (getPermission("general_config") !== "edit") return;
-    setSystemName(tempName);
-    (window as any).showToast(userLanguage === "sk" ? "Nastavenia značky boli úspešne uložené!" : userLanguage === "hu" ? "Márkajelzés beállításai sikeresen mentve!" : "Branding settings saved successfully!");
-  };
-
   const handleReset = () => {
     if (getPermission("system_reset") !== "edit") return;
     if (confirm(
       userLanguage === "sk" 
-        ? "Naozaj chcete resetovať celé úložisko CRM? Toto vymaže reláciu a obnoví stavy." 
+        ? `Naozaj chcete resetovať celé úložisko ${PRODUCT_NAME}? Toto vymaže reláciu a obnoví stavy.` 
         : userLanguage === "hu" 
-          ? "Biztosan vissza szeretné állítani a teljes CRM tárolót? Ez törli a munkamenetet és visszaállítja az állapotokat." 
-          : "Are you sure you want to reset all CRM storage? This will clear the active session and reload states."
+          ? `Biztosan vissza szeretné állítani a teljes ${PRODUCT_NAME} tárolót? Ez törli a munkamenetet és visszaállítja az állapotokat.` 
+          : `Are you sure you want to reset all ${PRODUCT_NAME} storage? This will clear the active session and reload states.`
     )) {
       sessionStorage.clear();
       window.location.reload();
@@ -2308,10 +2425,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (data.success) {
         (window as any).showToast(
           userLanguage === "sk"
-            ? "Demo dáta boli úspešne odstránené a CRM bol resetovaný."
+            ? `Demo dáta boli úspešne odstránené a ${PRODUCT_NAME} bol resetovaný.`
             : userLanguage === "hu"
-              ? "A bemutató adatok sikeresen törölve, és a CRM visszaállítva."
-              : "Demo data was successfully removed and CRM was reset."
+              ? `A bemutató adatok sikeresen törölve, és a ${PRODUCT_NAME} visszaállítva.`
+              : `Demo data was successfully removed and ${PRODUCT_NAME} was reset.`
         );
         // No local overrides left to clear: leads, tasks, states, users and roles
         // all come from the server on load, so the reload alone pulls a clean slate.
@@ -2342,11 +2459,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLeadStates([...leadStates, val]);
     setLeadStateColors(prev => ({
       ...prev,
-      [val]: "#6366f1" // default modern indigo
+      [val]: (newStateParent && prev[newStateParent]) || "#6366f1" // a sub-state starts in its main state's colour; else indigo
     }));
     setLeadStageGroups(prev => ({
       ...prev,
-      [val]: "in_progress" // default dynamic grouping
+      [val]: (newStateParent && leadStageGroups[newStateParent]) || "in_progress" // a sub-state joins its main state group
     }));
     if (newStateParent) {
       setLeadStateParents(prev => ({
@@ -2609,6 +2726,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setNewManager("");
     setNewUserEmail("");
     setNewUserPassword("");
+    setIsAddingUser(false);
   };
 
   const handleRemoveUser = (name: string) => {
@@ -2663,10 +2781,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleUpdateUser = (updated: UserProfile) => {
     if (!canAdministerUsers) return;
-    // Match on the identity the record had before this edit — matching on
-    // updated.email loses the change whenever the email itself is what changed.
-    const previousEmail = selectedUser?.email ?? updated.email;
-    setUsers(prev => prev.map(u => u.email === previousEmail ? updated : u));
+    // Match on the identity the record had before this edit: the id, or for a row
+    // without one the previous email (updated.email is the new value when the email
+    // itself is what changed).
+    const before = selectedUser ?? updated;
+    setUsers(prev => {
+      const self = findSelf(prev, before);
+      return self ? prev.map(u => (u === self ? updated : u)) : prev;
+    });
     setSelectedUser(updated);
   };
 
@@ -2838,8 +2960,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setUeFolderModules(["title"]);
     setIsCreatingUE(false);
     setEditingUEId(null);
-    window.location.hash = "settings/unified";
+    window.location.hash = "settings/modules/records";
   };
+
+  // An existing record type saves as it is edited; only creating one needs the button.
+  const editingUE = editingUEId ? unifiedEntries.find((u) => u.id === editingUEId) : undefined;
+  const ueDraft = JSON.stringify({
+    name: ueName.trim(),
+    entryName: ueEntryName.trim() || "Entry",
+    folderName: ueFolderName.trim() || "Folder",
+    icon: ueIcon,
+    color: ueColor,
+    modules: ueModules,
+    folderModules: ueFoldersEnabled ? ueFolderModules : [],
+    foldersEnabled: ueFoldersEnabled,
+    showFolderSummary: ueFoldersEnabled ? ueShowFolderSummary : false,
+  });
+  const ueStored = editingUE
+    ? JSON.stringify({
+        name: editingUE.name,
+        entryName: editingUE.entryName || "Entry",
+        folderName: editingUE.folderName || "Folder",
+        icon: editingUE.icon,
+        color: editingUE.color,
+        modules: editingUE.modules,
+        folderModules: editingUE.foldersEnabled ? editingUE.folderModules || [] : [],
+        foldersEnabled: Boolean(editingUE.foldersEnabled),
+        showFolderSummary: editingUE.foldersEnabled ? Boolean(editingUE.showFolderSummary) : false,
+      })
+    : "";
+  const ueStatus = useAutosave({
+    value: ueDraft,
+    dirty: Boolean(editingUE) && isCreatingUE && ueName.trim() !== "" && ueModules.length > 0 && ueDraft !== ueStored,
+    enabled: getPermission("general_config") === "edit" && Boolean(setUnifiedEntries),
+    save: (json) => {
+      const patch = JSON.parse(json);
+      setUnifiedEntries?.(unifiedEntries.map((ue) => (ue.id === editingUEId ? { ...ue, ...patch } : ue)), unifiedEntriesData);
+    },
+  });
 
 
 
@@ -2865,4726 +3023,4217 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     return <Icons.FolderOpen className={className} />;
   };
 
-  // Filter allowed tabs based on permissions
-  const allowedTabs = SETTINGS_TABS
-    .filter(tab => tab.id !== "social" || SOCIAL_MEDIA_ENABLED)
-    .map(tab => ({ ...tab, label: getTranslation(userLanguage, `settings.tab.${tab.id}`) }))
-    .filter(tab => getPermission(tab.permKey) !== "nothing")
-    .filter(tab => !ADMIN_ONLY_TABS.has(tab.id) || isAdminRoleName(currentUser?.role));
   // Read-only alert component
-  const renderReadOnlyBanner = (permKey: string, force = false) => {
-    const isReadOnly = force || getPermission(permKey) === "view";
+  const renderReadOnlyBanner = (permKey: string) => {
+    // Users and roles stay visible with pm_managers, but only an Admin can save
+    // them. Anyone else sees the same read-only notice as a view permission.
+    const isReadOnly = getPermission(permKey) === "view"
+      || (permKey === "pm_managers" && !canAdministerUsers);
     if (!isReadOnly) return null;
     return (
-      <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-ui font-semibold flex items-center gap-2 mb-6 shadow-sm">
+      <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-ui font-semibold flex items-center gap-2 mb-6 shadow-xs">
         <Lock className="h-4.5 w-4.5 text-amber-600 shrink-0" />
         <span>{getTranslation(userLanguage, "settings.general.read_only")}</span>
       </div>
     );
   };
 
-  return (
-    <div className="space-y-8 select-none text-slate-800 animate-fade-in">
-      {/* Title Header */}
-      <PageHeader
-        icon={<Settings className="h-6 w-6 text-indigo-600" />}
-        title={getTranslation(userLanguage, "header.title.settings")}
-        subtitle={userLanguage === "sk" 
-            ? "Nakonfigurujte identifikátory značky, oprávnenia používateľov a štruktúru pipeline" 
-            : userLanguage === "hu" 
-              ? "Márkajelzések, felhasználói jogosultságok és pipeline struktúrák beállítása" 
-              : "Configure brand identifiers, user permissions, and pipeline structures"}
-      />
+  // ── Company forms save themselves ─────────────────────────────────────────
+  // One billing form and the system name: an edit is written shortly after the last
+  // keystroke (useAutosave); the chip in each card header says "Saving… / Saved".
+  const canEditCompany = getPermission("general_config") === "edit";
+  const savedBilling = billingFromSaved(companyBillingSettings);
+  const billingDirty = COMPANY_FORM_KEYS.some((k) => normField(billingForm[k]) !== normField(savedBilling[k]));
+  billingDirtyRef.current = billingDirty;
+  const billingStatus = useAutosave({
+    value: billingForm,
+    dirty: billingDirty,
+    enabled: canEditCompany && Boolean(setCompanyBillingSettings),
+    save: (form) =>
+      setCompanyBillingSettings?.((prev) => {
+        if (!prev) return form;
+        const patch: Record<string, unknown> = {};
+        for (const k of COMPANY_FORM_KEYS) patch[k] = form[k];
+        return { ...prev, ...patch } as CompanyBillingSettings;
+      }),
+  });
+  const nameStatus = useAutosave({
+    value: tempName,
+    // An empty field is a real edit: it means "use the default name".
+    dirty: normalizeSystemTitleOverride(tempName) !== systemName,
+    enabled: canEditCompany,
+    save: (name) => setSystemName(normalizeSystemTitleOverride(name)),
+  });
+  // Both write independently; the chip shows the one that is busy.
+  const companyStatus = billingStatus === "saving" || nameStatus === "saving" ? "saving" : billingStatus === "saved" || nameStatus === "saved" ? "saved" : "idle";
+  const companySaveStatus = <SaveStatus lang={userLanguage} status={companyStatus} />;
+  // The sidebar shows every company card at once. The chip stays on the card that
+  // was edited, including the moment after it has been written ("Saved").
+  const companyChip = React.useRef<"profile" | "billing" | "bank" | "defaults" | null>(null);
+  const fieldDirty = (k: keyof CompanyBillingSettings) => normField(billingForm[k]) !== normField(savedBilling[k]);
+  const nameDirty = normalizeSystemTitleOverride(tempName) !== systemName;
+  if (nameDirty || (["companyLogoUrl", "companyName", "companySubtitle", "email", "phone", "phoneSecondary", "website"] as const).some(fieldDirty)) companyChip.current = "profile";
+  else if ((["companyId", "taxId", "vatId", "street", "city", "postalCode", "country"] as const).some(fieldDirty)) companyChip.current = "billing";
+  else if ((["iban", "swift"] as const).some(fieldDirty)) companyChip.current = "bank";
+  else if ((["defaultPaymentDueDays", "defaultVatRate", "financeNetMode", "vatRates"] as const).some(fieldDirty)) companyChip.current = "defaults";
+  const companyAction = (which: "profile" | "billing" | "bank" | "defaults") =>
+    companyChip.current === which ? companySaveStatus : undefined;
 
-      {/* Settings Layout Grid */}
-      <div className={`grid grid-cols-1 gap-8 items-start ${activeSubTab === "unified" && isCreatingUE ? "" : "ws-lg:grid-cols-[--spacing(64)_minmax(0,1fr)]"}`}>
-        
-        {/* Left Side Navigation Sidebar */}
-        {!(activeSubTab === "unified" && isCreatingUE) && (
-          <div className="space-y-2 ws-lg:sticky ws-lg:top-24 select-none shrink-0">
-            <div className="glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col gap-1.5">
-              <span className="type-overline text-slate-400 px-3 pb-2.5 border-b border-slate-100 mb-1.5 block">
-                {getTranslation(userLanguage, "settings.category_title")}
-              </span>
-              {allowedTabs.map(tab => {
-                const isActive = activeSubTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => {
-                      window.location.hash = "settings/" + tab.id;
-                    }}
-                    className={`w-full text-left px-4 py-3 rounded-2xl type-overline transition-all flex items-center gap-2 cursor-pointer ${
-                      isActive 
-                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 border border-indigo-700" 
-                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
-                    }`}
-                  >
-                    {getTranslation(userLanguage, `settings.tab.${tab.id}`)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+  const renderSection = (ref: string): React.ReactNode => {
+    switch (ref) {
+      case "access/users":
+        return (
+                  <div className="space-y-6">
+                    
+                    {!selectedUser ? (
+                      <SectionCard
+                        testId="settings-users-card"
+                        title={getTranslation(userLanguage, "settings.managers.title")}
+                        description={`${users.length} ${getTranslation(userLanguage, "settings.managers.active_users")}`}
+                        action={canAdministerUsers && !isAddingUser ? (
+                          <button
+                            type="button"
+                            onClick={() => setIsAddingUser(true)}
+                            data-testid="settings-add-user"
+                            className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover"
+                          >
+                            <Plus className="h-4 w-4" aria-hidden="true" /> {getTranslation(userLanguage, "settings.managers.form_title")}
+                          </button>
+                        ) : undefined}
+                      >
+                        {isAddingUser && canAdministerUsers && (
+                          <form onSubmit={handleAddUser} data-testid="settings-add-user-form" className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-gray-50/60 p-5">
+                            <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
+                                <input
+                                  type="text"
+                                  required
+                                  autoFocus
+                                  value={newManager}
+                                  onChange={(e) => setNewManager(e.target.value)}
+                                  placeholder={t("e.g. Sara Nováková", "napr. Sara Nováková", "pl. Sara Nováková")}
+                                  className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
+                                <input
+                                  type="email"
+                                  required
+                                  value={newUserEmail}
+                                  onChange={(e) => setNewUserEmail(e.target.value)}
+                                  placeholder={t("e.g. sara@crm.com", "napr. sara@crm.com", "pl. sara@crm.com")}
+                                  className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
+                                <PasswordInput
+                                  required
+                                  value={newUserPassword}
+                                  onChange={(e) => setNewUserPassword(e.target.value)}
+                                  placeholder={getTranslation(userLanguage, "settings.managers.placeholder_new_password")}
+                                  className="w-full pl-3 pr-10 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_role_assignment")}</label>
+                                <CustomSelect
+                                  value={newUserRole}
+                                  onChange={(v) => setNewUserRole(v)}
+                                  options={roles.map(r => ({ value: r.name, label: r.name }))}
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsAddingUser(false)}
+                                className="min-h-11 cursor-pointer rounded-lg border border-gray-200 bg-white px-5 text-ui font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+                              >
+                                {getTranslation(userLanguage, "common.cancel")}
+                              </button>
+                              <button
+                                type="submit"
+                                className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover"
+                              >
+                                <Plus className="h-4 w-4" aria-hidden="true" /> {getTranslation(userLanguage, "settings.managers.btn_provision")}
+                              </button>
+                            </div>
+                          </form>
+                        )}
 
-        {/* Right Side Workspace Panels */}
-        <div className="min-w-0">
-          <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-8 items-start">
+                        {/* Users Responsive Table */}
+                        <ScrollFade axis="x" className="rounded-lg border border-gray-200">
+                          <table className="w-full text-left border-collapse text-ui">
+                            <thead className="sticky top-0 z-20 bg-gray-50">
+                              <tr className="bg-gray-50 border-b border-gray-200 text-gray-400 type-overline">
+                                <th className="sticky top-0 z-10 bg-gray-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_user")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_email")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_role")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_color")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 py-3 px-4 text-right">{getTranslation(userLanguage, "settings.managers.th_actions")}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 font-medium text-gray-700">
+                              {users.map((u) => (
+                                <tr key={u.email} className="hover:bg-gray-50/50 transition-colors">
+                                  <td className="py-3 px-4">
+                                    <div className="flex items-center gap-3">
+                                      <div 
+                                        className="h-8.5 w-8.5 rounded-lg font-heading font-bold text-micro flex items-center justify-center border shadow-inner shrink-0"
+                                        style={{
+                                          backgroundColor: `${u.color}12`,
+                                          color: u.color,
+                                          borderColor: `${u.color}30`
+                                        }}
+                                      >
+                                        {u.name.substring(0,2).toUpperCase()}
+                                      </div>
+                                      <span className="font-extrabold text-gray-800">{u.name}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 text-gray-500 font-semibold select-all">{u.email}</td>
+                                  <td className="py-3 px-4">
+                                    <div className="flex flex-col items-start gap-1">
+                                    <span 
+                                      className="px-2.5 py-0.5 rounded-full border type-overline"
+                                      style={{
+                                        backgroundColor: u.role.toLowerCase() === "admin" ? "#f43f5e10" : "#3b82f610",
+                                        color: u.role.toLowerCase() === "admin" ? "#f43f5e" : "#3b82f6",
+                                        borderColor: u.role.toLowerCase() === "admin" ? "#f43f5e25" : "#3b82f625",
+                                      }}
+                                    >
+                                      {u.role}
+                                    </span>
+                                    {!isAdminRoleName(u.role) && !findRole(roles, u.role) && (
+                                      <span
+                                        className="px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-800 type-overline"
+                                        title={getTranslation(userLanguage, "settings.managers.unknown_role_hint")}
+                                      >
+                                        {getTranslation(userLanguage, "settings.managers.unknown_role")}
+                                      </span>
+                                    )}
+                                    {employees && (() => {
+                                      const linked = linkedEmployeeOf(employees, u.id);
+                                      return (
+                                        <span
+                                          data-testid="user-linked-employee"
+                                          title={getTranslation(userLanguage, "settings.users.linked_employee")}
+                                          className={`px-2 py-0.5 rounded-full border type-overline ${
+                                            linked ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-gray-50 text-gray-400"
+                                          }`}
+                                        >
+                                          {linked ? linked.name : getTranslation(userLanguage, "settings.users.not_linked")}
+                                        </span>
+                                      );
+                                    })()}
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="h-3 w-3 rounded-full border border-white shadow-xs" style={{ backgroundColor: u.color }} />
+                                      <span className="type-overline text-gray-400">{u.color}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => { window.location.hash = `user-${encodeURIComponent(u.name)}`; }}
+                                        className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-entity-soft text-gray-600 hover:text-entity-text border border-gray-200 hover:border-entity-border transition-all type-overline flex items-center gap-1"
+                                      >
+                                        <Eye className="h-3 w-3" /> {getTranslation(userLanguage, "settings.managers.th_actions")}
+                                      </button>
+                                      {canAdministerUsers && u.name.toLowerCase() !== currentUser.name.toLowerCase() && (
+                                        <HoldToConfirmButton
+                                            tone="danger"
+                                            lang={userLanguage}
+                                            what={u.name}
+                                            onConfirm={() => handleRemoveUser(u.name)}
+                                            className="p-1.5 rounded-lg bg-gray-50 hover:bg-rose-50 text-gray-400 hover:text-rose-600 border border-transparent hover:border-rose-100 transition-colors"
+                                            title={userLanguage === "sk" ? `Vymazať účet používateľa ${u.name}` : userLanguage === "hu" ? `Felhasználói fiók törlése ${u.name}` : `Delete user account ${u.name}`}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </HoldToConfirmButton>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </ScrollFade>
+                      </SectionCard>
+                    ) : (
+                      <div className="space-y-6 animate-in slide-in-from-right duration-250">
+                        {/* Back & Breadcrumbs */}
+                        <div className="flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={() => { window.location.hash = "settings"; }}
+                            className="px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 type-overline shadow-xs transition-all active:scale-95 flex items-center gap-1.5"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.managers.btn_back")}
+                          </button>
+                          <div className="flex items-center gap-2 type-overline text-gray-400">
+                            <span>{getTranslation(userLanguage, "settings.managers.breadcrumbs_users")}</span>
+                            <span>/</span>
+                            <span className="text-gray-700">{selectedUser.name}</span>
+                          </div>
+                        </div>
         
-        {/* TAB: Unified Universal Entries Configuration */}
-        {activeSubTab === "unified" && getPermission("general_config") !== "nothing" && (
-          <>
-            {isCreatingUE ? (
-              <div className="ws-lg:col-span-12 space-y-6">
-                {renderReadOnlyBanner("general_config")}
-                
-                <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                  <form onSubmit={handleCreateUnifiedEntry} className="space-y-6 text-left animate-in fade-in duration-200">
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                      <div className="flex items-center gap-3">
+                        <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6 items-stretch">
+                          {/* COLUMN 1: Basic Profile Settings */}
+                          <SectionCard
+                            className="ws-lg:col-span-5"
+                            title={selectedUser.name}
+                            description={`${selectedUser.role} ${getTranslation(userLanguage, "settings.managers.profile_suffix")}`}
+                          >
+                            <div className="space-y-5">
+                              <div className="space-y-4 text-ui font-bold text-gray-700 text-left">
+                                {/* Name setting */}
+                                <div className="space-y-1">
+                                  <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
+                                  <CommitOnBlurInput
+                                    key={`name-${selectedUser.id}`}
+                                    type="text"
+                                    required
+                                    trim
+                                    disabled={!canAdministerUsers}
+                                    value={selectedUser.name}
+                                    onCommit={(name) => handleUpdateUser({ ...selectedUser, name })}
+                                    className="w-full px-3 py-2 rounded-md bg-gray-50/50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:bg-white focus:border-entity-border transition-all"
+                                  />
+                                </div>
+        
+                                {/* Email Address */}
+                                <div className="space-y-1">
+                                  <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
+                                  <CommitOnBlurInput
+                                    key={`email-${selectedUser.id}`}
+                                    type="email"
+                                    required
+                                    trim
+                                    disabled={!canAdministerUsers}
+                                    value={selectedUser.email}
+                                    onCommit={(email) => handleUpdateUser({ ...selectedUser, email })}
+                                    className="w-full px-3 py-2 rounded-md bg-gray-50/50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:bg-white focus:border-entity-border transition-all"
+                                  />
+                                </div>
+        
+                                {/* Password */}
+                                <div className="space-y-1">
+                                  <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
+                                  <CommitOnBlurInput
+                                    key={`password-${selectedUser.id}`}
+                                    type="text"
+                                    placeholder={getTranslation(userLanguage, "settings.managers.placeholder_password")}
+                                    disabled={!canAdministerUsers}
+                                    value={selectedUser.password || ""}
+                                    onCommit={(password) => handleUpdateUser({ ...selectedUser, password })}
+                                    className="w-full px-3 py-2 rounded-md bg-gray-50/50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:bg-white focus:border-entity-border transition-all"
+                                  />
+                                </div>
+        
+                                {/* Security Access Level Role */}
+                                <div className="space-y-1">
+                                  <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_access")}</label>
+                                  {canAdministerUsers ? (
+                                    <CustomSelect
+                                      value={selectedUser.role}
+                                      onChange={(v) => {
+                                        const updated = { ...selectedUser, role: v };
+                                        handleUpdateUser(updated);
+                                      }}
+                                      options={[
+                                        ...(!isAdminRoleName(selectedUser.role) && !findRole(roles, selectedUser.role)
+                                          ? [{ value: selectedUser.role, label: `${selectedUser.role} ${getTranslation(userLanguage, "settings.managers.unknown_suffix")}` }]
+                                          : []),
+                                        ...roles.map(r => ({ value: r.name, label: r.name })),
+                                      ]}
+                                    />
+                                  ) : (
+                                    <div className="px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-extrabold select-text w-full">
+                                      <ShieldCheck className="inline h-3.5 w-3.5 align-text-bottom" aria-hidden="true" /> {selectedUser.role}
+                                    </div>
+                                  )}
+                                </div>
+        
+                                {/* Swatches preset colors */}
+                                <div className="space-y-2 pt-2 border-t border-gray-100">
+                                  <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_color")}</label>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {[
+                                      "#3b82f6", "#0ea5e9", "#6366f1", "#10b981", 
+                                      "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"
+                                    ].map((colorPreset) => {
+                                      const isAssigned = selectedUser.color === colorPreset;
+                                      return (
+                                        <button
+                                          key={colorPreset}
+                                          type="button"
+                                          disabled={!canAdministerUsers}
+                                          onClick={() => {
+                                            const updated = { ...selectedUser, color: colorPreset };
+                                            handleUpdateUser(updated);
+                                          }}
+                                          className="h-5.5 w-5.5 rounded-full border border-white hover:scale-115 active:scale-95 disabled:scale-100 disabled:cursor-not-allowed transition-all shadow-xs shrink-0"
+                                          style={{
+                                            backgroundColor: colorPreset,
+                                            boxShadow: isAssigned ? `0 0 0 2px ${colorPreset}` : '0 1px 2px rgba(0,0,0,0.05)'
+                                          }}
+                                          title={`${getTranslation(userLanguage, "settings.managers.lbl_color")} ${colorPreset}`}
+                                        />
+                                      );
+                                    })}
+        
+                                    {/* More colours: full palette + the browser's custom picker */}
+                                    {canAdministerUsers && (
+                                      <ColorPicker
+                                        variant="palette"
+                                        value={selectedUser.color}
+                                        onChange={(color) => handleUpdateUser({ ...selectedUser, color })}
+                                        title={getTranslation(userLanguage, "settings.managers.tooltip_custom_color")}
+                                        className="h-5.5 w-5.5"
+                                      />
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+        
+                          </SectionCard>
+
+                          {/* COLUMN 2: User Activity timeline */}
+                          <SectionCard
+                            className="ws-lg:col-span-7"
+                            title={getTranslation(userLanguage, "settings.managers.timeline_title")}
+                          >
+                            <div className="space-y-4">
+                              {(!selectedUser.activityLog || selectedUser.activityLog.length === 0) ? (
+                                <div className="py-12 text-center text-gray-400">
+                                  <Icons.ScrollText className="mx-auto mb-2 h-8 w-8" aria-hidden="true" />
+                                  <div className="font-bold text-gray-700 uppercase tracking-wider">{getTranslation(userLanguage, "settings.managers.timeline_empty")}</div>
+                                  <div className="type-overline mt-1.5 text-gray-400">{getTranslation(userLanguage, "settings.managers.timeline_empty_desc")}</div>
+                                </div>
+                              ) : (
+                                <div className="overflow-y-auto max-h-95 pr-2 pl-2 space-y-5 relative scrollbar-thin text-left">
+                                  {/* vertical line */}
+                                  <div className="absolute left-4.25 top-2 bottom-2 w-0.5 bg-gray-100 rounded-full"></div>
+        
+                                  {selectedUser.activityLog.map((log) => {
+                                    let badgeBg = "bg-blue-50 text-blue-700 border-blue-200";
+                                    if (log.type === "create") badgeBg = "bg-emerald-50 text-emerald-700 border-emerald-200";
+                                    if (log.type === "update") badgeBg = "bg-purple-50 text-purple-700 border-purple-200";
+                                    if (log.type === "delete") badgeBg = "bg-rose-50 text-rose-700 border-rose-200";
+                                    if (log.type === "system") badgeBg = "bg-amber-50 text-amber-700 border-amber-200";
+        
+                                    return (
+                                      <div key={log.id} className="relative flex items-start gap-4 group animate-in fade-in slide-in-from-bottom duration-200 select-text">
+                                        {/* Dot icon indicator */}
+                                        <div 
+                                          className="h-8.5 w-8.5 rounded-lg flex items-center justify-center border-2 shrink-0 z-10 shadow-xs"
+                                          style={{
+                                            backgroundColor: "rgb(var(--card))",
+                                            borderColor: selectedUser.color
+                                          }}
+                                        >
+                                          <Activity className="h-3.5 w-3.5" style={{ color: selectedUser.color }} />
+                                        </div>
+        
+                                        <div className="flex-1 bg-gray-50/50 p-3 rounded-lg border border-gray-200 shadow-xs relative">
+                                          <div className="absolute -left-1.25 top-3 w-2.5 h-2.5 bg-white border-l border-b border-gray-200 transform rotate-45"></div>
+                                          <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <span className="font-extrabold text-ui text-gray-800 leading-tight block">{log.action}</span>
+                                            <span className="type-overline text-gray-400 shrink-0">{formatTimestampLocalized(log.timestamp, userLanguage)}</span>
+                                          </div>
+                                          {log.details && (
+                                            <p className="text-micro text-gray-500 font-semibold mt-1 leading-relaxed">{log.details}</p>
+                                          )}
+                                          <span className={`px-2 py-0.5 rounded-md type-overline border block w-fit mt-2 ${badgeBg}`}>
+                                            {log.type}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+        
+                            {/* SIMULATION FORM */}
+                            {canAdministerUsers && (
+                              <form 
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  if (!simulatedAction.trim()) return;
+                                  const newEvent = {
+                                    id: "sim_" + Date.now(),
+                                    action: simulatedAction.trim(),
+                                    timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                                    details: `${getTranslation(userLanguage, "settings.managers.sim_details_prefix")}${selectedUser.name}`,
+                                    type: simulatedType
+                                  };
+                                  const updated = {
+                                    ...selectedUser,
+                                    activityLog: [newEvent, ...(selectedUser.activityLog || [])]
+                                  };
+                                  handleUpdateUser(updated);
+                                  setSimulatedAction("");
+                                }}
+                                className="p-4 border border-gray-200 bg-gray-50/50 rounded-lg space-y-3 mt-4 text-left"
+                              >
+                                <h4 className="type-overline text-gray-700 flex items-center gap-1.5">
+                                  <Sliders className="h-3.5 w-3.5 text-entity-text" /> {getTranslation(userLanguage, "settings.managers.sim_title")}
+                                </h4>
+                                <div className="grid grid-cols-1 ws-sm:grid-cols-12 gap-3 text-ui">
+                                  <input
+                                    type="text"
+                                    required
+                                    value={simulatedAction}
+                                    onChange={(e) => setSimulatedAction(e.target.value)}
+                                    placeholder={getTranslation(userLanguage, "settings.managers.sim_placeholder")}
+                                    className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui font-bold text-gray-800 focus:outline-none focus:border-entity-border ws-sm:col-span-8"
+                                  />
+                                  <div className="ws-sm:col-span-4">
+                                    <CustomSelect
+                                      size="sm"
+                                      value={simulatedType}
+                                      onChange={(v) => setSimulatedType(v as any)}
+                                      options={["login", "create", "update", "delete", "system"]}
+                                    />
+                                  </div>
+                                </div>
+                                <button
+                                  type="submit"
+                                  className="w-full py-2.5 rounded-md bg-gray-800 hover:bg-gray-900 text-white type-overline shadow-xs transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                >
+                                  <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.managers.sim_btn")}
+                                </button>
+                              </form>
+                            )}
+                          </SectionCard>
+                        </div>
+                      </div>
+                    )}
+        
+                  </div>
+        );
+      case "access/roles":
+        return (
+                  <div className="space-y-6">
+        
+                    <SectionCard
+                      testId="settings-roles-card"
+                      title={getTranslation(userLanguage, "settings.rbac.title")}
+                      description={getTranslation(userLanguage, "settings.rbac.model_badge")}
+                      action={canAdministerUsers && !isAddingRole ? (
                         <button
                           type="button"
-                          onClick={() => {
-                            window.location.hash = "settings/unified";
-                          }}
-                          className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-all cursor-pointer flex items-center justify-center h-9 w-9"
-                          title={t("Back", "Späť", "Vissza")}
+                          onClick={() => setIsAddingRole(true)}
+                          data-testid="settings-add-role"
+                          className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover"
                         >
-                          <ArrowLeft className="h-4 w-4" />
+                          <Plus className="h-4 w-4" aria-hidden="true" /> {getTranslation(userLanguage, "settings.rbac.btn_create")}
                         </button>
-                        <div className="flex flex-col">
-                          <h3 className="text-body font-heading font-bold text-slate-900">
-                            {editingUEId
-                              ? t("Edit Unified Entry Type", "Upraviť typ unifikovaného záznamu", "Egységes bejegyzéstípus szerkesztése")
-                              : t("Create New Unified Entry Type", "Vytvoriť nový typ unifikovaného záznamu", "Új egységes bejegyzéstípus létrehozása")}
-                          </h3>
-                          <p className="type-overline text-slate-400 mt-0.5">
-                            {editingUEId ? t("Modify the unified entry schema configuration", "Upravte konfiguráciu unifikovanej schémy", "Az egységes bejegyzés sémakonfigurációjának módosítása") : t("Add a new database schema for unified entries", "Pridajte novú databázovú schému pre unifikované záznamy", "Új adatbázis-séma hozzáadása egységes bejegyzésekhez")}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-5">
-                      <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4">
-                        {/* Section Name */}
-                        <div className="flex flex-col gap-1.5">
-                          <label className="type-overline text-slate-400">
-                            {t("Section Name (e.g. Licenses)", "Názov sekcie (napr. Licencie)", "Szekció neve (pl. Licencek)")} *
-                          </label>
-                          <input
-                            type="text"
-                            value={ueName}
-                            onChange={(e) => setUeName(e.target.value)}
-                            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-ui font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
-                            placeholder={t("Enter section name...", "Zadajte názov...", "Adja meg a szekció nevét...")}
-                            required
-                          />
-                        </div>
-
-                        {/* Entry Name */}
-                        <div className="flex flex-col gap-1.5">
-                          <label className="type-overline text-slate-400">
-                            {t("Entry Name (singular, e.g. License)", "Názov pre záznamy (jedn. č., napr. Licencia)", "Bejegyzés neve (egyes szám, pl. Licenc)")} *
-                          </label>
-                          <input
-                            type="text"
-                            value={ueEntryName}
-                            onChange={(e) => setUeEntryName(e.target.value)}
-                            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-ui font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
-                            placeholder={t("Entry", "Záznam", "Bejegyzés")}
-                            required
-                          />
-                        </div>
-
-                        {/* Folder Name */}
-                        <div className="flex flex-col gap-1.5">
-                          <label className="type-overline text-slate-400">
-                            {t("Folder Name (singular, e.g. Folder)", "Názov pre priečinky (jedn. č., napr. Priečinok)", "Mappa neve (egyes szám, pl. Mappa)")} *
-                          </label>
-                          <input
-                            type="text"
-                            value={ueFolderName}
-                            onChange={(e) => setUeFolderName(e.target.value)}
-                            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-ui font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
-                            placeholder={t("Folder", "Priečinok", "Mappa")}
-                            required
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-1.5">
-                        <label className="type-overline text-slate-400">
-                          {t("Icon", "Ikona", "Ikon")}
-                        </label>
-                        <div className="flex items-center gap-3">
-                          <div className="h-12 w-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700 shadow-sm shrink-0">
-                            {getIconComponent(ueIcon, "h-6 w-6")}
+                      ) : undefined}
+                    >
+                      {isAddingRole && canAdministerUsers && (
+                        <form onSubmit={handleAddRole} className="flex flex-col items-end gap-3 rounded-lg border border-gray-200 bg-gray-50/60 p-5 ws-sm:flex-row">
+                          <div className="w-full flex-1 space-y-1">
+                            <label className="type-overline block pl-0.5 text-gray-500">{getTranslation(userLanguage, "settings.rbac.lbl_name")}</label>
+                            <input
+                              type="text"
+                              required
+                              autoFocus
+                              value={newRoleName}
+                              onChange={(e) => setNewRoleName(e.target.value)}
+                              placeholder={getTranslation(userLanguage, "settings.rbac.placeholder")}
+                              className="w-full px-3 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                            />
                           </div>
-                          <div className="flex flex-col gap-1 text-left">
-                            <span className="text-ui font-bold text-slate-800">{ueIcon}</span>
+                          <div className="flex w-full gap-2 ws-sm:w-auto">
                             <button
                               type="button"
-                              onClick={() => setIsIconPickerOpen(true)}
-                              className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl type-overline text-indigo-700 transition-all cursor-pointer shadow-sm active:scale-95"
+                              onClick={() => setIsAddingRole(false)}
+                              className="min-h-11 flex-1 cursor-pointer rounded-lg border border-gray-200 bg-white px-5 text-ui font-semibold text-gray-600 transition-colors hover:bg-gray-50 ws-sm:flex-none"
                             >
-                              {t("Choose from 1000+ icons...", "Vybrať z 1000+ ikon...", "Válasszon több mint 1000 ikon közül...")}
+                              {getTranslation(userLanguage, "common.cancel")}
+                            </button>
+                            <button
+                              type="submit"
+                              className="min-h-11 flex-1 cursor-pointer rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover ws-sm:flex-none"
+                            >
+                              {getTranslation(userLanguage, "settings.rbac.btn_create")}
                             </button>
                           </div>
-                        </div>
+                        </form>
+                      )}
+
+                      <div className="rounded-lg border border-gray-200 bg-gray-50/70 px-5 py-4 text-caption text-gray-600 space-y-2">
+                        <p className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.rbac.legend.title")}</p>
+                        <ul className="grid ws-sm:grid-cols-2 gap-x-6 gap-y-1 font-semibold">
+                          <li><span className="text-gray-400 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.nothing")}</span>{getTranslation(userLanguage, "settings.rbac.legend.none")}</li>
+                          <li><span className="text-blue-500 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.view")}</span>{getTranslation(userLanguage, "settings.rbac.legend.view")}</li>
+                          <li><span className="text-emerald-600 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.edit")}</span>{getTranslation(userLanguage, "settings.rbac.legend.edit")}</li>
+                          <li><span className="text-gray-500 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.on")}/{getTranslation(userLanguage, "settings.rbac.state.off")}</span>{getTranslation(userLanguage, "settings.rbac.legend.toggle")}</li>
+                          <li className="ws-sm:col-span-2"><span className="text-entity-text type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.partial")}</span>{getTranslation(userLanguage, "settings.rbac.legend.section")}</li>
+                        </ul>
                       </div>
-
-                      {/* Color */}
-                      <div className="flex flex-col gap-1.5">
-                        <label className="type-overline text-slate-400">
-                          {t("Color", "Farba", "Szín")}
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          {["#3b82f6", "#ef4444", "#f97316", "#f59e0b", "#10b981", "#14b8a6", "#0ea5e9", "#6366f1", "#8b5cf6", "#ec4899"].map((colorHex) => {
-                            const isSelected = ueColor === colorHex;
-                            return (
-                              <button
-                                key={colorHex}
-                                type="button"
-                                onClick={() => setUeColor(colorHex)}
-                                className="w-8 h-8 rounded-full border border-slate-200 transition-transform relative flex items-center justify-center shrink-0 hover:scale-105"
-                                style={{ backgroundColor: colorHex }}
-                              >
-                                {isSelected && (
-                                  <span className="w-2.5 h-2.5 rounded-full bg-white shadow-sm border border-slate-300" />
-                                )}
-                              </button>
-                            );
-                          })}
-                          <ColorPicker variant="palette" value={ueColor} onChange={setUeColor} className="w-8 h-8 p-1" />
-                        </div>
-                      </div>
-
-                      {/* Modules */}
-                      <div className="flex flex-col gap-1.5">
-                        <label className="type-overline text-slate-400 text-left">
-                          {t("Active Modules (fields) for Entries", "Aktívne moduly (polia) pre záznamy", "Aktív modulok (mezők) a bejegyzésekhez")}
-                        </label>
-                        <div className="grid grid-cols-1 ws-sm:grid-cols-4 gap-2.5">
-                          {[
-                            { id: "title", label: t("Title / Name", "Titulok / Názov", "Cím / Név") },
-                            { id: "due_date", label: t("Due Date", "Termín (Due Date)", "Határidő") },
-                            { id: "file", label: t("File", "Súbor (File)", "Fájl") },
-                            { id: "client", label: t("Client", "Klient (Client)", "Ügyfél") },
-                            { id: "lead", label: t("Lead", "Lead", "Lead") },
-                            { id: "number", label: t("Number", "Číslo (Number)", "Szám") },
-                            { id: "money", label: t("Money", "Suma (Money)", "Összeg") }
-                          ].map((mod) => {
-                            const isChecked = ueModules.includes(mod.id);
-                            return (
-                              <div key={mod.id} className="flex flex-col p-4 rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
-                                <label className="flex items-center justify-between cursor-pointer w-full">
-                                  <span className="text-ui font-bold text-slate-700">{mod.label}</span>
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setUeModules([...ueModules, mod.id]);
-                                      } else {
-                                        setUeModules(ueModules.filter(m => m !== mod.id));
-                                      }
-                                    }}
-                                    className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 rounded border-slate-300 cursor-pointer"
-                                  />
-                                </label>
-
-                                {mod.id === "due_date" && isChecked && ueFoldersEnabled && (
-                                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between animate-in slide-in-from-top-1 duration-150 text-left">
-                                    <div className="flex flex-col">
-                                      <span className="type-overline text-slate-700">
-                                        {t("Show summary", "Zobraziť prehľad", "Összefoglaló megjelenítése")}
-                                      </span>
-                                      <span className="text-micro font-semibold text-slate-400 mt-0.5">
-                                        {t("Shows entry count", "Zobrazí počet záznamov", "Megjeleníti a bejegyzések számát")}
-                                      </span>
+        
+                      {/* RBAC Matrix Table (Flipped: columns are roles, rows are functions) */}
+                      <ScrollFade axis="x" className="rounded-lg border border-gray-200 shadow-xs">
+                        <table className="w-full text-left border-collapse bg-white">
+                          <thead className="sticky top-0 z-20 bg-gray-50">
+                            <tr className="bg-gray-50 border-b border-gray-200 type-overline text-gray-600">
+                              <th className="sticky top-0 z-10 bg-gray-50 py-4 px-5 min-w-50">{getTranslation(userLanguage, "settings.rbac.th_permission")}</th>
+                              {roles.map((role) => {
+                                const isAdmin = isAdminRoleName(role.name);
+                                return (
+                                  <th key={role.name} className="sticky top-0 z-10 bg-gray-50 py-4 px-5 text-center min-w-35">
+                                    <div className="flex flex-col items-center justify-center gap-1.5">
+                                      <div className="flex items-center gap-1.5 justify-center">
+                                        <span 
+                                          className="px-3 py-1 rounded-full type-overline border select-none"
+                                          style={{
+                                            backgroundColor: isAdmin ? "#ffe4e6" : "#f1f5f9",
+                                            color: isAdmin ? "#f43f5e" : "#475569",
+                                            borderColor: isAdmin ? "#f43f5e20" : "#cbd5e1",
+                                          }}
+                                        >
+                                          {role.name}
+                                        </span>
+                                        {isAdmin && (
+                                          <span className="h-4.5 w-4.5 rounded-full bg-rose-500 flex items-center justify-center text-micro text-white" title={getTranslation(userLanguage, "settings.rbac.master_protected")}>&#128274;</span>
+                                        )}
+                                      </div>
+                                      
+                                      {/* Delete action for custom roles */}
+                                      {!isAdmin && !isProtectedRoleName(role.name) && (
+                                        canAdministerUsers ? (
+                                          <HoldToConfirmButton
+                                              tone="danger"
+                                              lang={userLanguage}
+                                              what={role.name}
+                                              onConfirm={() => handleRemoveRole(role.name)}
+                                              className="text-rose-500 hover:text-rose-700 transition-colors py-0.5 px-2 hover:bg-rose-50 rounded-lg type-overline flex items-center gap-0.5 border border-rose-200"
+                                              icon={<Trash2 className="h-2.5 w-2.5" />}
+                                          >{getTranslation(userLanguage, "common.delete")}
+                                          </HoldToConfirmButton>
+                                        ) : (
+                                          <span className="type-overline text-gray-400 block">{getTranslation(userLanguage, "settings.rbac.locked")}</span>
+                                        )
+                                      )}
+                                      
+                                      {isProtectedRoleName(role.name) && (
+                                        <span className="type-overline text-gray-400 block select-none">{getTranslation(userLanguage, "settings.rbac.protected")}</span>
+                                      )}
+        
+                                      {/* Employee is a native role with recommended safe defaults: Admin can restore them. */}
+                                      {role.name.toLowerCase() === EMPLOYEE_ROLE_NAME.toLowerCase() && canResetEmployeeRole && (
+                                        <button
+                                          type="button"
+                                          onClick={resetEmployeeRole}
+                                          data-testid="rbac-reset-employee"
+                                          title={getTranslation(userLanguage, "settings.rbac.reset_defaults_tip")}
+                                          className="text-amber-700 hover:text-amber-900 hover:bg-amber-50 border border-amber-200/80 py-1 px-2.5 rounded-md type-overline transition-colors cursor-pointer"
+                                        >
+                                          {getTranslation(userLanguage, "settings.rbac.reset_defaults")}
+                                        </button>
+                                      )}
+        
+                                      {/* Navigation layout upload button */}
+                                      {canAdministerUsers && (
+                                        <div className="mt-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => triggerRoleLayoutUpload(role.name)}
+                                            className="text-entity-text hover:text-entity-text hover:bg-entity-soft border border-entity-border py-1 px-2.5 rounded-md type-overline flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                                            title={t("Upload default navigation structure", "Nahrať predvolenú štruktúru menu", "Alapértelmezett navigációs struktúra feltöltése")}
+                                          >
+                                            <Menu className="h-3 w-3" />
+                                            <ArrowUp className="h-3 w-3 animate-pulse" />
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
-                                    <input
-                                      type="checkbox"
-                                      checked={ueShowFolderSummary}
-                                      onChange={(e) => setUeShowFolderSummary(e.target.checked)}
-                                      className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 rounded border-slate-300 cursor-pointer"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Folders */}
-                      <div className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white">
-                        <div className="flex flex-col text-left">
-                          <span className="text-ui font-bold text-slate-700">
-                            {t("Enable Folders", "Povoliť priečinky (Folders)", "Mappák engedélyezése")}
-                          </span>
-                          <span className="text-micro font-semibold text-slate-400">
-                            {t("Allows nesting entries within grouping folders", "Umožňuje zoskupovať záznamy do vnorených zložiek", "Lehetővé teszi a bejegyzések csoportosító mappákba ágyazását")}
-                          </span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={ueFoldersEnabled}
-                          onChange={(e) => setUeFoldersEnabled(e.target.checked)}
-                          className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 rounded border-slate-300 cursor-pointer"
-                        />
-                      </div>
-
-                      {ueFoldersEnabled && (
-                        <div className="flex flex-col gap-3 p-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
-                          <label className="type-overline text-slate-400 text-left">
-                            {t("Active Modules for Folders", "Aktívne moduly pre priečinky", "Aktív modulok a mappákhoz")}
-                          </label>
-                          <div className="grid grid-cols-1 ws-sm:grid-cols-4 gap-2.5">
-                            {[
-                              { id: "title", label: t("Title / Name", "Titulok / Názov", "Cím / Név") },
-                              { id: "due_date", label: t("Due Date", "Termín (Due Date)", "Határidő") },
-                              { id: "file", label: t("File", "Súbor (File)", "Fájl") },
-                              { id: "client", label: t("Client", "Klient (Client)", "Ügyfél") },
-                              { id: "lead", label: t("Lead", "Lead", "Lead") },
-                              { id: "number", label: t("Number", "Číslo (Number)", "Szám") },
-                              { id: "money", label: t("Money", "Suma (Money)", "Összeg") }
-                            ].map((mod) => {
-                              const isChecked = ueFolderModules.includes(mod.id);
-                              return (
-                                <div key={mod.id} className="flex flex-col p-4 rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
-                                  <label className="flex items-center justify-between cursor-pointer w-full">
-                                    <span className="text-ui font-bold text-slate-700">{mod.label}</span>
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={(e) => {
-                                        if (e.target.checked) {
-                                          setUeFolderModules([...ueFolderModules, mod.id]);
-                                        } else {
-                                          setUeFolderModules(ueFolderModules.filter(m => m !== mod.id));
-                                        }
-                                      }}
-                                      className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 rounded border-slate-300 cursor-pointer"
-                                    />
-                                  </label>
-                                </div>
+                                  </th>
+                                );
+                              })}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 text-ui font-semibold text-gray-700">
+                            {ROLE_MATRIX_SECTIONS.flatMap((section) => {
+                              const rows: React.ReactNode[] = [];
+                              rows.push(
+                                <tr key={`sec-${section.id}`} className="bg-gray-50 border-y border-gray-200 select-none">
+                                  <td className="py-2.5 px-5 text-left">
+                                    <span className="type-overline text-entity-text">
+                                      {getTranslation(userLanguage, `settings.rbac.section.${roleMatrixSectionTextKey(section.id)}`)}
+                                    </span>
+                                  </td>
+                                  {roles.map((role) => (
+                                    <td key={role.name} className="py-2.5 px-5 text-center">
+                                      {renderSectionSwitch(role.name, section)}
+                                    </td>
+                                  ))}
+                                </tr>
                               );
+                              for (const perm of section.permissions) {
+                                rows.push(
+                                  <tr key={perm.key} className="hover:bg-gray-50/50 transition-colors">
+                                    <td className="py-3 px-5 max-w-70">
+                                      <div className="flex flex-col space-y-1 text-left">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-heading font-bold text-gray-800 text-ui tracking-wide">
+                                            {getTranslation(userLanguage, `settings.rbac.perm.${roleMatrixTextKey(perm.key)}.label`)}
+                                          </span>
+                                          <code className="text-micro font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-semibold select-all">
+                                            {perm.key}
+                                          </code>
+                                        </div>
+                                        <p className="text-micro font-semibold text-gray-400 leading-normal">
+                                          {getTranslation(userLanguage, `settings.rbac.perm.${roleMatrixTextKey(perm.key)}.desc`)}
+                                        </p>
+                                      </div>
+                                    </td>
+                                    {roles.map((role) => (
+                                      <td key={role.name} className="py-3 px-5 text-center">
+                                        {perm.kind === "toggle" ? renderToggleCell(role.name, perm) : renderAccessCell(role.name, perm.key)}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                );
+                              }
+                              return rows;
                             })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          window.location.hash = "settings/unified";
-                        }}
-                        className="px-4 py-2 rounded-xl hover:bg-slate-100 text-slate-600 text-ui font-bold transition-all cursor-pointer"
-                      >
-                        {t("Cancel", "Zrušiť", "Mégse")}
-                      </button>
-                      <button
-                        type="submit"
-                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-bold transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
-                      >
-                        {t("Save", "Uložiť", "Mentés")}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="ws-lg:col-span-8 space-y-6">
-                  {renderReadOnlyBanner("general_config")}
-                  
-                  <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                      <div className="flex flex-col text-left">
-                        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-                          <FolderOpen className="h-4.5 w-4.5 text-indigo-500" />
-                          {userLanguage === "sk" ? "Unifikované univerzálne záznamy" : userLanguage === "hu" ? "Egységes univerzális bejegyzések" : "Unified Universal Entries"}
-                        </h3>
-                        <p className="type-overline text-slate-400 mt-0.5">
-                          {userLanguage === "sk" ? "Definujte a konfigurujte vlastné dátové štruktúry" : userLanguage === "hu" ? "Egyéni adatstruktúrák definiálása és konfigurálása" : "Define and configure custom data structures"}
-                        </p>
-                      </div>
-                      {getPermission("general_config") === "edit" && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            window.location.hash = "settings/unified/new";
-                          }}
-                          className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-bold transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
-                        >
-                          <Plus className="h-4 w-4" />
-                          {t("New Entry", "Nový záznam", "Új bejegyzés")}
-                        </button>
-                      )}
-                    </div>
-
-                    {/* List of existing UUE types */}
-                    <div className="space-y-3.5">
-                      <span className="type-overline text-slate-400 text-left block">
-                        {t("Active Database Types", "Aktívne databázové typy", "Aktív adatbázistípusok")}
-                      </span>
-                      
-                      {unifiedEntries.filter(ue => !ue.archived).length === 0 ? (
-                        <div className="border border-slate-200 border-dashed rounded-2xl p-8 text-center text-slate-400">
-                          <span className="text-display">🗂️</span>
-                          <p className="text-ui font-bold text-slate-500 mt-2">
-                            {t("No active unified entries", "Žiadne aktívne unifikované záznamy", "Nincsenek aktív egységes bejegyzések")}
-                          </p>
-                          <p className="text-micro font-medium text-slate-400 mt-1">
-                            {t("Create your first entry schema by clicking the button above.", "Vytvorte nový záznam kliknutím na tlačidlo vyššie.", "Hozza létre első bejegyzéssémáját a fenti gombra kattintva.")}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
-                          {unifiedEntries.filter(ue => !ue.archived).map((ue) => (
-                            <div key={ue.id} className="p-4 rounded-2xl border border-slate-200/80 bg-white flex flex-col justify-between shadow-sm hover:shadow-md transition-all text-left relative group">
-                              <div className="flex items-start gap-3">
-                                <div 
-                                  className="p-3.5 rounded-xl text-white flex items-center justify-center shrink-0 shadow-sm"
-                                  style={{ backgroundColor: ue.color }}
-                                >
-                                  {getIconComponent(ue.icon, "h-5 w-5")}
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                  <span className="text-ui font-bold text-slate-800 truncate">
-                                    {ue.name}
-                                  </span>
-                                  <span className="type-overline text-slate-400 mt-1">
-                                    {t("Modules: ", "Moduly: ", "Modulok: ")}
-                                    <span className="text-slate-600 font-semibold">{ue.modules.join(", ")}</span>
-                                  </span>
-                                  <span className="type-overline text-slate-400">
-                                    {t("Folders: ", "Zložky: ", "Mappák: ")}
-                                    <span className="text-slate-600 font-semibold">{ue.foldersEnabled ? t("Yes", "Áno", "Igen") : t("No", "Nie", "Nem")}</span>
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 mt-4">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    window.location.hash = `settings/unified/edit/${ue.id}`;
-                                  }}
-                                  className="px-2.5 py-1.5 type-overline text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                                  title={t("Edit entry schema", "Upraviť schému záznamu", "Bejegyzéséma szerkesztése")}
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                  {t("Edit", "Upraviť", "Szerkesztés")}
-                                </button>
-                                <HoldToConfirmButton
-                                    tone="archive"
-                                    lang={userLanguage}
-                                    what={ue.name}
-                                    onConfirm={() => handleArchiveUnifiedEntry(ue.id)}
-                                    className="px-2.5 py-1.5 type-overline text-rose-600 hover:bg-rose-50 rounded-lg transition-all flex items-center gap-1"
-                                    title={t("Archive entry schema", "Archivovať schému záznamu", "Bejegyzéséma archiválása")}
-                                    icon={<Trash2 className="h-3 w-3" />}
-                                >{t("Archive", "Archivovať", "Archiválás")}
-                                </HoldToConfirmButton>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="ws-lg:col-span-4 space-y-6 text-left ws-lg:sticky ws-lg:top-24 ws-lg:self-start">
-                  <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
-                    <h4 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5 pb-3 border-b border-slate-200 mb-3.5">
-                      <ShieldAlert className="h-4.5 w-4.5 text-indigo-500" />
-                      {t("System Information", "Dôležité upozornenie", "Rendszerinformáció")}
-                    </h4>
-                    <div className="space-y-3.5 text-caption font-medium text-slate-500 leading-relaxed">
-                      <p>
-                        {t("Creating a unified entry schema automatically instantiates a new table in the database.", "Vytvorenie unifikovaného záznamu automaticky vytvorí novú tabuľku v relačnej databáze.", "Egységes bejegyzéséma létrehozása automatikusan új táblát hoz létre az adatbázisban.")}
-                      </p>
-                      <p>
-                        {t("Archiving an entry hides it from navigation. The underlying SQL table and data remain untouched.", "Pokiaľ záznam vymažete/archivujete, samotná tabuľka ani v nej uložené údaje sa neodstránia. Iba sa prestane zobrazovať v hlavnom paneli a menu.", "A bejegyzés archiválása elrejti azt a navigációból. A mögöttes SQL tábla és az adatok érintetlenül maradnak.")}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </>
-        )}
-
-        {/* TAB: Invoicing & Billing Configuration */}
-        {activeSubTab === "invoicing" && getPermission("general_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("general_config")}
-            <div className="glass-panel p-6 rounded-3xl space-y-8 border border-white/60 bg-white/95 shadow-glass">
-              
-              {/* Header */}
-              <div className="flex flex-col ws-sm:flex-row justify-between items-start ws-sm:items-center gap-3 border-b border-slate-200 pb-4">
-                <div>
-                  <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-                    <FileText className="h-4.5 w-4.5 text-indigo-600" />
-                    {t("Invoicing & Company Billing", "Fakturácia a firemné údaje", "Számlázás és cégadatok")}
-                  </h3>
-                  <p className="text-ui text-slate-500 font-medium mt-0.5">
-                    {t("Configure your company billing identity, bank account, payment terms and VAT rates. Price offer defaults, connectors and AI templates are in the Price Offers module.", "Nastavte firemné identifikačné údaje, bankové spojenie, splatnosť a sadzby DPH. Predvolené texty ponúk, prepojenia a AI šablóny sú v module Cenové ponuky.", "Állítsa be a cég számlázási adatait, bankszámláját, fizetési feltételeit és ÁFA-kulcsait. Az ajánlatok alapértékei, kapcsolatai és AI sablonjai az Árajánlatok modulban találhatók.")}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={getPermission("general_config") === "view"}
-                  onClick={() => handleSaveBillingSettings()}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold shadow-md cursor-pointer transition-all disabled:opacity-50"
-                >
-                  <Save className="h-4 w-4" />
-                  {t("Save Invoicing Settings", "Uložiť fakturačné nastavenia", "Számlázási beállítások mentése")}
-                </button>
-              </div>
-
-              {/* SECTION 1: Company Logo & Identity */}
-              <div className="space-y-4">
-                <h4 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-indigo-600" />
-                  1. {t("Company Identity & Logo", "Firemná identita a logo", "Cégidentitás és logó")}
-                </h4>
-
-                <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-6 items-start">
-                  {/* Logo Upload Box */}
-                  <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl flex flex-col items-center justify-center text-center space-y-3">
-                    <div className="type-overline text-slate-600">
-                      {t("Company Logo (PDF & Quotes)", "Firemné logo na dokladoch", "Céglogó")}
-                    </div>
-                    {billingForm.companyLogoUrl ? (
-                      <div className="space-y-2 flex flex-col items-center">
-                        <img
-                          src={billingForm.companyLogoUrl}
-                          alt="Company Logo"
-                          className="h-16 w-auto max-w-50 object-contain bg-white p-2 rounded-xl border border-slate-200 shadow-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setBillingForm(prev => ({ ...prev, companyLogoUrl: "" }))}
-                          className="text-ui text-rose-600 font-bold hover:underline cursor-pointer"
-                        >
-                          {t("Remove logo", "Odstrániť logo", "Logó törlése")}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="h-16 w-32 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 text-ui font-semibold">
-                        {t("No logo", "Bez loga", "Nincs logó")}
-                      </div>
-                    )}
-
-                    <label className="px-4 py-2 bg-white border border-slate-300 hover:border-indigo-500 rounded-xl text-ui font-bold text-slate-700 shadow-sm cursor-pointer transition-all flex items-center gap-1.5">
-                      <Plus className="h-3.5 w-3.5" />
-                      {isUploadingLogo ? t("Uploading...", "Nahrávam...", "Feltöltés...") : t("Upload Logo (PNG / SVG / JPG)", "Nahrať logo (PNG/SVG/JPG)", "Logó feltöltése")}
+                          </tbody>
+                        </table>
+                      </ScrollFade>
+        
+                      {/* Hidden role default layout file selector */}
                       <input
                         type="file"
-                        accept="image/*"
+                        ref={roleFileInputRef}
+                        accept=".json"
+                        onChange={handleRoleLayoutFileChange}
                         className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleUploadLogo(file);
-                        }}
                       />
-                    </label>
+                    </SectionCard>
                   </div>
-
-                  {/* Company Name & Subtitle */}
-                  <div className="ws-md:col-span-2 space-y-3">
-                    <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
-                      <div className="relative">
-                        <label className="type-overline text-slate-600 block mb-1">
-                          {t("Company Name", "Obchodné meno spoločnosti", "Cégnév")}
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={billingForm.companyName}
-                            onChange={e => {
-                              setBillingForm(prev => ({ ...prev, companyName: e.target.value }));
-                              searchBillingRegistry("name", e.target.value);
-                            }}
-                            placeholder={t("Type a name or IČO to load from the register", "Začnite písať názov alebo IČO — údaje sa načítajú z registra", "Írjon nevet vagy adószámot a cégregiszterből való betöltéshez")}
-                            className="w-full p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-ui font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                          />
-                          <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "name"} />
-                        </div>
-                        <CompanySuggestions
-                          suggestions={billingLookup.suggestions}
-                          visible={billingLookup.activeField === "name"}
-                          onSelect={handleSelectBillingSuggestion}
-                          onDismiss={billingLookup.close}
-                          systemLanguage={userLanguage}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="type-overline text-slate-600 block mb-1">
-                          {t("Subtitle / Slogan", "Podtitul / Špecializácia", "Szlogen")}
-                        </label>
-                        <input
-                          type="text"
-                          value={billingForm.companySubtitle || ""}
-                          onChange={e => setBillingForm(prev => ({ ...prev, companySubtitle: e.target.value }))}
-                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
-                      <div className="relative">
-                        <label className="type-overline text-slate-600 block mb-1">IČO</label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={billingForm.companyId || ""}
-                            onChange={e => {
-                              setBillingForm(prev => ({ ...prev, companyId: e.target.value }));
-                              searchBillingRegistry("companyId", e.target.value);
-                            }}
-                            className="w-full p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold focus:outline-none"
-                          />
-                          <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "companyId"} />
-                        </div>
-                        <CompanySuggestions
-                          suggestions={billingLookup.suggestions}
-                          visible={billingLookup.activeField === "companyId"}
-                          onSelect={handleSelectBillingSuggestion}
-                          onDismiss={billingLookup.close}
-                          systemLanguage={userLanguage}
-                        />
-                      </div>
-                      <div className="relative">
-                        <label className="type-overline text-slate-600 block mb-1">DIČ</label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={billingForm.taxId || ""}
-                            onChange={e => {
-                              setBillingForm(prev => ({ ...prev, taxId: e.target.value }));
-                              searchBillingRegistry("taxId", e.target.value);
-                            }}
-                            className="w-full p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold focus:outline-none"
-                          />
-                          <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "taxId"} />
-                        </div>
-                        <CompanySuggestions
-                          suggestions={billingLookup.suggestions}
-                          visible={billingLookup.activeField === "taxId"}
-                          onSelect={handleSelectBillingSuggestion}
-                          onDismiss={billingLookup.close}
-                          systemLanguage={userLanguage}
-                        />
-                      </div>
-                      <div className="relative">
-                        <label className="type-overline text-slate-600 block mb-1">IČ DPH</label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={billingForm.vatId || ""}
-                            onChange={e => {
-                              setBillingForm(prev => ({ ...prev, vatId: e.target.value }));
-                              searchBillingRegistry("vatId", e.target.value);
-                            }}
-                            className="w-full p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold focus:outline-none"
-                          />
-                          <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "vatId"} />
-                        </div>
-                        <CompanySuggestions
-                          suggestions={billingLookup.suggestions}
-                          visible={billingLookup.activeField === "vatId"}
-                          onSelect={handleSelectBillingSuggestion}
-                          onDismiss={billingLookup.close}
-                          systemLanguage={userLanguage}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 2: Address & Contact Details */}
-              <div className="space-y-4 pt-4 border-t border-slate-100">
-                <h4 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-indigo-600" />
-                  2. {t("Billing Address & Contacts", "Sídlo spoločnosti a kontakty", "Székhely és elérhetőségek")}
-                </h4>
-
-                <div className="grid grid-cols-1 ws-sm:grid-cols-4 gap-3">
-                  <div className="ws-sm:col-span-2">
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Street & Number", "Ulica a číslo", "Utca és házszám")}
-                    </label>
-                    <input
-                      type="text"
-                      value={billingForm.street || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, street: e.target.value }))}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
+        );
+      case "access/audit":
+        return <AuditLogSettings language={userLanguage} />;
+      case "modules/visible":
+        return (
+                  <div className="space-y-6">
+                    <VisibleModulesSettings
+                      language={userLanguage}
+                      canEdit={currentUser?.role?.toLowerCase() === "admin" || getPermission("general_config") === "edit"}
+                      disabledModules={integrationsConfig?.disabledModules || []}
+                      onChangeDisabledModules={(nextDisabled) => {
+                        updateIntegrationsConfig?.((prev: any) => ({
+                          ...prev,
+                          disabledModules: nextDisabled
+                        }));
+                      }}
+                      customDashboards={customDashboards}
+                      unifiedEntries={unifiedEntries}
+                      onRunSetupWizard={onOpenModuleWizard}
                     />
                   </div>
+        );
+      case "modules/records": {
+        const canEditRecords = getPermission("general_config") === "edit";
+        const moduleOptions = [
+          { id: "title", label: t("Title / Name", "Titulok / Názov", "Cím / Név") },
+          { id: "due_date", label: t("Due Date", "Termín", "Határidő") },
+          { id: "file", label: t("File", "Súbor", "Fájl") },
+          { id: "client", label: t("Client", "Klient", "Ügyfél") },
+          { id: "lead", label: t("Lead", "Lead", "Lead") },
+          { id: "number", label: t("Number", "Číslo", "Szám") },
+          { id: "money", label: t("Money", "Suma", "Összeg") },
+        ];
+        const toggleIn = (list: string[], id: string, on: boolean) => (on ? [...list, id] : list.filter((m) => m !== id));
+        const checkTile = (id: string, label: string, checked: boolean, onChange: (on: boolean) => void) => (
+          <label
+            key={id}
+            className={cn(
+              "flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-md border px-4 py-3 transition-colors",
+              checked ? "border-entity-border bg-entity-soft" : "border-gray-200 bg-white hover:bg-gray-50",
+            )}
+          >
+            <span className="text-ui font-bold text-gray-700">{label}</span>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(e) => onChange(e.target.checked)}
+              className="h-4.5 w-4.5 cursor-pointer rounded border-gray-300 text-entity-text focus:ring-entity-solid/25"
+            />
+          </label>
+        );
+        const fieldLabel = "type-overline text-gray-500";
+        const fieldInput = "min-h-11 rounded-md border border-gray-200 bg-white px-3.5 py-2.5 text-ui font-semibold text-gray-800 focus:border-entity-border focus:outline-none";
+        const activeEntries = unifiedEntries.filter((ue) => !ue.archived);
 
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("City", "Mesto", "Város")}
-                    </label>
-                    <input
-                      type="text"
-                      value={billingForm.city || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, city: e.target.value }))}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Postal Code", "PSČ", "Irányítószám")}
-                    </label>
-                    <input
-                      type="text"
-                      value={billingForm.postalCode || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, postalCode: e.target.value }))}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-mono"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Country", "Krajina", "Ország")}
-                    </label>
-                    <CustomSelect
-                      value={billingCountry}
-                      onChange={value => setBillingForm(prev => ({ ...prev, country: value }))}
-                      options={EUROPEAN_COUNTRIES.map(country => ({ value: country, label: country }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 ws-sm:grid-cols-4 gap-3">
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Email", "Fakturačný e-mail", "E-mail")}
-                    </label>
-                    <input
-                      type="email"
-                      value={billingForm.email || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, email: e.target.value }))}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Phone", "Telefónne číslo", "Telefonszám")}
-                    </label>
-                    <input
-                      type="text"
-                      value={billingForm.phone || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, phone: e.target.value }))}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Secondary Phone", "Záložný telefón", "Másodlagos telefon")}
-                    </label>
-                    <input
-                      type="text"
-                      value={billingForm.phoneSecondary || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, phoneSecondary: e.target.value }))}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Website", "Webová stránka", "Weboldal")}
-                    </label>
-                    <input
-                      type="text"
-                      value={billingForm.website || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, website: e.target.value }))}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 3: Banking & Payment Terms */}
-              <div className="space-y-4 pt-4 border-t border-slate-100">
-                <h4 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                  <Database className="h-4 w-4 text-indigo-600" />
-                  3. {t("Bank Account, Payment Terms & VAT", "Bankové spojenie, splatnosť a DPH", "Bankszámla, fizetési feltételek és ÁFA")}
-                </h4>
-
-                <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">IBAN</label>
-                    <input
-                      type="text"
-                      value={billingForm.iban || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, iban: e.target.value }))}
-                      placeholder="SK00 0000 0000 0000 0000 0000"
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">SWIFT / BIC</label>
-                    <input
-                      type="text"
-                      value={billingForm.swift || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, swift: e.target.value }))}
-                      placeholder="TATRSKBX"
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-mono"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Default Payment Due (Days)", "Predvolená splatnosť (Dni)", "Fizetési határidő (napok)")}
-                    </label>
-                    <input
-                      type="number"
-                      value={billingForm.defaultPaymentDueDays || 14}
-                      onChange={e => setBillingForm(prev => ({ ...prev, defaultPaymentDueDays: parseInt(e.target.value) || 14 }))}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-bold"
-                    />
-                  </div>
-                </div>
-
-                {/* VAT Rates & Defaults Configuration */}
-                <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="p-1 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100">
-                          <Percent className="size-3.5" />
-                        </span>
-                        <h4 className="text-ui font-bold text-slate-800">
-                          {t("VAT Rates & Defaults", "Sadzby DPH a predvolená hodnota", "ÁFA kulcsok és alapértelmezett érték")}
-                        </h4>
-                      </div>
-                      <p className="text-micro text-slate-500 mt-1">
-                        {t(
-                          "Configure available VAT rates for orders and invoices. The default rate will be pre-selected on newly added items.",
-                          "Nastavte dostupné sadzby DPH pre objednávky a faktúry. Predvolená sadzba sa automaticky zvolí pri nových položkách.",
-                          "Állítsa be a megrendelések és számlák ÁFA kulcsait. Az alapértelmezett kulcs automatikusan beállításra kerül az új tételeknél."
-                        )}
-                      </p>
-                    </div>
-
+        if (isCreatingUE) {
+          const backToList = () => { window.location.hash = "settings/modules/records"; };
+          return (
+            <form onSubmit={handleCreateUnifiedEntry} className="flex flex-col gap-6 text-left" data-testid="settings-record-form">
+              <SectionCard
+                title={editingUEId
+                  ? t("Edit record type", "Upraviť typ záznamu", "Rekordtípus szerkesztése")
+                  : t("New record type", "Nový typ záznamu", "Új rekordtípus")}
+                description={editingUEId
+                  ? t("Changes are saved as you make them.", "Zmeny sa ukladajú priebežne.", "A módosítások menet közben mentődnek.")
+                  : t("Each record type gets its own table, a menu entry and a list of its own.", "Každý typ záznamu dostane vlastnú tabuľku, položku v menu a zoznam.", "Minden rekordtípus saját táblát, menüpontot és listát kap.")}
+                action={
+                  <div className="flex items-center gap-2">
+                    {editingUEId && <SaveStatus lang={userLanguage} status={ueStatus} />}
                     <button
                       type="button"
-                      onClick={handleResetVatRates}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-micro font-medium text-slate-600 hover:text-slate-800 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
-                      title={t("Reset to default rates (23%, 19%, 10%, 5%, 0%)", "Obnoviť predvolené sadzby (23%, 19%, 10%, 5%, 0%)", "Alapértelmezett kulcsok visszaállítása (23%, 19%, 10%, 5%, 0%)")}
+                      onClick={backToList}
+                      className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-ui font-semibold text-gray-600 transition-colors hover:bg-gray-50"
                     >
-                      <RotateCcw className="size-3 text-slate-400" />
-                      <span>{t("Reset to defaults (23, 19, 10, 5, 0)", "Obnoviť predvolené (23, 19, 10, 5, 0)", "Alapértelmezés (23, 19, 10, 5, 0)")}</span>
+                      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                      {t("Back", "Späť", "Vissza")}
                     </button>
                   </div>
+                }
+              >
+                <div className="grid grid-cols-1 gap-4 ws-md:grid-cols-3">
+                  <label className="flex flex-col gap-1.5">
+                    <span className={fieldLabel}>{t("Section name (e.g. Licenses)", "Názov sekcie (napr. Licencie)", "Szekció neve (pl. Licencek)")} *</span>
+                    <input type="text" value={ueName} onChange={(e) => setUeName(e.target.value)} className={fieldInput} placeholder={t("Enter section name...", "Zadajte názov...", "Adja meg a szekció nevét...")} required />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className={fieldLabel}>{t("Entry name (singular, e.g. License)", "Názov záznamu (jednotné číslo, napr. Licencia)", "Bejegyzés neve (egyes szám, pl. Licenc)")} *</span>
+                    <input type="text" value={ueEntryName} onChange={(e) => setUeEntryName(e.target.value)} className={fieldInput} placeholder={t("Entry", "Záznam", "Bejegyzés")} required />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className={fieldLabel}>{t("Folder name (singular, e.g. Folder)", "Názov priečinka (jednotné číslo, napr. Priečinok)", "Mappa neve (egyes szám, pl. Mappa)")} *</span>
+                    <input type="text" value={ueFolderName} onChange={(e) => setUeFolderName(e.target.value)} className={fieldInput} placeholder={t("Folder", "Priečinok", "Mappa")} required />
+                  </label>
+                </div>
 
-                  {/* Active VAT rates pills */}
-                  <div className="space-y-1.5">
-                    <label className="type-overline text-slate-500 block">
-                      {t("Active VAT Rates", "Aktívne sadzby DPH", "Aktív ÁFA kulcsok")}
-                    </label>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {activeVatRates.map(rate => {
-                        const isDefault = Number(billingForm.defaultVatRate) === rate;
-                        return (
-                          <div
-                            key={rate}
-                            className={cn(
-                              "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-ui font-mono font-bold transition-all shadow-2xs",
-                              isDefault
-                                ? "bg-indigo-50 border-indigo-300 text-indigo-700 ring-2 ring-indigo-200"
-                                : "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
-                            )}
-                          >
-                            <span>{rate}%</span>
-                            {isDefault ? (
-                              <span className="px-1.5 py-0.5 rounded-md bg-indigo-600 text-white text-micro font-sans font-semibold tracking-wide uppercase">
-                                {t("Default", "Predvolená", "Alapértelmezett")}
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setBillingForm(prev => ({ ...prev, defaultVatRate: rate }))}
-                                className="text-micro font-sans font-medium text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
-                                title={t("Set as default", "Nastaviť ako predvolenú", "Beállítás alapértelmezettként")}
-                              >
-                                {t("Set default", "Zvoliť", "Kiválaszt")}
-                              </button>
-                            )}
-
-                            {activeVatRates.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveVatRate(rate)}
-                                className="p-0.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                title={t("Remove VAT rate", "Odstrániť sadzbu", "ÁFA kulcs törlése")}
-                              >
-                                <X className="size-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Add rate & Default rate picker in 2 columns */}
-                  <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
-                    <div>
-                      <label className="type-overline text-slate-500 block mb-1">
-                        {t("Add Custom VAT Rate", "Pridať ďalšiu sadzbu DPH", "Új ÁFA kulcs hozzáadása")}
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <div className="relative flex-1">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="any"
-                            value={newVatRateInput}
-                            onChange={e => setNewVatRateInput(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                handleAddVatRate();
-                              }
-                            }}
-                            placeholder="e.g. 21"
-                            className="w-full pr-8 pl-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono focus:border-indigo-500 focus:outline-none"
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-ui font-mono font-bold pointer-events-none">
-                            %
-                          </span>
-                        </div>
+                <div className="grid grid-cols-1 gap-6 ws-md:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <span className={fieldLabel}>{t("Icon", "Ikona", "Ikon")}</span>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-700">
+                        {getIconComponent(ueIcon, "h-6 w-6")}
+                      </div>
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="text-ui font-bold text-gray-800">{ueIcon}</span>
                         <button
                           type="button"
-                          onClick={handleAddVatRate}
-                          className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-ui font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                          onClick={() => setIsIconPickerOpen(true)}
+                          className="min-h-9 cursor-pointer rounded-md border border-entity-border bg-entity-soft px-3.5 text-ui font-bold text-entity-text transition-colors hover:bg-entity-soft"
                         >
-                          <Plus className="size-3.5" />
-                          <span>{t("Add", "Pridať", "Hozzáadás")}</span>
+                          {t("Choose from 1000+ icons...", "Vybrať z 1000+ ikon...", "Válasszon több mint 1000 ikon közül...")}
                         </button>
                       </div>
                     </div>
-
-                    <div>
-                      <label className="type-overline text-slate-500 block mb-1">
-                        {t("Default VAT Rate", "Predvolená sadzba DPH", "Alapértelmezett ÁFA kulcs")}
-                      </label>
-                      <select
-                        value={billingForm.defaultVatRate ?? DEFAULT_STANDARD_VAT_RATE}
-                        onChange={e =>
-                          setBillingForm(prev => ({
-                            ...prev,
-                            defaultVatRate: parseFloat(e.target.value) || 0
-                          }))
-                        }
-                        className="w-full p-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-bold text-slate-800 focus:border-indigo-500 focus:outline-none"
-                      >
-                        {activeVatRates.map(r => (
-                          <option key={r} value={r}>
-                            {r}% {r === DEFAULT_STANDARD_VAT_RATE ? t("(Standard)", "(Základná)", "(Normál)") : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
                   </div>
-                </div>
-
-              </div>
-
-            </div>
-
-            {priceLevels && setPriceLevels && (
-              <PriceLevelSettings
-                levels={priceLevels}
-                setLevels={setPriceLevels}
-                warehouseItems={warehouseItems}
-                leads={leadRows}
-                setLeads={setLeads}
-                userLanguage={userLanguage}
-                canEdit={getPermission("general_config") === "edit"}
-              />
-            )}
-          </div>
-        )}
-
-        {/* TAB: Visible Modules */}
-        {activeSubTab === "modules" && getPermission("general_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("general_config")}
-            <VisibleModulesSettings
-              language={userLanguage}
-              canEdit={currentUser?.role?.toLowerCase() === "admin" || getPermission("general_config") === "edit"}
-              disabledModules={integrationsConfig?.disabledModules || []}
-              onChangeDisabledModules={(nextDisabled) => {
-                updateIntegrationsConfig?.((prev: any) => ({
-                  ...prev,
-                  disabledModules: nextDisabled
-                }));
-              }}
-              customDashboards={customDashboards}
-              unifiedEntries={unifiedEntries}
-              onRunSetupWizard={onOpenModuleWizard}
-            />
-          </div>
-        )}
-
-        {/* TAB: Licence */}
-        {activeSubTab === "license" && getPermission("general_config") !== "nothing" && (
-          <LicenseSettings
-            state={licenseState}
-            language={userLanguage}
-            // Entering a key is an admin action on the server too (api/license.php
-            // requires the admin role), so a "view" permission genuinely means
-            // read-only here rather than a button that will 403.
-            canEdit={currentUser?.role?.toLowerCase() === "admin"}
-            onStateChange={(next) => onLicenseStateChange?.(next)}
-          />
-        )}
-
-        {/* TAB: Projects Configuration */}
-        {activeSubTab === "projects" && getPermission("general_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("general_config")}
-            <ProjectSettings
-              projectTypes={projectTypes}
-              setProjectTypes={setProjectTypes}
-              userLanguage={userLanguage}
-              canEdit={getPermission("general_config") === "edit"}
-            />
-            {projectStatuses && setProjectStatuses && (
-              <ProjectStatusSettings
-                statuses={projectStatuses}
-                setStatuses={setProjectStatuses}
-                projects={projects}
-                setProjects={setProjects}
-                userLanguage={userLanguage}
-                canEdit={getPermission("general_config") === "edit"}
-              />
-            )}
-          </div>
-        )}
-
-        {/* TAB: Tickets Configuration */}
-        {activeSubTab === "tickets" && getPermission("general_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("general_config")}
-            {setTicketStatuses && ticketSettings && setTicketSettings && (
-              <TicketSettings
-                ticketStatuses={ticketStatuses}
-                setTicketStatuses={setTicketStatuses}
-                ticketSettings={ticketSettings}
-                setTicketSettings={setTicketSettings}
-                tickets={tickets}
-                setTickets={setTickets}
-                userLanguage={userLanguage}
-                canEdit={getPermission("general_config") === "edit"}
-                onTicketsPolled={onTicketsPolled}
-              />
-            )}
-          </div>
-        )}
-
-        {/* TAB: Orders Configuration */}
-        {activeSubTab === "orders" && getPermission("general_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("general_config")}
-            {orderStatuses && setOrderStatuses && (
-              <OrderStatusSettings
-                statuses={orderStatuses}
-                setStatuses={setOrderStatuses}
-                orders={orders}
-                setOrders={setOrders}
-                userLanguage={userLanguage}
-                canEdit={getPermission("general_config") === "edit"}
-              />
-            )}
-
-            <ShippingMethodSettings
-              companyBillingSettings={companyBillingSettings}
-              setCompanyBillingSettings={setCompanyBillingSettings}
-              userLanguage={userLanguage}
-              canEdit={getPermission("general_config") === "edit"}
-            />
-
-            <PaymentMethodSettings
-              companyBillingSettings={companyBillingSettings}
-              setCompanyBillingSettings={setCompanyBillingSettings}
-              userLanguage={userLanguage}
-              canEdit={getPermission("general_config") === "edit"}
-            />
-          </div>
-        )}
-
-        {/* TAB: Tasks — task behaviour switches */}
-        {activeSubTab === "tasks" && getPermission("general_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("general_config")}
-            {taskSettings && setTaskSettings && (
-              <TaskSettingsPanel
-                settings={taskSettings}
-                setSettings={setTaskSettings}
-                userLanguage={userLanguage}
-                canEdit={getPermission("general_config") === "edit"}
-              />
-            )}
-          </div>
-        )}
-
-        {/* TAB: Finance — movement categories, ledger behaviour, currency */}
-        {activeSubTab === "finance" && getPermission("financial") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("financial")}
-            {financialCategories && setFinancialCategories && setFinancialRecords && (
-              <FinanceSettings
-                userLanguage={userLanguage}
-                systemLanguage={systemLanguage}
-                systemCurrency={systemCurrency}
-                setSystemCurrency={setSystemCurrency}
-                canEditCurrency={getPermission("general_config") === "edit"}
-                financialCategories={financialCategories}
-                setFinancialCategories={setFinancialCategories}
-                setFinancialRecords={setFinancialRecords}
-                financialMode={financialMode}
-                setFinancialMode={setFinancialMode}
-                canEdit={getPermission("financial") === "edit"}
-                canDelete={getPermission("financial") === "edit" && getPermission("financial.delete") === "edit"}
-              />
-            )}
-          </div>
-        )}
-
-        {/* TAB 1: General Branding Config */}
-        {activeSubTab === "branding" && getPermission("general_config") !== "nothing" && (
-          <>
-            <div className="ws-lg:col-span-8 space-y-6">
-              {renderReadOnlyBanner("general_config")}
-              <form onSubmit={handleSave} className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                  <Sliders className="h-4.5 w-4.5 text-indigo-500" /> {getTranslation(userLanguage, "settings.general.title")}
-                </h3>
-
-                <div className="space-y-1.5">
-                  <label className="type-overline text-slate-500">
-                    {getTranslation(userLanguage, "settings.general.system_name")}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    disabled={getPermission("general_config") === "view"}
-                    value={tempName}
-                    onChange={(e) => setTempName(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-heading font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-                    placeholder={t("e.g. CCRM", "napr. CCRM", "pl. CCRM")}
-                  />
-                  <p className="text-micro text-slate-400">
-                    {getTranslation(userLanguage, "settings.general.system_name_desc")}
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="type-overline text-slate-500">
-                    {getTranslation(userLanguage, "settings.general.system_lang")}
-                  </label>
-                  <CustomSelect
-                    disabled={getPermission("general_config") === "view"}
-                    value={systemLanguage}
-                    onChange={(v) => setSystemLanguage(v as Language)}
-                    options={[
-                      { value: "sk", label: "🇸🇰 Slovenčina" },
-                      { value: "en", label: "🇬🇧 English" },
-                      { value: "hu", label: "🇭🇺 Magyar" },
-                    ]}
-                  />
-                  <p className="text-micro text-slate-400">
-                    {getTranslation(userLanguage, "settings.general.system_lang_desc")}
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="type-overline text-slate-500">
-                    {getTranslation(userLanguage, "settings.general.currency")}
-                  </label>
-                  <CustomSelect
-                    disabled={getPermission("general_config") === "view"}
-                    value={systemCurrency || ""}
-                    onChange={(v) => setSystemCurrency(v)}
-                    options={[
-                      {
-                        value: "",
-                        label: `${getTranslation(userLanguage, "settings.general.currency_auto")} (${currencyForRegion(systemLanguage)})`,
-                      },
-                      ...CURRENCY_OPTIONS.map((c) => ({ value: c.code, label: c.label })),
-                    ]}
-                  />
-                  <p className="text-micro text-slate-400">
-                    {getTranslation(userLanguage, "settings.general.currency_desc")}
-                  </p>
-                </div>
-
-                {getPermission("general_config") === "edit" && (
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="submit"
-                      className="w-fit px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-ui font-semibold text-white shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-1.5"
-                    >
-                      <Save className="h-4 w-4" /> {getTranslation(userLanguage, "common.save")}
-                    </button>
-                  </div>
-                )}
-              </form>
-
-              {/* Database Panel */}
-              <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                  <Database className="h-4.5 w-4.5 text-emerald-500" /> {getTranslation(userLanguage, "settings.general.db_title")}
-                </h3>
-
-                <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6 text-ui text-slate-600 font-bold">
-                  <div className="space-y-2">
-                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                      <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_host")}</span>
-                      <span className="text-slate-800">{dbInfo?.host || "—"}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                      <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_port")}</span>
-                      <span>{dbInfo?.port || "—"}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_type")}</span>
-                      <span className="text-rose-500 font-extrabold uppercase">{dbInfo?.type || "MariaDB"}</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                      <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_name")}</span>
-                      <span className="text-slate-800">{dbInfo?.name || "—"}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                      <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_user")}</span>
-                      <span>{dbInfo?.user || "—"}</span>
-                    </div>
-                    <div className="flex justify-between font-bold">
-                      <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_integrity")}</span>
-                      <span className="text-emerald-600 font-extrabold flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> {getTranslation(userLanguage, "settings.general.db_connected")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="ws-lg:col-span-4 space-y-6 ws-lg:sticky ws-lg:top-24 ws-lg:self-start">
-              <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                  <Globe className="h-4.5 w-4.5 text-indigo-500" /> {getTranslation(userLanguage, "settings.general.host_title")}
-                </h3>
-                
-                <div className="text-ui space-y-3 font-semibold text-slate-600">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">{getTranslation(userLanguage, "settings.general.host_status")}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 type-overline">
-                      {getTranslation(userLanguage, "settings.general.host_connected")}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">{getTranslation(userLanguage, "settings.general.host_deployment")}</span>
-                    <span className="font-extrabold text-indigo-600">{typeof window !== "undefined" ? window.location.host : ""}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">{getTranslation(userLanguage, "settings.general.host_laravel")}</span>
-                    <span className="text-slate-400 italic">{getTranslation(userLanguage, "settings.general.host_laravel_desc")}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* TAB 2: Users & Managers Directory */}
-        {activeSubTab === "managers" && getPermission("pm_managers") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("pm_managers", !canAdministerUsers)}
-            
-            {!selectedUser ? (
-              <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass animate-in fade-in duration-200">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center justify-between border-b border-slate-200 pb-3">
-                  <span className="flex items-center gap-2">
-                    <Users className="h-4.5 w-4.5 text-blue-500" /> {getTranslation(userLanguage, "settings.managers.title")}
-                  </span>
-                  <span className="text-micro text-slate-400 font-semibold lowercase">
-                    {users.length} {getTranslation(userLanguage, "settings.managers.active_users")}
-                  </span>
-                </h3>
-
-                {/* Users Responsive Table */}
-                <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                  <table className="w-full text-left border-collapse text-ui">
-                    <thead className="sticky top-0 z-20 bg-slate-50">
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 type-overline">
-                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_user")}</th>
-                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_email")}</th>
-                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_role")}</th>
-                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_color")}</th>
-                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{getTranslation(userLanguage, "settings.managers.th_actions")}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                      {users.map((u) => (
-                        <tr key={u.email} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-3">
-                              <div 
-                                className="h-8.5 w-8.5 rounded-lg font-heading font-bold text-micro flex items-center justify-center border shadow-inner shrink-0"
-                                style={{
-                                  backgroundColor: `${u.color}12`,
-                                  color: u.color,
-                                  borderColor: `${u.color}30`
-                                }}
-                              >
-                                {u.name.substring(0,2).toUpperCase()}
-                              </div>
-                              <span className="font-extrabold text-slate-800">{u.name}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-slate-500 font-semibold select-all">{u.email}</td>
-                          <td className="py-3 px-4">
-                            <div className="flex flex-col items-start gap-1">
-                            <span 
-                              className="px-2.5 py-0.5 rounded-full border type-overline"
-                              style={{
-                                backgroundColor: u.role.toLowerCase() === "admin" ? "#f43f5e10" : "#3b82f610",
-                                color: u.role.toLowerCase() === "admin" ? "#f43f5e" : "#3b82f6",
-                                borderColor: u.role.toLowerCase() === "admin" ? "#f43f5e25" : "#3b82f625",
-                              }}
-                            >
-                              {u.role}
-                            </span>
-                            {!isAdminRoleName(u.role) && !findRole(roles, u.role) && (
-                              <span
-                                className="px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-800 type-overline"
-                                title={getTranslation(userLanguage, "settings.managers.unknown_role_hint")}
-                              >
-                                {getTranslation(userLanguage, "settings.managers.unknown_role")}
-                              </span>
-                            )}
-                            {employees && (() => {
-                              const linked = linkedEmployeeOf(employees, u.id);
-                              return (
-                                <span
-                                  data-testid="user-linked-employee"
-                                  title={getTranslation(userLanguage, "settings.users.linked_employee")}
-                                  className={`px-2 py-0.5 rounded-full border type-overline ${
-                                    linked ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-400"
-                                  }`}
-                                >
-                                  {linked ? linked.name : getTranslation(userLanguage, "settings.users.not_linked")}
-                                </span>
-                              );
-                            })()}
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-1.5">
-                              <span className="h-3 w-3 rounded-full border border-white shadow-sm" style={{ backgroundColor: u.color }} />
-                              <span className="type-overline text-slate-400">{u.color}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() => { window.location.hash = `user-${encodeURIComponent(u.name)}`; }}
-                                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 transition-all type-overline flex items-center gap-1"
-                              >
-                                <Eye className="h-3 w-3" /> {getTranslation(userLanguage, "settings.managers.th_actions")}
-                              </button>
-                              {canAdministerUsers && u.name.toLowerCase() !== currentUser.name.toLowerCase() && (
-                                <HoldToConfirmButton
-                                    tone="danger"
-                                    lang={userLanguage}
-                                    what={u.name}
-                                    onConfirm={() => handleRemoveUser(u.name)}
-                                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-100 transition-colors"
-                                    title={userLanguage === "sk" ? `Vymazať účet používateľa ${u.name}` : userLanguage === "hu" ? `Felhasználói fiók törlése ${u.name}` : `Delete user account ${u.name}`}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </HoldToConfirmButton>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-6 animate-in slide-in-from-right duration-250">
-                {/* Back & Breadcrumbs */}
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => { window.location.hash = "settings"; }}
-                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.managers.btn_back")}
-                  </button>
-                  <div className="flex items-center gap-2 type-overline text-slate-400">
-                    <span>{getTranslation(userLanguage, "settings.managers.breadcrumbs_users")}</span>
-                    <span>/</span>
-                    <span className="text-slate-700">{selectedUser.name}</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6 items-stretch">
-                  {/* COLUMN 1: Basic Profile Settings */}
-                  <div className="ws-lg:col-span-5 glass-panel p-6 rounded-[28px] border border-white/60 bg-white/95 shadow-glass space-y-6 flex flex-col justify-between">
-                    <div className="space-y-5">
-                      <div className="border-b border-slate-100 pb-3 flex items-center gap-3">
-                        <div 
-                          className="h-12 w-12 rounded-2xl font-heading font-bold text-body flex items-center justify-center border-2 shadow shadow-inner shrink-0"
-                          style={{
-                            backgroundColor: `${selectedUser.color}12`,
-                            color: selectedUser.color,
-                            borderColor: `${selectedUser.color}40`
-                          }}
-                        >
-                          {selectedUser.name.substring(0,2).toUpperCase()}
-                        </div>
-                        <div className="flex flex-col text-left">
-                          <h4 className="text-body font-bold text-slate-800 leading-tight">{selectedUser.name}</h4>
-                          <span className="type-overline text-slate-400 mt-0.5">
-                            {selectedUser.role} {getTranslation(userLanguage, "settings.managers.profile_suffix")}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4 text-ui font-bold text-slate-700 text-left">
-                        {/* Name setting */}
-                        <div className="space-y-1">
-                          <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
-                          <input
-                            type="text"
-                            disabled={!canAdministerUsers}
-                            value={selectedUser.name}
-                            onChange={(e) => {
-                              const updated = { ...selectedUser, name: e.target.value };
-                              handleUpdateUser(updated);
-                            }}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-50/50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:bg-white focus:border-indigo-500 transition-all"
-                          />
-                        </div>
-
-                        {/* Email Address */}
-                        <div className="space-y-1">
-                          <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
-                          <input
-                            type="email"
-                            disabled={!canAdministerUsers}
-                            value={selectedUser.email}
-                            onChange={(e) => {
-                              const updated = { ...selectedUser, email: e.target.value };
-                              handleUpdateUser(updated);
-                            }}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-50/50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:bg-white focus:border-indigo-500 transition-all"
-                          />
-                        </div>
-
-                        {/* Password */}
-                        <div className="space-y-1">
-                          <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
-                          <input
-                            type="text"
-                            placeholder={getTranslation(userLanguage, "settings.managers.placeholder_password")}
-                            disabled={!canAdministerUsers}
-                            value={selectedUser.password || ""}
-                            onChange={(e) => {
-                              const updated = { ...selectedUser, password: e.target.value };
-                              handleUpdateUser(updated);
-                            }}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-50/50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:bg-white focus:border-indigo-500 transition-all"
-                          />
-                        </div>
-
-                        {/* Security Access Level Role */}
-                        <div className="space-y-1">
-                          <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_access")}</label>
-                          {canAdministerUsers ? (
-                            <CustomSelect
-                              value={selectedUser.role}
-                              onChange={(v) => {
-                                const updated = { ...selectedUser, role: v };
-                                handleUpdateUser(updated);
-                              }}
-                              options={[
-                                ...(!isAdminRoleName(selectedUser.role) && !findRole(roles, selectedUser.role)
-                                  ? [{ value: selectedUser.role, label: `${selectedUser.role} ${getTranslation(userLanguage, "settings.managers.unknown_suffix")}` }]
-                                  : []),
-                                ...roles.map(r => ({ value: r.name, label: r.name })),
-                              ]}
-                            />
-                          ) : (
-                            <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-extrabold select-text w-full">
-                              🛡️ {selectedUser.role}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Swatches preset colors */}
-                        <div className="space-y-2 pt-2 border-t border-slate-100">
-                          <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_color")}</label>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {[
-                              "#3b82f6", "#0ea5e9", "#6366f1", "#10b981", 
-                              "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"
-                            ].map((colorPreset) => {
-                              const isAssigned = selectedUser.color === colorPreset;
-                              return (
-                                <button
-                                  key={colorPreset}
-                                  type="button"
-                                  disabled={!canAdministerUsers}
-                                  onClick={() => {
-                                    const updated = { ...selectedUser, color: colorPreset };
-                                    handleUpdateUser(updated);
-                                  }}
-                                  className="h-5.5 w-5.5 rounded-full border border-white hover:scale-115 active:scale-95 disabled:scale-100 disabled:cursor-not-allowed transition-all shadow-sm shrink-0"
-                                  style={{
-                                    backgroundColor: colorPreset,
-                                    boxShadow: isAssigned ? `0 0 0 2px ${colorPreset}` : '0 1px 2px rgba(0,0,0,0.05)'
-                                  }}
-                                  title={`${getTranslation(userLanguage, "settings.managers.lbl_color")} ${colorPreset}`}
-                                />
-                              );
-                            })}
-
-                            {/* More colours: full palette + the browser's custom picker */}
-                            {canAdministerUsers && (
-                              <ColorPicker
-                                variant="palette"
-                                value={selectedUser.color}
-                                onChange={(color) => handleUpdateUser({ ...selectedUser, color })}
-                                title={getTranslation(userLanguage, "settings.managers.tooltip_custom_color")}
-                                className="h-5.5 w-5.5"
-                              />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => { window.location.hash = "settings"; }}
-                        className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-ui font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5"
-                      >
-                        <Save className="h-4.5 w-4.5" /> {getTranslation(userLanguage, "settings.managers.btn_save_profile")}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* COLUMN 2: User Activity timeline */}
-                  <div className="ws-lg:col-span-7 glass-panel p-6 rounded-[28px] border border-white/60 bg-white/95 shadow-glass space-y-6 flex flex-col justify-between">
-                    <div className="space-y-4">
-                      <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b border-slate-100 text-left">
-                        <Clock className="h-4.5 w-4.5 text-indigo-500 animate-pulse stroke-[2.5]" /> {getTranslation(userLanguage, "settings.managers.timeline_title")}
-                      </h3>
-
-                      {(!selectedUser.activityLog || selectedUser.activityLog.length === 0) ? (
-                        <div className="py-12 text-center text-slate-400">
-                          <div className="text-display mb-2">📜</div>
-                          <div className="font-bold text-slate-700 uppercase tracking-wider">{getTranslation(userLanguage, "settings.managers.timeline_empty")}</div>
-                          <div className="type-overline mt-1.5 text-slate-400">{getTranslation(userLanguage, "settings.managers.timeline_empty_desc")}</div>
-                        </div>
-                      ) : (
-                        <div className="overflow-y-auto max-h-95 pr-2 pl-2 space-y-5 relative scrollbar-thin text-left">
-                          {/* vertical line */}
-                          <div className="absolute left-4.25 top-2 bottom-2 w-0.5 bg-slate-100 rounded-full"></div>
-
-                          {selectedUser.activityLog.map((log) => {
-                            let badgeBg = "bg-blue-50 text-blue-700 border-blue-200";
-                            if (log.type === "create") badgeBg = "bg-emerald-50 text-emerald-700 border-emerald-200";
-                            if (log.type === "update") badgeBg = "bg-purple-50 text-purple-700 border-purple-200";
-                            if (log.type === "delete") badgeBg = "bg-rose-50 text-rose-700 border-rose-200";
-                            if (log.type === "system") badgeBg = "bg-amber-50 text-amber-700 border-amber-200";
-
-                            return (
-                              <div key={log.id} className="relative flex items-start gap-4 group animate-in fade-in slide-in-from-bottom duration-200 select-text">
-                                {/* Dot icon indicator */}
-                                <div 
-                                  className="h-8.5 w-8.5 rounded-lg flex items-center justify-center border-2 shrink-0 z-10 shadow-sm"
-                                  style={{
-                                    backgroundColor: "rgb(var(--card))",
-                                    borderColor: selectedUser.color
-                                  }}
-                                >
-                                  <Activity className="h-3.5 w-3.5" style={{ color: selectedUser.color }} />
-                                </div>
-
-                                <div className="flex-1 bg-slate-50/50 p-3 rounded-2xl border border-slate-200 shadow-sm relative">
-                                  <div className="absolute -left-1.25 top-3 w-2.5 h-2.5 bg-white border-l border-b border-slate-200 transform rotate-45"></div>
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <span className="font-extrabold text-ui text-slate-800 leading-tight block">{log.action}</span>
-                                    <span className="type-overline text-slate-400 shrink-0">{formatTimestampLocalized(log.timestamp, userLanguage)}</span>
-                                  </div>
-                                  {log.details && (
-                                    <p className="text-micro text-slate-500 font-semibold mt-1 leading-relaxed">{log.details}</p>
-                                  )}
-                                  <span className={`px-2 py-0.5 rounded-md type-overline border block w-fit mt-2 ${badgeBg}`}>
-                                    {log.type}
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* SIMULATION FORM */}
-                    {canAdministerUsers && (
-                      <form 
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (!simulatedAction.trim()) return;
-                          const newEvent = {
-                            id: "sim_" + Date.now(),
-                            action: simulatedAction.trim(),
-                            timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-                            details: `${getTranslation(userLanguage, "settings.managers.sim_details_prefix")}${selectedUser.name}`,
-                            type: simulatedType
-                          };
-                          const updated = {
-                            ...selectedUser,
-                            activityLog: [newEvent, ...(selectedUser.activityLog || [])]
-                          };
-                          handleUpdateUser(updated);
-                          setSimulatedAction("");
-                        }}
-                        className="p-4 border border-slate-200 bg-slate-50/50 rounded-2xl space-y-3 mt-4 text-left"
-                      >
-                        <h4 className="type-overline text-slate-700 flex items-center gap-1.5">
-                          <Sliders className="h-3.5 w-3.5 text-indigo-500" /> {getTranslation(userLanguage, "settings.managers.sim_title")}
-                        </h4>
-                        <div className="grid grid-cols-1 ws-sm:grid-cols-12 gap-3 text-ui">
-                          <input
-                            type="text"
-                            required
-                            value={simulatedAction}
-                            onChange={(e) => setSimulatedAction(e.target.value)}
-                            placeholder={getTranslation(userLanguage, "settings.managers.sim_placeholder")}
-                            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui font-bold text-slate-800 focus:outline-none focus:border-indigo-500 ws-sm:col-span-8"
-                          />
-                          <div className="ws-sm:col-span-4">
-                            <CustomSelect
-                              size="sm"
-                              value={simulatedType}
-                              onChange={(v) => setSimulatedType(v as any)}
-                              options={["login", "create", "update", "delete", "system"]}
-                            />
-                          </div>
-                        </div>
+                  <div className="flex flex-col gap-1.5">
+                    <span className={fieldLabel}>{t("Color", "Farba", "Szín")}</span>
+                    <div className="flex flex-wrap gap-2">
+                      {["#3b82f6", "#ef4444", "#f97316", "#f59e0b", "#10b981", "#14b8a6", "#0ea5e9", "#6366f1", "#8b5cf6", "#ec4899"].map((colorHex) => (
                         <button
-                          type="submit"
-                          className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white type-overline shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                          key={colorHex}
+                          type="button"
+                          aria-label={colorHex}
+                          onClick={() => setUeColor(colorHex)}
+                          className="relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-gray-200 transition-transform hover:scale-105"
+                          style={{ backgroundColor: colorHex }}
                         >
-                          <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.managers.sim_btn")}
+                          {ueColor === colorHex && <span className="h-2.5 w-2.5 rounded-full border border-gray-300 bg-white shadow-xs" />}
                         </button>
-                      </form>
-                    )}
+                      ))}
+                      <ColorPicker variant="palette" value={ueColor} onChange={setUeColor} className="h-8 w-8 p-1" />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              </SectionCard>
 
-            {/* Add User form - Gated to edit access */}
-            {!selectedUser && canAdministerUsers && (
-                <form onSubmit={handleAddUser} className="p-5 border border-slate-200/80 bg-slate-50/50 rounded-2xl space-y-4 max-w-2xl mt-8">
-                  <h4 className="text-ui font-bold text-slate-700 flex items-center gap-1">
-                    <Plus className="h-4 w-4" /> {getTranslation(userLanguage, "settings.managers.form_title")}
-                  </h4>
-                  
-                  <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
-                      <input
-                        type="text"
-                        required
-                        value={newManager}
-                        onChange={(e) => setNewManager(e.target.value)}
-                        placeholder={t("e.g. Sara Nováková", "napr. Sara Nováková", "pl. Sara Nováková")}
-                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
-                      <input
-                        type="email"
-                        required
-                        value={newUserEmail}
-                        onChange={(e) => setNewUserEmail(e.target.value)}
-                        placeholder={t("e.g. sara@crm.com", "napr. sara@crm.com", "pl. sara@crm.com")}
-                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                      />
-                    </div>
-                  </div>
+              <SectionCard
+                title={t("Fields", "Polia", "Mezők")}
+                description={t("What every entry of this type holds.", "Čo obsahuje každý záznam tohto typu.", "Mit tartalmaz az ilyen típusú bejegyzések mindegyike.")}
+              >
+                <div className="grid grid-cols-1 gap-2.5 ws-sm:grid-cols-2 ws-lg:grid-cols-4">
+                  {moduleOptions.map((mod) => checkTile(mod.id, mod.label, ueModules.includes(mod.id), (on) => setUeModules(toggleIn(ueModules, mod.id, on))))}
+                </div>
+              </SectionCard>
 
-                  <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
-                      <PasswordInput
-                        required
-                        value={newUserPassword}
-                        onChange={(e) => setNewUserPassword(e.target.value)}
-                        placeholder={getTranslation(userLanguage, "settings.managers.placeholder_new_password")}
-                        className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_role_assignment")}</label>
-                      <CustomSelect
-                        value={newUserRole}
-                        onChange={(v) => setNewUserRole(v)}
-                        options={roles.map(r => ({ value: r.name, label: r.name }))}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="submit"
-                      className="w-fit px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-blue-600/10 flex items-center gap-1"
-                    >
-                      <Plus className="h-4 w-4" /> {getTranslation(userLanguage, "settings.managers.btn_provision")}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-        )}
-
-        {/* TAB 3: Roles & RBAC Matrix Editor */}
-        {activeSubTab === "rbac" && getPermission("pm_managers") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("pm_managers", !canAdministerUsers)}
-
-            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-              <div className="border-b border-slate-200 pb-3 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-3">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-                  <ShieldCheck className="h-4.5 w-4.5 text-indigo-500" /> {getTranslation(userLanguage, "settings.rbac.title")}
-                </h3>
-                <span className="type-overline text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 shadow-inner">
-                  {getTranslation(userLanguage, "settings.rbac.model_badge")}
-                </span>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4 text-caption text-slate-600 space-y-2">
-                <p className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.rbac.legend.title")}</p>
-                <ul className="grid ws-sm:grid-cols-2 gap-x-6 gap-y-1 font-semibold">
-                  <li><span className="text-slate-400 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.nothing")}</span>{getTranslation(userLanguage, "settings.rbac.legend.none")}</li>
-                  <li><span className="text-blue-500 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.view")}</span>{getTranslation(userLanguage, "settings.rbac.legend.view")}</li>
-                  <li><span className="text-emerald-600 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.edit")}</span>{getTranslation(userLanguage, "settings.rbac.legend.edit")}</li>
-                  <li><span className="text-slate-500 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.on")}/{getTranslation(userLanguage, "settings.rbac.state.off")}</span>{getTranslation(userLanguage, "settings.rbac.legend.toggle")}</li>
-                  <li className="ws-sm:col-span-2"><span className="text-indigo-600 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.partial")}</span>{getTranslation(userLanguage, "settings.rbac.legend.section")}</li>
-                </ul>
-              </div>
-
-              {/* RBAC Matrix Table (Flipped: columns are roles, rows are functions) */}
-              <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
-                <table className="w-full text-left border-collapse bg-white">
-                  <thead className="sticky top-0 z-20 bg-slate-50">
-                    <tr className="bg-slate-50 border-b border-slate-200 type-overline text-slate-600">
-                      <th className="sticky top-0 z-10 bg-slate-50 py-4 px-5 min-w-50">{getTranslation(userLanguage, "settings.rbac.th_permission")}</th>
-                      {roles.map((role) => {
-                        const isAdmin = isAdminRoleName(role.name);
-                        return (
-                          <th key={role.name} className="sticky top-0 z-10 bg-slate-50 py-4 px-5 text-center min-w-35">
-                            <div className="flex flex-col items-center justify-center gap-1.5">
-                              <div className="flex items-center gap-1.5 justify-center">
-                                <span 
-                                  className="px-3 py-1 rounded-full type-overline border select-none"
-                                  style={{
-                                    backgroundColor: isAdmin ? "#ffe4e6" : "#f1f5f9",
-                                    color: isAdmin ? "#f43f5e" : "#475569",
-                                    borderColor: isAdmin ? "#f43f5e20" : "#cbd5e1",
-                                  }}
-                                >
-                                  {role.name}
-                                </span>
-                                {isAdmin && (
-                                  <span className="h-4.5 w-4.5 rounded-full bg-rose-500 flex items-center justify-center text-micro text-white" title={getTranslation(userLanguage, "settings.rbac.master_protected")}>&#128274;</span>
-                                )}
-                              </div>
-                              
-                              {/* Delete action for custom roles */}
-                              {!isAdmin && !isProtectedRoleName(role.name) && (
-                                canAdministerUsers ? (
-                                  <HoldToConfirmButton
-                                      tone="danger"
-                                      lang={userLanguage}
-                                      what={role.name}
-                                      onConfirm={() => handleRemoveRole(role.name)}
-                                      className="text-rose-500 hover:text-rose-700 transition-colors py-0.5 px-2 hover:bg-rose-50 rounded-lg type-overline flex items-center gap-0.5 border border-rose-200"
-                                      icon={<Trash2 className="h-2.5 w-2.5" />}
-                                  >{getTranslation(userLanguage, "common.delete")}
-                                  </HoldToConfirmButton>
-                                ) : (
-                                  <span className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.rbac.locked")}</span>
-                                )
-                              )}
-                              
-                              {isProtectedRoleName(role.name) && (
-                                <span className="type-overline text-slate-400 block select-none">{getTranslation(userLanguage, "settings.rbac.protected")}</span>
-                              )}
-
-                              {/* Employee is a native role with recommended safe defaults: Admin can restore them. */}
-                              {role.name.toLowerCase() === EMPLOYEE_ROLE_NAME.toLowerCase() && canResetEmployeeRole && (
-                                <button
-                                  type="button"
-                                  onClick={resetEmployeeRole}
-                                  data-testid="rbac-reset-employee"
-                                  title={getTranslation(userLanguage, "settings.rbac.reset_defaults_tip")}
-                                  className="text-amber-700 hover:text-amber-900 hover:bg-amber-50 border border-amber-200/80 py-1 px-2.5 rounded-xl type-overline transition-colors cursor-pointer"
-                                >
-                                  {getTranslation(userLanguage, "settings.rbac.reset_defaults")}
-                                </button>
-                              )}
-
-                              {/* Navigation layout upload button */}
-                              {canAdministerUsers && (
-                                <div className="mt-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => triggerRoleLayoutUpload(role.name)}
-                                    className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200/80 py-1 px-2.5 rounded-xl type-overline flex items-center gap-1 shadow-sm transition-all cursor-pointer"
-                                    title={t("Upload default navigation structure", "Nahrať predvolenú štruktúru menu", "Alapértelmezett navigációs struktúra feltöltése")}
-                                  >
-                                    <Menu className="h-3 w-3" />
-                                    <ArrowUp className="h-3 w-3 animate-pulse" />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-ui font-semibold text-slate-700">
-                    {PERMISSION_SECTIONS.flatMap((section) => {
-                      const rows: React.ReactNode[] = [];
-                      rows.push(
-                        <tr key={`sec-${section.id}`} className="bg-slate-50 border-y border-slate-200 select-none">
-                          <td className="py-2.5 px-5 text-left">
-                            <span className="type-overline text-indigo-900">
-                              {getTranslation(userLanguage, `settings.rbac.section.${section.id}`)}
-                            </span>
-                          </td>
-                          {roles.map((role) => (
-                            <td key={role.name} className="py-2.5 px-5 text-center">
-                              {renderSectionSwitch(role.name, section)}
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                      for (const perm of section.permissions) {
-                        rows.push(
-                          <tr key={perm.key} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="py-3 px-5 max-w-70">
-                              <div className="flex flex-col space-y-1 text-left">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-heading font-bold text-slate-800 text-ui tracking-wide">
-                                    {getTranslation(userLanguage, `settings.rbac.perm.${perm.key}.label`)}
-                                  </span>
-                                  <code className="text-micro font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-semibold select-all">
-                                    {perm.key}
-                                  </code>
-                                </div>
-                                <p className="text-micro font-semibold text-slate-400 leading-normal">
-                                  {getTranslation(userLanguage, `settings.rbac.perm.${perm.key}.desc`)}
-                                </p>
-                              </div>
-                            </td>
-                            {roles.map((role) => (
-                              <td key={role.name} className="py-3 px-5 text-center">
-                                {perm.kind === "toggle" ? renderToggleCell(role.name, perm) : renderAccessCell(role.name, perm.key)}
-                              </td>
-                            ))}
-                          </tr>
-                        );
-                      }
-                      return rows;
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Add Custom Role - Gated */}
-              {canAdministerUsers && (
-                <form onSubmit={handleAddRole} className="p-5 border border-slate-200/85 bg-slate-50/50 rounded-2xl flex flex-col ws-sm:flex-row items-end gap-3 max-w-xl mt-6">
-                  <div className="flex-1 space-y-1 w-full">
-                    <label className="type-overline text-slate-400 block pl-0.5">{getTranslation(userLanguage, "settings.rbac.lbl_name")}</label>
+              <SectionCard
+                title={t("Folders", "Priečinky", "Mappák")}
+                description={t("Allows nesting entries within grouping folders.", "Umožňuje zoskupovať záznamy do priečinkov.", "Lehetővé teszi a bejegyzések csoportosító mappákba ágyazását.")}
+                action={
+                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2.5 text-ui font-bold text-gray-700">
+                    {t("Enable folders", "Povoliť priečinky", "Mappák engedélyezése")}
                     <input
-                      type="text"
-                      required
-                      value={newRoleName}
-                      onChange={(e) => setNewRoleName(e.target.value)}
-                      placeholder={getTranslation(userLanguage, "settings.rbac.placeholder")}
-                      className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                      type="checkbox"
+                      checked={ueFoldersEnabled}
+                      onChange={(e) => setUeFoldersEnabled(e.target.checked)}
+                      className="h-5 w-5 cursor-pointer rounded border-gray-300 text-entity-text focus:ring-entity-solid/25"
                     />
-                  </div>
-                  <button
-                    type="submit"
-                    className="px-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 shrink-0 w-full ws-sm:w-auto"
-                  >
-                    {getTranslation(userLanguage, "settings.rbac.btn_create")}
-                  </button>
-                </form>
-              )}
-
-              {/* Hidden role default layout file selector */}
-              <input
-                type="file"
-                ref={roleFileInputRef}
-                accept=".json"
-                onChange={handleRoleLayoutFileChange}
-                className="hidden"
-              />
-            </div>
-          </div>
-        )}
-                          {/* TAB 4: Pipeline Stages */}
-        {activeSubTab === "states" && getPermission("pipeline_stages") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6 animate-fade-in">
-            {renderReadOnlyBanner("pipeline_stages")}
-
-            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-              <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                <Tag className="h-4.5 w-4.5 text-indigo-500" /> {getTranslation(userLanguage, "settings.states.title")}
-              </h3>
-              
-              <p className="type-overline text-slate-400 text-left">
-                {getTranslation(userLanguage, "settings.states.desc")}
-              </p>
-
-              {/* SLA limits need saying out loud: the column is a number box with
-                  no obvious meaning, and where the warning turns up is the whole
-                  point of setting one. */}
-              <p className="text-micro text-slate-400 font-semibold tracking-wide text-left leading-relaxed">
-                {t(
-                  "SLA limit — the most days a lead may sit in a phase without moving on. Past the limit it is flagged in the leads list and on the lead itself. Leave it empty for no limit; closed phases are the end of the pipeline and have none.",
-                  "Limit SLA — najviac dní, ktoré môže lead stráviť vo fáze bez posunu ďalej. Po prekročení limitu ho označíme v zozname leadov aj priamo na leade. Prázdne pole znamená bez limitu; uzavreté fázy sú koniec pipeline a limit nemajú.",
-                  "SLA-határidő — legfeljebb hány napig maradhat egy lead egy fázisban továbblépés nélkül. A határidő után megjelöljük a leadek listájában és magán a leaden is. Üresen hagyva nincs határidő; a lezárt fázisok a folyamat végét jelentik, ezért nincs határidejük.",
-                )}
-              </p>
-
-              <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-                      <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500">{getTranslation(userLanguage, "settings.states.th_name")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500 w-36">{getTranslation(userLanguage, "settings.states.th_group")}</th>
-                      <th
-                        className="py-3 px-4 type-overline text-slate-500 w-32"
-                        title={t(
-                          "Maximum days a lead may stay in this phase before it is flagged as overdue.",
-                          "Maximálny počet dní, ktoré môže lead stráviť v tejto fáze, kým bude označený ako po termíne.",
-                          "Legfeljebb hány napig maradhat egy lead ebben a fázisban, mielőtt késésként jelöljük.",
-                        )}
-                      >
-                        {t("SLA limit", "Limit SLA", "SLA-határidő")}
-                      </th>
-                      <th className="py-3 px-4 type-overline text-slate-500 w-28 text-center">{t("Follow-up", "Follow-up", "Follow-up")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      // Dynamically build list items hierarchically
-                      const items: ({ type: "divider"; id: "new" | "in_progress" | "closed"; name: string; color: string; desc: string } | { type: "status"; name: string })[] = [];
-                      
-                      const groupsList: ("new" | "in_progress" | "closed")[] = ["new", "in_progress", "closed"];
-                      groupsList.forEach(group => {
-                        const labelKey = group === "new" ? "settings.states.group.new" : group === "in_progress" ? "settings.states.group.in_progress" : "settings.states.group.closed";
-                        const descKey = group === "new" ? "settings.states.group.new.desc" : group === "in_progress" ? "settings.states.group.in_progress.desc" : "settings.states.group.closed.desc";
-                        const divColor = group === "new" ? "#3b82f6" : group === "in_progress" ? "#6366f1" : "#10b981";
-                        
-                        items.push({ 
-                          type: "divider", 
-                          id: group, 
-                          name: getTranslation(userLanguage, labelKey), 
-                          color: divColor, 
-                          desc: getTranslation(userLanguage, descKey) 
-                        });
-
-                        const groupStates = leadStates.filter(state => (leadStageGroups[state.toLowerCase()] || "in_progress") === group);
-                        // Separate major states from substates
-                        const majorStates = groupStates.filter(state => !leadStateParents[state.toLowerCase()]);
-                        
-                        majorStates.forEach(major => {
-                          items.push({ type: "status", name: major });
-                          // Add children directly below it
-                          groupStates.forEach(sub => {
-                            if (leadStateParents[sub.toLowerCase()] === major.toLowerCase()) {
-                              items.push({ type: "status", name: sub });
-                            }
-                          });
-                        });
-                        
-                        // Fallback: in case there are orphaned substates without a major parent in this group
-                        groupStates.forEach(sub => {
-                          if (leadStateParents[sub.toLowerCase()] && !majorStates.map(m => m.toLowerCase()).includes(leadStateParents[sub.toLowerCase()])) {
-                            items.push({ type: "status", name: sub });
-                          }
-                        });
-                      });
-
-                      return items.map((item, idx) => {
-                        if (item.type === "divider") {
-                          const isDragOver = dragOverIndex === idx;
-                          return (
-                            <tr
-                              key={`div-${item.id}`}
-                              onDragOver={(e) => {
-                                e.preventDefault();
-                                if (getPermission("pipeline_stages") === "edit") {
-                                  setDragOverIndex(idx);
-                                }
-                              }}
-                              onDragLeave={() => setDragOverIndex(null)}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                setDragOverIndex(null);
-                                if (draggedStatus) {
-                                  handleMoveStatusToIndex(draggedStatus, idx);
-                                  setDraggedStatus(null);
-                                }
-                              }}
-                              className={`transition-all border-b border-slate-200/60 duration-200 ${
-                                isDragOver ? "bg-indigo-50/60 scale-[0.99] border-2 border-dashed border-indigo-300" : "bg-slate-100/70"
-                              }`}
-                            >
-                              <td colSpan={7} className="py-3 px-4 font-bold uppercase text-slate-800 tracking-wide select-none">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <span className="type-overline text-slate-900">{item.name}</span>
-                                    <span className="text-micro text-slate-400 font-bold block ml-1">{item.desc}</span>
-                                  </div>
-                                  <span className="text-micro text-indigo-500 font-extrabold bg-indigo-50 border border-indigo-200/50 px-2 py-0.5 rounded-full">
-                                    {getTranslation(userLanguage, "settings.states.boundary")}
-                                  </span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        }
-
-                        // Rendering status rows
-                        const state = item.name;
-                        const color = leadStateColors[state.toLowerCase()] || "#64748b";
-                        const resolvedGroup = leadStageGroups[state.toLowerCase()] || "in_progress";
-                        const isDragOver = dragOverIndex === idx;
-                        const isSub = !!leadStateParents[state.toLowerCase()];
-
-                        return (
-                          <tr
-                            key={`status-${state}`}
-                            draggable={getPermission("pipeline_stages") === "edit" ? "true" : "false"}
-                            onDragStart={() => {
-                              if (getPermission("pipeline_stages") === "edit") {
-                                  setDraggedStatus(state);
-                              }
-                            }}
-                            onDragEnd={() => {
-                              setDraggedStatus(null);
-                              setDragOverIndex(null);
-                            }}
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                              if (getPermission("pipeline_stages") === "edit" && draggedStatus && draggedStatus !== state) {
-                                setDragOverIndex(idx);
-                              }
-                            }}
-                            onDragLeave={() => setDragOverIndex(null)}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              setDragOverIndex(null);
-                              if (draggedStatus) {
-                                handleMoveStatusToIndex(draggedStatus, idx);
-                                setDraggedStatus(null);
-                              }
-                            }}
-                            className={`border-b border-slate-200/60 hover:bg-slate-50/50 transition-all duration-200 ${
-                              isDragOver ? "bg-indigo-50/55 scale-[0.99] border-y-2 border-dashed border-indigo-300" : ""
-                            }`}
-                          >
-                            {/* 1. GRIP HANDLE + INDENT CONTROLS */}
-                            <td className="py-3 px-4 text-center align-middle">
-                              <div className="flex items-center justify-center gap-2">
-                                {getPermission("pipeline_stages") === "edit" ? (
-                                  <>
-                                    <GripVertical className="h-4 w-4 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing inline-block" />
-                                    <div className="flex items-center gap-1 select-none shrink-0">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleToggleIndent(state, true)}
-                                        disabled={isSub}
-                                        className="text-micro text-slate-400 hover:text-indigo-600 disabled:opacity-20 cursor-pointer p-0.5 font-bold hover:scale-110 active:scale-90 transition-all"
-                                        title={t("Indent as Substate", "Odsadiť ako podstav", "Behúzás alállapotként")}
-                                      >
-                                        ➔
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleToggleIndent(state, false)}
-                                        disabled={!isSub}
-                                        className="text-micro text-slate-400 hover:text-indigo-600 disabled:opacity-20 cursor-pointer p-0.5 font-bold hover:scale-110 active:scale-90 transition-all"
-                                        title={t("Outdent to Major State", "Vysunúť na hlavný stav", "Kihúzás fő állapottá")}
-                                      >
-                                        ⬅
-                                      </button>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <Lock className="h-3 w-3 text-slate-300 inline-block" />
-                                )}
-                              </div>
-                            </td>
-
-                            {/* 2. COLOR PICKER */}
-                            <td className={`py-3 px-4 align-middle transition-all duration-200 ${isSub ? "pl-14" : ""}`}>
-                              <div className="flex items-center gap-2">
-                                {getPermission("pipeline_stages") === "edit" ? (
-                                  <ColorPicker
-                                    variant="ring"
-                                    value={color}
-                                    onChange={(next) => setLeadStateColors(prev => ({ ...prev, [state.toLowerCase()]: next }))}
-                                    title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
-                                  />
-                                ) : (
-                                  <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
-                                )}
-                                <span className="type-overline text-slate-400">{color}</span>
-                              </div>
-                            </td>
-
-                            {/* 3. STAGE NAME */}
-                            <td className={`py-3 px-4 align-middle transition-all duration-200 ${isSub ? "pl-10" : ""}`}>
-                              <div className="flex items-center gap-1.5">
-                                {isSub && (
-                                  <span className="text-slate-400 font-extrabold text-body ml-2 mr-1 select-none">↳</span>
-                                )}
-                                <InlineRenameName
-                                  value={state}
-                                  canEdit={getPermission("pipeline_stages") === "edit"}
-                                  onCommit={(next) => handleRenameState(state, next)}
-                                  renameTitle={t("Rename", "Premenovať", "Átnevezés")}
-                                >
-                                  <span
-                                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
-                                    style={{
-                                      backgroundColor: `${color}12`,
-                                      color: color,
-                                      borderColor: `${color}35`
-                                    }}
-                                  >
-                                    {state}
-                                  </span>
-                                </InlineRenameName>
-                              </div>
-                            </td>
-
-                            {/* 4. ASSIGNED GROUP */}
-                            <td className="py-3 px-4 align-middle select-none">
-                              <span className={`px-2.5 py-0.5 rounded-full type-overline border ${
-                                resolvedGroup === "new" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                resolvedGroup === "in_progress" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
-                                "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              }`}>
-                                {resolvedGroup === "in_progress" 
-                                  ? (userLanguage === "sk" ? "PREBIEHAJÚCE" : userLanguage === "hu" ? "FOLYAMATBAN" : "IN PROGRESS") 
-                                  : resolvedGroup === "new" 
-                                    ? (userLanguage === "sk" ? "NOVÉ" : userLanguage === "hu" ? "ÚJ" : "NEW") 
-                                    : (userLanguage === "sk" ? "UZAVRETÉ" : userLanguage === "hu" ? "LEZÁRT" : "CLOSED")
-                                }
-                              </span>
-                            </td>
-
-                            {/* 4a. SLA LIMIT — days a lead may stay in this phase before it is flagged */}
-                            <td className="py-3 px-4 align-middle select-none">
-                              {(() => {
-                                const slaKey = state.toLowerCase();
-                                const canEdit = getPermission("pipeline_stages") === "edit";
-                                // A closed phase is where the pipeline ends, so
-                                // "not moved on in time" means nothing there.
-                                if (resolvedGroup === "closed") {
-                                  return (
-                                    <span
-                                      className="type-overline text-slate-300 cursor-help"
-                                      title={t(
-                                        "Closed phases end the pipeline — there is nothing left to move on to.",
-                                        "Uzavreté fázy sú koncom pipeline — nie je kam sa posunúť ďalej.",
-                                        "A lezárt fázisok lezárják a folyamatot — nincs hová továbblépni.",
-                                      )}
-                                    >
-                                      —
-                                    </span>
-                                  );
-                                }
-                                const days = leadStateSla[slaKey] || 0;
-                                return (
-                                  <div className="flex items-center gap-1.5">
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      max={3650}
-                                      step={1}
-                                      inputMode="numeric"
-                                      value={days || ""}
-                                      placeholder="—"
-                                      disabled={!canEdit}
-                                      onChange={(e) => {
-                                        const next = normalizeSlaDays(e.target.value);
-                                        setLeadStateSla(prev => {
-                                          const copy = { ...prev };
-                                          // Empty and zero both mean "no limit",
-                                          // and it is stored as the absence of a
-                                          // key so the settings blob has one shape.
-                                          if (next > 0) copy[slaKey] = next;
-                                          else delete copy[slaKey];
-                                          return copy;
-                                        });
-                                      }}
-                                      title={t(
-                                        "Maximum days in this phase. Empty = no limit.",
-                                        "Maximálny počet dní v tejto fáze. Prázdne = bez limitu.",
-                                        "Legfeljebb hány nap ebben a fázisban. Üres = nincs határidő.",
-                                      )}
-                                      className={`w-16 px-2.5 py-1.5 rounded-lg bg-white border text-ui font-bold text-slate-700 text-center focus:outline-none focus:border-indigo-500 transition-colors ${days ? "border-amber-300 bg-amber-50/60" : "border-slate-200"} ${canEdit ? "" : "opacity-50 cursor-not-allowed"}`}
-                                    />
-                                    <span className={`type-overline ${days ? "text-amber-600" : "text-slate-300"}`}>
-                                      {t("days", "dní", "nap")}
-                                    </span>
-                                  </div>
-                                );
-                              })()}
-                            </td>
-
-                            {/* 4b. FOLLOW-UP TOGGLE — leads in this state show a "Follow-up done" checkbox */}
-                            <td className="py-3 px-4 text-center align-middle select-none">
-                              {(() => {
-                                const fuKey = state.toLowerCase();
-                                const enabled = !!leadStateFollowUp[fuKey];
-                                const canEdit = getPermission("pipeline_stages") === "edit";
-                                return (
-                                  <button
-                                    type="button"
-                                    disabled={!canEdit}
-                                    onClick={() => setLeadStateFollowUp(prev => ({ ...prev, [fuKey]: !prev[fuKey] }))}
-                                    title={t(
-                                      "Show a follow-up checkbox on leads in this state",
-                                      "Zobraziť follow-up zaškrtávacie pole pri leadoch v tomto stave",
-                                      "Follow-up jelölőnégyzet megjelenítése az ebben az állapotban lévő leadeknél",
-                                    )}
-                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enabled ? "bg-indigo-600" : "bg-slate-300"} ${canEdit ? "cursor-pointer hover:opacity-90" : "opacity-50 cursor-not-allowed"}`}
-                                  >
-                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0.5"}`} />
-                                  </button>
-                                );
-                              })()}
-                            </td>
-
-                            {/* 5. DELETE BUTTON */}
-                            <td className="py-3 px-4 text-center align-middle">
-                              {getPermission("pipeline_stages") === "edit" ? (
-                                <HoldToConfirmButton
-                                    tone="danger"
-                                    lang={userLanguage}
-                                    what={state}
-                                    onConfirm={() => handleRemoveState(state)}
-                                    className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
-                                    title={getTranslation(userLanguage, "settings.states.remove_title")}
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </HoldToConfirmButton>
-                              ) : (
-                                <span className="type-overline text-slate-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      });
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Add Custom Stage */}
-              {getPermission("pipeline_stages") === "edit" && (
-                <form onSubmit={handleAddState} className="flex gap-2 max-w-lg pt-2 items-center">
-                  <input
-                    type="text"
-                    required
-                    value={newState}
-                    onChange={(e) => setNewState(e.target.value)}
-                    placeholder={getTranslation(userLanguage, "settings.states.placeholder")}
-                    className="flex-1 min-w-37.5 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                  />
-                  <div className="max-w-37.5">
-                    <CustomSelect
-                      value={newStateParent}
-                      onChange={(v) => setNewStateParent(v)}
-                      options={[
-                        { value: "", label: userLanguage === "sk" ? "-- Hlavný stav --" : userLanguage === "hu" ? "-- Fő állapot --" : "-- Major State --" },
-                        ...leadStates.filter(s => !leadStateParents[s.toLowerCase()]).map(s => ({ value: s.toLowerCase(), label: s.toUpperCase() })),
-                      ]}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={!newState.trim()}
-                    className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.states.btn_add")}
-                  </button>
-                </form>
-              )}
-            </div>
-
-            {/* ── AUTO-ASSIGNMENT ────────────────────────────────────────
-                Who a new lead goes to when it arrives without a project
-                manager: the public web-form webhook, workflow actions,
-                imports, and leads added in the app without picking anyone.
-                The pick itself happens server-side, so one rotation is
-                shared by every device and every entry point. */}
-            <LeadAssignmentCard
-              users={users}
-              leadAssignment={leadAssignment}
-              setLeadAssignment={setLeadAssignment}
-              canEdit={getPermission("pipeline_stages") === "edit"}
-              userLanguage={userLanguage}
-            />
-          </div>
-        )}
-
-        {/* TAB 5: Traffic Channels */}
-        {activeSubTab === "sources" && getPermission("traffic_sources") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6 animate-fade-in">
-            {renderReadOnlyBanner("traffic_sources")}
-
-            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-              <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                <Share2 className="h-4.5 w-4.5 text-emerald-500" /> {getTranslation(userLanguage, "settings.sources.title")}
-              </h3>
-              
-              <p className="type-overline text-slate-400 text-left">
-                {getTranslation(userLanguage, "settings.sources.desc")}
-              </p>
-
-              <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-                      <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500">{getTranslation(userLanguage, "settings.sources.th_name")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {leadSources.map((source, idx) => {
-                      const color = leadSourceColors[source.toLowerCase()] || "#10b981";
-                      const isDragOver = dragOverSourceIndex === idx;
-
-                      return (
-                        <tr
-                          key={`source-${source}`}
-                          draggable={getPermission("traffic_sources") === "edit" ? "true" : "false"}
-                          onDragStart={() => {
-                            if (getPermission("traffic_sources") === "edit") {
-                              setDraggedSource(source);
-                            }
-                          }}
-                          onDragEnd={() => {
-                            setDraggedSource(null);
-                            setDragOverSourceIndex(null);
-                          }}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            if (getPermission("traffic_sources") === "edit" && draggedSource && draggedSource !== source) {
-                              setDragOverSourceIndex(idx);
-                            }
-                          }}
-                          onDragLeave={() => setDragOverSourceIndex(null)}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            setDragOverSourceIndex(null);
-                            if (draggedSource) {
-                              handleMoveSourceToIndex(draggedSource, idx);
-                              setDraggedSource(null);
-                            }
-                          }}
-                          className={`border-b border-slate-200/60 hover:bg-slate-50/50 transition-all duration-200 ${
-                            isDragOver ? "bg-emerald-50/50 scale-[0.99] border-y-2 border-dashed border-emerald-300" : ""
-                          }`}
-                        >
-                          {/* 1. GRIP HANDLE */}
-                          <td className="py-3 px-4 text-center align-middle">
-                            {getPermission("traffic_sources") === "edit" ? (
-                              <GripVertical className="h-4 w-4 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing inline-block" />
-                            ) : (
-                              <Lock className="h-3 w-3 text-slate-300 inline-block" />
-                            )}
-                          </td>
-
-                          {/* 2. COLOR PICKER */}
-                          <td className="py-3 px-4 align-middle">
-                            <div className="flex items-center gap-2">
-                              {getPermission("traffic_sources") === "edit" ? (
-                                <ColorPicker
-                                  variant="ring"
-                                  value={color}
-                                  onChange={(next) => setLeadSourceColors(prev => ({ ...prev, [source.toLowerCase()]: next }))}
-                                  title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
-                                />
-                              ) : (
-                                <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
-                              )}
-                              <span className="type-overline text-slate-400">{color}</span>
-                            </div>
-                          </td>
-
-                          {/* 3. SOURCE NAME */}
-                          <td className="py-3 px-4 align-middle">
-                            <div className="flex items-center gap-3">
-                              <span
-                                className="text-micro font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded-md"
-                                title={t(
-                                  "Permanent ID — web forms send it, and it never changes when you reorder or rename",
-                                  "Trvalé ID — posielajú ho webové formuláre a nemení sa pri zmene poradia ani premenovaní",
-                                  "Állandó azonosító — a webűrlapok ezt küldik, és átrendezéskor vagy átnevezéskor sem változik",
-                                )}
-                              >ID: {listIdFor(source, leadSourceIds) || idx + 1}</span>
-                              <InlineRenameName
-                                value={source}
-                                canEdit={getPermission("traffic_sources") === "edit"}
-                                onCommit={(next) => handleRenameSource(source, next)}
-                                renameTitle={t("Rename", "Premenovať", "Átnevezés")}
-                              >
-                                <span
-                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
-                                  style={{
-                                    backgroundColor: `${color}12`,
-                                    color: color,
-                                    borderColor: `${color}35`
-                                  }}
-                                >
-                                  {source}
-                                </span>
-                              </InlineRenameName>
-                            </div>
-                          </td>
-
-                          {/* 4. DELETE BUTTON */}
-                          <td className="py-3 px-4 text-center align-middle">
-                            {getPermission("traffic_sources") === "edit" ? (
-                              <HoldToConfirmButton
-                                  tone="danger"
-                                  lang={userLanguage}
-                                  what={source}
-                                  onConfirm={() => handleRemoveSource(source)}
-                                  className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
-                                  title={userLanguage === "sk" ? "Odstrániť zdroj" : userLanguage === "hu" ? "Forrás törlése" : "Remove source"}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </HoldToConfirmButton>
-                            ) : (
-                              <span className="type-overline text-slate-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Add Custom Source */}
-              {getPermission("traffic_sources") === "edit" && (
-                <form onSubmit={handleAddSource} className="flex gap-2 max-w-md pt-2">
-                  <input
-                    type="text"
-                    required
-                    value={newSource}
-                    onChange={(e) => setNewSource(e.target.value)}
-                    placeholder={getTranslation(userLanguage, "settings.sources.placeholder")}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!newSource.trim()}
-                    className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1 shrink-0"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add")}
-                  </button>
-                </form>
-              )}
-            </div>
-
-            {/* Interested Categories configuration card */}
-            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass mt-6 animate-fade-in">
-              <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                <Tag className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> {getTranslation(userLanguage, "settings.sources.categories_title")}
-              </h3>
-              
-              <p className="type-overline text-slate-400 text-left">
-                {getTranslation(userLanguage, "settings.sources.categories_desc")}
-              </p>
-
-              <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-                      <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500">{getTranslation(userLanguage, "settings.sources.th_category_name")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {leadCategories.map((cat, idx) => {
-                      const color = leadCategoryColors[cat] || "#6366f1";
-                      const isDragOver = dragOverCategoryIndex === idx;
-
-                      return (
-                        <tr
-                          key={`cat-${cat}`}
-                          draggable={getPermission("traffic_sources") === "edit" ? "true" : "false"}
-                          onDragStart={() => {
-                            if (getPermission("traffic_sources") === "edit") {
-                              setDraggedCategory(cat);
-                            }
-                          }}
-                          onDragEnd={() => {
-                            setDraggedCategory(null);
-                            setDragOverCategoryIndex(null);
-                          }}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            if (getPermission("traffic_sources") === "edit" && draggedCategory && draggedCategory !== cat) {
-                              setDragOverCategoryIndex(idx);
-                            }
-                          }}
-                          onDragLeave={() => setDragOverCategoryIndex(null)}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            setDragOverCategoryIndex(null);
-                            if (draggedCategory) {
-                              handleMoveCategoryToIndex(draggedCategory, idx);
-                              setDraggedCategory(null);
-                            }
-                          }}
-                          className={`border-b border-slate-200/60 hover:bg-slate-50/50 transition-all duration-200 ${
-                            isDragOver ? "bg-indigo-50/50 scale-[0.99] border-y-2 border-dashed border-indigo-300" : ""
-                          }`}
-                        >
-                          {/* 1. GRIP HANDLE */}
-                          <td className="py-3 px-4 text-center align-middle">
-                            {getPermission("traffic_sources") === "edit" ? (
-                              <GripVertical className="h-4 w-4 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing inline-block" />
-                            ) : (
-                              <Lock className="h-3 w-3 text-slate-300 inline-block" />
-                            )}
-                          </td>
-
-                          {/* 2. COLOR PICKER */}
-                          <td className="py-3 px-4 align-middle">
-                            <div className="flex items-center gap-2">
-                              {getPermission("traffic_sources") === "edit" ? (
-                                <ColorPicker
-                                  variant="ring"
-                                  value={color}
-                                  onChange={(next) => setLeadCategoryColors(prev => ({ ...prev, [cat]: next }))}
-                                  title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
-                                />
-                              ) : (
-                                <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
-                              )}
-                              <span className="type-overline text-slate-400">{color}</span>
-                            </div>
-                          </td>
-
-                          {/* 3. CATEGORY NAME */}
-                          <td className="py-3 px-4 align-middle">
-                            <div className="flex items-center gap-3">
-                              <span
-                                className="text-micro font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded-md"
-                                title={t(
-                                  "Permanent ID — web forms send it, and it never changes when you reorder or rename",
-                                  "Trvalé ID — posielajú ho webové formuláre a nemení sa pri zmene poradia ani premenovaní",
-                                  "Állandó azonosító — a webűrlapok ezt küldik, és átrendezéskor vagy átnevezéskor sem változik",
-                                )}
-                              >ID: {listIdFor(cat, leadCategoryIds) || idx + 1}</span>
-                              <InlineRenameName
-                                value={cat}
-                                canEdit={getPermission("traffic_sources") === "edit"}
-                                onCommit={(next) => handleRenameCategory(cat, next)}
-                                renameTitle={t("Rename", "Premenovať", "Átnevezés")}
-                              >
-                                <span
-                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
-                                  style={{
-                                    backgroundColor: `${color}12`,
-                                    color: color,
-                                    borderColor: `${color}35`
-                                  }}
-                                >
-                                  {cat}
-                                </span>
-                              </InlineRenameName>
-                            </div>
-                          </td>
-
-                          {/* 4. DELETE BUTTON */}
-                          <td className="py-3 px-4 text-center align-middle">
-                            {getPermission("traffic_sources") === "edit" ? (
-                              <HoldToConfirmButton
-                                  tone="danger"
-                                  lang={userLanguage}
-                                  what={cat}
-                                  onConfirm={() => handleRemoveCategory(cat)}
-                                  className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
-                                  title={userLanguage === "sk" ? "Odstrániť kategóriu" : userLanguage === "hu" ? "Kategória törlése" : "Remove category"}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </HoldToConfirmButton>
-                            ) : (
-                              <span className="type-overline text-slate-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Add Custom Category */}
-              {getPermission("traffic_sources") === "edit" && (
-                <form onSubmit={handleAddCategory} className="flex gap-2 max-w-md pt-2">
-                  <input
-                    type="text"
-                    required
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    placeholder={getTranslation(userLanguage, "settings.sources.placeholder_category")}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!newCategory.trim()}
-                    className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add_category")}
-                  </button>
-                </form>
-              )}
-            </div>
-
-            {/* Company Divisions configuration card */}
-            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass mt-6 animate-fade-in">
-              <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                <Building2 className="h-4.5 w-4.5 text-blue-600" /> {getTranslation(userLanguage, "settings.sources.divisions_title")}
-              </h3>
-              
-              <p className="type-overline text-slate-400 text-left">
-                {getTranslation(userLanguage, "settings.sources.divisions_desc")}
-              </p>
-
-              <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-                      <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500">{getTranslation(userLanguage, "settings.sources.th_division_name")}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {divisions.map((div, idx) => {
-                      const color = divisionColors[div] || "#3b82f6";
-                      const isDragOver = dragOverDivisionIndex === idx;
-
-                      return (
-                        <tr
-                          key={`div-${div}`}
-                          draggable={getPermission("traffic_sources") === "edit" ? "true" : "false"}
-                          onDragStart={() => {
-                            if (getPermission("traffic_sources") === "edit") {
-                              setDraggedDivision(div);
-                            }
-                          }}
-                          onDragEnd={() => {
-                            setDraggedDivision(null);
-                            setDragOverDivisionIndex(null);
-                          }}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            if (getPermission("traffic_sources") === "edit" && draggedDivision && draggedDivision !== div) {
-                              setDragOverDivisionIndex(idx);
-                            }
-                          }}
-                          onDragLeave={() => setDragOverDivisionIndex(null)}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            setDragOverDivisionIndex(null);
-                            if (draggedDivision) {
-                              handleMoveDivisionToIndex(draggedDivision, idx);
-                              setDraggedDivision(null);
-                            }
-                          }}
-                          className={`border-b border-slate-200/60 hover:bg-slate-50/50 transition-all duration-200 ${
-                            isDragOver ? "bg-blue-50/50 scale-[0.99] border-y-2 border-dashed border-blue-300" : ""
-                          }`}
-                        >
-                          {/* 1. GRIP HANDLE */}
-                          <td className="py-3 px-4 text-center align-middle">
-                            {getPermission("traffic_sources") === "edit" ? (
-                              <GripVertical className="h-4 w-4 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing inline-block" />
-                            ) : (
-                              <Lock className="h-3 w-3 text-slate-300 inline-block" />
-                            )}
-                          </td>
-
-                          {/* 2. COLOR PICKER */}
-                          <td className="py-3 px-4 align-middle">
-                            <div className="flex items-center gap-2">
-                              {getPermission("traffic_sources") === "edit" ? (
-                                <ColorPicker
-                                  variant="ring"
-                                  value={color}
-                                  onChange={(next) => setDivisionColors?.(prev => ({ ...prev, [div]: next }))}
-                                  title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
-                                />
-                              ) : (
-                                <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
-                              )}
-                              <span className="type-overline text-slate-400">{color}</span>
-                            </div>
-                          </td>
-
-                          {/* 3. DIVISION NAME */}
-                          <td className="py-3 px-4 align-middle">
-                            <InlineRenameName
-                              value={div}
-                              canEdit={getPermission("traffic_sources") === "edit"}
-                              onCommit={(next: string) => handleRenameDivision(div, next)}
-                              renameTitle={t("Rename", "Premenovať", "Átnevezés")}
-                            >
-                              <span
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
-                                style={{
-                                  backgroundColor: `${color}15`,
-                                  color: color,
-                                  borderColor: `${color}35`,
-                                }}
-                              >
-                                <Building2 className="h-3.5 w-3.5 shrink-0" />
-                                {div}
-                              </span>
-                            </InlineRenameName>
-                          </td>
-
-                          {/* 4. DELETE BUTTON */}
-                          <td className="py-3 px-4 text-center align-middle">
-                            {getPermission("traffic_sources") === "edit" && divisions.length > 1 ? (
-                              <HoldToConfirmButton
-                                  tone="danger"
-                                  lang={userLanguage}
-                                  what={div}
-                                  onConfirm={() => handleRemoveDivision(div)}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                                  title={t("Delete division", "Odstrániť divíziu", "Divízió törlése")}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </HoldToConfirmButton>
-                            ) : (
-                              <span className="text-micro text-slate-300">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Add New Division Form */}
-              {getPermission("traffic_sources") === "edit" && (
-                <form onSubmit={handleAddDivision} className="flex items-center gap-3 pt-2">
-                  <input
-                    type="text"
-                    required
-                    value={newDivision}
-                    onChange={(e) => setNewDivision(e.target.value)}
-                    placeholder={getTranslation(userLanguage, "settings.sources.placeholder_division")}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-blue-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!newDivision.trim()}
-                    className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-blue-600/10 flex items-center gap-1 shrink-0"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add_division")}
-                  </button>
-                </form>
-              )}
-            </div>
-
-            {/* Task States configuration card */}
-            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass mt-6 animate-fade-in">
-              <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                <CheckSquare className="h-4.5 w-4.5 text-indigo-500" /> {userLanguage === "sk" ? "Stavy úloh" : userLanguage === "hu" ? "Feladat állapotok" : "Task States"}
-              </h3>
-              
-              <p className="type-overline text-slate-400 text-left">
-                {userLanguage === "sk" ? "Definujte rôzne stavy pre úlohy, priraďte im farby a prispôsobte si pracovný postup." : userLanguage === "hu" ? "Határozzon meg különböző állapotokat a feladatokhoz, rendeljen hozzájuk színeket, és szabja személyre a munkafolyamatot." : "Define different states for tasks, assign colors to them, and customize your workflow."}
-              </p>
-
-              <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-                      <th className="py-3 px-4 type-overline text-slate-500 w-44">{userLanguage === "sk" ? "Farba" : userLanguage === "hu" ? "Szín" : "Color"}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500">{userLanguage === "sk" ? "Názov" : userLanguage === "hu" ? "Név" : "Name"}</th>
-                      <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{userLanguage === "sk" ? "Odstrániť" : userLanguage === "hu" ? "Törlés" : "Delete"}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {taskStates.map((state) => {
-                      const color = taskStateColors[state] || "#64748b";
-                      return (
-                        <tr key={state} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-                          {/* COLOR PICKER */}
-                          <td className="py-3 px-4 align-middle">
-                            <div className="flex items-center gap-2">
-                              {getPermission("traffic_sources") === "edit" ? (
-                                <ColorPicker
-                                  variant="ring"
-                                  value={color}
-                                  onChange={(next) => setTaskStateColors(prev => ({ ...prev, [state]: next }))}
-                                  title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
-                                />
-                              ) : (
-                                <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
-                              )}
-                              <span className="type-overline text-slate-400">{color}</span>
-                            </div>
-                          </td>
-
-                          {/* STATE NAME */}
-                          <td className="py-3 px-4 align-middle font-bold text-slate-800 text-ui">
-                            <InlineRenameName
-                              value={state}
-                              canEdit={getPermission("traffic_sources") === "edit"}
-                              onCommit={(next) => handleRenameTaskState(state, next)}
-                              renameTitle={t("Rename", "Premenovať", "Átnevezés")}
-                            >
-                              <span>{state}</span>
-                            </InlineRenameName>
-                          </td>
-
-                          {/* ACTIONS */}
-                          <td className="py-3 px-4 text-center align-middle">
-                            {getPermission("traffic_sources") === "edit" ? (
-                              <HoldToConfirmButton
-                                  tone="danger"
-                                  lang={userLanguage}
-                                  what={state}
-                                  onConfirm={() => {
-                                  if (taskStates.length <= 1) {
-                                    (window as any).showToast(
-                                      userLanguage === "sk" 
-                                        ? "Pre správne fungovanie je potrebný aspoň jeden stav úlohy!" 
-                                        : "At least one task state is required!"
-                                    );
-                                    return;
-                                  }
-                                  const taskStateIndex = taskStates.indexOf(state);
-                                  const taskStateColor = taskStateColors[state];
-                                  runUndoable({
-                                    message: singleMessage(userLanguage, "status", "delete", state),
-                                    undoLabel: undoLabel(userLanguage),
-                                    apply: () => {
-                                      setTaskStates(taskStates.filter(s => s !== state));
-                                      setTaskStateColors(prev => {
-                                        const next = { ...prev };
-                                        delete next[state];
-                                        return next;
-                                      });
-                                    },
-                                    revert: () => {
-                                      setTaskStates(prev => (prev.includes(state) ? prev : reinsertAt(prev, [{ item: state, index: taskStateIndex }], s => s)));
-                                      if (taskStateColor !== undefined) setTaskStateColors(prev => ({ ...prev, [state]: taskStateColor }));
-                                    },
-                                  });
-                                }}
-                                  className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                              >
-                                <Trash2 className="h-4.5 w-4.5" />
-                              </HoldToConfirmButton>
-                            ) : (
-                              <Lock className="h-4 w-4 text-slate-300 inline-block" />
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Add New Task State Form */}
-              {getPermission("traffic_sources") === "edit" && (
-                <div className="pt-4 border-t border-slate-200/80">
-                  <div className="flex items-end gap-3 max-w-md">
-                    <div className="flex-1 space-y-1">
-                      <label className="type-overline text-slate-500 block">
-                        {t("New Task State", "Nový stav úlohy", "Új feladatállapot")}
-                      </label>
-                      <input 
-                        type="text"
-                        value={newTaskState}
-                        onChange={(e) => setNewTaskState(e.target.value)}
-                        placeholder={t("e.g. Pending review", "napr. Čaká na kontrolu", "pl. Ellenőrzésre vár")}
-                        className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-ui"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const val = newTaskState.trim();
-                        if (!val) return;
-                        if (taskStates.map(s => s.toLowerCase()).includes(val.toLowerCase())) {
-                          (window as any).showToast(
-                            t("This state already exists!", "Tento stav už existuje!", "Ez az állapot már létezik!")
-                          );
-                          return;
-                        }
-                        setTaskStates([...taskStates, val]);
-                        setTaskStateColors(prev => ({
-                          ...prev,
-                          [val]: "#3b82f6" // Default blue
-                        }));
-                        setNewTaskState("");
-                      }}
-                      className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-ui font-bold shadow-md transition-all active:scale-95 flex items-center justify-center gap-1 shrink-0"
-                    >
-                      <Plus className="h-4 w-4 stroke-[2.5]" /> {t("Add", "Pridať", "Hozzáadás")}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-          </div>
-        )}
-
-        {/* TAB: Ads APIs & Campaigns */}
-        {activeSubTab === "ads" && getPermission("general_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("general_config")}
-
-            {/* Split Credentials Row */}
-            <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
-              {/* Meta Ads Credentials Form */}
-              <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                  <span className="text-blue-600 font-extrabold text-title-sm">♾️</span> {getTranslation(userLanguage, "settings.ads.meta_title")}
-                </h3>
-                
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.meta_id")}</label>
-                    <input
-                      type="text"
-                      disabled={getPermission("general_config") === "view"}
-                      value={metaAppId}
-                      onChange={(e) => {
-                        setMetaAppId(e.target.value);
-                      }}
-                      onBlur={syncAdsCredentialsToDb}
-                      placeholder={t("e.g. 8493029104928", "napr. 8493029104928", "pl. 8493029104928")}
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.meta_secret")}</label>
-                    <PasswordInput
-                      disabled={getPermission("general_config") === "view"}
-                      value={metaAppSecret}
-                      onChange={(e) => {
-                        setMetaAppSecret(e.target.value);
-                      }}
-                      onBlur={syncAdsCredentialsToDb}
-                      placeholder="••••••••••••••••••••••••••••••••"
-                      className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.meta_token")}</label>
-                    <textarea
-                      rows={2}
-                      disabled={getPermission("general_config") === "view"}
-                      value={metaAccessToken}
-                      onChange={(e) => {
-                        setMetaAccessToken(e.target.value);
-                      }}
-                      onBlur={syncAdsCredentialsToDb}
-                      placeholder="EAAGm0PX4ZBQBO..."
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 resize-none font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Google Ads Credentials Form */}
-              <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                  <span className="text-amber-500 font-extrabold text-title-sm">🤖</span> {getTranslation(userLanguage, "settings.ads.google_title")}
-                </h3>
-                
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.google_dev")}</label>
-                      <input
-                        type="text"
-                        disabled={getPermission("general_config") === "view"}
-                        value={googleDevToken}
-                        onChange={(e) => {
-                          setGoogleDevToken(e.target.value);
-                        }}
-                        onBlur={syncAdsCredentialsToDb}
-                        placeholder={t("e.g. AbC12D34E5...", "napr. AbC12D34E5...", "pl. AbC12D34E5...")}
-                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.google_client")}</label>
-                      <input
-                        type="text"
-                        disabled={getPermission("general_config") === "view"}
-                        value={googleClientId}
-                        onChange={(e) => {
-                          setGoogleClientId(e.target.value);
-                        }}
-                        onBlur={syncAdsCredentialsToDb}
-                        placeholder="84092-abc.apps.google..."
-                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.google_secret")}</label>
-                    <PasswordInput
-                      disabled={getPermission("general_config") === "view"}
-                      value={googleClientSecret}
-                      onChange={(e) => {
-                        setGoogleClientSecret(e.target.value);
-                      }}
-                      onBlur={syncAdsCredentialsToDb}
-                      placeholder="GOCSPX-••••••••••••••••"
-                      className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.google_refresh")}</label>
-                    <textarea
-                      rows={2}
-                      disabled={getPermission("general_config") === "view"}
-                      value={googleRefreshToken}
-                      onChange={(e) => {
-                        setGoogleRefreshToken(e.target.value);
-                      }}
-                      onBlur={syncAdsCredentialsToDb}
-                      placeholder="1//0gDabc..."
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 resize-none font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Campaign Control Center Panel */}
-            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-              <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-                <div className="flex flex-col">
-                  <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-                    <Sliders className="h-4.5 w-4.5 text-indigo-600" /> {getTranslation(userLanguage, "settings.ads.campaign_title")}
-                  </h3>
-                  <span className="type-overline text-slate-400 mt-1 block">
-                    {getTranslation(userLanguage, "settings.ads.campaign_desc")}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  {/* Status Indicator */}
-                  <span className={`px-3 py-1 rounded-full border type-overline flex items-center gap-1.5 ${
-                    isConnected 
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
-                      : "bg-slate-50 text-slate-400 border-slate-200"
-                  }`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
-                    {isConnected ? getTranslation(userLanguage, "settings.ads.status_online") : getTranslation(userLanguage, "settings.ads.status_offline")}
-                  </span>
-
-                  <button
-                    type="button"
-                    disabled={isSyncing || getPermission("general_config") === "view"}
-                    onClick={() => {
-                      if (!metaAppId.trim() && !googleDevToken.trim()) {
-                        (window as any).showToast(
-                          userLanguage === "sk" 
-                            ? "Vyplňte prosím aspoň jedno rozloženie poverení rozhrania API na autorizáciu synchronizácie integrácie!" 
-                            : userLanguage === "hu" 
-                              ? "Kérjük, töltsön ki legalább egy API hitelesítő adatot az integrációs szinkronizálás engedélyezéséhez!" 
-                              : "Please fill in at least one API credential layout to authorize integration synchronization!"
-                        );
-                        return;
-                      }
-                      setIsSyncing(true);
-                      setTimeout(() => {
-                        setIsSyncing(false);
-                        setIsConnected(true);
-                        if (updateIntegrationsConfig) {
-                          updateIntegrationsConfig({
-                            ...integrationsConfig,
-                            metaAppId,
-                            metaAppSecret,
-                            metaAccessToken,
-                            googleDevToken,
-                            googleClientId,
-                            googleClientSecret,
-                            googleRefreshToken,
-                            adsConnected: true
-                          });
-                        }
-                        (window as any).showToast(
-                          userLanguage === "sk" 
-                            ? "Zabezpečené overenie API úspešne dokončené! Databázy kampaní boli úspešne synchronizované." 
-                            : userLanguage === "hu" 
-                              ? "Biztonságos API kézfogás befejeződött! A kampányadatbázisok sikeresen szinkronizálva." 
-                              : "Secure API handshake completed! Campaign databases synced successfully."
-                        );
-                      }, 1200);
-                    }}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-400 type-overline text-white rounded-xl transition-all flex items-center gap-1.5 active:scale-95 disabled:scale-100 disabled:cursor-not-allowed"
-                  >
-                    <span>{isSyncing ? getTranslation(userLanguage, "settings.ads.btn_syncing") : getTranslation(userLanguage, "settings.ads.btn_sync")}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Connected Active Campaign Listing */}
-              {isConnected ? (
-                <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
-                  <table className="w-full text-left border-collapse bg-white">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 type-overline text-slate-600">
-                        <th className="py-3.5 px-4 min-w-32.5">{getTranslation(userLanguage, "settings.ads.th_platform")}</th>
-                        <th className="py-3.5 px-4 min-w-55">{getTranslation(userLanguage, "settings.ads.th_name")}</th>
-                        <th className="py-3.5 px-4 text-center min-w-30">{getTranslation(userLanguage, "settings.ads.th_budget")}</th>
-                        <th className="py-3.5 px-4 text-center min-w-27.5">{getTranslation(userLanguage, "settings.ads.th_status")}</th>
-                        <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_impressions")}</th>
-                        <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_clicks")}</th>
-                        <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_ctr")}</th>
-                        <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_spent")}</th>
-                        <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_leads")}</th>
-                        <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_cpl")}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-ui font-semibold text-slate-700">
-                      {campaigns.map((c) => {
-                        const ctr = c.impressions > 0 ? ((c.clicks / c.impressions) * 100).toFixed(2) : "0.00";
-                        const cpl = c.leads > 0 ? (c.spent / c.leads).toFixed(2) : "0.00";
-                        
-                        return (
-                          <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                            {/* Platform badge */}
-                            <td className="py-3 px-4">
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline border ${
-                                c.platform === "meta"
-                                  ? "bg-blue-50 text-blue-700 border-blue-200"
-                                  : "bg-amber-50 text-amber-700 border-amber-200"
-                              }`}>
-                                {c.platform === "meta" ? "♾️ Meta" : "🤖 Google"}
-                              </span>
-                            </td>
-
-                            {/* Campaign Name */}
-                            <td className="py-3 px-4 text-slate-800 font-bold truncate max-w-62.5" title={c.name}>
-                              {c.name}
-                            </td>
-
-                            {/* Daily Budget (Editable) */}
-                            <td className="py-3 px-4 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <span className="text-slate-400 font-bold">$</span>
-                                <input
-                                  type="number"
-                                  disabled={getPermission("general_config") === "view"}
-                                  value={c.budget}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    setCampaigns(prev => prev.map(item => item.id === c.id ? { ...item, budget: val } : item));
-                                  }}
-                                  className="w-16 px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 focus:outline-none focus:border-indigo-500 font-bold text-center text-ui"
-                                />
-                              </div>
-                            </td>
-
-                            {/* Campaign Status (Editable) */}
-                            <td className="py-3 px-4 text-center">
-                              {getPermission("general_config") === "edit" ? (
-                                <CustomSelect
-                                  size="sm"
-                                  value={c.status}
-                                  onChange={(v) => {
-                                    const statusVal = v as any;
-                                    setCampaigns(prev => prev.map(item => item.id === c.id ? { ...item, status: statusVal } : item));
-                                  }}
-                                  options={[
-                                    { value: "active", label: userLanguage === "sk" ? "Aktívne" : userLanguage === "hu" ? "Aktív" : "Active" },
-                                    { value: "paused", label: userLanguage === "sk" ? "Pozastavené" : userLanguage === "hu" ? "Szüneteltetve" : "Paused" },
-                                    { value: "learning", label: userLanguage === "sk" ? "Učenie" : userLanguage === "hu" ? "Tanulás" : "Learning" },
-                                  ]}
-                                />
-                              ) : (
-                                <span className={`px-2 py-0.5 rounded type-overline border ${
-                                  c.status === "active"
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : c.status === "paused"
-                                      ? "bg-rose-50 text-rose-700 border-rose-200"
-                                      : "bg-indigo-50 text-indigo-700 border-indigo-200"
-                                }`}>
-                                  {c.status === "active" 
-                                    ? (userLanguage === "sk" ? "Aktívne" : userLanguage === "hu" ? "Aktív" : "Active") 
-                                    : c.status === "paused" 
-                                      ? (userLanguage === "sk" ? "Pozastavené" : userLanguage === "hu" ? "Szüneteltetve" : "Paused") 
-                                      : (userLanguage === "sk" ? "Učenie" : userLanguage === "hu" ? "Tanulás" : "Learning")
-                                  }
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Impressions */}
-                            <td className="py-3 px-4 text-right font-mono text-slate-600">
-                              {c.impressions.toLocaleString()}
-                            </td>
-
-                            {/* Clicks */}
-                            <td className="py-3 px-4 text-right font-mono text-slate-600">
-                              {c.clicks.toLocaleString()}
-                            </td>
-
-                            {/* CTR */}
-                            <td className="py-3 px-4 text-right font-mono text-indigo-600 font-bold">
-                              {ctr}%
-                            </td>
-
-                            {/* Spent */}
-                            <td className="py-3 px-4 text-right font-mono text-slate-600">
-                              ${c.spent.toFixed(2)}
-                            </td>
-
-                            {/* Leads */}
-                            <td className="py-3 px-4 text-right font-mono text-emerald-600 font-bold">
-                              {c.leads}
-                            </td>
-
-                            {/* CPL */}
-                            <td className="py-3 px-4 text-right font-mono text-slate-800 font-bold">
-                              ${cpl}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="py-8 flex flex-col items-center justify-center text-center space-y-2 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                  <span className="text-heading">🔌</span>
-                  <div className="flex flex-col">
-                    <span className="text-ui font-bold text-slate-600">{getTranslation(userLanguage, "settings.ads.empty_title")}</span>
-                    <span className="text-micro text-slate-400 max-w-sm mt-1">
-                      {getTranslation(userLanguage, "settings.ads.empty_desc")}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB: Public API Integration */}
-        {activeSubTab === "api" && getPermission("general_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6 animate-fade-in">
-            {renderReadOnlyBanner("general_config")}
-
-            {/* API Key management */}
-            <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
-              <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                <Lock className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> {getTranslation(userLanguage, "settings.api.title")}
-              </h3>
-              <p className="type-overline text-slate-400">
-                {getTranslation(userLanguage, "settings.api.desc")}
-              </p>
-              <div className="flex flex-col ws-sm:flex-row gap-3 items-center">
-                <div className="relative flex-1 w-full">
-                  <input
-                    type={showKey ? "text" : "password"}
-                    readOnly
-                    value={apiKey || (userLanguage === "sk" ? "Generovanie tajného kľúča..." : userLanguage === "hu" ? "Titkos kulcs generálása..." : "Generating secret key...")}
-                    className="w-full pl-4 pr-10 py-3 rounded-xl bg-slate-50 border border-slate-200 text-ui font-mono font-bold text-slate-700 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKey(!showKey)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-1"
-                    title={showKey 
-                      ? (userLanguage === "sk" ? "Skryť tajný kľúč" : userLanguage === "hu" ? "Titkos kulcs elrejtése" : "Hide Secret Key") 
-                      : (userLanguage === "sk" ? "Zobraziť tajný kľúč" : userLanguage === "hu" ? "Titkos kulcs megjelenítése" : "Show Secret Key")}
-                  >
-                    {showKey ? <Minus className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <div className="flex gap-2 w-full ws-sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!apiKey) return;
-                      navigator.clipboard.writeText(apiKey);
-                      (window as any).showToast(userLanguage === "sk" ? "API kľúč bol skopírovaný do schránky!" : userLanguage === "hu" ? "Az API kulcs másolva a vágólapra!" : "API Key copied to clipboard!");
-                    }}
-                    disabled={!apiKey}
-                    className="flex-1 ws-sm:flex-none px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-bold transition-all border border-slate-200 cursor-pointer active:scale-95 disabled:opacity-50"
-                  >
-                    {userLanguage === "sk" ? "Kopírovať kľúč" : userLanguage === "hu" ? "Kulcs másolása" : "Copy Key"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleResetApiKey}
-                    disabled={isApiKeyLoading || getPermission("general_config") === "view"}
-                    className="flex-1 ws-sm:flex-none px-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 cursor-pointer active:scale-95 disabled:opacity-50"
-                  >
-                    {userLanguage === "sk" ? "Resetovať kľúč" : userLanguage === "hu" ? "Kulcs visszaállítása" : "Reset Key"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Developer Guide */}
-            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-              <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-1.5">
-                  🔌 {getTranslation(userLanguage, "settings.api.guide")}
-                </h3>
-                <span className="bg-blue-50 text-blue-700 type-overline px-2 py-0.5 rounded-full border border-blue-200/50">
-                  STABLE w1
-                </span>
-              </div>
-
-              <p className="text-ui text-slate-600 leading-relaxed">
-                {userLanguage === "sk" 
-                  ? "Pripojte svoje externé webové stránky, landing pages alebo kontaktné formuláre priamo do pipeline odoslaním požiadavky POST na:" 
-                  : userLanguage === "hu" 
-                    ? "Csatlakoztassa külső weboldalait, céloldalait vagy kapcsolatfelvételi űrlapjait közvetlenül a pipeline-hoz egy POST kérés küldésével a következő címre:" 
-                    : "Connect your external websites, landing pages, or contact forms directly to the pipeline by sending a POST request to:"
-                }{" "}
-                <code className="bg-slate-100 text-slate-800 px-2 py-1 rounded-md text-caption font-mono border border-slate-200">
-                  /api/pipeline.php
-                </code>
-              </p>
-
-              {/* Monospace Curl Box */}
-              <div className="p-5 rounded-2xl bg-slate-900 text-slate-100 font-mono text-caption overflow-x-auto shadow-lg relative border border-slate-800">
-                <div className="text-slate-400 select-none pb-2 border-b border-slate-800 mb-3 flex justify-between items-center">
-                  <span>{getTranslation(userLanguage, "settings.api.curl_example")}</span>
-                  <span className="type-overline bg-slate-800 text-slate-300 px-2 py-0.5 rounded">POST</span>
-                </div>
-                <pre className="whitespace-pre overflow-x-auto leading-relaxed text-emerald-400">
-{`curl -X POST ${typeof window !== "undefined" ? window.location.origin : "https://yourdomain.com"}/api/pipeline.php \\
-  -H "Content-Type: application/json" \\
-  -H "X-API-KEY: ${apiKey || "sk_live_########################"}" \\
-  -d '{
-    "company_name": "Acme Corp",
-    "contact_name": "John Doe",
-    "email": "john@acme.com",
-    "phone": "+421900111222",
-    "city": "Bratislava",
-    "country": "Slovakia",
-    "message": "We need a new ecommerce website.",
-    "value": 4500,
-    "source_id": 1,
-    "category_ids": [2, 3],
-    "traffic_origin": "instagram",
-    "traffic_origin_detail": "paid · campaign: leto-2026 · landing: /arajanlat"
-  }'`}
-                </pre>
-              </div>
-
-              {/* Parameters 2-column list */}
-              <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6 pt-2">
-                <div className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50">
-                  <span className="type-overline text-slate-400 block mb-2">{getTranslation(userLanguage, "settings.api.required_fields")}</span>
-                  <div className="space-y-2">
-                    <div className="text-ui text-slate-700 leading-relaxed font-bold">
-                      <code>company_name</code> <span className="text-micro text-slate-400 font-normal">{userLanguage === "sk" ? "alebo" : userLanguage === "hu" ? "vagy" : "or"}</span> <code>contact_name</code>
-                    </div>
-                    <p className="text-micro text-slate-500 leading-relaxed">
-                      {userLanguage === "sk"
-                        ? "Aspoň jedno z týchto dvoch polí musí byť v tele JSON. company_name sa stane názvom klienta a lead sa založí ako firma; contact_name sa uloží ako kontaktná osoba — alebo ako samotný klient, ak firma nie je uvedená."
-                        : userLanguage === "hu"
-                          ? "Legalább az egyik mezőt meg kell adni a JSON törzsben. A company_name lesz az ügyfél neve, és a lead cégként jön létre; a contact_name a kapcsolattartó — vagy maga az ügyfél, ha nincs cég megadva."
-                          : "At least one of these two fields must be provided in the JSON body. company_name becomes the client's name and files the lead as a business; contact_name is stored as the contact person there — or as the client itself when no company is given."
-                      }
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50">
-                  <span className="type-overline text-slate-400 block mb-2">{getTranslation(userLanguage, "settings.api.optional_fields")}</span>
-                  <ul className="text-ui text-slate-700 space-y-2 leading-relaxed font-semibold">
-                    <li><code>email</code>, <code>phone</code>, <code>city</code>, <code>country</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Osobné údaje" : userLanguage === "hu" ? "Személyes adatok" : "Personal info"})</span></li>
-                    <li><code>message</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Uloží sa do časovej osi leadu aj do poľa „Záujem klienta“. Označené riadky v ňom (Firma:, Budget:) sa načítajú, ak dané pole chýba" : userLanguage === "hu" ? "A lead idővonalára és az „Ügyfél érdeklődése” mezőbe kerül. A benne lévő címkézett sorokat (Firma:, Budget:) beolvassuk, ha a mező hiányzik" : "Saved to the lead timeline and to \"Client interest\". Labelled lines inside it (Firma:, Budget:) are read when the matching field is missing"})</span></li>
-                    <li><code>value</code> <span className="text-micro text-slate-400 font-normal">{userLanguage === "sk" ? "alebo" : userLanguage === "hu" ? "vagy" : "or"}</span> <code>budget</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Hodnota leadu v EUR - z rozsahu ako 3500€-5000€ sa vezme dolná hranica, predvolene 0" : userLanguage === "hu" ? "Lead értéke EUR-ban - a 3500€-5000€ tartományból az alsó határ kerül be, alapértelmezetten 0" : "Lead worth in EUR - a range like 3500€-5000€ is read as its lower bound, defaults to 0"})</span></li>
-                    <li><code>source_id</code>, <code>category_id</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "ID zdroja návštevnosti a kategórie záujmu - nájdete ich v stĺpci ID v Nastaveniach → Zdroje leadov. Sú trvalé: zmena poradia ani premenovanie ich nemení" : userLanguage === "hu" ? "A forgalmi csatorna és az érdeklődési kategória azonosítója - a Beállítások → Lead források ID oszlopában találhatók. Állandóak: sem az átrendezés, sem az átnevezés nem változtatja meg őket" : "IDs of the traffic channel and the interest category - read them from the ID column in Settings → Lead sources. They are permanent: neither reordering nor renaming changes them"})</span></li>
-                    <li><code>category_ids</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Viac kategórií naraz, keď formulár ponúka zaškrtávacie políčka - pole [2, 3] alebo reťazec \"2,3\". Lead dostane všetky a ku každej vznikne jeho projekt" : userLanguage === "hu" ? "Több kategória egyszerre, ha az űrlapon jelölőnégyzetek vannak - [2, 3] tömb vagy \"2,3\" szöveg. A lead mindegyiket megkapja, és mindegyikhez külön projekt jön létre" : "Several categories at once, for a form with checkboxes - an array [2, 3] or the string \"2,3\". The lead gets all of them, and each one opens its own project"})</span></li>
-                    <li><code>traffic_origin</code>, <code>traffic_origin_detail</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Odkiaľ návštevník prišiel na web ešte pred formulárom (facebook, instagram, google, direct...) a voľný detail (médium, kampaň, odkazujúca doména, vstupná stránka). Voľný text, nič sa nevaliduje; zobrazí sa v profile leadu ako Pôvod návštevy a ďalší dopyt ho nikdy neprepíše" : userLanguage === "hu" ? "Honnan érkezett a látogató az oldalra még az űrlap előtt (facebook, instagram, google, direct...) és szabad részlet (médium, kampány, hivatkozó domain, céloldal). Szabad szöveg, nincs ellenőrzés; a lead profiljában Látogatás eredeteként jelenik meg, és későbbi megkeresés sosem írja felül" : "Where the visitor came from before the form (facebook, instagram, google, direct...) plus a free-text detail (medium, campaign, referring host, landing page). Free text, nothing is validated; shown on the lead as Traffic Origin and never overwritten by a later inquiry"})</span></li>
-                    <li><span className="text-micro text-slate-400 font-normal">{userLanguage === "sk" ? "Akékoľvek ďalšie polia" : userLanguage === "hu" ? "Bármely további mező" : "Any other field"}</span> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Neprázdne textové polia (a zoznamy, spojené čiarkou) sa uložia do „Záujem klienta“ aj do časovej osi ako riadky „Názov: hodnota“. Nepovinné pole " : userLanguage === "hu" ? "A nem üres szöveges mezők (és a vesszővel összefűzött listák) „Név: érték” sorokként kerülnek az „Ügyfél érdeklődése” mezőbe és az idővonalra. Az opcionális " : "Non-empty text fields (and lists, joined with commas) are saved to \"Client interest\" and the timeline as \"Label: value\" lines. The optional "}<code>field_labels</code>{userLanguage === "sk" ? " (napr. {\"area_size\": \"Plocha (m²)\"}) určí názov riadku, inak sa použije názov poľa. Tokeny, honeypoty a vnorené objekty sa ignorujú. Pri existujúcom aktívnom leade idú tieto riadky len do časovej osi" : userLanguage === "hu" ? " (pl. {\"area_size\": \"Terület (m²)\"}) adja meg a sor nevét, különben a mező neve szerepel. A tokeneket, honeypotokat és a beágyazott objektumokat figyelmen kívül hagyjuk. Meglévő aktív lead esetén ezek a sorok csak az idővonalra kerülnek" : " (e.g. {\"area_size\": \"Area (m²)\"}) names a line, otherwise the field name is used. Tokens, honeypots and nested objects are ignored. For an existing active lead these lines go to the timeline only"})</span></li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB: Email Server Configuration */}
-        {activeSubTab === "email" && getPermission("general_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6 animate-fade-in">
-            {renderReadOnlyBanner("general_config")}
-
-            <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-8 items-start">
-              {/* Form Config Panel */}
-              <form onSubmit={handleSaveEmailSettings} className="ws-lg:col-span-8 glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                  <Globe className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> {getTranslation(userLanguage, "settings.email.title")}
-                </h3>
-
-                {/* Provider Selector Switch */}
-                <div className="space-y-2">
-                  <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.protocol")}</label>
-                  <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/60 gap-1 w-full ws-sm:max-w-md">
-                    <button
-                      type="button"
-                      onClick={() => setEmailProvider("smtp")}
-                      className={`flex-1 py-2.5 rounded-xl text-ui font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                        emailProvider === "smtp"
-                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-bold"
-                          : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
-                      }`}
-                    >
-                      {getTranslation(userLanguage, "settings.email.provider_smtp")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEmailProvider("exchange")}
-                      className={`flex-1 py-2.5 rounded-xl text-ui font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                        emailProvider === "exchange"
-                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-bold"
-                          : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
-                      }`}
-                    >
-                      {getTranslation(userLanguage, "settings.email.provider_exch")}
-                    </button>
-                  </div>
-                </div>
-
-                {/* 1. SMTP PROTOCOL FORM FIELDS */}
-                {emailProvider === "smtp" && (
-                  <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-5 pt-2">
-                    <div className="space-y-1.5 ws-md:col-span-2">
-                      <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.smtp_host")}</label>
-                      <input
-                        type="text"
-                        required
-                        disabled={getPermission("general_config") === "view"}
-                        value={smtpHost}
-                        onChange={(e) => setSmtpHost(e.target.value)}
-                        placeholder="smtp.mail.example.com"
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.smtp_port")}</label>
-                      <input
-                        type="text"
-                        required
-                        disabled={getPermission("general_config") === "view"}
-                        value={smtpPort}
-                        onChange={(e) => setSmtpPort(e.target.value)}
-                        placeholder="465"
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.smtp_secure")}</label>
-                      <CustomSelect
-                        disabled={getPermission("general_config") === "view"}
-                        value={smtpSecure}
-                        onChange={(v) => setSmtpSecure(v as any)}
-                        options={[
-                          { value: "ssl", label: userLanguage === "sk" ? "SSL (Implicitné - Port 465)" : userLanguage === "hu" ? "SSL (Implicit - 465-ös port)" : "SSL (Implicit - Port 465)" },
-                          { value: "tls", label: userLanguage === "sk" ? "TLS/STARTTLS (Explicitné - Port 587)" : userLanguage === "hu" ? "TLS/STARTTLS (Explicit - 587-es port)" : "TLS/STARTTLS (Explicit - Port 587)" },
-                          { value: "none", label: userLanguage === "sk" ? "Žiadne (Nezabezpečené - Port 25/80)" : userLanguage === "hu" ? "Nincs (Nem biztonságos - 25/80-as port)" : "None (Insecure - Port 25/80)" },
-                        ]}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5 ws-md:col-span-2 border-t border-slate-100 pt-3 flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-caption font-bold text-slate-800">{getTranslation(userLanguage, "settings.email.smtp_auth")}</span>
-                        <span className="text-micro text-slate-400">
-                          {userLanguage === "sk" ? "SMTP server vyžaduje prihlasovacie meno a heslo" : userLanguage === "hu" ? "Az SMTP szerver felhasználónevet és jelszót igényel" : "SMTP server demands username and password logins"}
-                        </span>
-                      </div>
-                      <input
-                        type="checkbox"
-                        disabled={getPermission("general_config") === "view"}
-                        checked={smtpAuth}
-                        onChange={(e) => setSmtpAuth(e.target.checked)}
-                        className="h-4.5 w-4.5 text-indigo-600 rounded border-slate-200 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
-                      />
-                    </div>
-
-                    {smtpAuth && (
-                      <>
-                        <div className="space-y-1.5">
-                          <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.smtp_user")}</label>
-                          <input
-                            type="text"
-                            required
-                            disabled={getPermission("general_config") === "view"}
-                            value={smtpUser}
-                            onChange={(e) => setSmtpUser(e.target.value)}
-                            placeholder="user@domain.com"
-                            className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                          />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.smtp_pass")}</label>
-                          <SecretInput
-                            language={userLanguage}
-                            mono={false}
-                            required
-                            disabled={getPermission("general_config") === "view"}
-                            value={smtpPassword}
-                            onChange={setSmtpPassword}
-                            placeholder={t("Mailbox password", "Heslo k schránke", "Postafiók jelszava")}
-                          />
-                        </div>
-                      </>
-                    )}
-
-                    <div className="space-y-1.5 ws-md:col-span-2 border-t border-slate-100 pt-3">
-                      <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.sender_name")}</label>
-                      <input
-                        type="text"
-                        required
-                        disabled={getPermission("general_config") === "view"}
-                        value={senderName}
-                        onChange={(e) => setSenderName(e.target.value)}
-                        placeholder="Geely CRM Portal"
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5 ws-md:col-span-2">
-                      <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.sender_email")}</label>
-                      <input
-                        type="email"
-                        required
-                        disabled={getPermission("general_config") === "view"}
-                        value={senderEmail}
-                        onChange={(e) => setSenderEmail(e.target.value)}
-                        placeholder="crm@example.com"
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* 2. MS EXCHANGE PROTOCOL FORM FIELDS */}
-                {emailProvider === "exchange" && (
-                  <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-5 pt-2">
-                    <div className="space-y-1.5 ws-md:col-span-2">
-                      <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.exch_url")}</label>
-                      <input
-                        type="text"
-                        required
-                        disabled={getPermission("general_config") === "view"}
-                        value={exchUrl}
-                        onChange={(e) => setExchUrl(e.target.value)}
-                        placeholder="https://outlook.office365.com/EWS/Exchange.asmx"
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all font-mono"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.exch_domain")}</label>
-                      <input
-                        type="text"
-                        required
-                        disabled={getPermission("general_config") === "view"}
-                        value={exchDomain}
-                        onChange={(e) => setExchDomain(e.target.value)}
-                        placeholder="COMPANY"
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.exch_auth")}</label>
-                      <CustomSelect
-                        disabled={getPermission("general_config") === "view"}
-                        value={exchAuth}
-                        onChange={(v) => setExchAuth(v as any)}
-                        options={[
-                          { value: "oauth", label: userLanguage === "sk" ? "OAuth 2.0 (Moderný MS Exchange Online)" : userLanguage === "hu" ? "OAuth 2.0 (Modern MS Exchange Online)" : "OAuth 2.0 (Modern MS Exchange Online)" },
-                          { value: "ntlm", label: userLanguage === "sk" ? "NTLM (Lokálna AD autentifikácia)" : userLanguage === "hu" ? "NTLM (Helyi AD hitelesítés)" : "NTLM (On-Premises AD Authentication)" },
-                          { value: "basic", label: userLanguage === "sk" ? "Basic (Zastaraná autentifikácia servera)" : userLanguage === "hu" ? "Basic (Elavult szerver hitelesítés)" : "Basic (Legacy Server Authentication)" },
-                        ]}
-                      />
-                    </div>
-
-                    {/* OAuth specific fields */}
-                    {exchAuth === "oauth" && (
-                      <>
-                        <div className="space-y-1.5 ws-md:col-span-2 border-t border-slate-100 pt-3">
-                          <label className="type-overline text-slate-500">{userLanguage === "sk" ? "ID klienta (aplikácie)" : userLanguage === "hu" ? "Kliens (alkalmazás) azonosító" : "Client (Application) ID"}</label>
-                          <input
-                            type="text"
-                            required
-                            disabled={getPermission("general_config") === "view"}
-                            value={exchClientId}
-                            onChange={(e) => setExchClientId(e.target.value)}
-                            placeholder="00000000-0000-0000-0000-000000000000"
-                            className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all font-mono"
-                          />
-                        </div>
-
-                        <div className="space-y-1.5 ws-md:col-span-2">
-                          <label className="type-overline text-slate-500">{userLanguage === "sk" ? "ID adresára (tenanta)" : userLanguage === "hu" ? "Könyvtár (bérlő) azonosító" : "Directory (Tenant) ID"}</label>
-                          <input
-                            type="text"
-                            required
-                            disabled={getPermission("general_config") === "view"}
-                            value={exchTenantId}
-                            onChange={(e) => setExchTenantId(e.target.value)}
-                            placeholder="00000000-0000-0000-0000-000000000000"
-                            className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all font-mono"
-                          />
-                        </div>
-
-                        <div className="space-y-1.5 ws-md:col-span-2">
-                          <label className="type-overline text-slate-500">{userLanguage === "sk" ? "Klientsky kľúč (Client Secret)" : userLanguage === "hu" ? "Kliens titkos kulcs (Client Secret)" : "Client Secret"}</label>
-                          <SecretInput
-                            language={userLanguage}
-                            required
-                            disabled={getPermission("general_config") === "view"}
-                            value={exchClientSecret}
-                            onChange={setExchClientSecret}
-                            placeholder={t("Client secret", "Klientsky kľúč", "Kliens titkos kulcs")}
-                          />
-                        </div>
-                      </>
-                    )}
-
-                    {/* Basic / NTLM password field */}
-                    {(exchAuth === "basic" || exchAuth === "ntlm") && (
-                      <div className="space-y-1.5 ws-md:col-span-2 border-t border-slate-100 pt-3">
-                        <label className="type-overline text-slate-500">{userLanguage === "sk" ? "Exchange Heslo" : userLanguage === "hu" ? "Exchange Jelszó" : "Exchange Password"}</label>
-                        <SecretInput
-                          language={userLanguage}
-                          required
-                          disabled={getPermission("general_config") === "view"}
-                          value={exchPassword}
-                          onChange={setExchPassword}
-                          placeholder={t("Exchange password", "Heslo Exchange", "Exchange jelszó")}
-                        />
-                      </div>
-                    )}
-
-                    <div className="space-y-1.5 ws-md:col-span-2 border-t border-slate-100 pt-3">
-                      <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.exch_mailbox")}</label>
-                      <input
-                        type="email"
-                        required
-                        disabled={getPermission("general_config") === "view"}
-                        value={exchMailbox}
-                        onChange={(e) => setExchMailbox(e.target.value)}
-                        placeholder="crm@example.com"
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Save button */}
-                {getPermission("general_config") === "edit" && (
-                  <div className="flex justify-end border-t border-slate-100 pt-4">
-                    <button
-                      type="submit"
-                      className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-lg shadow-indigo-600/10 flex items-center gap-1.5 cursor-pointer active:scale-95"
-                    >
-                      <Save className="h-4 w-4" /> {getTranslation(userLanguage, "settings.email.btn_save")}
-                    </button>
-                  </div>
-                )}
-              </form>
-
-              {/* Connection Diagnostics Panel */}
-              <div className="ws-lg:col-span-4 space-y-6 ws-lg:sticky ws-lg:top-24 ws-lg:self-start">
-                <form onSubmit={handleSendTestEmail} className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
-                  <h4 className="text-ui font-heading font-bold text-slate-800 flex items-center gap-1.5">
-                    ⚙️ {getTranslation(userLanguage, "settings.email.diagnostics")}
-                  </h4>
-                  <p className="text-micro text-slate-400 leading-normal font-semibold">
-                    {getTranslation(userLanguage, "settings.email.diagnostics_desc")}
-                  </p>
-
-                  <div className="space-y-3 pt-1">
-                    <div className="space-y-1.5">
-                      <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.test_recipient")}</label>
-                      <input
-                        type="email"
-                        required
-                        value={testRecipient}
-                        onChange={(e) => setTestRecipient(e.target.value)}
-                        placeholder="test@example.com"
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={isSendingTest || !testRecipient}
-                      className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-ui font-bold transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-55"
-                    >
-                      {isSendingTest ? (
-                        <>
-                          <span className="h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                          <span>{getTranslation(userLanguage, "settings.email.testing_handshake")}</span>
-                        </>
-                      ) : (
-                        getTranslation(userLanguage, "settings.email.send_test")
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Diagnostic Results Block */}
-                  {testResult && (
-                    <div className={`p-4 rounded-2xl border text-micro leading-relaxed font-bold transition-all animate-fade-in ${
-                      testResult.status === "success" 
-                        ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
-                        : "bg-rose-50 border-rose-200 text-rose-800"
-                    }`}>
-                      <span className="block type-overline mb-1">
-                        {testResult.status === "success" ? getTranslation(userLanguage, "settings.email.conn_success") : getTranslation(userLanguage, "settings.email.conn_failure")}
-                      </span>
-                      {testResult.message}
-                    </div>
-                  )}
-                </form>
-              </div>
-            </div>
-
-            {/* Shared mailboxes read by the background filing job. The server refuses everyone but admins. */}
-            {isAdminRoleName(currentUser?.role) && (
-              <CompanyMailboxSettings users={users} userLanguage={userLanguage} />
-            )}
-          </div>
-        )}
-
-        {/* TAB: AI & OpenAI Integration */}
-        {activeSubTab === "ai" && getPermission("ai_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6 animate-fade-in">
-            {renderReadOnlyBanner("ai_config")}
-
-            {/* API CREDENTIALS — always editable, independent of vector DB connection state */}
-            <form onSubmit={handleSaveAiSettings} className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-              <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                <Globe className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> {t("AI & OpenAI Integration", "Integrácia AI a OpenAI", "AI és OpenAI integráció")}
-              </h3>
-
-              <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/80 text-ui text-slate-600 leading-relaxed font-semibold">
-                {t("Configure your OpenAI access credential. Once entered, you can proceed to select your vector database sidecar and enable semantic RAG lookup inside the CRM sidebar assistant.", "Nakonfigurujte svoj prístupový údaj OpenAI. Po jeho zadaní môžete pokračovať výberom sidecar vektorovej databázy a povoliť sémantické vyhľadávanie RAG v asistentovi na bočnom paneli CRM.", "Állítsa be az OpenAI hozzáférési hitelesítő adatát. A megadás után kiválaszthatja a vektoradatbázis sidecart, és engedélyezheti a szemantikus RAG keresést a CRM oldalsávi asszisztensében.")}
-              </div>
-
-              <div className="space-y-2">
-                <label className="type-overline text-slate-500 block">
-                  {t("OpenAI API Secret Key", "Tajný API kľúč OpenAI", "OpenAI API titkos kulcs")}
-                </label>
-                <SecretInput
-                  className="max-w-2xl"
-                  language={userLanguage}
-                  disabled={getPermission("ai_config") === "view"}
-                  value={openAiKey}
-                  onChange={setOpenAiKey}
-                  placeholder="sk-proj-..."
-                />
-              </div>
-
-              <div className="space-y-4 pt-4 border-t border-slate-100">
-                <p className="text-micro text-slate-400 font-semibold leading-relaxed max-w-2xl">
-                  {t(
-                    "Optional — these providers are only used by AI agent nodes in Automations & Workflows. Every other AI feature in the CRM runs on OpenAI.",
-                    "Voliteľné — títo poskytovatelia sa používajú iba v uzloch AI agenta v Automatizáciách a workflowoch. Všetky ostatné AI funkcie v CRM bežia na OpenAI.",
-                    "Opcionális — ezeket a szolgáltatókat csak az Automatizálások és munkafolyamatok AI ügynök csomópontjai használják. A CRM összes többi AI funkciója OpenAI-t használ."
-                  )}
-                </p>
-
-                <div className="space-y-2">
-                  <label className="type-overline text-slate-500 block">
-                    {t("Anthropic API Secret Key", "Tajný API kľúč Anthropic", "Anthropic API titkos kulcs")}
                   </label>
-                  <SecretInput
-                    className="max-w-2xl"
-                    language={userLanguage}
-                    disabled={getPermission("ai_config") === "view"}
-                    value={anthropicKey}
-                    onChange={setAnthropicKey}
-                    placeholder="sk-ant-..."
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="type-overline text-slate-500 block">
-                    {t("Google Gemini API Secret Key", "Tajný API kľúč Google Gemini", "Google Gemini API titkos kulcs")}
-                  </label>
-                  <SecretInput
-                    className="max-w-2xl"
-                    language={userLanguage}
-                    disabled={getPermission("ai_config") === "view"}
-                    value={geminiKey}
-                    onChange={setGeminiKey}
-                    placeholder="AIzaSy..."
-                  />
-                </div>
-              </div>
-
-              {!vectorDbValidated && openAiKey.trim() !== "" && (
-                <div className="space-y-4 pt-4 border-t border-slate-100 animate-slide-up">
-                  <div className="space-y-2">
-                    <label className="type-overline text-slate-500 block">
-                      {t("Vector Database Backend", "Backend vektorovej databázy", "Vektoradatbázis backend")}
-                    </label>
-                    <CustomSelect
-                      disabled={getPermission("ai_config") === "view"}
-                      value={vectorDb}
-                      onChange={(v) => {
-                        setVectorDb(v as any);
-                        setValidationResult(null);
-                      }}
-                      className="max-w-2xl"
-                      options={[
-                        { value: "none", label: t("Disabled", "Zakázané", "Letiltva") },
-                        { value: "mariadb", label: t("MariaDB (Native SQL Vectors - Recommended)", "MariaDB (Natívne SQL vektory – Odporúčané)", "MariaDB (Natív SQL vektorok – Ajánlott)") },
-                        // Indexing and semantic search run on MariaDB only (api/vector_index.php); the other two
-                        // backends can only be pinged, so they are shown but cannot be chosen.
-                        { value: "qdrant", disabled: true, label: t("Qdrant Sidecar Container (not supported yet)", "Qdrant Sidecar kontajner (zatiaľ nepodporované)", "Qdrant Sidecar konténer (még nem támogatott)") },
-                        { value: "pinecone", disabled: true, label: t("Pinecone Cloud Service (not supported yet)", "Cloudová služba Pinecone (zatiaľ nepodporované)", "Pinecone felhőszolgáltatás (még nem támogatott)") },
-                      ]}
-                    />
-                    {(vectorDb === "qdrant" || vectorDb === "pinecone") && (
-                      <p className="text-ui font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-2xl">
-                        {t(
-                          "This backend is saved from an earlier version but is not supported yet: the assistant cannot build or search a vector index on it and answers from keyword search only. Select MariaDB to use semantic search.",
-                          "Tento backend je uložený z predchádzajúcej verzie, ale zatiaľ nie je podporovaný: asistent v ňom nevie vytvoriť ani prehľadávať vektorový index a odpovedá len z vyhľadávania podľa kľúčových slov. Pre sémantické vyhľadávanie zvoľte MariaDB.",
-                          "Ez a háttér egy korábbi verzióból maradt mentve, de még nem támogatott: az asszisztens nem tud rajta vektorindexet építeni vagy abban keresni, ezért csak kulcsszavas keresésből válaszol. A szemantikus kereséshez válassza a MariaDB-t."
-                        )}
-                      </p>
+                }
+              >
+                {ueFoldersEnabled ? (
+                  <div className="flex flex-col gap-4">
+                    <span className={fieldLabel}>{t("Fields of a folder", "Polia priečinka", "A mappa mezői")}</span>
+                    <div className="grid grid-cols-1 gap-2.5 ws-sm:grid-cols-2 ws-lg:grid-cols-4">
+                      {moduleOptions.map((mod) => checkTile(mod.id, mod.label, ueFolderModules.includes(mod.id), (on) => setUeFolderModules(toggleIn(ueFolderModules, mod.id, on))))}
+                    </div>
+                    {ueModules.includes("due_date") && checkTile(
+                      "summary",
+                      t("Show a summary (number of entries) on folders", "Zobraziť na priečinkoch prehľad (počet záznamov)", "Összefoglaló (bejegyzések száma) a mappákon"),
+                      ueShowFolderSummary,
+                      setUeShowFolderSummary,
                     )}
                   </div>
+                ) : (
+                  <p className="type-body text-gray-500">{t("Folders are off: entries are one flat list.", "Priečinky sú vypnuté: záznamy tvoria jeden zoznam.", "A mappák ki vannak kapcsolva: a bejegyzések egy lapos listát alkotnak.")}</p>
+                )}
+              </SectionCard>
 
-                  {vectorDb === "mariadb" && (
-                    <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
-                      <h4 className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
-                        <Database className="h-4 w-4 text-emerald-500" /> {t("MariaDB Vector Connection Settings", "Nastavenia pripojenia MariaDB Vector", "MariaDB vektorkapcsolat beállításai")}
-                      </h4>
-                      <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="type-overline text-slate-500 block">{t("Database Host", "Hostiteľ databázy", "Adatbázis-kiszolgáló")}</label>
-                          <input
-                            type="text"
-                            value={mariaDbHost}
-                            onChange={(e) => setMariaDbHost(e.target.value)}
-                            placeholder={t("e.g. localhost or vector_db", "napr. localhost alebo vector_db", "pl. localhost vagy vector_db")}
-                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="type-overline text-slate-500 block">{t("Port", "Port", "Port")}</label>
-                          <input
-                            type="text"
-                            value={mariaDbPort}
-                            onChange={(e) => setMariaDbPort(e.target.value)}
-                            placeholder={t("3306 or 3307", "3306 alebo 3307", "3306 vagy 3307")}
-                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="type-overline text-slate-500 block">{t("Username", "Používateľské meno", "Felhasználónév")}</label>
-                          <input
-                            type="text"
-                            value={mariaDbUser}
-                            onChange={(e) => setMariaDbUser(e.target.value)}
-                            placeholder={t("e.g. vector_user", "napr. vector_user", "pl. vector_user")}
-                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="type-overline text-slate-500 block">{t("Password", "Heslo", "Jelszó")}</label>
-                          <PasswordInput
-                            value={mariaDbPassword}
-                            onChange={(e) => setMariaDbPassword(e.target.value)}
-                            placeholder="••••••••"
-                            className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                        <div className="space-y-1 ws-md:col-span-2">
-                          <label className="type-overline text-slate-500 block">{t("Database Name", "Názov databázy", "Adatbázis neve")}</label>
-                          <input
-                            type="text"
-                            value={mariaDbName}
-                            onChange={(e) => setMariaDbName(e.target.value)}
-                            placeholder={t("e.g. vector_db", "napr. vector_db", "pl. vector_db")}
-                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {vectorDb === "qdrant" && (
-                    <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
-                      <h4 className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
-                        <Sliders className="h-4 w-4 text-purple-500" /> {t("Qdrant Sidecar Settings", "Nastavenia Qdrant Sidecar", "Qdrant Sidecar beállítások")}
-                      </h4>
-                      <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
-                        <div className="space-y-1 ws-md:col-span-2">
-                          <label className="type-overline text-slate-500 block">{t("Server URL", "URL servera", "Szerver URL")}</label>
-                          <input
-                            type="text"
-                            value={qdrantUrl}
-                            onChange={(e) => setQdrantUrl(e.target.value)}
-                            placeholder={t("e.g. http://localhost:6333", "napr. http://localhost:6333", "pl. http://localhost:6333")}
-                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                        <div className="space-y-1 ws-md:col-span-2">
-                          <label className="type-overline text-slate-500 block">{t("API Key (Optional)", "API kľúč (Voliteľné)", "API kulcs (Opcionális)")}</label>
-                          <PasswordInput
-                            value={qdrantApiKey}
-                            onChange={(e) => setQdrantApiKey(e.target.value)}
-                            placeholder={t("Leave blank if unsecured", "Ponechajte prázdne, ak je nezabezpečené", "Hagyja üresen, ha nincs védve")}
-                            className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {vectorDb === "pinecone" && (
-                    <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
-                      <h4 className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
-                        <Globe className="h-4 w-4 text-indigo-500" /> {t("Pinecone Cloud Settings", "Nastavenia Pinecone Cloud", "Pinecone felhő beállítások")}
-                      </h4>
-                      <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
-                        <div className="space-y-1 ws-md:col-span-2">
-                          <label className="type-overline text-slate-500 block">{t("API Key", "API kľúč", "API kulcs")}</label>
-                          <PasswordInput
-                            value={pineconeApiKey}
-                            onChange={(e) => setPineconeApiKey(e.target.value)}
-                            placeholder="pcsk_..."
-                            className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                        <div className="space-y-1 ws-md:col-span-2">
-                          <label className="type-overline text-slate-500 block">{t("Index Name", "Názov indexu", "Index neve")}</label>
-                          <input
-                            type="text"
-                            value={pineconeIndex}
-                            onChange={(e) => setPineconeIndex(e.target.value)}
-                            placeholder={t("e.g. company-kb", "napr. firemny-index", "pl. ceges-index")}
-                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {vectorDb !== "none" && (
-                    <div className="pt-2 max-w-2xl flex flex-col gap-3">
-                      <button
-                        type="button"
-                        disabled={isValidating}
-                        onClick={handleValidateConnection}
-                        className="w-fit px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
-                      >
-                        {isValidating ? t("Validating Connection...", "Overuje sa pripojenie...", "Kapcsolat ellenőrzése...") : t("Test Vector DB Connection", "Otestovať pripojenie k vektorovej DB", "Vektoradatbázis-kapcsolat tesztelése")}
-                      </button>
-
-                      {validationResult && (
-                        <div className={`p-4 rounded-xl border text-ui font-semibold leading-relaxed animate-fade-in ${
-                          validationResult.success
-                            ? "bg-emerald-50 border-emerald-100 text-emerald-800"
-                            : "bg-rose-50 border-rose-100 text-rose-800"
-                        }`}>
-                          <div className="flex items-start gap-2.5">
-                            <span className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${validationResult.success ? "bg-emerald-500" : "bg-rose-500"}`} />
-                            <div>
-                              <span className="font-bold block mb-0.5">
-                                {validationResult.success ? t("Validation Succeeded", "Overenie úspešné", "Az ellenőrzés sikeres") : t("Validation Failed", "Overenie zlyhalo", "Az ellenőrzés sikertelen")}
-                              </span>
-                              <p className="text-micro text-slate-500">{validationResult.message}</p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {getPermission("ai_config") === "edit" && (
-                <div className="flex justify-end pt-3">
+              {!editingUEId && (
+                <div className="flex flex-wrap justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={backToList}
+                    className="min-h-11 cursor-pointer rounded-lg border border-gray-200 bg-white px-5 text-ui font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+                  >
+                    {t("Cancel", "Zrušiť", "Mégse")}
+                  </button>
                   <button
                     type="submit"
-                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold shadow-lg shadow-indigo-600/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+                    className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover"
                   >
-                    <Save className="h-4 w-4" /> {t("Save AI Configuration", "Uložiť konfiguráciu AI", "AI konfiguráció mentése")}
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    {t("Create record type", "Vytvoriť typ záznamu", "Rekordtípus létrehozása")}
                   </button>
                 </div>
               )}
             </form>
+          );
+        }
 
-            {vectorDbValidated && (
-              /* CONFIRMED CONNECTION CARD */
-              <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100">
-                      <ShieldCheck className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-body font-heading font-extrabold text-slate-900">
-                        {t("Vector Database Connected", "Vektorová databáza pripojená", "Vektoradatbázis csatlakoztatva")}
-                      </h3>
-                      <p className="text-micro text-slate-500 font-semibold mt-0.5">
-                        {t(
-                          "Your RAG pipeline backend is successfully configured and active.",
-                          "Backend vašej RAG pipeline je úspešne nakonfigurovaný a aktívny.",
-                          "A RAG folyamat háttérrendszere sikeresen be van állítva és aktív."
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  {getPermission("ai_config") === "edit" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setVectorDbValidated(false);
-                        setValidationResult(null);
-                        if (updateIntegrationsConfig) {
-                          updateIntegrationsConfig({
-                            ...integrationsConfig,
-                            vectorDbValidated: false
-                          });
-                        }
-                      }}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-ui font-bold transition-all cursor-pointer active:scale-95"
-                    >
-                      {t("Reset Configuration", "Resetovať konfiguráciu", "Konfiguráció visszaállítása")}
-                    </button>
-                  )}
-                </div>
-                {/* Active database info summary */}
-                <div className="text-ui font-semibold text-slate-700 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <span className="type-overline text-slate-400 block mb-2">{t("Active Backend Details", "Aktívne detaily backendu", "Aktív backend részletei")}</span>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="text-micro text-slate-400 block">{t("DB Type:", "Typ DB:", "DB típus:")}</span>
-                      <span className="font-mono text-ui text-indigo-600 font-bold">{vectorDb}</span>
-                    </div>
-                    {vectorDb === "mariadb" && (
-                      <>
-                        <div>
-                          <span className="text-micro text-slate-400 block">{t("Host:", "Hostiteľ:", "Kiszolgáló:")}</span>
-                          <span className="font-mono text-ui">{mariaDbHost}:{mariaDbPort}</span>
-                        </div>
-                        <div>
-                          <span className="text-micro text-slate-400 block">{t("Database Name:", "Názov databázy:", "Adatbázis neve:")}</span>
-                          <span className="font-mono text-ui">{mariaDbName}</span>
-                        </div>
-                      </>
-                    )}
-                    {vectorDb === "qdrant" && (
-                      <div>
-                        <span className="text-micro text-slate-400 block">Host:</span>
-                        <span className="font-mono text-ui">{qdrantUrl}</span>
-                      </div>
-                    )}
-                    {vectorDb === "pinecone" && (
-                      <div>
-                        <span className="text-micro text-slate-400 block">{t("Index Name:", "Názov indexu:", "Index neve:")}</span>
-                        <span className="font-mono text-ui">{pineconeIndex}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Training widget block */}
-                <div className="space-y-4 pt-4">
-                  <h4 className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
-                    <Database className="h-4 w-4 text-purple-500 animate-pulse" /> {t("RAG Knowledge Index Ingestion", "Indexovanie znalostnej bázy RAG", "RAG tudásbázis indexelése")}
-                  </h4>
-
-                  {trainingStats ? (
-                    <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-3">
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                        <span className="type-overline text-slate-400 block">{t("Leads Chunks", "Časti leadov", "Lead darabok")}</span>
-                        <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.leads}</span>
-                      </div>
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                        <span className="type-overline text-slate-400 block">{t("Clients Chunks", "Časti klientov", "Ügyfél darabok")}</span>
-                        <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.clients}</span>
-                      </div>
-                      <div className="p-3 bg-blue-50/70 rounded-2xl border border-blue-100">
-                        <span className="type-overline text-blue-900 block">{t("Products / Stock", "Skladový tovar", "Termékek / Készlet")}</span>
-                        <span className="text-title-sm font-extrabold text-blue-950">{trainingStats.products || 0}</span>
-                      </div>
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                        <span className="type-overline text-slate-400 block">{t("Emails Indexed", "Indexované e-maily", "Indexelt e-mailek")}</span>
-                        <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.emails}</span>
-                      </div>
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                        <span className="type-overline text-slate-400 block">{t("Chats / Notes", "Chaty / Poznámky", "Csevegések / Jegyzetek")}</span>
-                        <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.chats}</span>
-                      </div>
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                        <span className="type-overline text-slate-400 block">{t("Meeting Notes", "Zápisy zo stretnutí", "Megbeszélések")}</span>
-                        <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.meeting_notes || 0}</span>
-                      </div>
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                        <span className="type-overline text-slate-400 block">{t("Unified Entries", "Univerzálne záznamy", "Egységes bejegyzések")}</span>
-                        <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.unified_entries || 0}</span>
-                      </div>
-                      <div className="p-3 bg-purple-50 rounded-2xl border border-purple-100">
-                        <span className="type-overline text-purple-700 block">{t("Total Items", "Celkovo entít", "Összes elem")}</span>
-                        <span className="text-title-sm font-extrabold text-purple-900">{trainingStats.total_items || 0}</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-12 flex items-center justify-center text-ui text-slate-400 font-semibold">
-                      {t("Loading data statistics...", "Načítavajú sa štatistiky údajov...", "Adatstatisztikák betöltése...")}
-                    </div>
-                  )}
-                  
-                  {/* Progress bar */}
-                  {isTraining && (
-                    <div className="space-y-2 animate-pulse">
-                      <div className="flex items-center justify-between type-overline text-indigo-600">
-                        <span>{t("Ingestion in Progress...", "Prebieha indexovanie...", "Indexelés folyamatban...")}</span>
-                        <span>{trainingProgress}%</span>
-                      </div>
-                      <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                        <div className="h-full bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full transition-all duration-300" style={{ width: `${trainingProgress}%` }} />
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Action buttons */}
-                  {getPermission("ai_config") === "edit" && !isTraining && (
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={handleStartTraining}
-                        className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-ui font-bold shadow-lg shadow-purple-600/20 active:scale-95 transition-all cursor-pointer"
-                      >
-                        {t("Train Existing Data", "Trénovať existujúce dáta", "Meglévő adatok betanítása")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={fetchTrainingStats}
-                        className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-bold active:scale-95 transition-all cursor-pointer"
-                      >
-                        {t("Refresh Statistics", "Obnoviť štatistiky", "Statisztikák frissítése")}
-                      </button>
-                    </div>
-                  )}
-                  
-                  {/* Logs widget */}
-                  {trainingLogs.length > 0 && (
-                    <div className="space-y-1.5">
-                      <span className="type-overline text-slate-400 block">{t("Indexation logs", "Záznamy indexovania", "Indexelési naplók")}</span>
-                      <div className="bg-slate-950 text-slate-300 p-4 rounded-2xl font-mono text-micro leading-relaxed max-h-48 overflow-y-auto space-y-1 scrollbar-thin border border-slate-900 shadow-inner">
-                        {trainingLogs.map((log, idx) => (
-                          <div key={idx} className={log.includes("[ERROR]") ? "text-rose-400 font-bold" : log.includes("[SUCCESS]") ? "text-emerald-400 font-bold" : ""}>
-                            {log}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Autonomous Agents Cron Link */}
-                  <div className="pt-4 border-t border-slate-100 space-y-3">
-                    <h4 className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
-                      <Clock className="h-4 w-4 text-indigo-500 animate-pulse" /> {t("Autonomous Agents Cron Link", "Cron odkaz pre autonómne agenty", "Autonóm ügynökök Cron hivatkozása")}
-                    </h4>
-                    <div className="p-4 rounded-2xl bg-indigo-50/40 border border-indigo-100/50 text-ui font-semibold leading-relaxed text-slate-700 space-y-2.5">
-                      <p className="text-caption text-slate-500">
-                        {t("To run autonomous agents automatically, configure your server cron manager (e.g. crontab or a webhook runner) to trigger the endpoint URL below:", "Ak chcete autonómne agenty spúšťať automaticky, nastavte cron manažér na serveri (napr. crontab alebo webhook runner), aby spúšťal nižšie uvedenú URL adresu endpointu:", "Az autonóm ügynökök automatikus futtatásához állítsa be a szerver cron-kezelőjét (pl. crontab vagy webhook futtató), hogy meghívja az alábbi végpont URL-t:")}
-                      </p>
-                      <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm font-mono text-micro break-all select-all text-slate-800">
-                        <span>{window.location.origin}/api/cron_agents.php</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+        return (
+          <SectionCard
+            testId="settings-records-list"
+            title={t("Custom record types", "Vlastné typy záznamov", "Egyéni rekordtípusok")}
+            description={t("Define your own data structures: each gets a table, a menu entry and a list.", "Definujte vlastné dátové štruktúry: každá dostane tabuľku, položku v menu a zoznam.", "Határozzon meg saját adatstruktúrákat: mindegyik saját táblát, menüpontot és listát kap.")}
+            action={
+              canEditRecords ? (
+                <button
+                  type="button"
+                  onClick={() => { window.location.hash = "settings/modules/records/new"; }}
+                  className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  {t("New record type", "Nový typ záznamu", "Új rekordtípus")}
+                </button>
+              ) : undefined
+            }
+          >
+            {activeEntries.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-200 p-8 text-center text-gray-400">
+                <FolderOpen className="mx-auto h-8 w-8" aria-hidden="true" />
+                <p className="mt-2 text-ui font-bold text-gray-500">{t("No record types yet", "Zatiaľ žiadne typy záznamov", "Még nincs rekordtípus")}</p>
+                <p className="mt-1 text-caption text-gray-400">{t("Create the first one with the button above.", "Vytvorte prvý tlačidlom vyššie.", "Hozza létre az elsőt a fenti gombbal.")}</p>
               </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB: Social Media (Zernio) Integration */}
-        {SOCIAL_MEDIA_ENABLED && activeSubTab === "social" && getPermission("general_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6 animate-fade-in">
-            {renderReadOnlyBanner("general_config")}
-
-            {/* Header Hero Card */}
-            <div className="glass-panel p-6 ws-sm:p-8 rounded-3xl space-y-6 border border-rose-200/40 bg-gradient-to-br from-slate-900 via-slate-900 to-rose-950 text-white shadow-2xl relative overflow-hidden">
-              <div className="absolute -right-12 -top-12 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl pointer-events-none"></div>
-              <div className="flex flex-col ws-sm:flex-row items-start ws-sm:items-center justify-between gap-6 relative z-10">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500 to-orange-600 flex items-center justify-center text-white shadow-lg shadow-rose-500/30 shrink-0 font-bold text-heading">
-                    Z
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      <h2 className="text-title font-heading font-bold tracking-tight text-white">
-                        Zernio Social Media Engine
-                      </h2>
-                      <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 type-overline px-2.5 py-0.5 rounded-full">
-                        {t("15+ platforms, AI ready", "15+ platforiem, pripravené na AI", "15+ platform, AI-kész")}
-                      </span>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 ws-sm:grid-cols-2">
+                {activeEntries.map((ue) => (
+                  <div key={ue.id} className="flex flex-col justify-between gap-4 rounded-lg border border-gray-200/80 bg-white p-4 text-left shadow-xs">
+                    <div className="flex items-start gap-3">
+                      <div className="flex shrink-0 items-center justify-center rounded-md p-3.5 text-white shadow-xs" style={{ backgroundColor: ue.color }}>
+                        {getIconComponent(ue.icon, "h-5 w-5")}
+                      </div>
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <span className="truncate text-body font-bold text-gray-800">{ue.name}</span>
+                        <span className="text-ui text-gray-500">
+                          {t("Fields", "Polia", "Mezők")}: <span className="font-semibold text-gray-700">{ue.modules.join(", ")}</span>
+                        </span>
+                        <span className="text-ui text-gray-500">
+                          {t("Folders", "Priečinky", "Mappák")}: <span className="font-semibold text-gray-700">{ue.foldersEnabled ? t("Yes", "Áno", "Igen") : t("No", "Nie", "Nem")}</span>
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-ui text-slate-300 mt-1 max-w-xl leading-relaxed">
-                      {t(
-                        "Connect your CRM to Zernio REST API & AI Agents infrastructure for unified social media scheduling, multi-platform publishing, and inbox engagement across Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky, and more.",
-                        "Pripojte vaše CRM k Zernio REST API a AI agentom pre unifikované plánovanie sociálnych sietí, publikovanie na 15+ platformách (Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky).",
-                        "Csatlakoztassa CRM-jét a Zernio REST API-hoz az egységes közösségi média ütemezéshez 15+ platformon."
-                      )}
-                    </p>
+                    {canEditRecords && (
+                      <div className="flex justify-end gap-2 border-t border-gray-100 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => { window.location.hash = `settings/modules/records/edit/${ue.id}`; }}
+                          className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md px-3 text-ui font-bold text-entity-text transition-colors hover:bg-entity-soft"
+                          title={t("Edit record type", "Upraviť typ záznamu", "Rekordtípus szerkesztése")}
+                        >
+                          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("Edit", "Upraviť", "Szerkesztés")}
+                        </button>
+                        <HoldToConfirmButton
+                          tone="archive"
+                          lang={userLanguage}
+                          what={ue.name}
+                          onConfirm={() => handleArchiveUnifiedEntry(ue.id)}
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-ui font-bold text-rose-600 transition-colors hover:bg-rose-50"
+                          title={t("Archive record type", "Archivovať typ záznamu", "Rekordtípus archiválása")}
+                          icon={<Trash2 className="h-3.5 w-3.5" />}
+                        >{t("Archive", "Archivovať", "Archiválás")}
+                        </HoldToConfirmButton>
+                      </div>
+                    )}
                   </div>
-                </div>
-
-                {/* Connection Status & Control Buttons */}
-                <div className="shrink-0 flex items-center gap-3">
-                  <div className="flex items-center gap-2.5 bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10">
-                    <div className={`w-3 h-3 rounded-full ${(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`}></div>
-                    <div>
-                      <span className="type-overline text-slate-400 block">{t("Status", "Stav", "Állapot")}</span>
-                      <span className="text-ui font-extrabold text-white">
-                        {(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) 
-                          ? (userLanguage === "sk" ? "Pripojené & Aktívne" : userLanguage === "hu" ? "Csatlakoztatva & Aktív" : "Connected & Active")
-                          : (userLanguage === "sk" ? "Čaká na API Kľúč" : userLanguage === "hu" ? "API Kulcsra vár" : "Awaiting API Key")}
-                      </span>
-                    </div>
-                  </div>
-
-                  {(zernioTestResult?.success || integrationsConfig?.zernioConnected || zernioApiKey) && (
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingZernioKey(!isEditingZernioKey)}
-                      className="px-4 py-2.5 bg-white/15 hover:bg-white/25 text-white rounded-2xl text-ui font-extrabold border border-white/20 transition-all cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      {isEditingZernioKey
-                        ? t("Hide Configuration", "Skryť konfiguráciu", "Konfiguráció elrejtése")
-                        : t("Configure Key", "Upraviť kľúč", "Kulcs szerkesztése")}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Supported Platforms Pills */}
-              <div className="pt-4 border-t border-white/10 flex flex-wrap gap-2 items-center text-micro font-bold text-slate-300">
-                <span className="type-overline text-slate-400 mr-1">{t("Supported Platforms:", "Podporované platformy:", "Támogatott platformok:")}</span>
-                {["Twitter / X", "Instagram", "TikTok", "LinkedIn", "YouTube", "Facebook", "Threads", "Bluesky", "Pinterest", "Reddit", "WhatsApp", "Google Business"].map((plat) => (
-                  <span key={plat} className="px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-slate-200">
-                    {plat}
-                  </span>
                 ))}
               </div>
+            )}
+
+            <div className="flex flex-col gap-1.5 rounded-lg bg-gray-50 p-4 text-ui text-gray-600">
+              <p>{t("Creating a record type adds a new table to the database.", "Vytvorenie typu záznamu pridá do databázy novú tabuľku.", "Egy rekordtípus létrehozása új táblát ad az adatbázishoz.")}</p>
+              <p>{t("Archiving one only hides it from the menu — the table and its data stay untouched.", "Archivácia ho iba skryje z menu — tabuľka aj údaje v nej zostanú nedotknuté.", "Az archiválás csak elrejti a menüből — a tábla és az adatok érintetlenek maradnak.")}</p>
             </div>
-
-            {/* CONNECTED VIEW: Clean status & connected accounts card (Hidden while editing) */}
-            {(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) && !isEditingZernioKey && (
-              <div className="glass-panel p-6 ws-sm:p-8 rounded-3xl border border-emerald-200/80 bg-white/95 shadow-glass space-y-6 animate-fade-in">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-2xl bg-emerald-100 text-emerald-700">
-                      <ShieldCheck className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-title-sm font-heading font-extrabold text-slate-900">
-                        {t("Zernio API Connection Active", "Zernio API pripojenie je aktívne", "Zernio API kapcsolat aktív")}
-                      </h3>
-                      <p className="text-ui font-semibold text-slate-500 mt-0.5">
-                        {t("Your CRM is successfully connected to Zernio API backend.", "Vaše CRM je úspešne pripojené k Zernio API backendu.", "A CRM sikeresen csatlakozik a Zernio API-hoz.")}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleTestZernio()}
-                      disabled={isTestingZernio || getPermission("general_config") === "view"}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-bold transition-all border border-slate-200 cursor-pointer flex items-center gap-2"
-                    >
-                      <Icons.RefreshCw className={`h-3.5 w-3.5 ${isTestingZernio ? "animate-spin text-indigo-600" : "text-slate-500"}`} />
-                      {t("Refresh Accounts", "Obnoviť účty", "Fiókok frissítése")}
-                    </button>
-                    {getPermission("general_config") === "edit" && (
-                      <button
-                        type="button"
-                        onClick={handleResetZernioKey}
-                        className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200 rounded-xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-rose-600" />
-                        {t("Reset Key", "Resetovať kľúč", "Kulcs visszaállítása")}
-                      </button>
+          </SectionCard>
+        );
+      }
+      case "projects/time":
+        return (
+          <div className="space-y-6">
+            <TimeTrackingSettingsPanel
+              language={userLanguage}
+              canEdit={getPermission("general_config") === "edit"}
+              isAdmin={isAdminRoleName(currentUser?.role)}
+              currency={systemCurrency || "EUR"} projects={projects} employees={employees} leads={leads} roles={roles} canManageRoles={getPermission("pm_managers") !== "nothing"}
+            />
+          </div>
+        );
+      case "newsletter/design":
+        return <NewsletterDesignSettings language={userLanguage} canEdit={getPermission("newsletter_settings") === "edit"} companyBilling={companyBillingSettings} rest={route.sectionId === "design" ? route.rest : []} />;
+      case "newsletter/sending":
+        return <NewsletterSendingSettings language={userLanguage} canEdit={getPermission("newsletter_settings") === "edit"} />;
+      case "projects/tasks":
+        return (
+                  <div className="space-y-6">
+                    {taskSettings && setTaskSettings && (
+                      <TaskSettingsPanel
+                        settings={taskSettings}
+                        setSettings={setTaskSettings}
+                        userLanguage={userLanguage}
+                        canEdit={getPermission("general_config") === "edit"}
+                      />
                     )}
                   </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-ui font-extrabold text-slate-700">
-                      {t("Connected Social Accounts:", "Pripojené účty sociálnych sietí:", "Csatlakoztatott közösségi fiókok:")} ({zernioTestResult?.count || integrationsConfig?.zernioAccounts?.length || 0})
-                    </span>
-                  </div>
-
-                  {(!zernioTestResult?.accounts || zernioTestResult.accounts.length === 0) && (!integrationsConfig?.zernioAccounts || integrationsConfig.zernioAccounts.length === 0) ? (
-                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-ui text-slate-600 flex items-center justify-between flex-wrap gap-3">
-                      <span>
-                        {t(
-                          "No connected social accounts found on this Zernio key yet. You can connect your social accounts in the Zernio dashboard.",
-                          "Na tomto Zernio kľúči zatiaľ neboli nájdené žiadne pripojené účty. Účty môžete pripojiť v dashboarde na Zernio.",
-                          "Még nincsenek csatlakoztatott fiókok ezen a Zernio kulcson."
-                        )}
-                      </span>
-                      <a
-                        href="https://zernio.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-ui font-bold transition-all flex items-center gap-1.5"
+        );
+      case "integrations/ads":
+        return (
+                  <div className="space-y-6">
+        
+                    {/* Split Credentials Row */}
+                    <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
+                      {/* Meta Ads Credentials Form */}
+                      <SectionCard
+                        title={getTranslation(userLanguage, "settings.ads.meta_title")}
+                        action={adsSaveStatus}
                       >
-                        zernio.com <Icons.ExternalLink className="h-3 w-3" />
-                      </a>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-md:grid-cols-3 gap-3">
-                      {(zernioTestResult?.accounts || integrationsConfig?.zernioAccounts || []).map((acc: any, i: number) => (
-                        <div key={acc.id || i} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 shadow-sm flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-ui shrink-0">
-                            {(acc.platform || "SOC").substring(0, 3)}
+                        
+                        <div className="space-y-3">
+                          <div className="space-y-1">
+                            <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.meta_id")}</label>
+                            <input
+                              type="text"
+                              disabled={getPermission("general_config") === "view"}
+                              value={metaAppId}
+                              onChange={(e) => {
+                                setMetaAppId(e.target.value);
+                              }}
+                              placeholder={t("e.g. 8493029104928", "napr. 8493029104928", "pl. 8493029104928")}
+                              className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                            />
                           </div>
-                          <div className="truncate min-w-0">
-                            <span className="text-ui font-bold text-slate-900 truncate block">{acc.name || acc.username || acc.platform}</span>
-                            <span className="text-micro text-slate-500 font-mono capitalize block">{acc.platform} • {acc.id || "Active"}</span>
+        
+                          <div className="space-y-1">
+                            <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.meta_secret")}</label>
+                            <PasswordInput
+                              disabled={getPermission("general_config") === "view"}
+                              value={metaAppSecret}
+                              onChange={(e) => {
+                                setMetaAppSecret(e.target.value);
+                              }}
+                              placeholder="••••••••••••••••••••••••••••••••"
+                              className="w-full pl-3 pr-10 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                            />
+                          </div>
+        
+                          <div className="space-y-1">
+                            <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.meta_token")}</label>
+                            <textarea
+                              rows={2}
+                              disabled={getPermission("general_config") === "view"}
+                              value={metaAccessToken}
+                              onChange={(e) => {
+                                setMetaAccessToken(e.target.value);
+                              }}
+                              placeholder="EAAGm0PX4ZBQBO..."
+                              className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border resize-none font-mono"
+                            />
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* SETUP & EDIT VIEW: Show 1-Click Auth + API Key form only when not connected OR editing */}
-            {(!integrationsConfig?.zernioConnected && !zernioTestResult?.success) || isEditingZernioKey ? (
-              <>
-                {/* Option 1: 1-Click Device Authorization */}
-                <div className="glass-panel p-6 ws-sm:p-8 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                    <div>
-                      <h3 className="text-body font-heading font-extrabold text-slate-900 flex items-center gap-2">
-                        <Icons.Zap className="h-4.5 w-4.5 text-rose-600" /> {t("1-Click Agent Device Authorization", "1-Click Autorizácia zariadenia agenta", "1-Kattintásos eszköz hitelesítés")}
-                      </h3>
-                      <p className="text-caption text-slate-500 mt-1">
-                        {t(
-                          "Authorize your CRM instance instantly with Zernio via browser authentication flow.",
-                          "Autorizujte vašu CRM inštanciu okamžite so Zernio cez bezpečné prehliadačové overenie.",
-                          "Hitelesítse CRM-jét azonnal a Zernióval böngészős hitelesítéssel."
-                        )}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleStartDeviceAuth}
-                      disabled={isInitiatingDeviceAuth || getPermission("general_config") === "view"}
-                      className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-500 hover:to-orange-500 text-white rounded-2xl text-ui font-bold shadow-lg shadow-rose-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {isInitiatingDeviceAuth ? (
-                        <Icons.RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Icons.ExternalLink className="h-4 w-4" />
-                      )}
-                      {t("Connect via Zernio", "Pripojiť cez Zernio", "Csatlakozás Zernióval")}
-                    </button>
-                  </div>
-
-                  {deviceAuthInfo && (
-                    <div className="p-5 rounded-2xl bg-rose-50/60 border border-rose-200/80 space-y-4 animate-fade-in">
-                      <div className="flex flex-col ws-sm:flex-row items-start ws-sm:items-center justify-between gap-3">
-                        <div>
-                          <span className="type-overline text-rose-800 block">{t("Authorization Code:", "Autorizačný kód:", "Hitelesítési kód:")}</span>
-                          <span className="type-metric font-mono text-rose-900 tracking-widest">{deviceAuthInfo.userCode}</span>
-                        </div>
-                        <a
-                          href={deviceAuthInfo.browserUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-ui font-bold transition-all shadow flex items-center gap-1.5"
-                        >
-                          {t("Open Zernio Auth Page", "Otvoriť Zernio overenie", "Zernio hitelesítési oldal megnyitása")} <Icons.ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      </div>
-                      {isPollingDeviceAuth && (
-                        <div className="flex items-center gap-2 text-ui font-bold text-rose-700">
-                          <Icons.RefreshCw className="h-4 w-4 animate-spin text-rose-600" />
-                          {t("Waiting for browser authorization... (Auto-polling active)", "Čakám na schválenie v prehliadači... (Automatické overovanie aktívne)", "Várakozás a böngésző hitelesítésre...")}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Option 2: API Key Configuration Form */}
-                <form onSubmit={handleSaveZernio} className="glass-panel p-6 ws-sm:p-8 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                  <h3 className="text-body font-heading font-extrabold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
-                    <Lock className="h-4.5 w-4.5 text-indigo-500" /> {t("Zernio API Key", "Zernio API Kľúč", "Zernio API Kulcs")}
-                  </h3>
-
-                  <div className="space-y-2">
-                    <label className="block text-ui font-extrabold text-slate-700">
-                      {t("Zernio API Secret Key", "Zernio API Tajný Kľúč", "Zernio API Titkos Kulcs")}
-                    </label>
-                    <SecretInput
-                      language={userLanguage}
-                      disabled={getPermission("general_config") === "view"}
-                      value={zernioApiKey}
-                      onChange={setZernioApiKey}
-                      placeholder="sk_live_..."
-                    />
-                    <p className="text-caption text-slate-500">
-                      {t(
-                        "Obtain your Zernio API key from your Zernio Dashboard at https://zernio.com or via 1-click device auth above.",
-                        "Získajte váš Zernio API kľúč z prehľadu na https://zernio.com alebo cez 1-click autorizáciu vyššie.",
-                        "Szerezze be Zernio API kulcsát a zernio.com oldalról."
-                      )}
-                    </p>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => handleTestZernio()}
-                      disabled={isTestingZernio || !zernioApiKey || getPermission("general_config") === "view"}
-                      className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl text-ui font-bold transition-all border border-slate-200 cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {isTestingZernio ? (
-                        <Icons.RefreshCw className="h-4 w-4 animate-spin text-slate-600" />
-                      ) : (
-                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                      )}
-                      {t("Test Connection", "Testovať pripojenie", "Kapcsolat tesztelése")}
-                    </button>
-
-                    {getPermission("general_config") === "edit" && (
-                      <button
-                        type="submit"
-                        className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-ui font-bold shadow-lg shadow-indigo-600/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+                      </SectionCard>
+        
+                      {/* Google Ads Credentials Form */}
+                      <SectionCard
+                        title={getTranslation(userLanguage, "settings.ads.google_title")}
                       >
-                        <Save className="h-4 w-4" /> {t("Save Social Settings", "Uložiť nastavenia sociálnych sietí", "Közösségi beállítások mentése")}
-                      </button>
-                    )}
-                  </div>
-                </form>
-
-              </>
-            ) : null}
-
-            {/* Rendered in BOTH the connected and the setup state: a key revoked
-                after a successful connection fails silently otherwise. */}
-            {zernioTestResult && !zernioTestResult.success && (
-              <div className="glass-panel p-6 rounded-3xl border border-rose-200/80 bg-rose-50/30 space-y-4 animate-fade-in">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-2xl bg-rose-100 text-rose-700 shrink-0">
-                    <Icons.AlertCircle className="h-6 w-6" />
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="text-body font-heading font-extrabold text-rose-900">
-                      {userLanguage === "sk" ? "Chyba overenia Zernio API" : userLanguage === "hu" ? "Zernio API ellenőrzési hiba" : "Zernio Verification Error"}
-                    </h4>
-                    <p className="text-ui font-medium text-slate-600 mt-0.5 break-words">{zernioTestResult.message}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 6: System Danger Zone */}
-        {activeSubTab === "danger" && getPermission("system_reset") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("system_reset")}
-
-            {/* Wipe Demo Data section (Only visible when isDemoMode is active) */}
-            {isDemoMode && getPermission("system_reset") === "edit" && (
-              <div className="glass-panel p-6 rounded-3xl space-y-4 border border-amber-200/60 bg-amber-50/10 shadow-glass animate-in fade-in slide-in-from-top-4 duration-300">
-                <h3 className="text-body font-heading font-bold text-amber-800 flex items-center gap-2 border-b border-amber-100 pb-3">
-                  <Sliders className="h-4.5 w-4.5 text-amber-600 animate-spin" style={{ animationDuration: '6s' }} /> 
-                  {userLanguage === "sk" ? "Odstrániť Demo Dáta" : userLanguage === "hu" ? "Demo Adatok Törlése" : "Wipe Demo Data"}
-                </h3>
-                
-                <p className="text-ui text-amber-700/80 leading-relaxed max-w-2xl font-bold">
-                  {userLanguage === "sk" 
-                    ? "Tento krok vymaže všetky vopred načítané demo údaje (leady, históriu pipeline, kalendáre, projektové úlohy) a trvalo prepne CRM z demo režimu do čistej databázy." 
-                    : userLanguage === "hu"
-                      ? "Ez a lépés törli az összes előre betöltött bemutató adatot (leadek, naptár, feladatok), és véglegesen kikapcsolja a demo módot."
-                      : "This will remove all pre-loaded demo records (leads, pipeline history, calendar slots, project tasks) and permanently switch the CRM out of demo mode."}
-                </p>
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    onClick={handleWipeDemo}
-                    className="w-fit px-6 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-ui font-bold shadow-lg shadow-amber-600/25 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer hover:scale-[1.01]"
-                  >
-                    <Trash2 className="h-4 w-4" /> 
-                    {userLanguage === "sk" ? "Vymazať demo údaje" : userLanguage === "hu" ? "Demo adatok törlése" : "Wipe Demo Records"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-rose-50/15 shadow-glass">
-              <h3 className="text-body font-heading font-bold text-rose-800 flex items-center gap-2 border-b border-rose-100 pb-3">
-                <ShieldAlert className="h-4.5 w-4.5 text-rose-600" /> {getTranslation(userLanguage, "settings.danger.title")}
-              </h3>
-              
-              <p className="text-ui text-rose-700/80 leading-relaxed max-w-2xl font-bold">
-                {getTranslation(userLanguage, "settings.danger.desc")}
-              </p>
-
-              {getPermission("system_reset") === "edit" && (
-                <div className="flex justify-end pt-2">
-                  <button
-                    onClick={handleReset}
-                    className="w-fit px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-ui font-bold shadow-lg shadow-rose-600/25 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
-                  >
-                    <Trash2 className="h-4 w-4" /> {getTranslation(userLanguage, "settings.danger.btn")}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 7: Error Logs Exception Tracking */}
-        {activeSubTab === "errors" && getPermission("general_config") !== "nothing" && (
-          <div className="ws-lg:col-span-12 space-y-6">
-            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-                  <Icons.AlertOctagon className="h-4.5 w-4.5 text-red-500 animate-pulse" /> {t("System Errors & Exceptions", "Systémové chyby a výnimky", "Rendszerhibák és kivételek")}
-                </h3>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={fetchErrorLogs}
-                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl type-overline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Icons.RefreshCw className="h-3.5 w-3.5" /> {t("Refresh", "Obnoviť", "Frissítés")}
-                  </button>
-                  <HoldToConfirmButton
-                      tone="danger"
-                      lang={asLang(userLanguage)}
-                      what={t("error logs", "chybové záznamy", "hibanaplók")}
-                      onConfirm={clearErrorLogs}
-                      className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl type-overline flex items-center gap-1"
-                  >
-                    {t("Clear Logs", "Vymazať záznamy", "Naplók törlése")}
-                  </HoldToConfirmButton>
-                </div>
-              </div>
-
-              {isLoadingLogs ? (
-                <div className="flex justify-center py-12">
-                  <Icons.RefreshCw className="h-6 w-6 animate-spin text-slate-400" />
-                </div>
-              ) : errorLogs.length === 0 ? (
-                <div className="text-center py-12 text-slate-500 font-bold text-ui">
-                  {t("No system errors found.", "Nenašli sa žiadne systémové chyby.", "Nem található rendszerhiba.")}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-ui border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-slate-500 type-overline">
-                        <th className="py-3 px-4">{t("Timestamp", "Čas", "Időbélyeg")}</th>
-                        <th className="py-3 px-4">{t("Method", "Metóda", "Metódus")}</th>
-                        <th className="py-3 px-4">URI</th>
-                        <th className="py-3 px-4">{t("Message", "Chyba", "Üzenet")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {errorLogs.map((log: any) => (
-                        <tr
-                          key={log.id}
-                          onClick={() => setSelectedLog(log)}
-                          className="border-b border-slate-100 hover:bg-red-50/40 transition-all cursor-pointer font-medium text-slate-700"
-                        >
-                          <td className="py-3 px-4 font-mono text-micro whitespace-nowrap text-slate-500">
-                            {log.created_at}
-                          </td>
-                          <td className="py-3 px-4 whitespace-nowrap">
-                            <span className={`px-2 py-0.5 rounded-md type-overline ${
-                              log.request_method === 'POST' 
-                                ? 'bg-blue-50 text-blue-700' 
-                                : 'bg-slate-50 text-slate-700'
-                            }`}>
-                              {log.request_method}
+                        
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.google_dev")}</label>
+                              <input
+                                type="text"
+                                disabled={getPermission("general_config") === "view"}
+                                value={googleDevToken}
+                                onChange={(e) => {
+                                  setGoogleDevToken(e.target.value);
+                                }}
+                                placeholder={t("e.g. AbC12D34E5...", "napr. AbC12D34E5...", "pl. AbC12D34E5...")}
+                                className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                              />
+                            </div>
+        
+                            <div className="space-y-1">
+                              <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.google_client")}</label>
+                              <input
+                                type="text"
+                                disabled={getPermission("general_config") === "view"}
+                                value={googleClientId}
+                                onChange={(e) => {
+                                  setGoogleClientId(e.target.value);
+                                }}
+                                placeholder="84092-abc.apps.google..."
+                                className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                              />
+                            </div>
+                          </div>
+        
+                          <div className="space-y-1">
+                            <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.google_secret")}</label>
+                            <PasswordInput
+                              disabled={getPermission("general_config") === "view"}
+                              value={googleClientSecret}
+                              onChange={(e) => {
+                                setGoogleClientSecret(e.target.value);
+                              }}
+                              placeholder="GOCSPX-••••••••••••••••"
+                              className="w-full pl-3 pr-10 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                            />
+                          </div>
+        
+                          <div className="space-y-1">
+                            <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.google_refresh")}</label>
+                            <textarea
+                              rows={2}
+                              disabled={getPermission("general_config") === "view"}
+                              value={googleRefreshToken}
+                              onChange={(e) => {
+                                setGoogleRefreshToken(e.target.value);
+                              }}
+                              placeholder="1//0gDabc..."
+                              className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border resize-none font-mono"
+                            />
+                          </div>
+                        </div>
+                      </SectionCard>
+                    </div>
+        
+                    {/* Campaign Control Center Panel */}
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.ads.campaign_title")}
+                      description={getTranslation(userLanguage, "settings.ads.campaign_desc")}
+                      action={
+<div className="flex items-center gap-3 shrink-0">
+                          {/* Status Indicator */}
+                          <span className={`px-3 py-1 rounded-full border type-overline flex items-center gap-1.5 ${
+                            isConnected 
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
+                              : "bg-gray-50 text-gray-400 border-gray-200"
+                          }`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-gray-400"}`} />
+                            {isConnected ? getTranslation(userLanguage, "settings.ads.status_online") : getTranslation(userLanguage, "settings.ads.status_offline")}
+                          </span>
+        
+                          <button
+                            type="button"
+                            disabled={isSyncing || getPermission("general_config") === "view"}
+                            onClick={() => {
+                              if (!metaAppId.trim() && !googleDevToken.trim()) {
+                                (window as any).showToast(
+                                  userLanguage === "sk" 
+                                    ? "Vyplňte prosím aspoň jedno rozloženie poverení rozhrania API na autorizáciu synchronizácie integrácie!" 
+                                    : userLanguage === "hu" 
+                                      ? "Kérjük, töltsön ki legalább egy API hitelesítő adatot az integrációs szinkronizálás engedélyezéséhez!" 
+                                      : "Please fill in at least one API credential layout to authorize integration synchronization!"
+                                );
+                                return;
+                              }
+                              setIsSyncing(true);
+                              setTimeout(() => {
+                                setIsSyncing(false);
+                                setIsConnected(true);
+                                if (updateIntegrationsConfig) {
+                                  updateIntegrationsConfig((prev: any) => ({
+                                    ...(prev || {}),
+                                    metaAppId,
+                                    metaAppSecret,
+                                    metaAccessToken,
+                                    googleDevToken,
+                                    googleClientId,
+                                    googleClientSecret,
+                                    googleRefreshToken,
+                                    adsConnected: true
+                                  }));
+                                }
+                                (window as any).showToast(
+                                  userLanguage === "sk" 
+                                    ? "Zabezpečené overenie API úspešne dokončené! Databázy kampaní boli úspešne synchronizované." 
+                                    : userLanguage === "hu" 
+                                      ? "Biztonságos API kézfogás befejeződött! A kampányadatbázisok sikeresen szinkronizálva." 
+                                      : "Secure API handshake completed! Campaign databases synced successfully."
+                                );
+                              }, 1200);
+                            }}
+                            className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover disabled:bg-indigo-400 type-overline text-white rounded-md transition-all flex items-center gap-1.5 active:scale-95 disabled:scale-100 disabled:cursor-not-allowed"
+                          >
+                            <span>{isSyncing ? getTranslation(userLanguage, "settings.ads.btn_syncing") : getTranslation(userLanguage, "settings.ads.btn_sync")}</span>
+                          </button>
+                        </div>
+}
+                    >
+        
+                      {/* Connected Active Campaign Listing */}
+                      {isConnected ? (
+                        <ScrollFade axis="x" className="rounded-lg border border-gray-200 shadow-xs">
+                          <table className="w-full text-left border-collapse bg-white">
+                            <thead>
+                              <tr className="bg-gray-50 border-b border-gray-200 type-overline text-gray-600">
+                                <th className="py-3.5 px-4 min-w-32.5">{getTranslation(userLanguage, "settings.ads.th_platform")}</th>
+                                <th className="py-3.5 px-4 min-w-55">{getTranslation(userLanguage, "settings.ads.th_name")}</th>
+                                <th className="py-3.5 px-4 text-center min-w-30">{getTranslation(userLanguage, "settings.ads.th_budget")}</th>
+                                <th className="py-3.5 px-4 text-center min-w-27.5">{getTranslation(userLanguage, "settings.ads.th_status")}</th>
+                                <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_impressions")}</th>
+                                <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_clicks")}</th>
+                                <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_ctr")}</th>
+                                <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_spent")}</th>
+                                <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_leads")}</th>
+                                <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_cpl")}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 text-ui font-semibold text-gray-700">
+                              {campaigns.map((c) => {
+                                const ctr = c.impressions > 0 ? ((c.clicks / c.impressions) * 100).toFixed(2) : "0.00";
+                                const cpl = c.leads > 0 ? (c.spent / c.leads).toFixed(2) : "0.00";
+                                
+                                return (
+                                  <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
+                                    {/* Platform badge */}
+                                    <td className="py-3 px-4">
+                                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline border ${
+                                        c.platform === "meta"
+                                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                                          : "bg-amber-50 text-amber-700 border-amber-200"
+                                      }`}>
+                                        {c.platform === "meta" ? "Meta" : "Google"}
+                                      </span>
+                                    </td>
+        
+                                    {/* Campaign Name */}
+                                    <td className="py-3 px-4 text-gray-800 font-bold truncate max-w-62.5" title={c.name}>
+                                      {c.name}
+                                    </td>
+        
+                                    {/* Daily Budget (Editable) */}
+                                    <td className="py-3 px-4 text-center">
+                                      <div className="flex items-center justify-center gap-1">
+                                        <span className="text-gray-400 font-bold">$</span>
+                                        <input
+                                          type="number"
+                                          disabled={getPermission("general_config") === "view"}
+                                          value={c.budget}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value) || 0;
+                                            updateCampaign(c.id, { budget: val });
+                                          }}
+                                          className="w-16 px-1.5 py-0.5 rounded bg-gray-50 border border-gray-200 focus:outline-none focus:border-entity-border font-bold text-center text-ui"
+                                        />
+                                      </div>
+                                    </td>
+        
+                                    {/* Campaign Status (Editable) */}
+                                    <td className="py-3 px-4 text-center">
+                                      {getPermission("general_config") === "edit" ? (
+                                        <CustomSelect
+                                          size="sm"
+                                          value={c.status}
+                                          onChange={(v) => {
+                                            updateCampaign(c.id, { status: v as Campaign["status"] });
+                                          }}
+                                          options={[
+                                            { value: "active", label: userLanguage === "sk" ? "Aktívne" : userLanguage === "hu" ? "Aktív" : "Active" },
+                                            { value: "paused", label: userLanguage === "sk" ? "Pozastavené" : userLanguage === "hu" ? "Szüneteltetve" : "Paused" },
+                                            { value: "learning", label: userLanguage === "sk" ? "Učenie" : userLanguage === "hu" ? "Tanulás" : "Learning" },
+                                          ]}
+                                        />
+                                      ) : (
+                                        <span className={`px-2 py-0.5 rounded type-overline border ${
+                                          c.status === "active"
+                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                            : c.status === "paused"
+                                              ? "bg-rose-50 text-rose-700 border-rose-200"
+                                              : "bg-entity-soft text-entity-text border-entity-border"
+                                        }`}>
+                                          {c.status === "active" 
+                                            ? (userLanguage === "sk" ? "Aktívne" : userLanguage === "hu" ? "Aktív" : "Active") 
+                                            : c.status === "paused" 
+                                              ? (userLanguage === "sk" ? "Pozastavené" : userLanguage === "hu" ? "Szüneteltetve" : "Paused") 
+                                              : (userLanguage === "sk" ? "Učenie" : userLanguage === "hu" ? "Tanulás" : "Learning")
+                                          }
+                                        </span>
+                                      )}
+                                    </td>
+        
+                                    {/* Impressions */}
+                                    <td className="py-3 px-4 text-right font-mono text-gray-600">
+                                      {c.impressions.toLocaleString()}
+                                    </td>
+        
+                                    {/* Clicks */}
+                                    <td className="py-3 px-4 text-right font-mono text-gray-600">
+                                      {c.clicks.toLocaleString()}
+                                    </td>
+        
+                                    {/* CTR */}
+                                    <td className="py-3 px-4 text-right font-mono text-entity-text font-bold">
+                                      {ctr}%
+                                    </td>
+        
+                                    {/* Spent */}
+                                    <td className="py-3 px-4 text-right font-mono text-gray-600">
+                                      ${c.spent.toFixed(2)}
+                                    </td>
+        
+                                    {/* Leads */}
+                                    <td className="py-3 px-4 text-right font-mono text-emerald-600 font-bold">
+                                      {c.leads}
+                                    </td>
+        
+                                    {/* CPL */}
+                                    <td className="py-3 px-4 text-right font-mono text-gray-800 font-bold">
+                                      ${cpl}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </ScrollFade>
+                      ) : (
+                        <div className="py-8 flex flex-col items-center justify-center text-center space-y-2 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50/50">
+                          <Icons.Plug className="h-7 w-7" aria-hidden="true" />
+                          <div className="flex flex-col">
+                            <span className="text-ui font-bold text-gray-600">{getTranslation(userLanguage, "settings.ads.empty_title")}</span>
+                            <span className="text-micro text-gray-400 max-w-sm mt-1">
+                              {getTranslation(userLanguage, "settings.ads.empty_desc")}
                             </span>
-                          </td>
-                          <td className="py-3 px-4 font-mono text-micro text-slate-600 truncate max-w-xs">
-                            {log.request_uri}
-                          </td>
-                          <td className="py-3 px-4 font-bold text-red-600 truncate max-w-sm">
-                            {log.message}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                          </div>
+                        </div>
+                      )}
+                    </SectionCard>
+                  </div>
+        );
+      case "integrations/ai":
+        return (
+          <AiIntegrationSettings
+            aiConnectorId={aiConnectorId}
+            setAiConnectorId={setAiConnectorId}
+            aiConnectorName={aiConnectorName}
+            setAiConnectorName={setAiConnectorName}
+            aiConnectorType={aiConnectorType}
+            setAiConnectorType={setAiConnectorType}
+            aiSourceMode={aiSourceMode}
+            setAiSourceMode={setAiSourceMode}
+            aiStatus={aiStatus}
+            anthropicKey={anthropicKey}
+            setAnthropicKey={setAnthropicKey}
+            geminiKey={geminiKey}
+            setGeminiKey={setGeminiKey}
+            openAiKey={openAiKey}
+            setOpenAiKey={setOpenAiKey}
+            sonioxApiKey={sonioxApiKey}
+            setSonioxApiKey={setSonioxApiKey}
+            fetchTrainingStats={fetchTrainingStats}
+            getPermission={getPermission}
+            handleStartTraining={handleStartTraining}
+            handleValidateConnection={handleValidateConnection}
+            isTraining={isTraining}
+            isValidating={isValidating}
+            llmConnectors={llmConnectors}
+            llmConnectorsLoading={llmConnectorsLoading}
+            mariaDbHost={mariaDbHost}
+            setMariaDbHost={setMariaDbHost}
+            mariaDbName={mariaDbName}
+            setMariaDbName={setMariaDbName}
+            mariaDbPassword={mariaDbPassword}
+            setMariaDbPassword={setMariaDbPassword}
+            mariaDbPort={mariaDbPort}
+            setMariaDbPort={setMariaDbPort}
+            mariaDbUser={mariaDbUser}
+            setMariaDbUser={setMariaDbUser}
+            pineconeApiKey={pineconeApiKey}
+            setPineconeApiKey={setPineconeApiKey}
+            pineconeIndex={pineconeIndex}
+            setPineconeIndex={setPineconeIndex}
+            qdrantApiKey={qdrantApiKey}
+            setQdrantApiKey={setQdrantApiKey}
+            qdrantUrl={qdrantUrl}
+            setQdrantUrl={setQdrantUrl}
+            setValidationResult={setValidationResult}
+            validationResult={validationResult}
+            setVectorDb={setVectorDb}
+            vectorDb={vectorDb}
+            setVectorDbValidated={setVectorDbValidated}
+            vectorDbValidated={vectorDbValidated}
+            t={t}
+            trainingLogs={trainingLogs}
+            trainingProgress={trainingProgress}
+            trainingStats={trainingStats}
+            updateIntegrationsConfig={updateIntegrationsConfig}
+            userLanguage={userLanguage}
+          />
+        );
+      case "integrations/marketing_roi":
+        return (
+          <MarketingRoiSettings
+            userLanguage={userLanguage}
+            financialCategories={financialCategories || []}
+            leadSources={leadSources}
+            canEdit={getPermission("general_config") === "edit"}
+          />
+        );
+      case "integrations/social":
+        return (
+                  <div className="space-y-6 animate-fade-in">
+        
+                    {/* Header Hero Card */}
+                    <SectionCard
+                      title="Zernio Social Media Engine"
+                      description={t(
+                                `Connect ${PRODUCT_NAME} to Zernio REST API & AI Agents infrastructure for unified social media scheduling, multi-platform publishing, and inbox engagement across Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky, and more.`,
+                                `Pripojte ${PRODUCT_NAME} k Zernio REST API a AI agentom pre unifikované plánovanie sociálnych sietí, publikovanie na 15+ platformách (Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky).`,
+                                `Csatlakoztassa ${PRODUCT_NAME}-jét a Zernio REST API-hoz az egységes közösségi média ütemezéshez 15+ platformon.`
+                              )}
+                      action={
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="inline-flex min-h-9 items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3.5 text-ui font-bold text-gray-700">
+                            <span className={`h-2.5 w-2.5 rounded-full ${(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) ? "bg-emerald-500" : "bg-amber-400"}`} />
+                            {(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected)
+                              ? (userLanguage === "sk" ? "Pripojené & Aktívne" : userLanguage === "hu" ? "Csatlakoztatva & Aktív" : "Connected & Active")
+                              : (userLanguage === "sk" ? "Čaká na API Kľúč" : userLanguage === "hu" ? "API Kulcsra vár" : "Awaiting API Key")}
+                          </span>
+                          {(zernioTestResult?.success || integrationsConfig?.zernioConnected || zernioApiKey) && (
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingZernioKey(!isEditingZernioKey)}
+                              className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-ui font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                            >
+                              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                              {isEditingZernioKey
+                                ? t("Hide Configuration", "Skryť konfiguráciu", "Konfiguráció elrejtése")
+                                : t("Configure Key", "Upraviť kľúč", "Kulcs szerkesztése")}
+                            </button>
+                          )}
+                        </div>
+                      }
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-ui font-semibold text-gray-600">
+                        <span className="type-overline mr-1 text-gray-500">{t("Supported Platforms:", "Podporované platformy:", "Támogatott platformok:")}</span>
+                        {["Twitter / X", "Instagram", "TikTok", "LinkedIn", "YouTube", "Facebook", "Threads", "Bluesky", "Pinterest", "Reddit", "WhatsApp", "Google Business"].map((plat) => (
+                          <span key={plat} className="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
+                            {plat}
+                          </span>
+                        ))}
+                      </div>
+                    </SectionCard>
+        
+                    {/* CONNECTED VIEW: Clean status & connected accounts card (Hidden while editing) */}
+                    {(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) && !isEditingZernioKey && (
+                      <SectionCard
+                        title={t("Zernio API Connection Active", "Zernio API pripojenie je aktívne", "Zernio API kapcsolat aktív")}
+                        description={t(`${PRODUCT_NAME} is successfully connected to Zernio API backend.`, `${PRODUCT_NAME} je úspešne pripojené k Zernio API backendu.`, `A ${PRODUCT_NAME} sikeresen csatlakozik a Zernio API-hoz.`)}
+                        action={
+<div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleTestZernio()}
+                              disabled={isTestingZernio || getPermission("general_config") === "view"}
+                              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-bold transition-all border border-gray-200 cursor-pointer flex items-center gap-2"
+                            >
+                              <Icons.RefreshCw className={`h-3.5 w-3.5 ${isTestingZernio ? "animate-spin text-entity-text" : "text-gray-500"}`} />
+                              {t("Refresh Accounts", "Obnoviť účty", "Fiókok frissítése")}
+                            </button>
+                            {getPermission("general_config") === "edit" && (
+                              <button
+                                type="button"
+                                onClick={handleResetZernioKey}
+                                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200 rounded-md text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                                {t("Reset Key", "Resetovať kľúč", "Kulcs visszaállítása")}
+                              </button>
+                            )}
+                          </div>
+}
+                      >
+        
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-ui font-extrabold text-gray-700">
+                              {t("Connected Social Accounts:", "Pripojené účty sociálnych sietí:", "Csatlakoztatott közösségi fiókok:")} ({zernioTestResult?.count || integrationsConfig?.zernioAccounts?.length || 0})
+                            </span>
+                          </div>
+        
+                          {(!zernioTestResult?.accounts || zernioTestResult.accounts.length === 0) && (!integrationsConfig?.zernioAccounts || integrationsConfig.zernioAccounts.length === 0) ? (
+                            <div className="p-4 rounded-lg bg-gray-50 border border-gray-200/80 text-ui text-gray-600 flex items-center justify-between flex-wrap gap-3">
+                              <span>
+                                {t(
+                                  "No connected social accounts found on this Zernio key yet. You can connect your social accounts in the Zernio dashboard.",
+                                  "Na tomto Zernio kľúči zatiaľ neboli nájdené žiadne pripojené účty. Účty môžete pripojiť v dashboarde na Zernio.",
+                                  "Még nincsenek csatlakoztatott fiókok ezen a Zernio kulcson."
+                                )}
+                              </span>
+                              <a
+                                href="https://zernio.com"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-ui font-bold transition-all flex items-center gap-1.5"
+                              >
+                                zernio.com <Icons.ExternalLink className="h-3 w-3" />
+                              </a>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-md:grid-cols-3 gap-3">
+                              {(zernioTestResult?.accounts || integrationsConfig?.zernioAccounts || []).map((acc: any, i: number) => (
+                                <div key={acc.id || i} className="p-3.5 rounded-lg bg-gray-50 border border-gray-200/80 shadow-xs flex items-center gap-3">
+                                  <div className="w-9 h-9 rounded-md bg-gray-900 text-white flex items-center justify-center font-bold text-ui shrink-0">
+                                    {(acc.platform || "SOC").substring(0, 3)}
+                                  </div>
+                                  <div className="truncate min-w-0">
+                                    <span className="text-ui font-bold text-gray-900 truncate block">{acc.name || acc.username || acc.platform}</span>
+                                    <span className="text-micro text-gray-500 font-mono capitalize block">{acc.platform} • {acc.id || "Active"}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </SectionCard>
+                    )}
+        
+                    {/* SETUP & EDIT VIEW: Show 1-Click Auth + API Key form only when not connected OR editing */}
+                    {(!integrationsConfig?.zernioConnected && !zernioTestResult?.success) || isEditingZernioKey ? (
+                      <>
+                        {/* Option 1: 1-Click Device Authorization */}
+                        <SectionCard
+                          title={t("1-Click Agent Device Authorization", "1-Click Autorizácia zariadenia agenta", "1-Kattintásos eszköz hitelesítés")}
+                          description={t(`Authorize your ${PRODUCT_NAME} instance instantly with Zernio via browser authentication flow.`, `Autorizujte ${PRODUCT_NAME} inštanciu okamžite so Zernio cez bezpečné prehliadačové overenie.`, `Hitelesítse ${PRODUCT_NAME}-jét azonnal a Zernióval böngészős hitelesítéssel.`)}
+                          action={
+<button
+                              type="button"
+                              onClick={handleStartDeviceAuth}
+                              disabled={isInitiatingDeviceAuth || getPermission("general_config") === "view"}
+                              className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-500 hover:to-orange-500 text-white rounded-lg text-ui font-bold shadow-xs shadow-rose-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {isInitiatingDeviceAuth ? (
+                                <Icons.RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Icons.ExternalLink className="h-4 w-4" />
+                              )}
+                              {t("Connect via Zernio", "Pripojiť cez Zernio", "Csatlakozás Zernióval")}
+                            </button>
+}
+                        >
+        
+                          {deviceAuthInfo && (
+                            <div className="p-5 rounded-lg bg-rose-50/60 border border-rose-200/80 space-y-4 animate-fade-in">
+                              <div className="flex flex-col ws-sm:flex-row items-start ws-sm:items-center justify-between gap-3">
+                                <div>
+                                  <span className="type-overline text-rose-800 block">{t("Authorization Code:", "Autorizačný kód:", "Hitelesítési kód:")}</span>
+                                  <span className="type-metric font-mono text-rose-900 tracking-widest">{deviceAuthInfo.userCode}</span>
+                                </div>
+                                <a
+                                  href={deviceAuthInfo.browserUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-ui font-bold transition-all shadow flex items-center gap-1.5"
+                                >
+                                  {t("Open Zernio Auth Page", "Otvoriť Zernio overenie", "Zernio hitelesítési oldal megnyitása")} <Icons.ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              </div>
+                              {isPollingDeviceAuth && (
+                                <div className="flex items-center gap-2 text-ui font-bold text-rose-700">
+                                  <Icons.RefreshCw className="h-4 w-4 animate-spin text-rose-600" />
+                                  {t("Waiting for browser authorization... (Auto-polling active)", "Čakám na schválenie v prehliadači... (Automatické overovanie aktívne)", "Várakozás a böngésző hitelesítésre...")}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </SectionCard>
+        
+                        {/* Option 2: API Key Configuration Form */}
+                        <SectionCard
+                          title={t("Zernio API Key", "Zernio API Kľúč", "Zernio API Kulcs")}
+                          action={<SaveStatus lang={userLanguage} status={zernioStatus} />}
+                        >
+        
+                          <div className="space-y-2">
+                            <label className="block text-ui font-extrabold text-gray-700">
+                              {t("Zernio API Secret Key", "Zernio API Tajný Kľúč", "Zernio API Titkos Kulcs")}
+                            </label>
+                            <SecretInput
+                              language={userLanguage}
+                              disabled={getPermission("general_config") === "view"}
+                              value={zernioApiKey}
+                              onChange={setZernioApiKey}
+                              placeholder="sk_live_..."
+                            />
+                            <p className="text-caption text-gray-500">
+                              {t(
+                                "Obtain your Zernio API key from your Zernio Dashboard at https://zernio.com or via 1-click device auth above.",
+                                "Získajte váš Zernio API kľúč z prehľadu na https://zernio.com alebo cez 1-click autorizáciu vyššie.",
+                                "Szerezze be Zernio API kulcsát a zernio.com oldalról."
+                              )}
+                            </p>
+                          </div>
+        
+                          {/* Action Buttons */}
+                          <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-gray-100">
+                            <button
+                              type="button"
+                              onClick={() => handleTestZernio()}
+                              disabled={isTestingZernio || !zernioApiKey || getPermission("general_config") === "view"}
+                              className="px-5 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-ui font-bold transition-all border border-gray-200 cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {isTestingZernio ? (
+                                <Icons.RefreshCw className="h-4 w-4 animate-spin text-gray-600" />
+                              ) : (
+                                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                              )}
+                              {t("Test Connection", "Testovať pripojenie", "Kapcsolat tesztelése")}
+                            </button>
+        
+                            
+                          </div>
+                        </SectionCard>
+        
+                      </>
+                    ) : null}
+        
+                    {/* Rendered in BOTH the connected and the setup state: a key revoked
+                        after a successful connection fails silently otherwise. */}
+                    {zernioTestResult && !zernioTestResult.success && (
+                      <SectionCard
+                        title={userLanguage === "sk" ? "Chyba overenia Zernio API" : userLanguage === "hu" ? "Zernio API ellenőrzési hiba" : "Zernio Verification Error"}
+                        description={zernioTestResult.message}
+                        tone="danger"
+                      />
+                    )}
+                  </div>
+        );
+      case "system/errors":
+        return (
+                  <div className="space-y-6">
+                    <SectionCard
+                      title={t("System Errors & Exceptions", "Systémové chyby a výnimky", "Rendszerhibák és kivételek")}
+                      action={
+<div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={fetchErrorLogs}
+                            className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-md type-overline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Icons.RefreshCw className="h-3.5 w-3.5" /> {t("Refresh", "Obnoviť", "Frissítés")}
+                          </button>
+                          <HoldToConfirmButton
+                              tone="danger"
+                              lang={asLang(userLanguage)}
+                              what={t("error logs", "chybové záznamy", "hibanaplók")}
+                              onConfirm={clearErrorLogs}
+                              className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-md type-overline flex items-center gap-1"
+                          >
+                            {t("Clear Logs", "Vymazať záznamy", "Naplók törlése")}
+                          </HoldToConfirmButton>
+                        </div>
+}
+                    >
+        
+                      {isLoadingLogs ? (
+                        <div className="flex justify-center py-12">
+                          <Icons.RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
+                        </div>
+                      ) : errorLogs.length === 0 ? (
+                        <div className="text-center py-12 text-gray-500 font-bold text-ui">
+                          {t("No system errors found.", "Nenašli sa žiadne systémové chyby.", "Nem található rendszerhiba.")}
+                        </div>
+                      ) : (
+                        <ScrollFade axis="x" className="">
+                          <table className="w-full text-left text-ui border-collapse">
+                            <thead>
+                              <tr className="border-b border-gray-200 text-gray-500 type-overline">
+                                <th className="py-3 px-4">{t("Timestamp", "Čas", "Időbélyeg")}</th>
+                                <th className="py-3 px-4">{t("Method", "Metóda", "Metódus")}</th>
+                                <th className="py-3 px-4">URI</th>
+                                <th className="py-3 px-4">{t("Message", "Chyba", "Üzenet")}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {errorLogs.map((log: any) => (
+                                <tr
+                                  key={log.id}
+                                  onClick={() => setSelectedLog(log)}
+                                  className="border-b border-gray-100 hover:bg-red-50/40 transition-all cursor-pointer font-medium text-gray-700"
+                                >
+                                  <td className="py-3 px-4 font-mono text-micro whitespace-nowrap text-gray-500">
+                                    {log.created_at}
+                                  </td>
+                                  <td className="py-3 px-4 whitespace-nowrap">
+                                    <span className={`px-2 py-0.5 rounded-md type-overline ${
+                                      log.request_method === 'POST' 
+                                        ? 'bg-blue-50 text-blue-700' 
+                                        : 'bg-gray-50 text-gray-700'
+                                    }`}>
+                                      {log.request_method}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4 font-mono text-micro text-gray-600 truncate max-w-xs">
+                                    {log.request_uri}
+                                  </td>
+                                  <td className="py-3 px-4 font-bold text-red-600 truncate max-w-sm">
+                                    {log.message}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </ScrollFade>
+                      )}
+                    </SectionCard>
+                  </div>
+        );
+      case "system/reset":
+        return (
+                  <div className="space-y-6">
+        
+                    {/* Re-seed demo data (api/demo_reseed.php): language + currency, replaces demo rows only. */}
+                    {isDemoMode && getPermission("system_reset") === "edit" && (
+                      <DemoReseedSettings language={userLanguage} canEdit />
+                    )}
+
+                    {/* Wipe Demo Data section (Only visible when isDemoMode is active) */}
+                    {isDemoMode && getPermission("system_reset") === "edit" && (
+                      <SectionCard
+                        title={userLanguage === "sk" ? "Odstrániť Demo Dáta" : userLanguage === "hu" ? "Demo Adatok Törlése" : "Wipe Demo Data"}
+                        description={userLanguage === "sk" 
+                            ? `Tento krok vymaže všetky vopred načítané demo údaje (leady, históriu pipeline, kalendáre, projektové úlohy) a trvalo prepne ${PRODUCT_NAME} z demo režimu do čistej databázy.` 
+                            : userLanguage === "hu"
+                              ? "Ez a lépés törli az összes előre betöltött bemutató adatot (leadek, naptár, feladatok), és véglegesen kikapcsolja a demo módot."
+                              : `This will remove all pre-loaded demo records (leads, pipeline history, calendar slots, project tasks) and permanently switch ${PRODUCT_NAME} out of demo mode.`}
+                        tone="warning"
+                      >
+        
+                        <div className="flex justify-end pt-2">
+                          <button
+                            onClick={handleWipeDemo}
+                            className="w-fit px-6 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-md text-ui font-bold shadow-xs shadow-amber-600/25 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer hover:scale-[1.01]"
+                          >
+                            <Trash2 className="h-4 w-4" /> 
+                            {userLanguage === "sk" ? "Vymazať demo údaje" : userLanguage === "hu" ? "Demo adatok törlése" : "Wipe Demo Records"}
+                          </button>
+                        </div>
+                      </SectionCard>
+                    )}
+        
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.danger.title")}
+                      description={getTranslation(userLanguage, "settings.danger.desc")}
+                      tone="danger"
+                    >
+        
+                      {getPermission("system_reset") === "edit" && (
+                        <div className="flex justify-end pt-2">
+                          <button
+                            onClick={handleReset}
+                            className="w-fit px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-md text-ui font-bold shadow-xs shadow-rose-600/25 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+                          >
+                            <Trash2 className="h-4 w-4" /> {getTranslation(userLanguage, "settings.danger.btn")}
+                          </button>
+                        </div>
+                      )}
+                    </SectionCard>
+                  </div>
+        );
+      case "system/license":
+        return (
+                  <LicenseSettings
+                    state={licenseState}
+                    language={userLanguage}
+                    // Entering a key is an admin action on the server too (api/license.php
+                    // requires the admin role), so a "view" permission genuinely means
+                    // read-only here rather than a button that will 403.
+                    canEdit={currentUser?.role?.toLowerCase() === "admin"}
+                    onStateChange={(next) => onLicenseStateChange?.(next)}
+                  />
+        );
+      case "projects/types":
+        return (
+        <ProjectSettings
+          projectTypes={projectTypes}
+          setProjectTypes={setProjectTypes}
+          userLanguage={userLanguage}
+          canEdit={getPermission("general_config") === "edit"}
+          projects={projects}
+        />
+        );
+      case "projects/statuses":
+        return (
+        projectStatuses && setProjectStatuses ? (
+          <ProjectStatusSettings
+            statuses={projectStatuses}
+            setStatuses={setProjectStatuses}
+            projects={projects}
+            setProjects={setProjects}
+            userLanguage={userLanguage}
+            canEdit={getPermission("general_config") === "edit"}
+          />
+        ) : null
+        );
+      case "projects/autocreate":
+        return null;
+      case "tickets/statuses":
+        return (
+        setTicketStatuses && ticketSettings && setTicketSettings ? (
+          <TicketSettings
+            part="statuses"
+            ticketStatuses={ticketStatuses}
+            setTicketStatuses={setTicketStatuses}
+            ticketSettings={ticketSettings}
+            setTicketSettings={setTicketSettings}
+            tickets={tickets}
+            setTickets={setTickets}
+            userLanguage={userLanguage}
+            canEdit={getPermission("general_config") === "edit"}
+            onTicketsPolled={onTicketsPolled}
+          />
+        ) : null
+        );
+      case "tickets/intake":
+        return (
+        setTicketStatuses && ticketSettings && setTicketSettings ? (
+          <TicketSettings
+            part="intake"
+            ticketStatuses={ticketStatuses}
+            setTicketStatuses={setTicketStatuses}
+            ticketSettings={ticketSettings}
+            setTicketSettings={setTicketSettings}
+            tickets={tickets}
+            setTickets={setTickets}
+            userLanguage={userLanguage}
+            canEdit={getPermission("general_config") === "edit"}
+            onTicketsPolled={onTicketsPolled}
+          />
+        ) : null
+        );
+      case "orders/statuses":
+        return (
+        orderStatuses && setOrderStatuses ? (
+          <OrderStatusSettings
+            statuses={orderStatuses}
+            setStatuses={setOrderStatuses}
+            orders={orders}
+            setOrders={setOrders}
+            userLanguage={userLanguage}
+            canEdit={getPermission("general_config") === "edit"}
+          />
+        ) : null
+        );
+      case "orders/shipping":
+        return (
+        <ShippingMethodSettings
+          companyBillingSettings={companyBillingSettings}
+          setCompanyBillingSettings={setCompanyBillingSettings}
+          userLanguage={userLanguage}
+          canEdit={getPermission("general_config") === "edit"}
+        />
+        );
+      case "offers/payments":
+        return (
+        <PaymentMethodSettings
+          companyBillingSettings={companyBillingSettings}
+          setCompanyBillingSettings={setCompanyBillingSettings}
+          userLanguage={userLanguage}
+          canEdit={getPermission("general_config") === "edit"}
+        />
+        );
+      case "finance/ledger":
+        return (
+        financialCategories && setFinancialCategories && setFinancialRecords ? (
+          <FinanceSettings
+            part="ledger"
+            userLanguage={userLanguage}
+            systemLanguage={systemLanguage}
+            systemCurrency={systemCurrency}
+            financialCategories={financialCategories}
+            setFinancialCategories={setFinancialCategories}
+            setFinancialRecords={setFinancialRecords}
+            financialMode={financialMode}
+            setFinancialMode={setFinancialMode}
+            canEdit={getPermission("financial") === "edit"}
+            canDelete={getPermission("financial") === "edit" && getPermission("financial.delete") === "edit"}
+          />
+        ) : null
+        );
+      case "finance/categories":
+        return (
+        financialCategories && setFinancialCategories && setFinancialRecords ? (
+          <FinanceSettings
+            part="categories"
+            userLanguage={userLanguage}
+            systemLanguage={systemLanguage}
+            systemCurrency={systemCurrency}
+            financialCategories={financialCategories}
+            setFinancialCategories={setFinancialCategories}
+            setFinancialRecords={setFinancialRecords}
+            financialMode={financialMode}
+            setFinancialMode={setFinancialMode}
+            canEdit={getPermission("financial") === "edit"}
+            canDelete={getPermission("financial") === "edit" && getPermission("financial.delete") === "edit"}
+          />
+        ) : null
+        );
+      case "offers/categories":
+        return setOfferCategories ? (
+        <ClientCategoryManager
+          variant="section"
+          collection="offerCategories"
+          idPrefix="oc"
+          iconKind="offerCategories"
+          categories={offerCategories}
+          setCategories={setOfferCategories}
+          // Deleted categories leave their offers in place, uncategorised; Undo files them back.
+          onCategoriesDeleted={(ids) => {
+            const stamp = new Date().toISOString();
+            const { filed } = unfileOffers(invoicesOffers, ids, stamp);
+            if (filed.size === 0) return;
+            setInvoicesOffers?.((prev) => unfileOffers(prev, ids, stamp).offers);
+            return () => setInvoicesOffers?.((prev) => refileOffers(prev, filed));
+          }}
+          clientCounts={offerCountsByCategory(invoicesOffers)}
+          t={t}
+          readOnly={getPermission("invoices") !== "edit"}
+          canDelete={getPermission("invoices.delete") === "edit"}
+          copy={{
+            title: navT(sectionKey("offers", "categories", "title")),
+            description: t(
+              "File price offers under Main Category (L1) ➔ Subcategory (L2) ➔ Sub-subcategory (L3), each with its own colour.",
+              "Cenové ponuky zaraďte do úrovní Hlavná kategória (L1) ➔ Podkategória (L2) ➔ Pod-podkategória (L3), každú s vlastnou farbou.",
+              "Az árajánlatokat Főkategória (L1) ➔ Alkategória (L2) ➔ Al-alkategória (L3) szerint rendezheti, mindegyik saját színnel."
+            ),
+            namePlaceholder: t("e.g. Roofs, Facades, Interiors...", "napr. Strechy, Fasády, Interiéry...", "pl. Tetők, Homlokzatok, Belső terek..."),
+            emptyEditable: t(
+              "No offer categories yet — add the first one above.",
+              "Zatiaľ žiadne kategórie ponúk — pridajte prvú vyššie.",
+              "Még nincsenek ajánlatkategóriák — adja hozzá az elsőt fent."
+            ),
+            empty: t("No offer categories yet.", "Zatiaľ žiadne kategórie ponúk.", "Még nincsenek ajánlatkategóriák."),
+            countTitle: (count) => t(`${count} offer(s) in this category`, `${count} ponúk v tejto kategórii`, `${count} ajánlat ebben a kategóriában`),
+          }}
+        />
+        ) : null;
+      case "offers/templates":
+        return (
+        <ModuleLinkCard
+          lang={userLanguage}
+          title={navT(sectionKey("offers", "templates", "title"))}
+          description={navT(sectionKey("offers", "templates", "hint"))}
+          href="#invoices/settings"
+          icon={<LayoutTemplate className="size-6" aria-hidden="true" />}
+        />
+        );
+      case "offers/offerstatuses":
+        return (
+        <ModuleLinkCard
+          lang={userLanguage}
+          title={navT(sectionKey("offers", "offerstatuses", "title"))}
+          description={navT(sectionKey("offers", "offerstatuses", "hint"))}
+          href="#invoices/settings"
+          icon={<BadgeCheck className="size-6" aria-hidden="true" />}
+        />
+        );
+      case "offers/prices":
+        return (
+        priceLevels && setPriceLevels ? (
+          <PriceLevelSettings
+            levels={priceLevels}
+            setLevels={setPriceLevels}
+            warehouseItems={warehouseItems}
+            leads={leadRows}
+            setLeads={setLeads}
+            userLanguage={userLanguage}
+            canEdit={getPermission("general_config") === "edit"}
+          />
+        ) : null
+        );
+      case "leads/stages":
+        return (
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.states.title")}
+                      description={getTranslation(userLanguage, "settings.states.desc")}
+                    >
+        
+                      {/* SLA limits need saying out loud: the column is a number box with
+                          no obvious meaning, and where the warning turns up is the whole
+                          point of setting one. */}
+                      <p className="text-micro text-gray-400 font-semibold tracking-wide text-left leading-relaxed">
+                        {t(
+                          "SLA limit — the most days a lead may sit in a phase without moving on. Past the limit it is flagged in the leads list and on the lead itself. Leave it empty for no limit; closed phases are the end of the pipeline and have none.",
+                          "Limit SLA — najviac dní, ktoré môže lead stráviť vo fáze bez posunu ďalej. Po prekročení limitu ho označíme v zozname leadov aj priamo na leade. Prázdne pole znamená bez limitu; uzavreté fázy sú koniec pipeline a limit nemajú.",
+                          "SLA-határidő — legfeljebb hány napig maradhat egy lead egy fázisban továbblépés nélkül. A határidő után megjelöljük a leadek listájában és magán a leaden is. Üresen hagyva nincs határidő; a lezárt fázisok a folyamat végét jelentik, ezért nincs határidejük.",
+                        )}
+                      </p>
+        
+                      <ScrollFade axis="x" className="border border-gray-200/80 rounded-lg shadow-inner bg-white">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+                              <th className="py-3 px-4 type-overline text-gray-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500">{getTranslation(userLanguage, "settings.states.th_name")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-36">{getTranslation(userLanguage, "settings.states.th_group")}</th>
+                              <th
+                                className="py-3 px-4 type-overline text-gray-500 w-32"
+                                title={t(
+                                  "Maximum days a lead may stay in this phase before it is flagged as overdue.",
+                                  "Maximálny počet dní, ktoré môže lead stráviť v tejto fáze, kým bude označený ako po termíne.",
+                                  "Legfeljebb hány napig maradhat egy lead ebben a fázisban, mielőtt késésként jelöljük.",
+                                )}
+                              >
+                                {t("SLA limit", "Limit SLA", "SLA-határidő")}
+                              </th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-28 text-center">{t("Follow-up", "Follow-up", "Follow-up")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(() => {
+                              // Dividers and states in tree order (shared with the project statuses)
+                              const groupMeta = {
+                                new: { label: "settings.states.group.new", desc: "settings.states.group.new.desc", color: "#3b82f6" },
+                                in_progress: { label: "settings.states.group.in_progress", desc: "settings.states.group.in_progress.desc", color: "#6366f1" },
+                                closed: { label: "settings.states.group.closed", desc: "settings.states.group.closed.desc", color: "#10b981" },
+                              } as const;
+                              const items = buildRows(leadTree(), LEAD_STATE_GROUPS).map((r) =>
+                                r.type === "divider"
+                                  ? { type: "divider" as const, id: r.group as keyof typeof groupMeta, name: getTranslation(userLanguage, groupMeta[r.group as keyof typeof groupMeta].label), color: groupMeta[r.group as keyof typeof groupMeta].color, desc: getTranslation(userLanguage, groupMeta[r.group as keyof typeof groupMeta].desc) }
+                                  : { type: "status" as const, name: r.item.name },
+                              );
+        
+                              return items.map((item, idx) => {
+                                if (item.type === "divider") {
+                                  const isDragOver = dragOverIndex === idx;
+                                  return (
+                                    <tr
+                                      key={`div-${item.id}`}
+                                      onDragOver={(e) => {
+                                        e.preventDefault();
+                                        if (getPermission("pipeline_stages") === "edit") {
+                                          setDragOverIndex(idx);
+                                        }
+                                      }}
+                                      onDragLeave={() => setDragOverIndex(null)}
+                                      onDrop={(e) => {
+                                        e.preventDefault();
+                                        setDragOverIndex(null);
+                                        if (draggedStatus) {
+                                          handleMoveStatusToIndex(draggedStatus, idx);
+                                          setDraggedStatus(null);
+                                        }
+                                      }}
+                                      className={`transition-all border-b border-gray-200/60 duration-200 ${
+                                        isDragOver ? "bg-entity-soft scale-[0.99] border-2 border-dashed border-entity-border" : "bg-gray-100/70"
+                                      }`}
+                                    >
+                                      <td colSpan={7} className="py-3 px-4 font-bold uppercase text-gray-800 tracking-wide select-none">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <span className="type-overline text-gray-900">{item.name}</span>
+                                            <span className="text-micro text-gray-400 font-bold block ml-1">{item.desc}</span>
+                                          </div>
+                                          <span className="text-micro text-entity-text font-extrabold bg-entity-soft border border-entity-border px-2 py-0.5 rounded-full">
+                                            {getTranslation(userLanguage, "settings.states.boundary")}
+                                          </span>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+        
+                                // Rendering status rows
+                                const state = item.name;
+                                const color = leadStateColors[state.toLowerCase()] || "#64748b";
+                                const resolvedGroup = leadStageGroups[state.toLowerCase()] || "in_progress";
+                                const isDragOver = dragOverIndex === idx;
+                                const isSub = !!leadStateParents[state.toLowerCase()];
+        
+                                return (
+                                  <tr
+                                    key={`status-${state}`}
+                                    draggable={getPermission("pipeline_stages") === "edit" ? "true" : "false"}
+                                    onDragStart={() => {
+                                      if (getPermission("pipeline_stages") === "edit") {
+                                          setDraggedStatus(state);
+                                      }
+                                    }}
+                                    onDragEnd={() => {
+                                      setDraggedStatus(null);
+                                      setDragOverIndex(null);
+                                    }}
+                                    onDragOver={(e) => {
+                                      e.preventDefault();
+                                      if (getPermission("pipeline_stages") === "edit" && draggedStatus && draggedStatus !== state) {
+                                        setDragOverIndex(idx);
+                                      }
+                                    }}
+                                    onDragLeave={() => setDragOverIndex(null)}
+                                    onDrop={(e) => {
+                                      e.preventDefault();
+                                      setDragOverIndex(null);
+                                      if (draggedStatus) {
+                                        handleMoveStatusToIndex(draggedStatus, idx);
+                                        setDraggedStatus(null);
+                                      }
+                                    }}
+                                    className={`border-b border-gray-200/60 hover:bg-gray-50/50 transition-all duration-200 ${
+                                      isDragOver ? "bg-entity-soft scale-[0.99] border-y-2 border-dashed border-entity-border" : ""
+                                    }`}
+                                  >
+                                    {/* 1. GRIP HANDLE + INDENT CONTROLS */}
+                                    <td className="py-3 px-4 text-center align-middle">
+                                      <div className="flex items-center justify-center gap-2">
+                                        {getPermission("pipeline_stages") === "edit" ? (
+                                          <>
+                                            <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
+                                            <SubStatusIndentButtons
+                                              lang={userLanguage}
+                                              canIndent={indentParent(leadTree(), LEAD_STATE_GROUPS, state.toLowerCase()) !== null}
+                                              canOutdent={canOutdent(leadTree(), state.toLowerCase())}
+                                              onIndent={() => handleToggleIndent(state, true)}
+                                              onOutdent={() => handleToggleIndent(state, false)}
+                                            />
+                                          </>
+                                        ) : (
+                                          <Lock className="h-3 w-3 text-gray-300 inline-block" />
+                                        )}
+                                      </div>
+                                    </td>
+        
+                                    {/* 2. COLOR PICKER */}
+                                    <td className={`py-3 px-4 align-middle transition-all duration-200 ${isSub ? "pl-14" : ""}`}>
+                                      <div className="flex items-center gap-2">
+                                        {getPermission("pipeline_stages") === "edit" ? (
+                                          <ColorPicker
+                                            variant="ring"
+                                            value={color}
+                                            onChange={(next) => setLeadStateColors(prev => ({ ...prev, [state.toLowerCase()]: next }))}
+                                            title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
+                                          />
+                                        ) : (
+                                          <span className="h-3 w-3 rounded-full border border-gray-200 inline-block" style={{ backgroundColor: color }} />
+                                        )}
+                                        <span className="type-overline text-gray-400">{color}</span>
+                                      </div>
+                                    </td>
+        
+                                    {/* 3. STAGE NAME */}
+                                    <td className={`py-3 px-4 align-middle transition-all duration-200 ${isSub ? "pl-10" : ""}`}>
+                                      <div className="flex items-center gap-1.5">
+                                        {isSub && (
+                                          <SubStatusMarker />
+                                        )}
+                                        <InlineRenameName
+                                          value={state}
+                                          canEdit={getPermission("pipeline_stages") === "edit"}
+                                          onCommit={(next) => handleRenameState(state, next)}
+                                          renameTitle={t("Rename", "Premenovať", "Átnevezés")}
+                                        >
+                                          <span
+                                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
+                                            style={{
+                                              backgroundColor: `${color}12`,
+                                              color: color,
+                                              borderColor: `${color}35`
+                                            }}
+                                          >
+                                            {state}
+                                          </span>
+                                        </InlineRenameName>
+                                      </div>
+                                    </td>
+        
+                                    {/* 4. ASSIGNED GROUP */}
+                                    <td className="py-3 px-4 align-middle select-none">
+                                      <span className={`px-2.5 py-0.5 rounded-full type-overline border ${
+                                        resolvedGroup === "new" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                        resolvedGroup === "in_progress" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
+                                        "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      }`}>
+                                        {resolvedGroup === "in_progress" 
+                                          ? (userLanguage === "sk" ? "PREBIEHAJÚCE" : userLanguage === "hu" ? "FOLYAMATBAN" : "IN PROGRESS") 
+                                          : resolvedGroup === "new" 
+                                            ? (userLanguage === "sk" ? "NOVÉ" : userLanguage === "hu" ? "ÚJ" : "NEW") 
+                                            : (userLanguage === "sk" ? "UZAVRETÉ" : userLanguage === "hu" ? "LEZÁRT" : "CLOSED")
+                                        }
+                                      </span>
+                                    </td>
+        
+                                    {/* 4a. SLA LIMIT — days a lead may stay in this phase before it is flagged */}
+                                    <td className="py-3 px-4 align-middle select-none">
+                                      {(() => {
+                                        const slaKey = state.toLowerCase();
+                                        const canEdit = getPermission("pipeline_stages") === "edit";
+                                        // A closed phase is where the pipeline ends, so
+                                        // "not moved on in time" means nothing there.
+                                        if (resolvedGroup === "closed") {
+                                          return (
+                                            <span
+                                              className="type-overline text-gray-300 cursor-help"
+                                              title={t(
+                                                "Closed phases end the pipeline — there is nothing left to move on to.",
+                                                "Uzavreté fázy sú koncom pipeline — nie je kam sa posunúť ďalej.",
+                                                "A lezárt fázisok lezárják a folyamatot — nincs hová továbblépni.",
+                                              )}
+                                            >
+                                              —
+                                            </span>
+                                          );
+                                        }
+                                        const days = leadStateSla[slaKey] || 0;
+                                        return (
+                                          <div className="flex items-center gap-1.5">
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              max={3650}
+                                              step={1}
+                                              inputMode="numeric"
+                                              value={days || ""}
+                                              placeholder="—"
+                                              disabled={!canEdit}
+                                              onChange={(e) => {
+                                                const next = normalizeSlaDays(e.target.value);
+                                                setLeadStateSla(prev => {
+                                                  const copy = { ...prev };
+                                                  // Empty and zero both mean "no limit",
+                                                  // and it is stored as the absence of a
+                                                  // key so the settings blob has one shape.
+                                                  if (next > 0) copy[slaKey] = next;
+                                                  else delete copy[slaKey];
+                                                  return copy;
+                                                });
+                                              }}
+                                              title={t(
+                                                "Maximum days in this phase. Empty = no limit.",
+                                                "Maximálny počet dní v tejto fáze. Prázdne = bez limitu.",
+                                                "Legfeljebb hány nap ebben a fázisban. Üres = nincs határidő.",
+                                              )}
+                                              className={`w-16 px-2.5 py-1.5 rounded-lg bg-white border text-ui font-bold text-gray-700 text-center focus:outline-none focus:border-entity-border transition-colors ${days ? "border-amber-300 bg-amber-50/60" : "border-gray-200"} ${canEdit ? "" : "opacity-50 cursor-not-allowed"}`}
+                                            />
+                                            <span className={`type-overline ${days ? "text-amber-600" : "text-gray-300"}`}>
+                                              {t("days", "dní", "nap")}
+                                            </span>
+                                          </div>
+                                        );
+                                      })()}
+                                    </td>
+        
+                                    {/* 4b. FOLLOW-UP TOGGLE — leads in this state show a "Follow-up done" checkbox */}
+                                    <td className="py-3 px-4 text-center align-middle select-none">
+                                      {(() => {
+                                        const fuKey = state.toLowerCase();
+                                        const enabled = !!leadStateFollowUp[fuKey];
+                                        const canEdit = getPermission("pipeline_stages") === "edit";
+                                        return (
+                                          <button
+                                            type="button"
+                                            disabled={!canEdit}
+                                            onClick={() => setLeadStateFollowUp(prev => ({ ...prev, [fuKey]: !prev[fuKey] }))}
+                                            title={t(
+                                              "Show a follow-up checkbox on leads in this state",
+                                              "Zobraziť follow-up zaškrtávacie pole pri leadoch v tomto stave",
+                                              "Follow-up jelölőnégyzet megjelenítése az ebben az állapotban lévő leadeknél",
+                                            )}
+                                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enabled ? "bg-entity-solid" : "bg-gray-300"} ${canEdit ? "cursor-pointer hover:opacity-90" : "opacity-50 cursor-not-allowed"}`}
+                                          >
+                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                                          </button>
+                                        );
+                                      })()}
+                                    </td>
+        
+                                    {/* 5. DELETE BUTTON */}
+                                    <td className="py-3 px-4 text-center align-middle">
+                                      {getPermission("pipeline_stages") === "edit" ? (
+                                        <HoldToConfirmButton
+                                            tone="danger"
+                                            lang={userLanguage}
+                                            what={state}
+                                            onConfirm={() => handleRemoveState(state)}
+                                            className="text-gray-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                                            title={getTranslation(userLanguage, "settings.states.remove_title")}
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                        </HoldToConfirmButton>
+                                      ) : (
+                                        <span className="type-overline text-gray-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                        </table>
+                      </ScrollFade>
+        
+                      {/* Add Custom Stage */}
+                      {getPermission("pipeline_stages") === "edit" && (
+                        <form onSubmit={handleAddState} className="flex flex-wrap gap-2 max-w-lg pt-2 items-center">
+                          <input
+                            type="text"
+                            required
+                            value={newState}
+                            onChange={(e) => setNewState(e.target.value)}
+                            placeholder={getTranslation(userLanguage, "settings.states.placeholder")}
+                            className="flex-1 min-w-37.5 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                          />
+                          <SubStatusParentSelect
+                            lang={userLanguage}
+                            value={newStateParent}
+                            onChange={setNewStateParent}
+                            options={parentOptions(leadTree()).map(i => ({ value: i.key, label: i.name.toUpperCase(), color: leadStateColors[i.key] }))}
+                          />
+                          <button
+                            type="submit"
+                            disabled={!newState.trim()}
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                          >
+                            <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.states.btn_add")}
+                          </button>
+                        </form>
+                      )}
+                    </SectionCard>
+        );
+      case "leads/assignment":
+        return (
+                    <LeadAssignmentCard
+                      users={users}
+                      leadAssignment={leadAssignment}
+                      setLeadAssignment={setLeadAssignment}
+                      canEdit={getPermission("pipeline_stages") === "edit"}
+                      userLanguage={userLanguage}
+                    />
+        );
+      case "leads/fields":
+        return (
+                    <LeadCustomFieldsSettings
+                      leadAttributes={leadAttributes}
+                      setLeadAttributes={setLeadAttributes || (() => {})}
+                      userLanguage={userLanguage}
+                      canEdit={getPermission("pipeline_stages") === "edit" && !!setLeadAttributes}
+                    />
+        );
+      case "leads/sources":
+        return (
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.sources.title")}
+                      description={getTranslation(userLanguage, "settings.sources.desc")}
+                    >
+        
+                      <ScrollFade axis="x" className="border border-gray-200/80 rounded-lg shadow-inner bg-white">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+                              <th className="py-3 px-4 type-overline text-gray-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500">{getTranslation(userLanguage, "settings.sources.th_name")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {leadSources.map((source, idx) => {
+                              const color = leadSourceColors[source.toLowerCase()] || "#10b981";
+                              const isDragOver = dragOverSourceIndex === idx;
+        
+                              return (
+                                <tr
+                                  key={`source-${source}`}
+                                  draggable={getPermission("traffic_sources") === "edit" ? "true" : "false"}
+                                  onDragStart={() => {
+                                    if (getPermission("traffic_sources") === "edit") {
+                                      setDraggedSource(source);
+                                    }
+                                  }}
+                                  onDragEnd={() => {
+                                    setDraggedSource(null);
+                                    setDragOverSourceIndex(null);
+                                  }}
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    if (getPermission("traffic_sources") === "edit" && draggedSource && draggedSource !== source) {
+                                      setDragOverSourceIndex(idx);
+                                    }
+                                  }}
+                                  onDragLeave={() => setDragOverSourceIndex(null)}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    setDragOverSourceIndex(null);
+                                    if (draggedSource) {
+                                      handleMoveSourceToIndex(draggedSource, idx);
+                                      setDraggedSource(null);
+                                    }
+                                  }}
+                                  className={`border-b border-gray-200/60 hover:bg-gray-50/50 transition-all duration-200 ${
+                                    isDragOver ? "bg-emerald-50/50 scale-[0.99] border-y-2 border-dashed border-emerald-300" : ""
+                                  }`}
+                                >
+                                  {/* 1. GRIP HANDLE */}
+                                  <td className="py-3 px-4 text-center align-middle">
+                                    {getPermission("traffic_sources") === "edit" ? (
+                                      <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
+                                    ) : (
+                                      <Lock className="h-3 w-3 text-gray-300 inline-block" />
+                                    )}
+                                  </td>
+        
+                                  {/* 2. COLOR PICKER */}
+                                  <td className="py-3 px-4 align-middle">
+                                    <div className="flex items-center gap-2">
+                                      {getPermission("traffic_sources") === "edit" ? (
+                                        <ColorPicker
+                                          variant="ring"
+                                          value={color}
+                                          onChange={(next) => setLeadSourceColors(prev => ({ ...prev, [source.toLowerCase()]: next }))}
+                                          title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
+                                        />
+                                      ) : (
+                                        <span className="h-3 w-3 rounded-full border border-gray-200 inline-block" style={{ backgroundColor: color }} />
+                                      )}
+                                      <span className="type-overline text-gray-400">{color}</span>
+                                      {getPermission("traffic_sources") === "edit" && <ListIconPicker kind="leadSources" itemKey={source} className="ml-1" />}
+                                    </div>
+                                  </td>
+        
+                                  {/* 3. SOURCE NAME */}
+                                  <td className="py-3 px-4 align-middle">
+                                    <div className="flex items-center gap-3">
+                                      <span
+                                        className="text-micro font-mono font-bold bg-gray-100 text-gray-500 border border-gray-200/60 px-2 py-0.5 rounded-md"
+                                        title={t(
+                                          "Permanent ID — web forms send it, and it never changes when you reorder or rename",
+                                          "Trvalé ID — posielajú ho webové formuláre a nemení sa pri zmene poradia ani premenovaní",
+                                          "Állandó azonosító — a webűrlapok ezt küldik, és átrendezéskor vagy átnevezéskor sem változik",
+                                        )}
+                                      >ID: {listIdFor(source, leadSourceIds) || idx + 1}</span>
+                                      <InlineRenameName
+                                        value={source}
+                                        canEdit={getPermission("traffic_sources") === "edit"}
+                                        onCommit={(next) => handleRenameSource(source, next)}
+                                        renameTitle={t("Rename", "Premenovať", "Átnevezés")}
+                                      >
+                                        <span
+                                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
+                                          style={{
+                                            backgroundColor: `${color}12`,
+                                            color: color,
+                                            borderColor: `${color}35`
+                                          }}
+                                        >
+                                          <ListIcon kind="leadSources" itemKey={source} />
+                                          {source}
+                                        </span>
+                                      </InlineRenameName>
+                                    </div>
+                                  </td>
+        
+                                  {/* 4. DELETE BUTTON */}
+                                  <td className="py-3 px-4 text-center align-middle">
+                                    {getPermission("traffic_sources") === "edit" ? (
+                                      <HoldToConfirmButton
+                                          tone="danger"
+                                          lang={userLanguage}
+                                          what={source}
+                                          onConfirm={() => handleRemoveSource(source)}
+                                          className="text-gray-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                                          title={userLanguage === "sk" ? "Odstrániť zdroj" : userLanguage === "hu" ? "Forrás törlése" : "Remove source"}
+                                      >
+                                        <X className="h-3.5 w-3.5" />
+                                      </HoldToConfirmButton>
+                                    ) : (
+                                      <span className="type-overline text-gray-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </ScrollFade>
+        
+                      {/* Add Custom Source */}
+                      {getPermission("traffic_sources") === "edit" && (
+                        <form onSubmit={handleAddSource} className="flex flex-wrap gap-2 max-w-md pt-2">
+                          <input
+                            type="text"
+                            required
+                            value={newSource}
+                            onChange={(e) => setNewSource(e.target.value)}
+                            placeholder={getTranslation(userLanguage, "settings.sources.placeholder")}
+                            className="flex-1 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                          />
+                          <button
+                            type="submit"
+                            disabled={!newSource.trim()}
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-ui font-bold transition-all shadow-xs shadow-emerald-600/10 flex items-center gap-1 shrink-0"
+                          >
+                            <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add")}
+                          </button>
+                        </form>
+                      )}
+                    </SectionCard>
+        );
+      case "leads/interests":
+        return (
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.sources.categories_title")}
+                      description={getTranslation(userLanguage, "settings.sources.categories_desc")}
+                    >
+        
+                      <ScrollFade axis="x" className="border border-gray-200/80 rounded-lg shadow-inner bg-white">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+                              <th className="py-3 px-4 type-overline text-gray-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500">{getTranslation(userLanguage, "settings.sources.th_category_name")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {leadCategories.map((cat, idx) => {
+                              const color = leadCategoryColors[cat] || "#6366f1";
+                              const isDragOver = dragOverCategoryIndex === idx;
+        
+                              return (
+                                <tr
+                                  key={`cat-${cat}`}
+                                  draggable={getPermission("traffic_sources") === "edit" ? "true" : "false"}
+                                  onDragStart={() => {
+                                    if (getPermission("traffic_sources") === "edit") {
+                                      setDraggedCategory(cat);
+                                    }
+                                  }}
+                                  onDragEnd={() => {
+                                    setDraggedCategory(null);
+                                    setDragOverCategoryIndex(null);
+                                  }}
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    if (getPermission("traffic_sources") === "edit" && draggedCategory && draggedCategory !== cat) {
+                                      setDragOverCategoryIndex(idx);
+                                    }
+                                  }}
+                                  onDragLeave={() => setDragOverCategoryIndex(null)}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    setDragOverCategoryIndex(null);
+                                    if (draggedCategory) {
+                                      handleMoveCategoryToIndex(draggedCategory, idx);
+                                      setDraggedCategory(null);
+                                    }
+                                  }}
+                                  className={`border-b border-gray-200/60 hover:bg-gray-50/50 transition-all duration-200 ${
+                                    isDragOver ? "bg-entity-soft scale-[0.99] border-y-2 border-dashed border-entity-border" : ""
+                                  }`}
+                                >
+                                  {/* 1. GRIP HANDLE */}
+                                  <td className="py-3 px-4 text-center align-middle">
+                                    {getPermission("traffic_sources") === "edit" ? (
+                                      <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
+                                    ) : (
+                                      <Lock className="h-3 w-3 text-gray-300 inline-block" />
+                                    )}
+                                  </td>
+        
+                                  {/* 2. COLOR PICKER */}
+                                  <td className="py-3 px-4 align-middle">
+                                    <div className="flex items-center gap-2">
+                                      {getPermission("traffic_sources") === "edit" ? (
+                                        <ColorPicker
+                                          variant="ring"
+                                          value={color}
+                                          onChange={(next) => setLeadCategoryColors(prev => ({ ...prev, [cat]: next }))}
+                                          title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
+                                        />
+                                      ) : (
+                                        <span className="h-3 w-3 rounded-full border border-gray-200 inline-block" style={{ backgroundColor: color }} />
+                                      )}
+                                      <span className="type-overline text-gray-400">{color}</span>
+                                      {getPermission("traffic_sources") === "edit" && <ListIconPicker kind="leadCategories" itemKey={cat} className="ml-1" />}
+                                    </div>
+                                  </td>
+        
+                                  {/* 3. CATEGORY NAME */}
+                                  <td className="py-3 px-4 align-middle">
+                                    <div className="flex items-center gap-3">
+                                      <span
+                                        className="text-micro font-mono font-bold bg-gray-100 text-gray-500 border border-gray-200/60 px-2 py-0.5 rounded-md"
+                                        title={t(
+                                          "Permanent ID — web forms send it, and it never changes when you reorder or rename",
+                                          "Trvalé ID — posielajú ho webové formuláre a nemení sa pri zmene poradia ani premenovaní",
+                                          "Állandó azonosító — a webűrlapok ezt küldik, és átrendezéskor vagy átnevezéskor sem változik",
+                                        )}
+                                      >ID: {listIdFor(cat, leadCategoryIds) || idx + 1}</span>
+                                      <InlineRenameName
+                                        value={cat}
+                                        canEdit={getPermission("traffic_sources") === "edit"}
+                                        onCommit={(next) => handleRenameCategory(cat, next)}
+                                        renameTitle={t("Rename", "Premenovať", "Átnevezés")}
+                                      >
+                                        <span
+                                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
+                                          style={{
+                                            backgroundColor: `${color}12`,
+                                            color: color,
+                                            borderColor: `${color}35`
+                                          }}
+                                        >
+                                          <ListIcon kind="leadCategories" itemKey={cat} />
+                                          {cat}
+                                        </span>
+                                      </InlineRenameName>
+                                    </div>
+                                  </td>
+        
+                                  {/* 4. DELETE BUTTON */}
+                                  <td className="py-3 px-4 text-center align-middle">
+                                    {getPermission("traffic_sources") === "edit" ? (
+                                      <HoldToConfirmButton
+                                          tone="danger"
+                                          lang={userLanguage}
+                                          what={cat}
+                                          onConfirm={() => handleRemoveCategory(cat)}
+                                          className="text-gray-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                                          title={userLanguage === "sk" ? "Odstrániť kategóriu" : userLanguage === "hu" ? "Kategória törlése" : "Remove category"}
+                                      >
+                                        <X className="h-3.5 w-3.5" />
+                                      </HoldToConfirmButton>
+                                    ) : (
+                                      <span className="type-overline text-gray-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </ScrollFade>
+        
+                      {/* Add Custom Category */}
+                      {getPermission("traffic_sources") === "edit" && (
+                        <form onSubmit={handleAddCategory} className="flex flex-wrap gap-2 max-w-md pt-2">
+                          <input
+                            type="text"
+                            required
+                            value={newCategory}
+                            onChange={(e) => setNewCategory(e.target.value)}
+                            placeholder={getTranslation(userLanguage, "settings.sources.placeholder_category")}
+                            className="flex-1 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                          />
+                          <button
+                            type="submit"
+                            disabled={!newCategory.trim()}
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                          >
+                            <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add_category")}
+                          </button>
+                        </form>
+                      )}
+                    </SectionCard>
+        );
+      case "company/divisions":
+        return (
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.sources.divisions_title")}
+                      description={getTranslation(userLanguage, "settings.sources.divisions_desc")}
+                    >
+        
+                      <ScrollFade axis="x" className="border border-gray-200/80 rounded-lg shadow-inner bg-white">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+                              <th className="py-3 px-4 type-overline text-gray-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500">{getTranslation(userLanguage, "settings.sources.th_division_name")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {divisions.map((div, idx) => {
+                              const color = divisionColors[div] || "#3b82f6";
+                              const isDragOver = dragOverDivisionIndex === idx;
+        
+                              return (
+                                <tr
+                                  key={`div-${div}`}
+                                  draggable={getPermission("traffic_sources") === "edit" ? "true" : "false"}
+                                  onDragStart={() => {
+                                    if (getPermission("traffic_sources") === "edit") {
+                                      setDraggedDivision(div);
+                                    }
+                                  }}
+                                  onDragEnd={() => {
+                                    setDraggedDivision(null);
+                                    setDragOverDivisionIndex(null);
+                                  }}
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    if (getPermission("traffic_sources") === "edit" && draggedDivision && draggedDivision !== div) {
+                                      setDragOverDivisionIndex(idx);
+                                    }
+                                  }}
+                                  onDragLeave={() => setDragOverDivisionIndex(null)}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    setDragOverDivisionIndex(null);
+                                    if (draggedDivision) {
+                                      handleMoveDivisionToIndex(draggedDivision, idx);
+                                      setDraggedDivision(null);
+                                    }
+                                  }}
+                                  className={`border-b border-gray-200/60 hover:bg-gray-50/50 transition-all duration-200 ${
+                                    isDragOver ? "bg-entity-soft scale-[0.99] border-y-2 border-dashed border-entity-border" : ""
+                                  }`}
+                                >
+                                  {/* 1. GRIP HANDLE */}
+                                  <td className="py-3 px-4 text-center align-middle">
+                                    {getPermission("traffic_sources") === "edit" ? (
+                                      <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
+                                    ) : (
+                                      <Lock className="h-3 w-3 text-gray-300 inline-block" />
+                                    )}
+                                  </td>
+        
+                                  {/* 2. COLOR PICKER */}
+                                  <td className="py-3 px-4 align-middle">
+                                    <div className="flex items-center gap-2">
+                                      {getPermission("traffic_sources") === "edit" ? (
+                                        <ColorPicker
+                                          variant="ring"
+                                          value={color}
+                                          onChange={(next) => setDivisionColors?.(prev => ({ ...prev, [div]: next }))}
+                                          title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
+                                        />
+                                      ) : (
+                                        <span className="h-3 w-3 rounded-full border border-gray-200 inline-block" style={{ backgroundColor: color }} />
+                                      )}
+                                      <span className="type-overline text-gray-400">{color}</span>
+                                      {getPermission("traffic_sources") === "edit" && <ListIconPicker kind="divisions" itemKey={div} className="ml-1" />}
+                                    </div>
+                                  </td>
+        
+                                  {/* 3. DIVISION NAME */}
+                                  <td className="py-3 px-4 align-middle">
+                                    <InlineRenameName
+                                      value={div}
+                                      canEdit={getPermission("traffic_sources") === "edit"}
+                                      onCommit={(next: string) => handleRenameDivision(div, next)}
+                                      renameTitle={t("Rename", "Premenovať", "Átnevezés")}
+                                    >
+                                      <span
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
+                                        style={{
+                                          backgroundColor: `${color}15`,
+                                          color: color,
+                                          borderColor: `${color}35`,
+                                        }}
+                                      >
+                                        <ListIcon kind="divisions" itemKey={div} fallback={<Building2 className="h-3.5 w-3.5 shrink-0" />} />
+                                        {div}
+                                      </span>
+                                    </InlineRenameName>
+                                  </td>
+        
+                                  {/* 4. DELETE BUTTON */}
+                                  <td className="py-3 px-4 text-center align-middle">
+                                    {getPermission("traffic_sources") === "edit" && divisions.length > 1 ? (
+                                      <HoldToConfirmButton
+                                          tone="danger"
+                                          lang={userLanguage}
+                                          what={div}
+                                          onConfirm={() => handleRemoveDivision(div)}
+                                          className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                          title={t("Delete division", "Odstrániť divíziu", "Divízió törlése")}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </HoldToConfirmButton>
+                                    ) : (
+                                      <span className="text-micro text-gray-300">—</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </ScrollFade>
+        
+                      {/* Add New Division Form */}
+                      {getPermission("traffic_sources") === "edit" && (
+                        <form onSubmit={handleAddDivision} className="flex flex-wrap items-center gap-3 pt-2">
+                          <input
+                            type="text"
+                            required
+                            value={newDivision}
+                            onChange={(e) => setNewDivision(e.target.value)}
+                            placeholder={getTranslation(userLanguage, "settings.sources.placeholder_division")}
+                            className="flex-1 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-solid"
+                          />
+                          <button
+                            type="submit"
+                            disabled={!newDivision.trim()}
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                          >
+                            <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add_division")}
+                          </button>
+                        </form>
+                      )}
+                    </SectionCard>
+        );
+      case "projects/taskstates":
+        return (
+                    <SectionCard
+                      title={userLanguage === "sk" ? "Stavy úloh" : userLanguage === "hu" ? "Feladat állapotok" : "Task States"}
+                      description={userLanguage === "sk" ? "Definujte rôzne stavy pre úlohy, priraďte im farby a prispôsobte si pracovný postup." : userLanguage === "hu" ? "Határozzon meg különböző állapotokat a feladatokhoz, rendeljen hozzájuk színeket, és szabja személyre a munkafolyamatot." : "Define different states for tasks, assign colors to them, and customize your workflow."}
+                    >
+                      <TaskStateTimerActionsHint taskStates={taskStates} actions={taskStateTimerActions} onApply={setTaskStateTimerActions} canEdit={getPermission("traffic_sources") === "edit"} lang={userLanguage} />
+                      <ScrollFade axis="x" className="border border-gray-200/80 rounded-lg shadow-inner bg-white">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+                              <th className="py-3 px-4 type-overline text-gray-500 w-44">{userLanguage === "sk" ? "Farba" : userLanguage === "hu" ? "Szín" : "Color"}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500">{userLanguage === "sk" ? "Názov" : userLanguage === "hu" ? "Név" : "Name"}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{userLanguage === "sk" ? "Odstrániť" : userLanguage === "hu" ? "Törlés" : "Delete"}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {taskStates.map((state) => {
+                              const color = taskStateColors[state] || "#64748b";
+                              return (
+                                <tr key={state} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+                                  {/* COLOR PICKER */}
+                                  <td className="py-3 px-4 align-middle">
+                                    <div className="flex items-center gap-2">
+                                      {getPermission("traffic_sources") === "edit" ? (
+                                        <ColorPicker
+                                          variant="ring"
+                                          value={color}
+                                          onChange={(next) => setTaskStateColors(prev => ({ ...prev, [state]: next }))}
+                                          title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
+                                        />
+                                      ) : (
+                                        <span className="h-3 w-3 rounded-full border border-gray-200 inline-block" style={{ backgroundColor: color }} />
+                                      )}
+                                      <span className="type-overline text-gray-400">{color}</span>
+                                    </div>
+                                  </td>
+        
+                                  {/* STATE NAME */}
+                                  <td className="py-3 px-4 align-middle font-bold text-gray-800 text-ui">
+                                    <InlineRenameName
+                                      value={state}
+                                      canEdit={getPermission("traffic_sources") === "edit"}
+                                      onCommit={(next) => handleRenameTaskState(state, next)}
+                                      renameTitle={t("Rename", "Premenovať", "Átnevezés")}
+                                    >
+                                      <span>{state}</span>
+                                    </InlineRenameName>
+                                    <div className="mt-1 font-normal"><TaskStateTimerActionSelect value={taskStateTimerActions[state]} canEdit={getPermission("traffic_sources") === "edit"} lang={userLanguage} onChange={(a) => setTaskStateTimerActions((prev) => a ? { ...prev, [state]: a } : removeTimerActionKey(prev, state))} /></div>
+                                  </td>
+        
+                                  {/* ACTIONS */}
+                                  <td className="py-3 px-4 text-center align-middle">
+                                    {getPermission("traffic_sources") === "edit" ? (
+                                      <HoldToConfirmButton
+                                          tone="danger"
+                                          lang={userLanguage}
+                                          what={state}
+                                          onConfirm={() => deleteTaskState({ state, taskStates, taskStateColors, taskStateTimerActions, setTaskStates,
+                                            setTaskStateColors, setTaskStateTimerActions, lang: userLanguage, t })}
+                                          className="text-gray-400 hover:text-rose-600 transition-colors p-1"
+                                      >
+                                        <Trash2 className="h-4.5 w-4.5" />
+                                      </HoldToConfirmButton>
+                                    ) : (
+                                      <Lock className="h-4 w-4 text-gray-300 inline-block" />
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </ScrollFade>
+        
+                      {/* Add New Task State Form */}
+                      {getPermission("traffic_sources") === "edit" && (
+                        <div className="pt-4 border-t border-gray-200/80">
+                          <div className="flex items-end gap-3 max-w-md">
+                            <div className="flex-1 space-y-1">
+                              <label className="type-overline text-gray-500 block">
+                                {t("New Task State", "Nový stav úlohy", "Új feladatállapot")}
+                              </label>
+                              <input 
+                                type="text"
+                                value={newTaskState}
+                                onChange={(e) => setNewTaskState(e.target.value)}
+                                placeholder={t("e.g. Pending review", "napr. Čaká na kontrolu", "pl. Ellenőrzésre vár")}
+                                className="w-full px-3.5 py-2 rounded-md bg-gray-50 border-2 border-gray-200 focus:bg-white focus:outline-none font-bold text-ui"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const val = newTaskState.trim();
+                                if (!val) return;
+                                if (taskStates.map(s => s.toLowerCase()).includes(val.toLowerCase())) {
+                                  (window as any).showToast(
+                                    t("This state already exists!", "Tento stav už existuje!", "Ez az állapot már létezik!")
+                                  );
+                                  return;
+                                }
+                                // Before the done state, never after it (see addTaskState).
+                                setTaskStates(addTaskState(taskStates, val));
+                                setTaskStateColors(prev => ({
+                                  ...prev,
+                                  [val]: "#3b82f6" // Default blue
+                                }));
+                                setNewTaskState("");
+                              }}
+                              className="px-4 py-2.5 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-bold shadow-xs transition-all active:scale-95 flex items-center justify-center gap-1 shrink-0"
+                            >
+                              <Plus className="h-4 w-4 stroke-[2.5]" /> {t("Add", "Pridať", "Hozzáadás")}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </SectionCard>
+        );
+      case "integrations/api":
+        return (
+        <>
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.api.title")}
+                      description={getTranslation(userLanguage, "settings.api.desc")}
+                    >
+                      <div className="flex flex-col ws-sm:flex-row gap-3 items-center">
+                        <div className="relative flex-1 w-full">
+                          <input
+                            type={showKey ? "text" : "password"}
+                            readOnly
+                            value={apiKey || (userLanguage === "sk" ? "Generovanie tajného kľúča..." : userLanguage === "hu" ? "Titkos kulcs generálása..." : "Generating secret key...")}
+                            className="w-full pl-4 pr-10 py-3 rounded-md bg-gray-50 border border-gray-200 text-ui font-mono font-bold text-gray-700 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowKey(!showKey)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer p-1"
+                            title={showKey 
+                              ? (userLanguage === "sk" ? "Skryť tajný kľúč" : userLanguage === "hu" ? "Titkos kulcs elrejtése" : "Hide Secret Key") 
+                              : (userLanguage === "sk" ? "Zobraziť tajný kľúč" : userLanguage === "hu" ? "Titkos kulcs megjelenítése" : "Show Secret Key")}
+                          >
+                            {showKey ? <Minus className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                        <div className="flex gap-2 w-full ws-sm:w-auto">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!apiKey) return;
+                              navigator.clipboard.writeText(apiKey);
+                              (window as any).showToast(userLanguage === "sk" ? "API kľúč bol skopírovaný do schránky!" : userLanguage === "hu" ? "Az API kulcs másolva a vágólapra!" : "API Key copied to clipboard!");
+                            }}
+                            disabled={!apiKey}
+                            className="flex-1 ws-sm:flex-none px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-bold transition-all border border-gray-200 cursor-pointer active:scale-95 disabled:opacity-50"
+                          >
+                            {userLanguage === "sk" ? "Kopírovať kľúč" : userLanguage === "hu" ? "Kulcs másolása" : "Copy Key"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleResetApiKey}
+                            disabled={isApiKeyLoading || getPermission("general_config") === "view"}
+                            className="flex-1 ws-sm:flex-none px-4 py-3 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
+                          >
+                            {userLanguage === "sk" ? "Resetovať kľúč" : userLanguage === "hu" ? "Kulcs visszaállítása" : "Reset Key"}
+                          </button>
+                        </div>
+                      </div>
+                    </SectionCard>
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.api.guide")}
+                      action={
+<span className="bg-blue-50 text-blue-700 type-overline px-2 py-0.5 rounded-full border border-blue-200/50">
+                          STABLE w1
+                        </span>
+}
+                    >
+        
+                      <p className="text-ui text-gray-600 leading-relaxed">
+                        {userLanguage === "sk" 
+                          ? "Pripojte svoje externé webové stránky, landing pages alebo kontaktné formuláre priamo do pipeline odoslaním požiadavky POST na:" 
+                          : userLanguage === "hu" 
+                            ? "Csatlakoztassa külső weboldalait, céloldalait vagy kapcsolatfelvételi űrlapjait közvetlenül a pipeline-hoz egy POST kérés küldésével a következő címre:" 
+                            : "Connect your external websites, landing pages, or contact forms directly to the pipeline by sending a POST request to:"
+                        }{" "}
+                        <code className="bg-gray-100 text-gray-800 px-2 py-1 rounded-md text-caption font-mono border border-gray-200">
+                          /api/pipeline.php
+                        </code>
+                      </p>
+        
+                      {/* Monospace Curl Box */}
+                      <div className="p-5 rounded-lg bg-gray-900 text-gray-100 font-mono text-caption overflow-x-auto shadow-xs relative border border-gray-800">
+                        <div className="text-gray-400 select-none pb-2 border-b border-gray-800 mb-3 flex justify-between items-center">
+                          <span>{getTranslation(userLanguage, "settings.api.curl_example")}</span>
+                          <span className="type-overline bg-gray-800 text-gray-300 px-2 py-0.5 rounded">POST</span>
+                        </div>
+                        <pre className="whitespace-pre overflow-x-auto leading-relaxed text-emerald-400">
+        {`curl -X POST ${typeof window !== "undefined" ? window.location.origin : "https://yourdomain.com"}/api/pipeline.php \\
+          -H "Content-Type: application/json" \\
+          -H "X-API-KEY: ${apiKey || "sk_live_########################"}" \\
+          -d '{
+            "company_name": "Acme Corp",
+            "contact_name": "John Doe",
+            "email": "john@acme.com",
+            "phone": "+421900111222",
+            "city": "Bratislava",
+            "country": "Slovakia",
+            "message": "We need a new ecommerce website.",
+            "value": 4500,
+            "source_id": 1,
+            "category_ids": [2, 3],
+            "traffic_origin": "instagram",
+            "traffic_origin_detail": "paid · campaign: leto-2026 · landing: /arajanlat"
+          }'`}
+                        </pre>
+                      </div>
+                      <PipelineAttachmentsGuide lang={userLanguage} apiKey={apiKey} />
+        </SectionCard>
+        <p className="flex flex-wrap items-center gap-3 text-ui text-gray-500">
+          <span>{navT("settings.nav.ui.api_link_note")}</span>
+          <a href={"#" + settingsPath("leads", "intake")} className="font-semibold text-entity-text hover:text-entity-text">{navT("settings.nav.ui.api_link_btn")}</a>
+        </p>
+        </>
+        );
+      case "leads/intake":
+        return (
+        <SectionCard
+          title={navT(sectionKey("leads", "intake", "title"))}
+          description={navT("settings.nav.ui.intake_link_note")}
+          action={<a href={"#" + settingsPath("integrations", "api")} className="inline-flex min-h-11 items-center gap-2 rounded-md border border-gray-200 bg-white px-4 text-ui font-semibold text-entity-text no-underline transition-colors hover:bg-entity-soft">{navT("settings.nav.ui.intake_link_btn")}</a>}
+        >
+                      <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6 pt-2">
+                        <div className="p-4 rounded-lg border border-gray-100 bg-gray-50/50">
+                          <span className="type-overline text-gray-400 block mb-2">{getTranslation(userLanguage, "settings.api.required_fields")}</span>
+                          <div className="space-y-2">
+                            <div className="text-ui text-gray-700 leading-relaxed font-bold">
+                              <code>company_name</code> <span className="text-micro text-gray-400 font-normal">{userLanguage === "sk" ? "alebo" : userLanguage === "hu" ? "vagy" : "or"}</span> <code>contact_name</code>
+                            </div>
+                            <p className="text-micro text-gray-500 leading-relaxed">
+                              {userLanguage === "sk"
+                                ? "Aspoň jedno z týchto dvoch polí musí byť v tele JSON. company_name sa stane názvom klienta a lead sa založí ako firma; contact_name sa uloží ako kontaktná osoba — alebo ako samotný klient, ak firma nie je uvedená."
+                                : userLanguage === "hu"
+                                  ? "Legalább az egyik mezőt meg kell adni a JSON törzsben. A company_name lesz az ügyfél neve, és a lead cégként jön létre; a contact_name a kapcsolattartó — vagy maga az ügyfél, ha nincs cég megadva."
+                                  : "At least one of these two fields must be provided in the JSON body. company_name becomes the client's name and files the lead as a business; contact_name is stored as the contact person there — or as the client itself when no company is given."
+                              }
+                            </p>
+                          </div>
+                        </div>
+        
+                        <div className="p-4 rounded-lg border border-gray-100 bg-gray-50/50">
+                          <span className="type-overline text-gray-400 block mb-2">{getTranslation(userLanguage, "settings.api.optional_fields")}</span>
+                          <ul className="text-ui text-gray-700 space-y-2 leading-relaxed font-semibold">
+                            <li><code>email</code>, <code>phone</code>, <code>city</code>, <code>country</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Osobné údaje" : userLanguage === "hu" ? "Személyes adatok" : "Personal info"})</span></li>
+                            <li><code>message</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Uloží sa do časovej osi leadu aj do poľa „Záujem klienta“. Označené riadky v ňom (Firma:, Budget:) sa načítajú, ak dané pole chýba" : userLanguage === "hu" ? "A lead idővonalára és az „Ügyfél érdeklődése” mezőbe kerül. A benne lévő címkézett sorokat (Firma:, Budget:) beolvassuk, ha a mező hiányzik" : "Saved to the lead timeline and to \"Client interest\". Labelled lines inside it (Firma:, Budget:) are read when the matching field is missing"})</span></li>
+                            <li><code>value</code> <span className="text-micro text-gray-400 font-normal">{userLanguage === "sk" ? "alebo" : userLanguage === "hu" ? "vagy" : "or"}</span> <code>budget</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Hodnota leadu v EUR - z rozsahu ako 3500€-5000€ sa vezme dolná hranica, predvolene 0" : userLanguage === "hu" ? "Lead értéke EUR-ban - a 3500€-5000€ tartományból az alsó határ kerül be, alapértelmezetten 0" : "Lead worth in EUR - a range like 3500€-5000€ is read as its lower bound, defaults to 0"})</span></li>
+                            <li><code>source_id</code>, <code>category_id</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "ID zdroja návštevnosti a kategórie záujmu - nájdete ich v stĺpci ID v Nastaveniach → Zdroje leadov. Sú trvalé: zmena poradia ani premenovanie ich nemení" : userLanguage === "hu" ? "A forgalmi csatorna és az érdeklődési kategória azonosítója - a Beállítások → Lead források ID oszlopában találhatók. Állandóak: sem az átrendezés, sem az átnevezés nem változtatja meg őket" : "IDs of the traffic channel and the interest category - read them from the ID column in Settings → Lead sources. They are permanent: neither reordering nor renaming changes them"})</span></li>
+                            <li><code>category_ids</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Viac kategórií naraz, keď formulár ponúka zaškrtávacie políčka - pole [2, 3] alebo reťazec \"2,3\". Lead dostane všetky a ku každej vznikne jeho projekt" : userLanguage === "hu" ? "Több kategória egyszerre, ha az űrlapon jelölőnégyzetek vannak - [2, 3] tömb vagy \"2,3\" szöveg. A lead mindegyiket megkapja, és mindegyikhez külön projekt jön létre" : "Several categories at once, for a form with checkboxes - an array [2, 3] or the string \"2,3\". The lead gets all of them, and each one opens its own project"})</span></li>
+                            <li><code>traffic_origin</code>, <code>traffic_origin_detail</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Odkiaľ návštevník prišiel na web ešte pred formulárom (facebook, instagram, google, direct...) a voľný detail (médium, kampaň, odkazujúca doména, vstupná stránka). Voľný text, nič sa nevaliduje; zobrazí sa v profile leadu ako Pôvod návštevy a ďalší dopyt ho nikdy neprepíše" : userLanguage === "hu" ? "Honnan érkezett a látogató az oldalra még az űrlap előtt (facebook, instagram, google, direct...) és szabad részlet (médium, kampány, hivatkozó domain, céloldal). Szabad szöveg, nincs ellenőrzés; a lead profiljában Látogatás eredeteként jelenik meg, és későbbi megkeresés sosem írja felül" : "Where the visitor came from before the form (facebook, instagram, google, direct...) plus a free-text detail (medium, campaign, referring host, landing page). Free text, nothing is validated; shown on the lead as Traffic Origin and never overwritten by a later inquiry"})</span></li>
+                            <li><span className="text-micro text-gray-400 font-normal">{userLanguage === "sk" ? "Súbory (multipart/form-data)" : userLanguage === "hu" ? "Fájlok (multipart/form-data)" : "Files (multipart/form-data)"}</span> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Jeden alebo viac súborov pod ľubovoľným názvom poľa, napr. attachments[]; priložia sa k poznámke na časovej osi. Návod je v Nastaveniach → API" : userLanguage === "hu" ? "Egy vagy több fájl tetszőleges mezőnéven, pl. attachments[]; az idővonal-jegyzethez csatolódnak. Útmutató: Beállítások → API" : "One or more files under any field name, e.g. attachments[]; attached to the timeline note. See Settings → API for an example"})</span></li>
+                            <li><span className="text-micro text-gray-400 font-normal">{userLanguage === "sk" ? "Akékoľvek ďalšie polia" : userLanguage === "hu" ? "Bármely további mező" : "Any other field"}</span> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Neprázdne textové polia (a zoznamy, spojené čiarkou) sa uložia do „Záujem klienta“ aj do časovej osi ako riadky „Názov: hodnota“. Nepovinné pole " : userLanguage === "hu" ? "A nem üres szöveges mezők (és a vesszővel összefűzött listák) „Név: érték” sorokként kerülnek az „Ügyfél érdeklődése” mezőbe és az idővonalra. Az opcionális " : "Non-empty text fields (and lists, joined with commas) are saved to \"Client interest\" and the timeline as \"Label: value\" lines. The optional "}<code>field_labels</code>{userLanguage === "sk" ? " (napr. {\"area_size\": \"Plocha (m²)\"}) určí názov riadku, inak sa použije názov poľa. Tokeny, honeypoty a vnorené objekty sa ignorujú. Pri existujúcom aktívnom leade idú tieto riadky len do časovej osi" : userLanguage === "hu" ? " (pl. {\"area_size\": \"Terület (m²)\"}) adja meg a sor nevét, különben a mező neve szerepel. A tokeneket, honeypotokat és a beágyazott objektumokat figyelmen kívül hagyjuk. Meglévő aktív lead esetén ezek a sorok csak az idővonalra kerülnek" : " (e.g. {\"area_size\": \"Area (m²)\"}) names a line, otherwise the field name is used. Tokens, honeypots and nested objects are ignored. For an existing active lead these lines go to the timeline only"})</span></li>
+                          </ul>
+                        </div>
+                      </div>
+        </SectionCard>
+        );
+      case "email/outgoing":
+        return (
+                      <SectionCard
+                        title={getTranslation(userLanguage, "settings.email.title")}
+                        action={<SaveStatus lang={userLanguage} status={emailStatus} />}
+                      >
+        
+                        {/* Provider Selector Switch */}
+                        <div className="space-y-2">
+                          <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.protocol")}</label>
+                          <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200/60 gap-1 w-full ws-sm:max-w-md">
+                            <button
+                              type="button"
+                              onClick={() => setEmailProvider("smtp")}
+                              className={`flex-1 py-2.5 rounded-md text-ui font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                emailProvider === "smtp"
+                                  ? "bg-entity-solid text-white shadow-xs font-bold"
+                                  : "text-gray-500 hover:text-gray-800 hover:bg-white"
+                              }`}
+                            >
+                              {getTranslation(userLanguage, "settings.email.provider_smtp")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEmailProvider("exchange")}
+                              className={`flex-1 py-2.5 rounded-md text-ui font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                emailProvider === "exchange"
+                                  ? "bg-entity-solid text-white shadow-xs font-bold"
+                                  : "text-gray-500 hover:text-gray-800 hover:bg-white"
+                              }`}
+                            >
+                              {getTranslation(userLanguage, "settings.email.provider_exch")}
+                            </button>
+                          </div>
+                        </div>
+        
+                        {/* 1. SMTP PROTOCOL FORM FIELDS */}
+                        {emailProvider === "smtp" && (
+                          <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-5 pt-2">
+                            <div className="space-y-1.5 ws-md:col-span-2">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.smtp_host")}</label>
+                              <input
+                                type="text"
+                                required
+                                disabled={getPermission("general_config") === "view"}
+                                value={smtpHost}
+                                onChange={(e) => setSmtpHost(e.target.value)}
+                                placeholder="smtp.mail.example.com"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
+                              />
+                            </div>
+        
+                            <div className="space-y-1.5">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.smtp_port")}</label>
+                              <input
+                                type="text"
+                                required
+                                disabled={getPermission("general_config") === "view"}
+                                value={smtpPort}
+                                onChange={(e) => setSmtpPort(e.target.value)}
+                                placeholder="465"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
+                              />
+                            </div>
+        
+                            <div className="space-y-1.5">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.smtp_secure")}</label>
+                              <CustomSelect
+                                disabled={getPermission("general_config") === "view"}
+                                value={smtpSecure}
+                                onChange={(v) => setSmtpSecure(v as any)}
+                                options={[
+                                  { value: "ssl", label: userLanguage === "sk" ? "SSL (Implicitné - Port 465)" : userLanguage === "hu" ? "SSL (Implicit - 465-ös port)" : "SSL (Implicit - Port 465)" },
+                                  { value: "tls", label: userLanguage === "sk" ? "TLS/STARTTLS (Explicitné - Port 587)" : userLanguage === "hu" ? "TLS/STARTTLS (Explicit - 587-es port)" : "TLS/STARTTLS (Explicit - Port 587)" },
+                                  { value: "none", label: userLanguage === "sk" ? "Žiadne (Nezabezpečené - Port 25/80)" : userLanguage === "hu" ? "Nincs (Nem biztonságos - 25/80-as port)" : "None (Insecure - Port 25/80)" },
+                                ]}
+                              />
+                            </div>
+        
+                            <div className="space-y-1.5 ws-md:col-span-2 border-t border-gray-100 pt-3 flex items-center justify-between">
+                              <div className="flex flex-col">
+                                <span className="text-caption font-bold text-gray-800">{getTranslation(userLanguage, "settings.email.smtp_auth")}</span>
+                                <span className="text-micro text-gray-400">
+                                  {userLanguage === "sk" ? "SMTP server vyžaduje prihlasovacie meno a heslo" : userLanguage === "hu" ? "Az SMTP szerver felhasználónevet és jelszót igényel" : "SMTP server demands username and password logins"}
+                                </span>
+                              </div>
+                              <input
+                                type="checkbox"
+                                disabled={getPermission("general_config") === "view"}
+                                checked={smtpAuth}
+                                onChange={(e) => setSmtpAuth(e.target.checked)}
+                                className="h-4.5 w-4.5 text-entity-text rounded border-gray-200 focus:ring-entity-solid/25 focus:ring-offset-0 cursor-pointer"
+                              />
+                            </div>
+        
+                            {smtpAuth && (
+                              <>
+                                <div className="space-y-1.5">
+                                  <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.smtp_user")}</label>
+                                  <input
+                                    type="text"
+                                    required
+                                    disabled={getPermission("general_config") === "view"}
+                                    value={smtpUser}
+                                    onChange={(e) => setSmtpUser(e.target.value)}
+                                    placeholder="user@domain.com"
+                                    className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
+                                  />
+                                </div>
+        
+                                <div className="space-y-1.5">
+                                  <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.smtp_pass")}</label>
+                                  <SecretInput
+                                    language={userLanguage}
+                                    mono={false}
+                                    required
+                                    disabled={getPermission("general_config") === "view"}
+                                    value={smtpPassword}
+                                    onChange={setSmtpPassword}
+                                    placeholder={t("Mailbox password", "Heslo k schránke", "Postafiók jelszava")}
+                                  />
+                                </div>
+                              </>
+                            )}
+        
+                            <div className="space-y-1.5 ws-md:col-span-2 border-t border-gray-100 pt-3">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.sender_name")}</label>
+                              <input
+                                type="text"
+                                required
+                                disabled={getPermission("general_config") === "view"}
+                                value={senderName}
+                                onChange={(e) => setSenderName(e.target.value)}
+                                placeholder={`Geely ${PRODUCT_NAME} Portal`}
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
+                              />
+                            </div>
+        
+                            <div className="space-y-1.5 ws-md:col-span-2">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.sender_email")}</label>
+                              <input
+                                type="email"
+                                required
+                                disabled={getPermission("general_config") === "view"}
+                                value={senderEmail}
+                                onChange={(e) => setSenderEmail(e.target.value)}
+                                placeholder="crm@example.com"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
+                              />
+                            </div>
+                          </div>
+                        )}
+        
+                        {/* 2. MS EXCHANGE PROTOCOL FORM FIELDS */}
+                        {emailProvider === "exchange" && (
+                          <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-5 pt-2">
+                            <div className="space-y-1.5 ws-md:col-span-2">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.exch_url")}</label>
+                              <input
+                                type="text"
+                                required
+                                disabled={getPermission("general_config") === "view"}
+                                value={exchUrl}
+                                onChange={(e) => setExchUrl(e.target.value)}
+                                placeholder="https://outlook.office365.com/EWS/Exchange.asmx"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all font-mono"
+                              />
+                            </div>
+        
+                            <div className="space-y-1.5">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.exch_domain")}</label>
+                              <input
+                                type="text"
+                                required
+                                disabled={getPermission("general_config") === "view"}
+                                value={exchDomain}
+                                onChange={(e) => setExchDomain(e.target.value)}
+                                placeholder="COMPANY"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
+                              />
+                            </div>
+        
+                            <div className="space-y-1.5">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.exch_auth")}</label>
+                              <CustomSelect
+                                disabled={getPermission("general_config") === "view"}
+                                value={exchAuth}
+                                onChange={(v) => setExchAuth(v as any)}
+                                options={[
+                                  { value: "oauth", label: userLanguage === "sk" ? "OAuth 2.0 (Moderný MS Exchange Online)" : userLanguage === "hu" ? "OAuth 2.0 (Modern MS Exchange Online)" : "OAuth 2.0 (Modern MS Exchange Online)" },
+                                  { value: "ntlm", label: userLanguage === "sk" ? "NTLM (Lokálna AD autentifikácia)" : userLanguage === "hu" ? "NTLM (Helyi AD hitelesítés)" : "NTLM (On-Premises AD Authentication)" },
+                                  { value: "basic", label: userLanguage === "sk" ? "Basic (Zastaraná autentifikácia servera)" : userLanguage === "hu" ? "Basic (Elavult szerver hitelesítés)" : "Basic (Legacy Server Authentication)" },
+                                ]}
+                              />
+                            </div>
+        
+                            {/* OAuth specific fields */}
+                            {exchAuth === "oauth" && (
+                              <>
+                                <div className="space-y-1.5 ws-md:col-span-2 border-t border-gray-100 pt-3">
+                                  <label className="type-overline text-gray-500">{userLanguage === "sk" ? "ID klienta (aplikácie)" : userLanguage === "hu" ? "Kliens (alkalmazás) azonosító" : "Client (Application) ID"}</label>
+                                  <input
+                                    type="text"
+                                    required
+                                    disabled={getPermission("general_config") === "view"}
+                                    value={exchClientId}
+                                    onChange={(e) => setExchClientId(e.target.value)}
+                                    placeholder="00000000-0000-0000-0000-000000000000"
+                                    className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all font-mono"
+                                  />
+                                </div>
+        
+                                <div className="space-y-1.5 ws-md:col-span-2">
+                                  <label className="type-overline text-gray-500">{userLanguage === "sk" ? "ID adresára (tenanta)" : userLanguage === "hu" ? "Könyvtár (bérlő) azonosító" : "Directory (Tenant) ID"}</label>
+                                  <input
+                                    type="text"
+                                    required
+                                    disabled={getPermission("general_config") === "view"}
+                                    value={exchTenantId}
+                                    onChange={(e) => setExchTenantId(e.target.value)}
+                                    placeholder="00000000-0000-0000-0000-000000000000"
+                                    className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all font-mono"
+                                  />
+                                </div>
+        
+                                <div className="space-y-1.5 ws-md:col-span-2">
+                                  <label className="type-overline text-gray-500">{userLanguage === "sk" ? "Klientsky kľúč (Client Secret)" : userLanguage === "hu" ? "Kliens titkos kulcs (Client Secret)" : "Client Secret"}</label>
+                                  <SecretInput
+                                    language={userLanguage}
+                                    required
+                                    disabled={getPermission("general_config") === "view"}
+                                    value={exchClientSecret}
+                                    onChange={setExchClientSecret}
+                                    placeholder={t("Client secret", "Klientsky kľúč", "Kliens titkos kulcs")}
+                                  />
+                                </div>
+                              </>
+                            )}
+        
+                            {/* Basic / NTLM password field */}
+                            {(exchAuth === "basic" || exchAuth === "ntlm") && (
+                              <div className="space-y-1.5 ws-md:col-span-2 border-t border-gray-100 pt-3">
+                                <label className="type-overline text-gray-500">{userLanguage === "sk" ? "Exchange Heslo" : userLanguage === "hu" ? "Exchange Jelszó" : "Exchange Password"}</label>
+                                <SecretInput
+                                  language={userLanguage}
+                                  required
+                                  disabled={getPermission("general_config") === "view"}
+                                  value={exchPassword}
+                                  onChange={setExchPassword}
+                                  placeholder={t("Exchange password", "Heslo Exchange", "Exchange jelszó")}
+                                />
+                              </div>
+                            )}
+        
+                            <div className="space-y-1.5 ws-md:col-span-2 border-t border-gray-100 pt-3">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.exch_mailbox")}</label>
+                              <input
+                                type="email"
+                                required
+                                disabled={getPermission("general_config") === "view"}
+                                value={exchMailbox}
+                                onChange={(e) => setExchMailbox(e.target.value)}
+                                placeholder="crm@example.com"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
+                              />
+                            </div>
+                          </div>
+                        )}
+        
+                        
+                      </SectionCard>
+        );
+      case "email/test":
+        return (
+                        <SectionCard
+                          title={getTranslation(userLanguage, "settings.email.diagnostics")}
+                          description={getTranslation(userLanguage, "settings.email.diagnostics_desc")}
+                        >
+                        <form onSubmit={handleSendTestEmail} className="flex flex-col gap-4">
+                          <div className="space-y-3 pt-1">
+                            <div className="space-y-1.5">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.test_recipient")}</label>
+                              <input
+                                type="email"
+                                required
+                                value={testRecipient}
+                                onChange={(e) => setTestRecipient(e.target.value)}
+                                placeholder="test@example.com"
+                                className="w-full px-3.5 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
+                              />
+                            </div>
+        
+                            <button
+                              type="submit"
+                              disabled={isSendingTest || !testRecipient}
+                              className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-md text-ui font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-55"
+                            >
+                              {isSendingTest ? (
+                                <>
+                                  <span className="h-3.5 w-3.5 border-2 border-gray-200 border-t-white rounded-full animate-spin" />
+                                  <span>{getTranslation(userLanguage, "settings.email.testing_handshake")}</span>
+                                </>
+                              ) : (
+                                getTranslation(userLanguage, "settings.email.send_test")
+                              )}
+                            </button>
+                          </div>
+        
+                          {/* Diagnostic Results Block */}
+                          {testResult && (
+                            <div className={`p-4 rounded-lg border text-micro leading-relaxed font-bold transition-all animate-fade-in ${
+                              testResult.status === "success" 
+                                ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
+                                : "bg-rose-50 border-rose-200 text-rose-800"
+                            }`}>
+                              <span className="block type-overline mb-1">
+                                {testResult.status === "success" ? getTranslation(userLanguage, "settings.email.conn_success") : getTranslation(userLanguage, "settings.email.conn_failure")}
+                              </span>
+                              {testResult.message}
+                            </div>
+                          )}
+                        </form>
+                        </SectionCard>
+        );
+      case "email/mailboxes":
+        return <CompanyMailboxSettings users={users} userLanguage={userLanguage} />;
+      case "company/regional":
+        return (
+        <SectionCard
+          title={navT(sectionKey("company", "regional", "title"))}
+          description={navT(sectionKey("company", "regional", "hint"))}
+        >
+        <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
+                        <div className="space-y-1.5">
+                          <label className="type-overline text-gray-500">
+                            {getTranslation(userLanguage, "settings.general.system_lang")}
+                          </label>
+                          <CustomSelect
+                            disabled={getPermission("general_config") === "view"}
+                            value={systemLanguage}
+                            onChange={(v) => setSystemLanguage(v as Language)}
+                            options={[
+                              { value: "sk", label: "Slovenčina" },
+                              { value: "en", label: "English" },
+                              { value: "hu", label: "Magyar" },
+                            ]}
+                          />
+                          <p className="text-micro text-gray-400">
+                            {getTranslation(userLanguage, "settings.general.system_lang_desc")}
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="type-overline text-gray-500">
+                            {getTranslation(userLanguage, "settings.general.currency")}
+                          </label>
+                          <CustomSelect
+                            disabled={getPermission("general_config") === "view"}
+                            value={systemCurrency || ""}
+                            onChange={(v) => setSystemCurrency(v)}
+                            options={[
+                              {
+                                value: "",
+                                label: `${getTranslation(userLanguage, "settings.general.currency_auto")} (${currencyForRegion(systemLanguage)})`,
+                              },
+                              ...CURRENCY_OPTIONS.map((c) => ({ value: c.code, label: c.label })),
+                            ]}
+                          />
+                          <p className="text-micro text-gray-400">
+                            {getTranslation(userLanguage, "settings.general.currency_desc")}
+                          </p>
+                        </div>
+        </div>
+        </SectionCard>
+        );
+      case "system/server":
+        return (
+        <>
+                      <SectionCard
+                        title={getTranslation(userLanguage, "settings.general.db_title")}
+                      >
+        
+                        <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6 text-ui text-gray-600 font-bold">
+                          <div className="space-y-2">
+                            <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_host")}</span>
+                              <span className="text-gray-800">{dbInfo?.host || "—"}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_port")}</span>
+                              <span>{dbInfo?.port || "—"}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_type")}</span>
+                              <span className="text-rose-500 font-extrabold uppercase">{dbInfo?.type || "MariaDB"}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_name")}</span>
+                              <span className="text-gray-800">{dbInfo?.name || "—"}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_user")}</span>
+                              <span>{dbInfo?.user || "—"}</span>
+                            </div>
+                            <div className="flex justify-between font-bold">
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_integrity")}</span>
+                              <span className="text-emerald-600 font-extrabold flex items-center gap-1">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> {getTranslation(userLanguage, "settings.general.db_connected")}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </SectionCard>
+                      <SectionCard
+                        title={getTranslation(userLanguage, "settings.general.host_title")}
+                      >
+                        
+                        <div className="text-ui space-y-3 font-semibold text-gray-600">
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-400">{getTranslation(userLanguage, "settings.general.host_status")}</span>
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 type-overline">
+                              {getTranslation(userLanguage, "settings.general.host_connected")}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-400">{getTranslation(userLanguage, "settings.general.host_deployment")}</span>
+                            <span className="font-extrabold text-entity-text">{typeof window !== "undefined" ? window.location.host : ""}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-400">{getTranslation(userLanguage, "settings.general.host_laravel")}</span>
+                            <span className="text-gray-400 italic">{getTranslation(userLanguage, "settings.general.host_laravel_desc")}</span>
+                          </div>
+                        </div>
+                      </SectionCard>
+        </>
+        );
+      case "company/profile":
+        return (
+        <SectionCard
+          title={navT(sectionKey("company", "profile", "title"))}
+          description={navT(sectionKey("company", "profile", "hint"))}
+          action={companyAction("profile")}
+        >
+          <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-6 items-start">
+                          {/* Logo Upload Box */}
+                          <div className="p-4 bg-gray-50 border border-gray-200/80 rounded-lg flex flex-col items-center justify-center text-center space-y-3">
+                            <div className="type-overline text-gray-600">
+                              {t("Company Logo (PDF & Quotes)", "Firemné logo na dokladoch", "Céglogó")}
+                            </div>
+                            {billingForm.companyLogoUrl ? (
+                              <div className="space-y-2 flex flex-col items-center">
+                                <img
+                                  src={billingForm.companyLogoUrl}
+                                  alt="Company Logo"
+                                  className="h-16 w-auto max-w-50 object-contain bg-white p-2 rounded-md border border-gray-200 shadow-xs"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setBillingForm(prev => ({ ...prev, companyLogoUrl: "" }))}
+                                  className="text-ui text-rose-600 font-bold hover:underline cursor-pointer"
+                                >
+                                  {t("Remove logo", "Odstrániť logo", "Logó törlése")}
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="h-16 w-32 border-2 border-dashed border-gray-300 rounded-md flex items-center justify-center text-gray-400 text-ui font-semibold">
+                                {t("No logo", "Bez loga", "Nincs logó")}
+                              </div>
+                            )}
+        
+                            <label className="px-4 py-2 bg-white border border-gray-300 hover:border-entity-border rounded-md text-ui font-bold text-gray-700 shadow-xs cursor-pointer transition-all flex items-center gap-1.5">
+                              <Plus className="h-3.5 w-3.5" />
+                              {isUploadingLogo ? t("Uploading...", "Nahrávam...", "Feltöltés...") : t("Upload Logo (PNG / SVG / JPG)", "Nahrať logo (PNG/SVG/JPG)", "Logó feltöltése")}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) handleUploadLogo(file);
+                                }}
+                              />
+                            </label>
+                          </div>
+            <div className="ws-md:col-span-2 space-y-3">
+                        <div className="space-y-1.5">
+                          <label className="type-overline text-gray-500" htmlFor="settings-system-name">
+                            {getTranslation(userLanguage, "settings.general.system_name")}
+                          </label>
+                          <input
+                            id="settings-system-name"
+                            type="text"
+                            disabled={getPermission("general_config") === "view"}
+                            value={tempName}
+                            onChange={(e) => setTempName(e.target.value)}
+                            className="w-full min-h-[3rem] ws-lg:min-h-0 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-heading font-bold focus:outline-none focus:border-entity-border focus:ring-1 focus:ring-entity-solid/25 disabled:bg-gray-50 disabled:text-gray-400"
+                            placeholder={PRODUCT_NAME}
+                          />
+                          <p className="text-micro text-gray-500">
+                            {getTranslation(userLanguage, "settings.general.system_name_desc")}
+                          </p>
+                        </div>
+                            <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
+                              <div className="relative">
+                                <label className="type-overline text-gray-500 block mb-1">
+                                  {t("Company Name", "Obchodné meno spoločnosti", "Cégnév")}
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    value={billingForm.companyName}
+                                    onChange={e => {
+                                      setBillingForm(prev => ({ ...prev, companyName: e.target.value }));
+                                      searchBillingRegistry("name", e.target.value);
+                                    }}
+                                    placeholder={t("Type a name or IČO to load from the register", "Začnite písať názov alebo IČO — údaje sa načítajú z registra", "Írjon nevet vagy adószámot a cégregiszterből való betöltéshez")}
+                                    className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-gray-200 rounded-md text-ui font-bold focus:ring-2 focus:ring-entity-solid/25 focus:outline-none"
+                                  />
+                                  <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "name"} />
+                                </div>
+                                <CompanySuggestions
+                                  suggestions={billingLookup.suggestions}
+                                  visible={billingLookup.activeField === "name"}
+                                  onSelect={handleSelectBillingSuggestion}
+                                  onDismiss={billingLookup.close}
+                                  systemLanguage={userLanguage}
+                                />
+                              </div>
+        
+                              <div>
+                                <label className="type-overline text-gray-500 block mb-1">
+                                  {t("Subtitle / Slogan", "Podtitul / Špecializácia", "Szlogen")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={billingForm.companySubtitle || ""}
+                                  onChange={e => setBillingForm(prev => ({ ...prev, companySubtitle: e.target.value }))}
+                                  className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui focus:ring-2 focus:ring-entity-solid/25 focus:outline-none"
+                                />
+                              </div>
+                            </div>
             </div>
           </div>
-        )}
+                        <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-3">
+                          <div className="col-span-2 ws-sm:col-span-1">
+                            <label className="type-overline text-gray-500 block mb-1">
+                              {t("Email", "Fakturačný e-mail", "E-mail")}
+                            </label>
+                            <input
+                              type="email"
+                              value={billingForm.email || ""}
+                              onChange={e => setBillingForm(prev => ({ ...prev, email: e.target.value }))}
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
+                            />
+                          </div>
+        
+                          <div>
+                            <label className="type-overline text-gray-500 block mb-1">
+                              {t("Phone", "Telefónne číslo", "Telefonszám")}
+                            </label>
+                            <input
+                              type="tel"
+                              value={billingForm.phone || ""}
+                              onChange={e => setBillingForm(prev => ({ ...prev, phone: e.target.value }))}
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
+                            />
+                          </div>
+        
+                          <div>
+                            <label className="type-overline text-gray-500 block mb-1">
+                              {t("Secondary Phone", "Záložný telefón", "Másodlagos telefon")}
+                            </label>
+                            <input
+                              type="tel"
+                              value={billingForm.phoneSecondary || ""}
+                              onChange={e => setBillingForm(prev => ({ ...prev, phoneSecondary: e.target.value }))}
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
+                            />
+                          </div>
+        
+                          <div className="col-span-2 ws-sm:col-span-1">
+                            <label className="type-overline text-gray-500 block mb-1">
+                              {t("Website", "Webová stránka", "Weboldal")}
+                            </label>
+                            <input
+                              type="url"
+                              value={billingForm.website || ""}
+                              onChange={e => setBillingForm(prev => ({ ...prev, website: e.target.value }))}
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
+                            />
+                          </div>
+                        </div>
+        </SectionCard>
+        );
+      case "company/billing":
+        return (
+        <SectionCard
+          title={navT(sectionKey("company", "billing", "title"))}
+          description={navT(sectionKey("company", "billing", "hint"))}
+          action={companyAction("billing")}
+        >
+                            <div className="grid grid-cols-2 ws-sm:grid-cols-3 gap-3">
+                              <div className="relative">
+                                <label className="type-overline text-gray-500 block mb-1">IČO</label>
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+         value={billingForm.companyId || ""}
+                                    onChange={e => {
+                                      setBillingForm(prev => ({ ...prev, companyId: e.target.value }));
+                                      searchBillingRegistry("companyId", e.target.value);
+                                    }}
+                                    className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold focus:outline-none"
+                                  />
+                                  <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "companyId"} />
+                                </div>
+                                <CompanySuggestions
+                                  suggestions={billingLookup.suggestions}
+                                  visible={billingLookup.activeField === "companyId"}
+                                  onSelect={handleSelectBillingSuggestion}
+                                  onDismiss={billingLookup.close}
+                                  systemLanguage={userLanguage}
+                                />
+                              </div>
+                              <div className="relative">
+                                <label className="type-overline text-gray-500 block mb-1">DIČ</label>
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+         value={billingForm.taxId || ""}
+                                    onChange={e => {
+                                      setBillingForm(prev => ({ ...prev, taxId: e.target.value }));
+                                      searchBillingRegistry("taxId", e.target.value);
+                                    }}
+                                    className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold focus:outline-none"
+                                  />
+                                  <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "taxId"} />
+                                </div>
+                                <CompanySuggestions
+                                  suggestions={billingLookup.suggestions}
+                                  visible={billingLookup.activeField === "taxId"}
+                                  onSelect={handleSelectBillingSuggestion}
+                                  onDismiss={billingLookup.close}
+                                  systemLanguage={userLanguage}
+                                />
+                              </div>
+                              <div className="relative col-span-2 ws-sm:col-span-1">
+                                <label className="type-overline text-gray-500 block mb-1">IČ DPH</label>
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    value={billingForm.vatId || ""}
+                                    onChange={e => {
+                                      setBillingForm(prev => ({ ...prev, vatId: e.target.value }));
+                                      searchBillingRegistry("vatId", e.target.value);
+                                    }}
+                                    className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold focus:outline-none"
+                                  />
+                                  <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "vatId"} />
+                                </div>
+                                <CompanySuggestions
+                                  suggestions={billingLookup.suggestions}
+                                  visible={billingLookup.activeField === "vatId"}
+                                  onSelect={handleSelectBillingSuggestion}
+                                  onDismiss={billingLookup.close}
+                                  systemLanguage={userLanguage}
+                                />
+                              </div>
+                            </div>
+                        <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-3">
+                          <div className="col-span-2">
+                            <label className="type-overline text-gray-500 block mb-1">
+                              {t("Street & Number", "Ulica a číslo", "Utca és házszám")}
+                            </label>
+                            <input
+                              type="text"
+                              value={billingForm.street || ""}
+                              onChange={e => setBillingForm(prev => ({ ...prev, street: e.target.value }))}
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
+                            />
+                          </div>
+        
+                          <div>
+                            <label className="type-overline text-gray-500 block mb-1">
+                              {t("City", "Mesto", "Város")}
+                            </label>
+                            <input
+                              type="text"
+                              value={billingForm.city || ""}
+                              onChange={e => setBillingForm(prev => ({ ...prev, city: e.target.value }))}
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
+                            />
+                          </div>
+        
+                          <div>
+                            <label className="type-overline text-gray-500 block mb-1">
+                              {t("Postal Code", "PSČ", "Irányítószám")}
+                            </label>
+                            <input
+                              type="text"
+                              value={billingForm.postalCode || ""}
+                              onChange={e => setBillingForm(prev => ({ ...prev, postalCode: e.target.value }))}
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui font-mono"
+                            />
+                          </div>
+        
+                          <div className="col-span-2 ws-sm:col-span-1">
+                            <label className="type-overline text-gray-500 block mb-1">
+                              {t("Country", "Krajina", "Ország")}
+                            </label>
+                            <CustomSelect
+                              value={billingCountry}
+                              onChange={value => setBillingForm(prev => ({ ...prev, country: value }))}
+                              options={EUROPEAN_COUNTRIES.map(country => ({ value: country, label: country }))}
+                            />
+                          </div>
+                        </div>
+        </SectionCard>
+        );
+      case "company/bank":
+        return (
+        <SectionCard
+          title={navT(sectionKey("company", "bank", "title"))}
+          description={navT(sectionKey("company", "bank", "hint"))}
+          action={companyAction("bank")}
+        >
+          <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="type-overline text-gray-500 block mb-1">IBAN</label>
+                            <input
+                              type="text"
+                              value={billingForm.iban || ""}
+                              onChange={e => setBillingForm(prev => ({ ...prev, iban: e.target.value }))}
+                              placeholder="SK00 0000 0000 0000 0000 0000"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold"
+                            />
+                          </div>
+                          <div>
+                            <label className="type-overline text-gray-500 block mb-1">SWIFT / BIC</label>
+                            <input
+                              type="text"
+                              value={billingForm.swift || ""}
+                              onChange={e => setBillingForm(prev => ({ ...prev, swift: e.target.value }))}
+                              placeholder="TATRSKBX"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui font-mono"
+                            />
+                          </div>
+          </div>
+        </SectionCard>
+        );
+      case "offers/defaults":
+        return (
+        <>
+        <SectionCard
+          title={navT(sectionKey("offers", "defaults", "title"))}
+          description={navT(sectionKey("offers", "defaults", "hint"))}
+          action={companyAction("defaults")}
+        >
+          <div className="max-w-xs">
+                          <div>
+                            <label className="type-overline text-gray-500 block mb-1">
+                              {t("Default Payment Due (Days)", "Predvolená splatnosť (Dni)", "Fizetési határidő (napok)")}
+                            </label>
+                            <input
+                              type="number"
+                              value={billingForm.defaultPaymentDueDays || 14}
+                              onChange={e => setBillingForm(prev => ({ ...prev, defaultPaymentDueDays: parseInt(e.target.value) || 14 }))}
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui font-bold"
+                            />
+                          </div>
+          </div>
+                        </SectionCard>
+                        {/* VAT Rates & Defaults Configuration */}
+                        <SectionCard
+                          title={t("VAT Rates & Defaults", "Sadzby DPH a predvolená hodnota", "ÁFA kulcsok és alapértelmezett érték")}
+                          description={t(
+                                  "Configure available VAT rates for orders and invoices. The default rate will be pre-selected on newly added items.",
+                                  "Nastavte dostupné sadzby DPH pre objednávky a faktúry. Predvolená sadzba sa automaticky zvolí pri nových položkách.",
+                                  "Állítsa be a megrendelések és számlák ÁFA kulcsait. Az alapértelmezett kulcs automatikusan beállításra kerül az új tételeknél."
+                                )}
+                          action={
+<button
+                              type="button"
+                              onClick={handleResetVatRates}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-micro font-medium text-gray-600 hover:text-gray-800 bg-white hover:bg-gray-100 border border-gray-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                              title={t("Reset to default rates (23%, 19%, 10%, 5%, 0%)", "Obnoviť predvolené sadzby (23%, 19%, 10%, 5%, 0%)", "Alapértelmezett kulcsok visszaállítása (23%, 19%, 10%, 5%, 0%)")}
+                            >
+                              <RotateCcw className="size-3 text-gray-400" />
+                              <span>{t("Reset to defaults (23, 19, 10, 5, 0)", "Obnoviť predvolené (23, 19, 10, 5, 0)", "Alapértelmezés (23, 19, 10, 5, 0)")}</span>
+                            </button>
+}
+                        >
+        
+                          {/* Active VAT rates pills */}
+                          <div className="space-y-1.5">
+                            <label className="type-overline text-gray-500 block">
+                              {t("Active VAT Rates", "Aktívne sadzby DPH", "Aktív ÁFA kulcsok")}
+                            </label>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {activeVatRates.map(rate => {
+                                const isDefault = Number(billingForm.defaultVatRate) === rate;
+                                return (
+                                  <div
+                                    key={rate}
+                                    className={cn(
+                                      "inline-flex items-center gap-2 px-3 py-1.5 rounded-md border text-ui font-mono font-bold transition-all shadow-2xs",
+                                      isDefault
+                                        ? "bg-entity-soft border-entity-border text-entity-text ring-2 ring-entity-solid/25"
+                                        : "bg-white border-gray-200 text-gray-700 hover:border-gray-300"
+                                    )}
+                                  >
+                                    <span>{rate}%</span>
+                                    {isDefault ? (
+                                      <span className="px-1.5 py-0.5 rounded-md bg-entity-solid text-white text-micro font-sans font-semibold tracking-wide uppercase">
+                                        {t("Default", "Predvolená", "Alapértelmezett")}
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => setBillingForm(prev => ({ ...prev, defaultVatRate: rate }))}
+                                        className="text-micro font-sans font-medium text-gray-400 hover:text-entity-text transition-colors cursor-pointer"
+                                        title={t("Set as default", "Nastaviť ako predvolenú", "Beállítás alapértelmezettként")}
+                                      >
+                                        {t("Set default", "Zvoliť", "Kiválaszt")}
+                                      </button>
+                                    )}
+        
+                                    {activeVatRates.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveVatRate(rate)}
+                                        className="p-0.5 rounded hover:bg-rose-50 text-gray-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                        title={t("Remove VAT rate", "Odstrániť sadzbu", "ÁFA kulcs törlése")}
+                                      >
+                                        <X className="size-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+        
+                          {/* Add rate & Default rate picker in 2 columns */}
+                          <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3 pt-2 border-t border-gray-200/60">
+                            <div>
+                              <label className="type-overline text-gray-500 block mb-1">
+                                {t("Add Custom VAT Rate", "Pridať ďalšiu sadzbu DPH", "Új ÁFA kulcs hozzáadása")}
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <div className="relative flex-1">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="any"
+                                    value={newVatRateInput}
+                                    onChange={e => setNewVatRateInput(e.target.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleAddVatRate();
+                                      }
+                                    }}
+                                    placeholder="e.g. 21"
+                                    className="w-full pr-8 pl-3 py-2 bg-white border border-gray-200 rounded-md text-ui font-mono focus:border-entity-border focus:outline-none"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-ui font-mono font-bold pointer-events-none">
+                                    %
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={handleAddVatRate}
+                                  className="px-3 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-md text-ui font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                                >
+                                  <Plus className="size-3.5" />
+                                  <span>{t("Add", "Pridať", "Hozzáadás")}</span>
+                                </button>
+                              </div>
+                            </div>
+        
+                            <div>
+                              <label className="type-overline text-gray-500 block mb-1">
+                                {t("Default VAT Rate", "Predvolená sadzba DPH", "Alapértelmezett ÁFA kulcs")}
+                              </label>
+                              <select
+                                value={billingForm.defaultVatRate ?? DEFAULT_STANDARD_VAT_RATE}
+                                onChange={e =>
+                                  setBillingForm(prev => ({
+                                    ...prev,
+                                    defaultVatRate: parseFloat(e.target.value) || 0
+                                  }))
+                                }
+                                className="w-full p-2 bg-white border border-gray-200 rounded-md text-ui font-mono font-bold text-gray-800 focus:border-entity-border focus:outline-none"
+                              >
+                                {activeVatRates.map(r => (
+                                  <option key={r} value={r}>
+                                    {r}% {r === DEFAULT_STANDARD_VAT_RATE ? t("(Standard)", "(Základná)", "(Normál)") : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
 
-        {/* TAB: Audit log (administrators only) */}
-        {activeSubTab === "audit" && isAdminRoleName(currentUser?.role) && (
-          <AuditLogSettings language={userLanguage} />
-        )}
+                            <label className="md:col-span-2 flex items-start gap-2.5 pt-2 border-t border-gray-100 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(billingForm.financeNetMode)}
+                                onChange={e =>
+                                  setBillingForm(prev => ({ ...prev, financeNetMode: e.target.checked }))
+                                }
+                                className="mt-0.5 size-4 accent-entity-solid"
+                              />
+                              <span className="text-ui text-gray-800">
+                                <span className="font-semibold block">
+                                  {t("Net (VAT-excluded) finance mode", "Financie bez DPH (netto režim)", "Nettó (ÁFA nélküli) pénzügyi mód")}
+                                </span>
+                                <span className="text-caption text-gray-500">
+                                  {t(
+                                    "Sync invoice subtotals (net) into Finance and keep lead, offer, and project values consistent without VAT.",
+                                    "Synchronizovať do financií sumy bez DPH (základ) a držať hodnoty leadov, ponúk a projektov jednotne bez DPH.",
+                                    "A számlák nettó összegét (ÁFA nélkül) szinkronizálja a pénzügyekbe, egységesítve a lead, árajánlat és projekt értékeket."
+                                  )}
+                                </span>
+                              </span>
+                            </label>
+                          </div>
+                        </SectionCard>
+        </>
+        );
+      case "integrations/usage":
+        return <AiUsagePanel lang={userLanguage} />;
+      case "integrations/waai":
+        return <WaaiIntegrationSettings activeLang={userLanguage} />;
+      case "integrations/github":
+        return <GithubIntegrationSettings userLanguage={userLanguage} />;
+      case "integrations/clickup":
+        return (
+          <ClickUpIntegrationSettings
+            activeLang={userLanguage}
+            canEdit={getPermission("general_config") === "edit"}
+            onConnectionChange={onClickUpConnectionChange}
+          />
+        );
+      case "agency/workflow":
+        return (
+          <AgencySettingsSection
+            section="workflow"
+            lang={userLanguage}
+            canEdit={getPermission("general_config") !== "view"}
+            financialCategories={financialCategories}
+          />
+        );
+      case "agency/schema":
+        return (
+          <AgencySettingsSection
+            section="schema"
+            lang={userLanguage}
+            canEdit={getPermission("general_config") !== "view"}
+            financialCategories={financialCategories}
+          />
+        );
+      case "agency/shifts":
+        return (
+          <AgencySettingsSection
+            section="shifts"
+            lang={userLanguage}
+            canEdit={getPermission("general_config") !== "view"}
+            financialCategories={financialCategories}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  // ── The sections of the open category ───────────────────────────────────────
+  const canSee = (ref: string) => catalog.some((c) => c.sections.some((s) => `${c.def.id}/${s.id}` === ref));
+
+  /** The open tab: its read-only notice (when the permission is "view") and its body. */
+  const activeBody = (cat: VisibleCategory, id: string): React.ReactNode => {
+    const def = cat.sections.find((s) => s.id === id);
+    const body = renderSection(`${cat.def.id}/${id}`);
+    return (
+      <>
+        {def && !def.linkOnly && renderReadOnlyBanner(def.permKey)}
+        {body ?? <p className="type-body text-gray-500">{navT("settings.nav.ui.not_available")}</p>}
+      </>
+    );
+  };
+
+  const openSearchHit = (entry: SearchEntry) => {
+    setQuery("");
+    window.location.hash = "#" + settingsPath(entry.categoryId, entry.sectionId);
+  };
+  const openCategoryTile = () => setQuery("");
+  const recents = cleanRecents(recentsPref, visibility);
+  const emailConfigured =
+    integrationsConfig?.emailProvider === "exchange"
+      ? Boolean(integrationsConfig?.exchMailbox || integrationsConfig?.exchUrl)
+      : Boolean(integrationsConfig?.smtpHost);
+  const badges: Record<string, CategoryBadge | undefined> = {
+    email: emailConfigured ? { label: navT("settings.nav.ui.status_connected"), tone: "good" } : undefined,
+    system: licenseState?.valid
+      ? licenseState.status === "expiring"
+        ? { label: navT("settings.nav.ui.status_licence_expiring"), tone: "warn" }
+        : { label: navT("settings.nav.ui.status_licence_active"), tone: "good" }
+      : undefined,
+  };
+
+  isCreatingUERef.current = isCreatingUE;
+  const phone = wide === false;
+
+  let shell: React.ReactNode = null;
+  if (wide !== null) {
+    if (openCategory && openCategory.def.id === "modules" && activeSection === "records" && isCreatingUE) {
+      // Creating or editing a custom record type takes the whole width and hides the navigation.
+      shell = (
+        <div className="flex flex-col gap-6" data-testid="settings-record-editor">
+          {renderReadOnlyBanner("general_config")}
+          {renderSection("modules/records")}
+        </div>
+      );
+    } else if (openCategory && activeSection) {
+      const sectionIds = openCategory.sections.map((s) => s.id);
+      const body = activeBody(openCategory, activeSection);
+      shell =
+        layout === "sidebar" ? (
+          <SidebarLayout
+            lang={userLanguage}
+            groups={visibleGroups(visibility)}
+            catalog={catalog}
+            category={openCategory}
+            activeId={activeSection}
+            sections={openCategory.sections.map((s) => ({ id: s.id, body: activeBody(openCategory, s.id) }))}
+            layout={layout}
+            onLayoutChange={setLayoutPref}
+            query={query}
+            setQuery={setQuery}
+            searchRef={searchRef}
+            canSee={canSee}
+            onOpenSearchHit={openSearchHit}
+            onOpenRef={() => setQuery("")}
+            onOpenCategory={openCategoryTile}
+          />
+        ) : (
+          <CategoryPage
+            lang={userLanguage}
+            phone={phone}
+            category={openCategory}
+            sectionIds={sectionIds}
+            activeId={activeSection}
+            body={body}
+            canSee={canSee}
+            layout={layout}
+            onLayoutChange={setLayoutPref}
+            onSearch={() => {
+              focusSearchOnMount.current = true;
+              window.location.hash = "#settings";
+            }}
+            onOpenRef={() => setQuery("")}
+          />
+        );
+    } else if (catalog.length === 0) {
+      shell = <p className="type-body text-gray-500" data-testid="settings-none">{navT("settings.nav.ui.not_available")}</p>;
+    } else {
+      shell = (
+        <SettingsHome
+          lang={userLanguage}
+          groups={visibleGroups(visibility)}
+          catalog={catalog}
+          layout={layout}
+          onLayoutChange={setLayoutPref}
+          phone={phone}
+          query={query}
+          setQuery={setQuery}
+          searchRef={searchRef}
+          recents={recents}
+          badges={badges}
+          onOpenSearchHit={openSearchHit}
+          onOpenRecent={() => setQuery("")}
+          onOpenCategory={openCategoryTile}
+        />
+      );
+    }
+  }
+
+  return (
+    <div ref={wideRef} className="select-none text-gray-800 animate-fade-in" data-testid="settings-root" data-layout={layout}>
+      {shell}
 
         {/* Exception Detail Popup Modal */}
         {selectedLog && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="glass-panel w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] text-left">
-              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-3xl bg-white rounded-lg shadow-xs border border-gray-200 overflow-hidden flex flex-col max-h-[85vh] text-left">
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50">
                 <div className="flex items-center gap-2 text-red-600">
                   <Icons.AlertOctagon className="h-5 w-5 shrink-0" />
-                  <h3 className="font-heading font-extrabold text-slate-900 text-ui">
+                  <h3 className="font-heading font-extrabold text-gray-900 text-ui">
                     {t("Exception / Error Details", "Detail výnimky / chyby", "Kivétel / hiba részletei")}
                   </h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedLog(null)}
-                  className="text-slate-400 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-body"
+                  className="text-gray-400 hover:text-gray-800 p-1.5 hover:bg-gray-100 rounded-md transition-all cursor-pointer font-bold text-body"
                 >
                   ✕
                 </button>
               </div>
-              <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-700 text-ui">
-                <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+              <div className="p-6 overflow-y-auto space-y-4 font-medium text-gray-700 text-ui">
+                <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4 border-b border-gray-100 pb-4">
                   <div>
-                    <span className="type-overline text-slate-400 block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
-                    <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.created_at}</span>
+                    <span className="type-overline text-gray-400 block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
+                    <span className="font-mono text-micro text-gray-700 font-bold">{selectedLog.created_at}</span>
                   </div>
                   <div>
-                    <span className="type-overline text-slate-400 block">{t("Method & URI", "Metóda & URI", "Metódus & URI")}</span>
-                    <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
+                    <span className="type-overline text-gray-400 block">{t("Method & URI", "Metóda & URI", "Metódus & URI")}</span>
+                    <span className="font-mono text-micro text-gray-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
                   </div>
                   <div>
-                    <span className="type-overline text-slate-400 block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
-                    <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
+                    <span className="type-overline text-gray-400 block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
+                    <span className="font-mono text-micro text-gray-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <span className="type-overline text-slate-400 block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
-                  <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-caption font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
+                  <span className="type-overline text-gray-400 block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
+                  <div className="p-3 bg-red-50 text-red-800 rounded-md font-mono text-caption font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
                     {selectedLog.message}
                   </div>
                 </div>
 
                 {selectedLog.file && (
                   <div className="space-y-1">
-                    <span className="type-overline text-slate-400 block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
-                    <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-micro border border-slate-100">
+                    <span className="type-overline text-gray-400 block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
+                    <div className="p-2.5 bg-gray-50 text-gray-600 rounded-md font-mono text-micro border border-gray-100">
                       {selectedLog.file} ({t("Line", "Riadok", "Sor")} {selectedLog.line})
                     </div>
                   </div>
@@ -7592,8 +7241,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 {selectedLog.trace && (
                   <div className="space-y-1">
-                    <span className="type-overline text-slate-400 block">{t("Stack Trace", "Zásobník volaní", "Hívási verem")}</span>
-                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
+                    <span className="type-overline text-gray-400 block">{t("Stack Trace", "Zásobník volaní", "Hívási verem")}</span>
+                    <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-gray-800 max-h-64">
                       {selectedLog.trace}
                     </pre>
                   </div>
@@ -7601,8 +7250,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 {selectedLog.payload && (
                   <div className="space-y-1">
-                    <span className="type-overline text-slate-400 block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
-                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
+                    <span className="type-overline text-gray-400 block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
+                    <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-gray-800 max-h-48">
                       {selectedLog.payload}
                     </pre>
                   </div>
@@ -7611,22 +7260,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
         )}
-
-          </div>
-        </div>
-
-      </div>
       {/* Icon Picker Modal */}
       {isIconPickerOpen && (
-        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col text-left overflow-hidden m-4 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-gray-900/60 animate-in fade-in duration-200">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-xs w-full max-w-3xl max-h-[85vh] flex flex-col text-left overflow-hidden m-4 animate-in zoom-in-95 duration-200">
             {/* Modal Header */}
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <h3 className="text-title font-heading font-extrabold text-slate-800">
+                <h3 className="text-title font-heading font-extrabold text-gray-800">
                   {t("Select Icon", "Výber ikony", "Ikon kiválasztása")}
                 </h3>
-                <p className="text-ui font-bold text-slate-400 mt-0.5">
+                <p className="text-ui font-bold text-gray-400 mt-0.5">
                   {t("Browse and search from over 1000+ icons", "Prehliadajte a hľadajte z viac ako 1000+ ikon", "Böngésszen és keressen több mint 1000 ikon között")}
                 </p>
               </div>
@@ -7636,29 +7280,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   setIsIconPickerOpen(false);
                   setIconSearchQuery("");
                 }}
-                className="p-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                className="p-2 rounded-md hover:bg-gray-50 border border-transparent hover:border-gray-100 text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Search Bar */}
-            <div className="p-6 bg-slate-50/50 border-b border-slate-100 flex gap-3">
+            <div className="p-6 bg-gray-50/50 border-b border-gray-100 flex gap-3">
               <div className="relative flex-1">
                 <input
                   type="text"
                   value={iconSearchQuery}
                   onChange={(e) => setIconSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-800 text-ui font-semibold focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm"
+                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 bg-white text-gray-800 text-ui font-semibold focus:outline-none focus:border-entity-border focus:ring-4 focus:ring-entity-solid/25 transition-all shadow-xs"
                   placeholder={t("Search icons (e.g. settings, user, card)...", "Vyhľadajte ikonu (napr. settings, user, card)...", "Ikonok keresése (pl. settings, user, card)...")}
                   autoFocus
                 />
-                <Search className="h-5 w-5 text-slate-400 absolute left-3.5 top-3.5" />
+                <Search className="h-5 w-5 text-gray-400 absolute left-3.5 top-3.5" />
                 {iconSearchQuery && (
                   <button
                     type="button"
                     onClick={() => setIconSearchQuery("")}
-                    className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3.5 top-3.5 text-gray-400 hover:text-gray-600"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -7675,8 +7319,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 if (displayed.length === 0) {
                   return (
-                    <div className="py-12 text-center text-slate-400">
-                      <Search className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                    <div className="py-12 text-center text-gray-400">
+                      <Search className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                       <p className="text-ui font-semibold">
                         {t("No icons found", "Nenašli sa žiadne ikony", "Nem található ikon")}
                       </p>
@@ -7699,10 +7343,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               setIsIconPickerOpen(false);
                               setIconSearchQuery("");
                             }}
-                            className={`p-3 rounded-2xl flex flex-col items-center justify-center gap-2 border transition-all cursor-pointer group ${
+                            className={`p-3 rounded-lg flex flex-col items-center justify-center gap-2 border transition-all cursor-pointer group ${
                               isSelected
-                                ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-100"
-                                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300 hover:scale-[1.03]"
+                                ? "bg-entity-solid border-entity-border text-white shadow-xs "
+                                : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 hover:scale-[1.03]"
                             }`}
                             title={name}
                           >
@@ -7710,7 +7354,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               {IconComponent ? <IconComponent className="h-6 w-6" /> : null}
                             </div>
                             <span className={`text-micro font-bold text-center truncate w-full ${
-                              isSelected ? "text-indigo-100" : "text-slate-400 group-hover:text-slate-600"
+                              isSelected ? "text-white/90" : "text-gray-400 group-hover:text-gray-600"
                             }`}>
                               {name}
                             </span>
@@ -7719,7 +7363,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       })}
                     </div>
                     {filtered.length > 150 && (
-                      <p className="text-micro text-center text-slate-400 font-semibold pt-4">
+                      <p className="text-micro text-center text-gray-400 font-semibold pt-4">
                         {userLanguage === "sk" 
                           ? `Zobrazuje sa prvých 150 výsledkov z ${filtered.length}. Upresnite vyhľadávanie.` 
                           : `Showing first 150 results out of ${filtered.length}. Refine your search to see more.`}

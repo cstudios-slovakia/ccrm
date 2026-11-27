@@ -37,17 +37,17 @@ export const ViewSizeSettings: React.FC<ViewSizeSettingsProps> = ({ systemLangua
     {
       id: "compact",
       label: t("Compact", "Kompaktné", "Kompakt"),
-      sub: t("Phones & laptops", "Mobily a notebooky", "Telefonok és laptopok"),
+      sub: t("High density · fits more on screen", "Vysoká hustota · zmestí sa viac obsahu", "Nagy sűrűség · több adat fér el"),
     },
     {
       id: "normal",
       label: t("Normal", "Normálne", "Normál"),
-      sub: t("Full HD & 1440p monitors", "Monitory Full HD a 1440p", "Full HD és 1440p monitorok"),
+      sub: t("Standard size & readability", "Štandardná veľkosť a čitateľnosť", "Normál méret és olvashatóság"),
     },
     {
       id: "big",
       label: t("Big", "Veľké", "Nagy"),
-      sub: t("iMac & large monitors", "iMac a veľké monitory", "iMac és nagy monitorok"),
+      sub: t("Larger text for Full HD & 2K screens", "Väčšie písmo pre Full HD a 2K monitory", "Nagyobb betűk Full HD és 2K monitorokra"),
     },
   ];
 
@@ -57,12 +57,12 @@ export const ViewSizeSettings: React.FC<ViewSizeSettingsProps> = ({ systemLangua
   };
 
   return (
-    <div className="@container p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
+    <div className="@container p-4 rounded-lg bg-white border border-gray-200 shadow-xs space-y-3">
       <div>
-        <label className="type-label text-slate-700 block">
+        <label className="type-label text-gray-700 block">
           {t("View size", "Veľkosť zobrazenia", "Nézet mérete")}
         </label>
-        <p className="type-meta text-slate-500">
+        <p className="type-meta text-gray-500">
           {t(
             "Text size, spacing and layout everywhere except the sidebar",
             "Veľkosť písma, rozostupy a rozloženie všade okrem bočného menu",
@@ -79,21 +79,21 @@ export const ViewSizeSettings: React.FC<ViewSizeSettingsProps> = ({ systemLangua
             onClick={() => choose(opt.id)}
             aria-pressed={mode === opt.id}
             className={cn(
-              "p-2.5 rounded-xl border text-center flex flex-col items-center justify-center gap-1 transition-all cursor-pointer",
+              "p-2.5 rounded-md border text-center flex flex-col items-center justify-center gap-1 transition-all cursor-pointer",
               mode === opt.id
-                ? "bg-indigo-50/70 border-indigo-500/60 ring-2 ring-indigo-500/20"
-                : "bg-slate-50/50 border-slate-200 hover:bg-slate-100/60"
+                ? "bg-entity-subtle border-entity-border ring-1 ring-entity-ring"
+                : "bg-gray-50 border-gray-200 hover:bg-gray-100"
             )}
           >
-            <span className={cn("text-ui font-bold block", mode === opt.id ? "text-indigo-600" : "text-slate-700")}>
+            <span className={cn("text-ui font-semibold block", mode === opt.id ? "text-entity-text" : "text-gray-700")}>
               {opt.label}
             </span>
-            <span className="type-meta text-slate-500 block">{opt.sub}</span>
+            <span className="type-meta text-gray-500 block">{opt.sub}</span>
           </button>
         ))}
       </div>
 
-      <p className="type-meta text-slate-400">
+      <p className="type-meta text-gray-400">
         {t("Saved on this device only", "Uloží sa len v tomto zariadení", "Csak ezen az eszközön tárolódik")}
       </p>
     </div>
