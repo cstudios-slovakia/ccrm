@@ -73,6 +73,7 @@ Main table representing potential deals, customers, and client accounts.
 * `status` VARCHAR(50) (e.g. new, contacted, offer sent, accepted, rejected)
 * `source` VARCHAR(50) (e.g. showroom, website, referral)
 * `owner` VARCHAR(100) (assigned project manager)
+* `assigned_employees` TEXT [NULLable] (JSON array of user names working on the lead or client besides its project manager; one-time migration `ASSIGNED_EMPLOYEES_MIGRATION` moved non-PM owners here and extra project managers to `project_employees`)
 * `division` VARCHAR(100) (assigned business division, e.g. Cstudios, Cstudios Budapest)
 * `rating` INT (1-5 star score)
 * `value` DECIMAL(15, 2) (financial deal value)

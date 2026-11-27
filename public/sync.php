@@ -519,6 +519,11 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         $dbTags = (!empty($db['contact_tags'])) ? (json_decode($db['contact_tags'], true) ?: []) : [];
         if ($incTags !== $dbTags) return false;
     }
+    if (array_key_exists('assignedEmployees', $inc)) {
+        $incEmp = is_array($inc['assignedEmployees']) ? array_values(array_unique(array_filter(array_map(fn($x) => trim((string)$x), $inc['assignedEmployees'])))) : [];
+        $dbEmp = (!empty($db['assigned_employees'])) ? (json_decode($db['assigned_employees'], true) ?: []) : [];
+        if ($incEmp !== $dbEmp) return false;
+    }
 
     if (array_key_exists('ticketAllowedEmails', $inc)) {
         $incEmails = is_array($inc['ticketAllowedEmails']) ? array_values(array_filter(array_map('trim', $inc['ticketAllowedEmails']))) : [];
@@ -929,6 +934,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'clientCategoryId' => $row['client_category_id'] ?? null,
                 'companyClientId' => ($row['company_client_id'] ?? '') !== '' ? $row['company_client_id'] : null,
                 'contactRole' => ($row['contact_role'] ?? '') !== '' ? $row['contact_role'] : null,
+                'assignedEmployees' => (!empty($row['assigned_employees']) && is_array($ae = json_decode($row['assigned_employees'], true))) ? array_values(array_filter(array_map(fn($x) => trim((string)$x), $ae))) : [],
                 'contactTags' => (!empty($row['contact_tags']) && is_array($ct = json_decode($row['contact_tags'], true))) ? array_values(array_filter(array_map(fn($x) => trim((string)$x), $ct))) : [],
                 // Ticket-module data riding on the lead row: withheld without `tickets`.
                 'ticketAllowedEmails' => (ccrm_can($scope, 'tickets') && !empty($row['ticket_allowed_emails'])) ? (json_decode($row['ticket_allowed_emails'], true) ?: []) : [],
@@ -3312,6 +3318,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'leads', 'contact_tags')) {
                 $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_tags` TEXT NULL AFTER `contact_role`");
             }
+            if (!ccrm_column_exists($pdo, 'leads', 'assigned_employees')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `assigned_employees` TEXT NULL COMMENT 'JSON array of user names working on the lead besides its owner' AFTER `owner`");
+            }
             if (!ccrm_column_exists($pdo, 'leads', 'custom_fields_json')) {
                 $pdo->exec("ALTER TABLE `leads` ADD COLUMN `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id' AFTER `ticket_allowed_emails`");
             }
@@ -4769,6 +4778,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         : [];
                     $pdo->prepare("UPDATE `leads` SET `contact_tags` = ? WHERE `id` = ?")
                         ->execute([$cleanTags ? json_encode($cleanTags, JSON_UNESCAPED_UNICODE) : null, $leadId]);
+                }
+                // Assigned employees besides the owner (`leads.assigned_employees`); only when sent.
+                if (array_key_exists('assignedEmployees', $l)) {
+                    $cleanEmp = is_array($l['assignedEmployees'])
+                        ? array_values(array_unique(array_filter(array_map(fn($x) => trim((string)$x), $l['assignedEmployees']))))
+                        : [];
+                    $pdo->prepare("UPDATE `leads` SET `assigned_employees` = ? WHERE `id` = ?")
+                        ->execute([$cleanEmp ? json_encode($cleanEmp, JSON_UNESCAPED_UNICODE) : null, $leadId]);
                 }
                 // Custom Lead fields (`leads.custom_fields_json`): only touch when `data` is supplied
                 // so partial callers (`ClientsView`, legacy bundles) never clear stored values.
