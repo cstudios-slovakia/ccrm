@@ -25,7 +25,7 @@
  * This line is the only difference between the two branches. Merging `1.14-orange` into `1.14-css`
  * never touches it; never merge `1.14-css` back into `1.14-orange`.
  */
-export const NEW_DASHBOARD_EDITION: boolean = false;
+export const NEW_DASHBOARD_EDITION: boolean = true;
 
 export const LEGACY_WIDGET_DASHBOARD: boolean = !NEW_DASHBOARD_EDITION;
 
