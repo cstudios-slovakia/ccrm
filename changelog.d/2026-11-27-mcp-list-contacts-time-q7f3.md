@@ -1,0 +1,1 @@
+- **MCP `list_contacts`: the company's primary contact carries the right `updated_at`** (`public/api/mcp_lists_crm.php`): the time was read with PHP's clock zone instead of the database's, so it came out two hours early in summer (one in winter). It is now read the same way as every other `updated_at` in the MCP tools.

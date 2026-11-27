@@ -387,6 +387,11 @@ function mcp_list_contacts(\PDO $pdo, array $args): array {
         if (!$scope || !mcp_lead_module_visible($scope['record'])) return [];
         $lead = $scope['record'];
         $companyName = (string)$lead['name'];
+        // The database's own reading of the TIMESTAMP, like every other updated_at here; PHP's strtotime()
+        // would read the session-zone string in PHP's zone and shift it by the offset between the two.
+        $leadTs = $pdo->prepare('SELECT ' . mcp_moment_select('updated_at', 'updated_at') . ' FROM leads WHERE id = ?');
+        $leadTs->execute([$lead['id']]);
+        $leadUpdatedTs = $leadTs->fetchColumn();
         $rows[] = [
             'id' => $lead['id'],
             'is_primary' => true,
@@ -397,7 +402,7 @@ function mcp_list_contacts(\PDO $pdo, array $args): array {
             'phone' => $lead['phone'],
             'role' => 'Primary Contact',
             'function_tags' => mcp_contact_tags_from_row($lead),
-            'updated_at' => mcp_format_moment(isset($lead['updated_at']) ? strtotime((string)$lead['updated_at']) : null),
+            'updated_at' => mcp_format_moment($leadUpdatedTs === false ? null : $leadUpdatedTs),
         ];
         $archSql = $includeArchived ? '' : ' AND archived = 0';
         $scopeIds = $scope['ids'] ?: [$clientId];
